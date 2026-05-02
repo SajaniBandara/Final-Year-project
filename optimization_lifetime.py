@@ -15,7 +15,7 @@ try:
 	#Bim = list()
 	Si_inner = list()
 
-	with open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",'r',encoding='UTF8') as csvfile:
+	with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",'r',encoding='UTF8') as csvfile:
 		csvreader = csv.reader(csvfile,delimiter=',',quotechar='"',quoting=csv.QUOTE_MINIMAL)
 		for row in csvreader:
 			p = str(row)
@@ -192,7 +192,7 @@ try:
 	for j in range(n):
 		print("Solution values: %s=%g, %s=%g" %(x[j].Varname, x[j].X, z[j].Varname, z[j].X))
 	
-	with open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv",'w',encoding='UTF8') as csvfile:
+	with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv",'w',encoding='UTF8') as csvfile:
 		writer = csv.writer(csvfile,delimiter=',',quotechar='"',quoting=csv.QUOTE_MINIMAL)
 		for i in range(n):
 			s1 = str(int(x[i].X))
