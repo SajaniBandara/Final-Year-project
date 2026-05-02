@@ -79,7 +79,8 @@
 #define max24 24
 #define max25 25
 
-int lambda = 30;
+// int lambda = 30;
+int lambda = 1; //test
 
 const int Flow_size = 55;
 uint32_t flow_size = 55;
@@ -88,12 +89,14 @@ const int total_size = 100;
 uint32_t N_RSUs = 20;
 uint32_t N_Vehicles = 80;
 
-const int flows = 2;
+// const int flows = 2;
+const int flows = 1; //test
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
-double simTime = 10;
+// double simTime = 240;
+double simTime = 240; //test
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -101,7 +104,8 @@ uint32_t large=50000;
 
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
-double data_transmission_frequency = 1.0;
+// double data_transmission_frequency = 1.0;
+double data_transmission_frequency = 5.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -94510,7 +94514,8 @@ NodeContainer management_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
-bool routing_test = false;
+// bool routing_test = false;
+bool routing_test = true; //test
 
 NetDeviceContainer wifidevices;
 NetDeviceContainer wifidevices_172;
@@ -138564,7 +138569,8 @@ int main(int argc, char *argv[])
     
     if (routing_test == true)
     {
-     	N_Vehicles = 22;
+     	// N_Vehicles = 22;
+		N_Vehicles = 2; //test
      	N_RSUs = 1;
      	//flows = 1;
     }
@@ -138614,7 +138620,8 @@ int main(int argc, char *argv[])
   {
   
   	    Vehicle_Nodes.Create(N_Vehicles);
-    	    double x = 250;
+    	    // double x = 250;
+		double x = 200; //test
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
@@ -139901,12 +139908,14 @@ int main(int argc, char *argv[])
     					{
     						if(i==0)
     						{
-    							destination = 11;
+    							// destination = 11;
+								destination = 1; //test
     							source = 0;
     						}
     						else
     						{
-    							source = 11;
+    							// source = 11;
+								source = 1;
     							destination = 0;
     						}
     					}
