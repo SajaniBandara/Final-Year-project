@@ -67,7 +67,6 @@
 #include <array>
 #include <sstream>
 
-
 using namespace std::chrono;
 
 
@@ -113,10 +112,10 @@ const int flows = 1;
 
 int routing_algorithm = 4; //0-port based, 1-normal LLDP, 2-crypto-based, 3-Link guard, 4-proposed LLDP, 5-HELLO packets
 int experiment_number = 0; //0 - individual attack, 1 - combined attack
-int attack_number = 13; //1 - Attack 1, etc. 2-Attack 2, 3-Attack 3, 4-Attack 4, 5-Attack 5, 6-Combined attack //Sajani
+int attack_number = 5; //1 - Attack 1, etc. 2-Attack 2, 3-Attack 3, 4-Attack 4, 5-Attack 5, 6-Combined attack
 
-bool controller_malicious_assumption = false; 
-int attack_percentage = 34; // 1 out of 3 are attackers
+bool controller_malicious_assumption = true;
+int attack_percentage = 40;
 
 double simTime = 13.7;
 
@@ -153,26 +152,23 @@ double mu1 = 0.010;
 double mu2 = 10.00;
 double mu3 = 10.0;
 
-bool present_location_attack_nodes = false; //attacks
+bool present_location_attack_nodes = false;
 bool present_flooding_attack_nodes = true;
 bool present_fabrication_attack_nodes = false;
 bool present_MIM_attack_nodes = false;
 bool present_vanishing_attack_nodes = false;
-bool selective_time_delay_attack_nodes = true; //sajani
 
 //bool present_location_attack_controllers = true;
-bool present_flooding_attack_controllers = false;   //control plane versions of attacks
+bool present_flooding_attack_controllers = false;
 bool present_fabrication_attack_controllers = false;
 bool present_MIM_attack_controllers = false;
 bool present_vanishing_attack_controllers = false;
-bool selective_time_delay_attack_controllers = false; //sajani
 
-bool location_malicious_nodes[total_size];  //arary size = network size //saja
+bool location_malicious_nodes[total_size];
 bool flooding_malicious_nodes[total_size];
 bool fabrication_malicious_nodes[total_size];
 bool MIM_malicious_nodes[total_size];
 bool vanishing_malicious_nodes[total_size];
-bool selective_time_delay_malicious_nodes[total_size]; //sajani
 
 bool flooding_malicious_controllers[controllers];
 bool fabrication_malicious_controllers[controllers];
@@ -98446,10 +98442,7 @@ void TrySendUplink(uint32_t srcNodeId, uint32_t dstNodeId, uint32_t srcPortId, P
 	srand(Simulator::Now().GetSeconds());
 	double rand_time = 0.00001*(rand()%100);
 	cout<<"This is try send uplink first time for destination node "<<dstNodeId<<" source node "<<srcNodeId<<"port "<<srcPortId<<" at timestamp "<<Simulator::Now().GetSeconds()<<endl;
-    /*
-    if (vanishing_malicious_nodes[dstNodeId])
-        return; // node vanished, stop trying
-    */
+
     if (ueBusy[dstNodeId])
     {
         // Still busy → check again after 5 ms
@@ -98532,10 +98525,7 @@ void TrySendUplinkSecondTime(uint32_t srcNodeId, uint32_t dstNodeId, uint32_t sr
 	srand(Simulator::Now().GetSeconds());
 	double rand_time = 0.00001*(rand()%100);
 	cout<<"This is try send uplink second time for destination node "<<dstNodeId<<" source node "<<srcNodeId<<"port "<<srcPortId<<" at timestamp "<<Simulator::Now().GetSeconds()<<endl;
-    /*
-    if (vanishing_malicious_nodes[dstNodeId])
-        return; // node vanished, stop trying
-    */
+
     if (ueBusy[dstNodeId])
     {
         // Still busy → check again after 5 ms
@@ -98626,10 +98616,7 @@ void TrySendDownlink(uint32_t srcNodeId, uint32_t dstNodeId, uint32_t srcPortId,
 	srand(Simulator::Now().GetSeconds());
 	double rand_time = 0.00001*(rand()%100);
 	cout<<"This is try send downlink first time for destination node "<<dstNodeId<<" source node "<<srcNodeId<<"port "<<srcPortId<<" at timestamp "<<Simulator::Now().GetSeconds()<<endl;
-    /*
-    if (vanishing_malicious_nodes[dstNodeId])
-        return; // node vanished, stop trying
-    */
+
     if (ueDLBusy[dstNodeId])
     {
         // Still busy → check again after 5 ms
@@ -98714,10 +98701,7 @@ void TrySendDownlinkSecondTime(uint32_t srcNodeId, uint32_t dstNodeId, uint32_t 
 	srand(Simulator::Now().GetSeconds());
 	double rand_time = 0.00001*(rand()%100);
 	cout<<"This is try send downlink second time for destination node "<<dstNodeId<<" source node "<<srcNodeId<<"port "<<srcPortId<<" at timestamp "<<Simulator::Now().GetSeconds()<<"which was initiated at"<<t<<endl;
-    /*
-    if (vanishing_malicious_nodes[dstNodeId])
-        return; // node vanished, stop trying
-    */
+
     if (ueDLBusy[dstNodeId])
     {
         // Still busy → check again after 5 ms
@@ -98889,6 +98873,7 @@ void LLDP_dsrc_data_unicast(uint32_t current_hop_id, uint32_t next_hop_id, uint3
 	bool s1 = (( flood_counter_sen[current_hop_id][next_hop_id][port_id] < 1.0)&&(routing_algorithm==3));
 	bool s2 = (( flood_counter_sen[current_hop_id][next_hop_id][port_id] < RL_iterations)&&(routing_algorithm==4));
 	bool s3 = ((routing_algorithm != 3)&&(routing_algorithm != 4));
+	// Vanishing  attack behavior
 	if((!vanishing_malicious_nodes[current_hop_id])||(!attacking_state2))
 	{
 			if(s1 || s2 || s3)
@@ -98899,6 +98884,8 @@ void LLDP_dsrc_data_unicast(uint32_t current_hop_id, uint32_t next_hop_id, uint3
 	
 	Ptr<Packet> packet_original = packet_i->Copy();
 	
+
+	// Vanishing  attack behavior
 	if(vanishing_malicious_nodes[current_hop_id])
 	{
 		if(attacking_state2)
@@ -98923,6 +98910,9 @@ void LLDP_dsrc_data_unicast(uint32_t current_hop_id, uint32_t next_hop_id, uint3
 		}
 	}
 	
+
+
+	// flooding attack behavior 
 	Ptr<Packet> packet_copy[7];
 	if((flooding_malicious_nodes[current_hop_id]) && (!blocked_port_state[current_hop_id][next_hop_id][port_id]))
 	{
@@ -98958,7 +98948,7 @@ void LLDP_dsrc_data_unicast(uint32_t current_hop_id, uint32_t next_hop_id, uint3
 	}
 	
 	
-	
+	// fabrication attack behavior
 	if(fabrication_malicious_nodes[current_hop_id])
 	{
 		uint8_t stage[1];
@@ -99471,8 +99461,7 @@ void read_packet_content_at_node2(struct downlink_rest_data dlrd)
 		//uint8_t * HMAC2 = HMAC_key;
 		tagLLDP_uplink.SetHMAC2 (HMAC2);
 		packet_i->AddPacketTag(tagLLDP_uplink);
-		//if(!vanishing_malicious_nodes[*dlrd.destination_nodeid])
-		//{
+
 		srand(Simulator::Now().GetSeconds());
 		double randval = 0.00001*(rand()%100);
 		Simulator::Schedule(Seconds(randval), &TrySendUplinkSecondTime, dlrd.casted_raw_source_nodeid, dlrd.casted_destination_nodeid, dlrd.casted_raw_source_portid, packet_i, 0);
@@ -100803,7 +100792,7 @@ void decrypt_downlink_packet(struct downlink_packet_decrypt dlpd)
       	
 
       
-      CustomDataTag tag;
+    CustomDataTag tag;
 	if(packet->PeekPacketTag(tag))
 	{
 		std::cout << "Received packet from "<< tag.GetNodeId()<<"to node "<<nid <<"of total size"<<packet->GetSerializedSize()<<"at position "<< tag.GetPosition()<<"with velocity "<<tag.GetVelocity()<<"and acceleration"<<tag.GetAcceleration()<<"packet timestamp "<< tag.GetTimestamp().GetSeconds()<<"s "<<"with delay "<< Now().GetMilliSeconds()-tag.GetTimestamp().GetMilliSeconds()<<"ms"<<std::endl;
@@ -123106,190 +123095,6 @@ void dijkstra_stable(uint32_t startVertex)
 }
 
 
-//stdhf
-void calculate_confusion_matrix()
-{
-    // Reset this cycle's confusion matrix counts
-    m_TP = 0.0;
-    m_TN = 0.0;
-    m_FP = 0.0;
-    m_FN = 0.0;
-
-    for (uint32_t i = 0; i < TOTAL_NODES; i++)
-    {
-        bool truth    = is_true_attack_node[i];
-        bool detected = is_detected_as_attack[i];
-
-        if (truth && detected)        m_TP += 1.0;  // attack, caught
-        else if (!truth && !detected) m_TN += 1.0;  // benign, cleared
-        else if (!truth && detected)  m_FP += 1.0;  // benign, wrongly flagged
-        else if (truth && !detected)  m_FN += 1.0;  // attack, missed
-    }
-
-    cout << "Confusion matrix — TP:" << m_TP
-         << " TN:" << m_TN
-         << " FP:" << m_FP
-         << " FN:" << m_FN << endl;
-
-    // Accumulate into cumulative totals
-    cumulative_TP += m_TP;
-    cumulative_TN += m_TN;
-    cumulative_FP += m_FP;
-    cumulative_FN += m_FN;
-
-    // ----------------------------------------------------------
-    // M1: Matthews Correlation Coefficient
-    // Formula: (TP*TN - FP*FN) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
-    // A small epsilon prevents division by zero when any column
-    // or row of the confusion matrix is all-zero.
-    // ----------------------------------------------------------
-    double epsilon = 1e-9;
-    double numerator   = (m_TP * m_TN) - (m_FP * m_FN);
-    double denominator = sqrt(
-        (m_TP + m_FP + epsilon) *
-        (m_TP + m_FN + epsilon) *
-        (m_TN + m_FP + epsilon) *
-        (m_TN + m_FN + epsilon)
-    );
-    metric_MCC = numerator / denominator;
-    cout << "M1 MCC = " << metric_MCC << endl;
-
-    // ----------------------------------------------------------
-    // M2: Detection Rate (True Positive Rate)
-    // How many real attack nodes did we catch?
-    // DR = TP / (TP + FN)
-    // If there are no attack nodes this cycle, DR is undefined.
-    // We output -1.0 to signal "not applicable" in the CSV.
-    // ----------------------------------------------------------
-    double total_positives = m_TP + m_FN;
-    if (total_positives > 0)
-        metric_DR = m_TP / total_positives;
-    else
-        metric_DR = -1.0;  // no attack nodes present this cycle
-    cout << "M2 DR = " << metric_DR << endl;
-
-    // ----------------------------------------------------------
-    // M3: False Positive Rate
-    // How often do we wrongly flag innocent nodes?
-    // FPR = FP / (FP + TN)
-    // If there are no benign nodes, FPR is undefined → -1.0
-    // ----------------------------------------------------------
-    double total_negatives = m_FP + m_TN;
-    if (total_negatives > 0)
-        metric_FPR = m_FP / total_negatives;
-    else
-        metric_FPR = -1.0;
-    cout << "M3 FPR = " << metric_FPR << endl;
-}
-
-//stdhf
-
-void calculate_pdr()
-{
-    // All-traffic PDR
-    if (packets_sent_cycle > 0)
-        metric_PDR = (double)packets_received_cycle / (double)packets_sent_cycle;
-    else
-        metric_PDR = 0.0;
-
-    // Safety-critical PDR
-    if (safety_packets_sent_cycle > 0)
-        metric_PDR_s = (double)safety_packets_received_cycle
-                     / (double)safety_packets_sent_cycle;
-    else
-        metric_PDR_s = 0.0;
-
-    // Update cumulative running averages
-    cumulative_pdr        += metric_PDR;
-    cumulative_pdr_safety += metric_PDR_s;
-
-    double avg_pdr   = cumulative_pdr        / metrics_cycle;
-    double avg_pdr_s = cumulative_pdr_safety / metrics_cycle;
-
-    cout << "M5 PDR (all)    = " << 100.0 * metric_PDR   << "%" << endl;
-    cout << "M5 PDR (safety) = " << 100.0 * metric_PDR_s << "%" << endl;
-    cout << "M5 PDR avg      = " << 100.0 * avg_pdr      << "%" << endl;
-}
-
-//stdhf
-
-void calculate_e2e_latency()
-{
-    double total_latency   = 0.0;
-    double max_latency_ms  = 0.0;
-    uint32_t delivered     = 0;
-    uint32_t over_budget   = 0;  // packets > 100 ms
-
-    for (uint32_t i = 0; i < TOTAL_PACKETS; i++)
-    {
-        // A packet is delivered if its Rx time is after its Tx time
-        if (pkt_rx_time[i] > pkt_tx_time[i])
-        {
-            double latency_ms = (pkt_rx_time[i] - pkt_tx_time[i]) * 1000.0;
-            total_latency    += latency_ms;
-            delivered++;
-
-            if (latency_ms > max_latency_ms)
-                max_latency_ms = latency_ms;
-
-            if (latency_ms > 100.0)
-                over_budget++;
-        }
-    }
-
-    if (delivered > 0)
-    {
-        current_e2e_mean_ms = total_latency / (double)delivered;
-        current_e2e_max_ms  = max_latency_ms;
-    }
-    else
-    {
-        current_e2e_mean_ms = 0.0;
-        current_e2e_max_ms  = 0.0;
-    }
-
-    // Update cumulative rolling average
-    cumulative_e2e_sum   += current_e2e_mean_ms;
-    cumulative_e2e_count += 1;
-    average_e2e_mean_ms   = cumulative_e2e_sum / cumulative_e2e_count;
-
-    metric_e2e_ms  = current_e2e_mean_ms;
-    metric_e2e_max = current_e2e_max_ms;
-
-    cout << "M6 E2E mean = " << current_e2e_mean_ms << " ms" << endl;
-    cout << "M6 E2E max  = " << current_e2e_max_ms  << " ms" << endl;
-    cout << "M6 packets > 100ms safety budget = " << over_budget << endl;
-}
-
-//stdhf
-
-void calculate_mitigation_latency()
-{
-    if (mitigation_fired_time > attack_start_time && attack_start_time > 0.0)
-    {
-        current_lmit_ms = (mitigation_fired_time - attack_start_time) * 1000.0;
-
-        // Update cumulative average
-        cumulative_lmit_sum   += current_lmit_ms;
-        cumulative_lmit_count += 1;
-        average_lmit_ms        = cumulative_lmit_sum / (double)cumulative_lmit_count;
-
-        metric_Lmit_ms = current_lmit_ms;
-        cout << "M4 Lmit = " << current_lmit_ms << " ms" << endl;
-
-        if (current_lmit_ms > 100.0)
-            cout << "WARNING: Mitigation exceeded 100ms safety budget!" << endl;
-    }
-    else
-    {
-        // Attack not yet mitigated this cycle — mark as -1 in CSV
-        metric_Lmit_ms = -1.0;
-        cout << "M4 Lmit = not yet mitigated this cycle" << endl;
-    }
-}
-
-
-
 
 
 void calculate_average_latency_routing()
@@ -123999,7 +123804,6 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000040), calculate_average_jitter_routing);
 	Simulator::Schedule(Seconds(0.000060), calculate_average_load_balance_routing);
 	Simulator::Schedule(Seconds(0.000070), write_csv_results_routing);
-
 }
 
 
@@ -125824,11 +125628,12 @@ void adjust_proposed_link_state(uint32_t cid)
 							bool success = GetBooleanWithProbability(60, cid+nid+fidd);
 							if(success)
 							{
+								// Vanishing  attack behavior
 								if((vanishing_malicious_nodes[cid]) && (!vanishing_malicious_nodes[nid]))
 								{
 									(Link_at_controller_inst+fids)->Link_f_inst[fidd].Link_fi_inst[cid].Link_values[nid] = 1.0;
 								}
-								
+								// Vanishing  attack behavior
 								if((vanishing_malicious_nodes[nid]) && (!vanishing_malicious_nodes[cid]))
 								{
 									(Link_at_controller_inst+fids)->Link_f_inst[fidd].Link_fi_inst[cid].Link_values[nid] = 1.0;
@@ -126106,6 +125911,8 @@ void proposed_check_link_state(uint32_t cid)
 							Simulator::Schedule(Seconds(tg*index), LDA_security, command_str4);
 							
 							uint32_t controller_ID = node_controller_ID[cid];
+
+							// Vanishing  attack behavior
 							if(vanishing_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126122,6 +125929,8 @@ void proposed_check_link_state(uint32_t cid)
 							
 							B_mat[cid][nid][fids][dest_port_id] = 0;
 							uint32_t controller_ID = node_controller_ID[cid];
+
+							// Fabrication  attack behavior
 							if(fabrication_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126130,6 +125939,8 @@ void proposed_check_link_state(uint32_t cid)
 									B_mat[cid][nid][fids][dest_port_id] = 1;
 								}
 							}
+
+							// MIM  attack behavior
 							if(MIM_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126416,6 +126227,7 @@ void port_based_check_link_state(uint32_t cid)
 					{
 						B_mat[cid][nid][fids][dest_port_id] = 1;
 						uint32_t controller_ID = node_controller_ID[cid];
+						// Vanishing  attack behavior
 						if(vanishing_malicious_controllers[controller_ID])
 						{
 							bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126431,6 +126243,7 @@ void port_based_check_link_state(uint32_t cid)
 						
 						B_mat[cid][nid][fids][dest_port_id] = 0;
 						uint32_t controller_ID = node_controller_ID[cid];
+						// Fabrication  attack behavior
 						if(fabrication_malicious_controllers[controller_ID])
 						{
 							bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126440,6 +126253,7 @@ void port_based_check_link_state(uint32_t cid)
 							}
 						}
 						
+						// MIM  attack behavior
 						if(MIM_malicious_controllers[controller_ID])
 						{
 							bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126601,6 +126415,7 @@ void normal_LLDP_check_link_state(uint32_t cid)
 						{
 							B_mat[cid][nid][fids][dest_port_id] = 1;
 							uint32_t controller_ID = node_controller_ID[cid];
+							// Vanishing  attack behavior
 							if(vanishing_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126616,6 +126431,7 @@ void normal_LLDP_check_link_state(uint32_t cid)
 							
 							B_mat[cid][nid][fids][dest_port_id] = 0;
 							uint32_t controller_ID = node_controller_ID[cid];
+							// Fabrication  attack behavior
 							if(fabrication_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126624,6 +126440,8 @@ void normal_LLDP_check_link_state(uint32_t cid)
 									B_mat[cid][nid][fids][dest_port_id] = 1;
 								}
 							}
+
+							// MIM  attack behavior
 							if(MIM_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126798,11 +126616,13 @@ void continue_data_broadcasting(Ptr <NetDevice> nd, Ptr <Node> node, uint32_t no
 	packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
 	cout<<"DSRC data Broadcasting from node "<<nid<<endl;
 
+	// fabrication attack behavior
 	if((routing_algorithm == 5)&&(fabrication_malicious_nodes[node_index]))
 	{
 		nid = rand()%total_size + 2;
 	}
-	
+
+	// MiM attack behavior
 	if((routing_algorithm == 5)&&(MIM_malicious_nodes[node_index]))
 	{
 		port_index = rand()%2;
@@ -126856,6 +126676,8 @@ void continue_data_broadcasting(Ptr <NetDevice> nd, Ptr <Node> node, uint32_t no
 	packet_i->AddPacketTag(tag);
 	
 	dsrc_total_packet_size = dsrc_total_packet_size/1000.0 + packet_i->GetSerializedSize();
+
+	// Vanishing  attack behavior
 	if(((routing_algorithm == 5)||(routing_algorithm==4))&&(!vanishing_malicious_nodes[node_index]))
 	{
 		Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest, protocolwave);	
@@ -126883,6 +126705,8 @@ void centralized_dsrc_data_broadcast(Ptr <NetDevice> nd, Ptr <Node> node, uint32
 	Vector posi = mdl->GetPosition();
 	cout<<"Location for node id "<<node_index<< " is "<<posi<<endl;
 	srand(Simulator::Now().GetSeconds()+double(node_index));
+
+	// location attack behavior
 	if(location_malicious_nodes[node_index])
 	{
 		posi.x = posi.x + rand()%100;
@@ -126909,6 +126733,8 @@ void finalize_HELLO()
 					if((Link_at_controller_inst+fid)->Link_f_inst[dest_port_id].Link_fi_inst[cid].Link_values[nid] == 1.0)
 					{
 						B_mat[cid][nid][fid][dest_port_id] = 1;
+
+						// Vanishing  attack behavior
 						if(vanishing_malicious_nodes[cid])
 						{
 							bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126923,6 +126749,8 @@ void finalize_HELLO()
 					{
 						
 						B_mat[cid][nid][fid][dest_port_id] = 0;
+
+						// fabrication attack behavior
 						if(fabrication_malicious_nodes[cid])
 						{
 							bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -126931,6 +126759,7 @@ void finalize_HELLO()
 								B_mat[cid][nid][fid][dest_port_id] = 1;
 							}
 						}
+						// MiM attack behavior
 						if(MIM_malicious_nodes[cid])
 						{
 							bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127043,6 +126872,7 @@ void link_guard_check_link_state(uint32_t cid)
 									B_mat[cid][nid][fidd][dest_port_id] = 1;
 									cout<<"verifying link as true"<<(Link_at_controller_inst+fidd)->Link_f_inst[dest_port_id].Link_fi_inst[cid].Link_values[nid]<<endl;
 									uint32_t controller_ID = node_controller_ID[cid];
+									// Vanishing  attack behavior
 									if(vanishing_malicious_controllers[controller_ID])
 									{
 										bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127058,6 +126888,7 @@ void link_guard_check_link_state(uint32_t cid)
 									cout<<"verifying link as false "<<(Link_at_controller_inst+fidd)->Link_f_inst[dest_port_id].Link_fi_inst[cid].Link_values[nid]<<endl;
 									B_mat[cid][nid][fidd][dest_port_id] = 0;
 									uint32_t controller_ID = node_controller_ID[cid];
+									// Fabrication  attack behavior
 									if(fabrication_malicious_controllers[controller_ID])
 									{
 										bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127066,6 +126897,8 @@ void link_guard_check_link_state(uint32_t cid)
 											B_mat[cid][nid][fidd][dest_port_id] = 1;
 										}
 									}
+
+									// MIM  attack behavior
 									if(MIM_malicious_controllers[controller_ID])
 									{
 										bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127226,6 +127059,7 @@ void pure_crypto_check_link_state(uint32_t	cid)
 						{
 							B_mat[cid][nid][fidd][dest_port_id] = 1;
 							uint32_t controller_ID = node_controller_ID[cid];
+							// Vanishing  attack behavior
 							if(vanishing_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127241,6 +127075,7 @@ void pure_crypto_check_link_state(uint32_t	cid)
 							
 							B_mat[cid][nid][fidd][dest_port_id] = 0;
 							uint32_t controller_ID = node_controller_ID[cid];
+							// Fabrication  attack behavior
 							if(fabrication_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127249,6 +127084,8 @@ void pure_crypto_check_link_state(uint32_t	cid)
 									B_mat[cid][nid][fidd][dest_port_id] = 1;
 								}
 							}
+
+							// MIM  attack behavior
 							if(MIM_malicious_controllers[controller_ID])
 							{
 								bool attacking_state = GetBooleanWithProbability(attack_percentage, cid);
@@ -127465,7 +127302,7 @@ void initialize_blockchain()
 
 }
 
-void declare_attack_states()   
+void declare_attack_states()
 {
 	if(attack_number == 6)//combined attack
 	{
@@ -127484,7 +127321,7 @@ void declare_attack_states()
 		}
 	}
 	
-	else if(attack_number ==1)//Attack 1   //individual attack //sajani
+	else if(attack_number ==1)//Attack 1
 	{
 		present_location_attack_nodes = true;
 		present_flooding_attack_nodes = false;
@@ -127567,46 +127404,14 @@ void declare_attack_states()
 			present_vanishing_attack_controllers = true;
 		}	
 	}
-
-	else if (attack_number == 6 || attack_number == 8 || attack_number == 10 || attack_number == 12) 
-    {
-        controller_malicious_assumption = true; 
-        
-        // Ensure data plane flags are OFF so we isolate the controller's effect
-        present_flooding_attack_nodes = false; 
-        present_fabrication_attack_nodes = false;
-        present_MIM_attack_nodes = false;
-        present_vanishing_attack_nodes = false;
-    }
-
-    // GROUP B: DATA PLANE ATTACKS (Nodes/RSUs are Malicious)
-    // Attack 7 (Delay), 9 (TCAM), 11 (Hidden), 13 (Tunneling)
-    else if (attack_number == 7 || attack_number == 9 || attack_number == 11 || attack_number == 13) 
-    {
-        controller_malicious_assumption = false;
-        
-        // Enable this flag so main() marks specific nodes as 'malicious'
-        present_flooding_attack_nodes = true; 
-        
-        present_fabrication_attack_nodes = false;
-        present_MIM_attack_nodes = false;
-        present_vanishing_attack_nodes = false;
-    }
-
-	if(attack_number == 14)//selective time delay //saja
-	{
-		selective_time_delay_attack_nodes = true;
-	}
 }
 
-
-//use in routing file
 void declare_attackers()
 {
 	
 	for(uint32_t i=0;i<total_size;i++)
 	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);  //decide randomly based on attack percentage whether the node is attacking or not.
+		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
 		if (present_location_attack_nodes == true)
 		{
 			location_malicious_nodes[i] = attacking_state;
@@ -127654,15 +127459,6 @@ void declare_attackers()
 		else if (present_vanishing_attack_nodes == false)
 		{
 			vanishing_malicious_nodes[i] = false;
-		}
-
-
-		if(selective_time_delay_attack_nodes == true){  //sajani
-			selective_time_delay_malicious_nodes[i] = attacking_state;
-		}
-		else if (selective_time_delay_attack_nodes == false)
-		{
-			selective_time_delay_malicious_nodes[i] = false;
 		}
 	}
 	
@@ -129024,27 +128820,6 @@ void CreateglobalHMAC2(uint32_t casted_raw_source_nodeid, uint32_t casted_raw_de
 
 void MacRx (std::string context, Ptr <const Packet> pkt)
 {
-
-
-
-	if (attack_number == 1) {
-		// 1. Identify if this is a safety-critical packet (e.g., collision warning)
-		// In your script, safety packets often have specific tags or port numbers (like 7777)
-		SeqTsSizeHeader header;
-		packet->PeekHeader(header);
-		
-		// 2. Apply variable delay as per Figure 3.2(a)
-		// We use 0.150s (150ms) to ensure it exceeds the 100ms safety threshold
-		double variable_delay = 0.150; 
-
-		// 3. Schedule the forwarding to happen in the future
-		Simulator::Schedule(Seconds(variable_delay), &ForwardToControllerOrVehicle, packet, context);
-		
-		std::cout << "STD Attack Active: Safety Packet from " << context 
-				<< " delayed by " << (variable_delay * 1000) << "ms" << std::endl;
-		return; // Exit the function so it doesn't process immediately
-	}
-
 	//context will include info about the source of this event. Use string manipulation if you want to extract info.
 	//std::cout <<  context << std::endl;
 	//cout<<context[10]<<endl;
@@ -129203,6 +128978,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 		//cout<<"delta value of flow "<< (delta_at_nodes_inst+0)->flow_id<<"node id "<<nodeid<<", next hop 1 with flow size "<<(demanding_flow_struct_nodes_inst+0)->f_size<<" is "<<(delta_at_nodes_inst+0)->delta_fi_inst[nodeid].delta_values[1]<<"and Load sum is "<< (load_at_nodes+0)->load_f[nodeid]<<"source is "<<(delta_at_nodes_inst+0)->source_f<<"destination is "<<(delta_at_nodes_inst+0)->destination_f<<endl;
 	 //cout<<"delta value of flow "<< (delta_at_nodes_inst+1)->flow_id<<"node id "<<nodeid<<", next hop 10 with flow size "<<(demanding_flow_struct_nodes_inst+1)->f_size<<" is "<<(delta_at_nodes_inst+1)->delta_fi_inst[nodeid].delta_values[10]<<"and Load sum is "<< (load_at_nodes+1)->load_f[nodeid]<<"source is "<<(delta_at_nodes_inst+1)->source_f<<"destination is "<<(delta_at_nodes_inst+1)->destination_f<<endl;
 	    
+
+	 	// MiM attack behavior
 	 	if(MIM_malicious_nodes[destination_node_id-2])
 	 	{
 			bool attacking_state = GetBooleanWithProbability(attack_percentage, destination_node_id);
@@ -129242,6 +129019,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			}
 	 	}
 	 	
+		// fabrication attack behavior
 	 	if(fabrication_malicious_nodes[destination_node_id-2])
 	 	{
 	 	
@@ -129324,6 +129102,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 	 	}
 	 	
 	 	
+		// Vanishing  attack behavior
 	 	if(vanishing_malicious_nodes[destination_node_id-2])
 	 	{
 			bool attacking_state = GetBooleanWithProbability(attack_percentage, destination_node_id);
@@ -129428,6 +129207,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			bool cond2 = (!attacking_state2);
 			cout<<"condition2 is"<<cond2<<endl;
 			
+
+			// Vanishing  attack behavior
 			if((!vanishing_malicious_nodes[casted_raw_destination_nodeid])||(cond2))
 			{
 				/*
