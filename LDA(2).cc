@@ -97248,7 +97248,7 @@ void reset_delays_and_packets()
 void write_csv_delay_training(uint32_t index, uint32_t mode)
 {
 	fstream fout;
-	fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
 	fout << mode << ", "
 	     << mode*D_wl_bar[index] << ", "
 	     <<	(1-mode)*D_wi_bar[index] << ", "
@@ -97276,7 +97276,7 @@ void write_csv_delay_training(uint32_t index, uint32_t mode)
 void write_csv_delay_prediction()
 {
 	fstream fout;
-	fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
 	for (uint32_t index=0;index<total_size;index++)
 	{
 		for(double mode=0.0;mode < 2.0;mode++)
@@ -98173,7 +98173,7 @@ std::string BytesToHexString(const uint8_t* byteArray, size_t length) {
 void LDA_security(std::string argument)
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/LDA_security.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/LDA_security.py";
     	std::string command = "python3 ";
     	command += filename;
     	command += argument;
@@ -98217,7 +98217,7 @@ void location_HMAC_continue(uint32_t i, uint32_t j)
 	    uint32_t node_j = (data_at_manager_inst+i)->source_node[j];
 	    uint32_t node_i = (data_at_manager_inst+i)->source_node[i];
 	    cout<<"node i is "<<node_i<<"node j is "<<node_j<<endl;
-		std::string filename_HMAC1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_verification_data.csv";
+		std::string filename_HMAC1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_verification_data.csv";
 		cout<<"Location HMAC continue"<<endl;
 		string HMAC1_verification_string = read_other_other_item_from_csv(filename_HMAC1, std::to_string(j), std::to_string(i), std::to_string(0), 3);
 		cout<<"Location HMAC_verification string is "<<HMAC1_verification_string.substr(0,4)<<endl;
@@ -99155,8 +99155,8 @@ string read_item_from_csv(std::string filename, std::string node_id, int col_ind
 void LDA_PQ_security(std::string argument)
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/LDA_PQ_security.py";
-    	std::string command = "/home/nilmantha/oqs-env/bin/python ";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/LDA_PQ_security.py";
+    	std::string command = "/home/user/oqs-env/bin/python ";
     	command += filename;
     	command += argument;
     	system(command.c_str());
@@ -99242,13 +99242,13 @@ void send_dataplane_packet(struct downlink_rest_data dlrd)
 	{
 	       
 	       cout<<"Reading HMAC 1 at nodes"<<endl;
-			std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
+			std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
 			HMAC_string = read_other_other_item_from_csv(filename_HMAC, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), std::to_string(dlrd.casted_destination_nodeid), 3);
 			cout<<"HMAC 1 string is "<<HMAC_string<<endl;
 			cout<<endl;
 		   
 		   cout<<"Reading Digital signature at nodes "<<endl;
-		   std::string filename_sign_FALCON1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_dig_sig_data.csv";
+		   std::string filename_sign_FALCON1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_dig_sig_data.csv";
 		   FALCON1_string = read_other_other_item_from_csv(filename_sign_FALCON1, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 		   cout<<"Digital signature node1 string is "<<FALCON1_string<<endl;
 	}
@@ -99421,17 +99421,17 @@ void read_packet_content_at_node2(struct downlink_rest_data dlrd)
 	   string FALCON2_string;
 		
 	   cout<<"Reading HMAC2 at second node"<<endl;
-	   std::string filename_HMAC2 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node2_HMAC_data.csv";
+	   std::string filename_HMAC2 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node2_HMAC_data.csv";
 	   HMAC2_string = read_other_other_item_from_csv(filename_HMAC2, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 	   cout<<"HMAC 2 string is "<<HMAC2_string<<endl;
 		
 	   cout<<"Reading encrypted string at second node"<<endl;
-	   std::string filename_DH = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ECDH_data.csv";
+	   std::string filename_DH = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ECDH_data.csv";
 	   encrypted_string = read_other_other_item_from_csv(filename_DH, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 	   cout<<"ECDH_encrypted string is "<<encrypted_string<<endl;
 	   
 	   cout<<"Reading digital signature at second node"<<endl;
-	   std::string filename_sign_FALCON2 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node2_dig_sig_data.csv";
+	   std::string filename_sign_FALCON2 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node2_dig_sig_data.csv";
 	   FALCON2_string = read_other_other_item_from_csv(filename_sign_FALCON2, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 	   cout<<"Digital signature node2 string is "<<FALCON2_string<<endl;
 	   
@@ -99480,12 +99480,12 @@ void proceed_downlink_rest(struct downlink_rest_data dlrd)
 	    string verification;
 	    if(routing_algorithm == 4)
 	    {
-			std::string filename_source = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data1.csv";
+			std::string filename_source = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data1.csv";
 			cout<<"Reading ASCON 1 data"<<endl;
 			dec_node_id = read_other_item_from_csv(filename_source, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 			
 			cout<<"Reading ASCON 2 data"<<endl;
-			std::string filename_port = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data2.csv";
+			std::string filename_port = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data2.csv";
 			dec_port_id = read_other_item_from_csv(filename_port, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 			
 			std::string filename_HMACkey;
@@ -99493,19 +99493,19 @@ void proceed_downlink_rest(struct downlink_rest_data dlrd)
 			if(*dlrd.stage == 1)
 			{
 				cout<<"Reading ASCON 3 data"<<endl;
-				filename_HMACkey = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data3.csv";
+				filename_HMACkey = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data3.csv";
 				dec_key = read_other_item_from_csv(filename_HMACkey, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 			}
 			
 			if(*dlrd.stage == 2)
 			{
 				cout<<"Reading HMAC key"<<endl;
-				filename_HMACkey = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data4.csv";
+				filename_HMACkey = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data4.csv";
 				dec_key = read_other_other_item_from_csv(filename_HMACkey, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 4);
 			}
 			
 			cout<<"Reading digital signature"<<endl;
-			std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
+			std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
 			verification = read_other_other_item_from_csv(filename, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), std::to_string(dlrd.casted_destination_nodeid), 4);
 			
 			cout<<"decoded node id is "<<dec_node_id<<endl;
@@ -99670,7 +99670,7 @@ void verify_uplink_packet_first_time(struct downlink_rest_data dlrd)
 void send_uplink_data_first_time(struct downlink_rest_data dlrd)
 {
 	cout<<"Reading HMAC2 key encrypted at controller"<<endl;
-	std::string filename_HMAC2key_enc = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data4.csv";
+	std::string filename_HMAC2key_enc = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data4.csv";
 	string HMAC2_key_enc = read_other_other_item_from_csv(filename_HMAC2key_enc, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 	cout<<"HMAC key encrypted size is "<<HMAC2_key_enc.size()<<endl;
 	
@@ -99741,7 +99741,7 @@ void encrypt_HMAC2(struct downlink_rest_data dlrd)
 	   //Encrypt HMAC2 key
 	   
 	   cout<<"Reading HMAC2 key at controller"<<endl;
-	   std::string filename_HMAC2 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_HMAC2_data.csv";
+	   std::string filename_HMAC2 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_HMAC2_data.csv";
 	   string HMAC2_key = read_other_other_item_from_csv(filename_HMAC2, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3); 
 	   
 	   std::ostringstream oss3;
@@ -99783,17 +99783,17 @@ void read_uplink_data_first_time(struct downlink_rest_data dlrd)
 
 			
 			cout<<"Reading Dig signature 1 verification"<<endl;
-			std::string filename_DS1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
+			std::string filename_DS1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
 			DS1_verification_string = read_other_other_item_from_csv(filename_DS1, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), std::to_string(dlrd.casted_destination_nodeid), 4);
 			cout<<"DS1 verification string is "<<DS1_verification_string<<endl;
 			
 			cout<<"Reading HMAC1 verification"<<endl;
-			std::string filename_HMAC1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
+			std::string filename_HMAC1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
 			HMAC1_verification_string = read_other_other_item_from_csv(filename_HMAC1, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid),std::to_string(dlrd.casted_destination_nodeid), 4);
 			cout<<"HMAC1_verification string is "<<HMAC1_verification_string<<endl;
 			
 			cout<<"Reading HMAC2 verification"<<endl;
-			std::string filename_HMAC2 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_verification_data.csv";
+			std::string filename_HMAC2 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_verification_data.csv";
 
 			string HMAC2_verification_string = read_other_other_item_from_csv(filename_HMAC2, std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), 3);
 			cout<<"Location HMAC_verification string is "<<HMAC2_verification_string.substr(0,4)<<endl;
@@ -100047,12 +100047,12 @@ void read_uplink_data_second_time(struct downlink_rest_data dlrd)
 		if(routing_algorithm == 4)
 		{
 		cout<<"Reading Dig sign 1 verification for source"<<dlrd.casted_raw_source_nodeid<<"port "<<dlrd.casted_raw_source_portid<<"destination "<<dlrd.casted_destination_nodeid<<endl;
-	    std::string filename_DS1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
+	    std::string filename_DS1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
 		DS1_verification_string = read_other_other_item_from_csv(filename_DS1, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), std::to_string(dlrd.casted_destination_nodeid), 4);
 		cout<<"DS1 verification string is "<<DS1_verification_string.substr(0, 4)<<endl;
 		
 		cout<<"Reading ECDH data"<<endl;
-		std::string filename_DH = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ECDH_data.csv";
+		std::string filename_DH = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ECDH_data.csv";
 		decrypted_string_ori = read_other_other_item_from_csv(filename_DH, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 4);
 		
 		decrypted_string = trim(decrypted_string_ori);
@@ -100063,22 +100063,22 @@ void read_uplink_data_second_time(struct downlink_rest_data dlrd)
 		cout<<"Converted casted string is "<<std::to_string(dlrd.casted_raw_source_nodeid+dlrd.casted_destination_nodeid+dlrd.casted_raw_source_portid)<<"are they same "<<similarity<<endl;
 		
 		cout<<"Reading HMAC 1 verification string"<<endl;
-		std::string filename_HMAC1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
+		std::string filename_HMAC1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
 		HMAC1_verification_string = read_other_other_item_from_csv(filename_HMAC1, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_raw_source_portid), std::to_string(dlrd.casted_destination_nodeid), 4);
 		cout<<"HMAC1_verification string is "<<HMAC1_verification_string.substr(0, 4)<<endl;
 		
 		cout<<"Reading HMAC 2 verification string"<<endl;
-		std::string filename_HMAC2 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node2_HMAC_data.csv";
+		std::string filename_HMAC2 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node2_HMAC_data.csv";
 		HMAC2_verification_string = read_other_other_item_from_csv(filename_HMAC2, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 4);
 		cout<<"HMAC2_verification string is "<<HMAC2_verification_string.substr(0, 4)<<endl;
 	   
 	   cout<<"Reading FALCON 1 verification string"<<endl;
-	   std::string filename_verify_FALCON1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_dig_sig_data.csv";
+	   std::string filename_verify_FALCON1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_dig_sig_data.csv";
 	   FALCON1_verification_string = read_other_other_item_from_csv(filename_verify_FALCON1, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 4);
 	   cout<<"Digital signature 2 verification string is "<<FALCON1_verification_string.substr(0, 4)<<endl;
 	   
 	   cout<<"Reading FALCON 2 verification string"<<endl;
-	   std::string filename_verify_FALCON2 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node2_dig_sig_data.csv";
+	   std::string filename_verify_FALCON2 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node2_dig_sig_data.csv";
 	   FALCON2_verification_string = read_other_other_item_from_csv(filename_verify_FALCON2, std::to_string(dlrd.casted_raw_source_nodeid), std::to_string(dlrd.casted_destination_nodeid), std::to_string(dlrd.casted_raw_source_portid), 4);
 	   cout<<"Digital signature 3 verification string is "<<FALCON2_verification_string.substr(0, 4)<<endl;
    }
@@ -116529,7 +116529,7 @@ void decrypt_downlink_packet(struct downlink_packet_decrypt dlpd)
 				Simulator::Schedule(Seconds(0), LDA_security, command_str3);
 				
 				cout<<"Reading HMAC 1 verification string"<<endl;
-				std::string filename_HMAC1 = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
+				std::string filename_HMAC1 = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv";
 				string HMAC1_verification_string = read_other_item_from_csv(filename_HMAC1, std::to_string(source_node_id[i]), std::to_string(source_port_id[i]), 3);
 				cout<<"HMAC1_verification string is "<<HMAC1_verification_string<<endl;
 				
@@ -118089,7 +118089,7 @@ void compute_controller_packet_out_cryptography(uint32_t node_index, uint32_t de
 	   std::string command_str2 = oss2.str();
 	   Simulator::Schedule(Seconds(0), LDA_PQ_security, command_str2);   
 	   
-	   std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_data.csv";
+	   std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_data.csv";
 	   string HMAC_key = read_item_from_csv(filename, std::to_string(node_index), 10);
 	   
 	   
@@ -118190,19 +118190,19 @@ void send_LTE_LLDP_packetout_downlink_alone(Ptr <SimpleUdpApplication> udp_app, 
 	if(routing_algorithm == 4)
 	{
 		cout<<"Reading digital signature LTE LLDP packet out"<<endl;
-		std::string sig_file = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
+		std::string sig_file = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv";
 		digital_sig = read_other_other_item_from_csv(sig_file, std::to_string(node_index), std::to_string(port_id), std::to_string(destination_index),  3);
 		
 		cout<<"Reading ASCON data 1 LTE LLDP packet out"<<endl;
-		std::string filename_nodeencr = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data1.csv";
+		std::string filename_nodeencr = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data1.csv";
 		node_enc = read_other_item_from_csv(filename_nodeencr, std::to_string(node_index), std::to_string(port_id), 2);
 		   
 		cout<<"Reading ASCON data 2 LTE LLDP packet out"<<endl;
-		std::string filename_portenc = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data2.csv";
+		std::string filename_portenc = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data2.csv";
 		port_enc = read_other_item_from_csv(filename_portenc, std::to_string(node_index), std::to_string(port_id), 2);
 		   
 		cout<<"Reading ASCON data 3 LTE LLDP packet out"<<endl;
-		std::string filename_HMACkey_enc = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data3.csv";
+		std::string filename_HMACkey_enc = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data3.csv";
 		HMAC_key_enc = read_other_item_from_csv(filename_HMACkey_enc, std::to_string(node_index), std::to_string(port_id), 2);
 	}
 	cout<<"encrypted node_id size is "<<node_enc.size()<<"encrypted port id size is "<< port_enc.size()<<"HMAC key encrypted size is "<<HMAC_key_enc.size()<<"signature size is "<<digital_sig.size()<<endl;
@@ -118803,7 +118803,7 @@ void RSU_metadata_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <Node
 void write_csv()
 {
 	fstream fout;
-	fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
 	for (uint32_t i=2; i<total_size+2 ;i++)
 	{
 		fout << total_size << ", "
@@ -118832,44 +118832,44 @@ void write_csv_status_lifetime()
 	switch(routing_algorithm)
 	{
 		case(0):
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
 			break;
 		case(1):
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
 			break;
 		case(2):
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			break;
 		case(3):
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			break;
 		case(4):
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 		case(5):
 			/*
 			if(experiment_number == 0)
 			{
-				fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 1)
 			{
-				fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 2)
 			{
-				fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 3)
 			{
-				fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			}
 			*/
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			break;
 			
 		default:
-			fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 	}
 	for (uint32_t i=0; i<total_size ;i++)
@@ -118895,7 +118895,7 @@ void write_csv_status_lifetime()
 void write_csv_status()
 {
 	fstream fout;
-	fout.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 	for (uint32_t i=2; i<total_size+2 ;i++)
 	{
 		Ptr <Node> node;
@@ -118932,7 +118932,7 @@ void write_csv_status()
 void read_csv()
 {
     fstream fin;
-    fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
+    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -119003,59 +119003,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
 				}
 
 				break;
@@ -119063,37 +119063,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
 						break;
 				}
 				break;
@@ -119103,25 +119103,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -119133,37 +119133,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
+					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -119175,46 +119175,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -119234,126 +119234,126 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://threshold experiment
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;	
 			case (8)://threshold experiment
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
 				}
 				break;
 			case (10): //number of nodes for routing
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -119363,25 +119363,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -119393,22 +119393,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
 				  	  		break;
 				   	  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -119420,28 +119420,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -119456,59 +119456,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
 				}
 
 				break;
@@ -119516,37 +119516,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
 						break;
 				}
 				break;
@@ -119556,25 +119556,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -119586,22 +119586,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -119613,27 +119613,27 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
 					 	case (130):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -119653,89 +119653,89 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime threshold experiment
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;	
 			case (8)://contention threshold experiment
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
 				}
 
 				break;
@@ -119743,37 +119743,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -119783,25 +119783,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -119813,22 +119813,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -119840,28 +119840,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -119878,93 +119878,93 @@ void write_csv_results()
 			case (0)://entropy experiment
 				if (entropy_threshold == 0.000)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
 				}
 				if(entropy_threshold == 0.001)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
 				}
 				if(entropy_threshold == 0.002)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
 				}
 				if(entropy_threshold == 0.005)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
 				}
 				if(entropy_threshold == 0.010)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
 				}
 				if(entropy_threshold == 0.020)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
 				}
 				if(entropy_threshold == 0.050)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
 				}
 				if(entropy_threshold == 0.100)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
 				}
 				if(entropy_threshold == 0.200)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
 				}
 				if(entropy_threshold == 0.500)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
 				}
 				break;
 			case (1)://optimization frequency
 				if (optimization_frequency == 0.02)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
 				}
 				if (optimization_frequency ==0.05)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
 				}
 				if (optimization_frequency ==0.10)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
 				}
 				if (optimization_frequency ==0.25)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
 				}
 				if (optimization_frequency ==0.50)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
 				}
 				if (optimization_frequency == 1.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
 				}
 				if (optimization_frequency ==2.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
 				}
 
 				if (optimization_frequency ==4.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
 				}
 		
 				if (optimization_frequency == 6.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
 				}
 
 				if (optimization_frequency ==8.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
 				}
 
 				if (optimization_frequency ==10.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
 				}
 
 				break;
@@ -119972,37 +119972,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
 						break;
 				}
 				break;
@@ -120012,25 +120012,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -120042,37 +120042,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
+					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -120084,46 +120084,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -120143,167 +120143,167 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime experiment
 				if (link_lifetime_threshold == 0.000)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
 				}
 				if(link_lifetime_threshold == 0.100)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
 				}
 				if(link_lifetime_threshold == 0.200)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
 				}
 				if(link_lifetime_threshold == 0.500)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
 				}
 				if(link_lifetime_threshold == 1.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
 				}
 				if(link_lifetime_threshold == 2.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
 				}
 				if(link_lifetime_threshold == 4.00)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
 				}
 				if(link_lifetime_threshold == 6.000)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
 				}
 				if(link_lifetime_threshold == 8.000)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
 				}
 				if(link_lifetime_threshold == 12.000)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
 				}
 				break;	
 			case (8)://contention experiment
 				if (contention_threshold == 0.000)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
 				}
 				if(contention_threshold == 0.001)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
 				}
 				if(contention_threshold == 0.002)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
 				}
 				if(contention_threshold == 0.005)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
 				}
 				if(contention_threshold == 0.010)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
 				}
 				if(contention_threshold == 0.020)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
 				}
 				if(contention_threshold == 0.050)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
 				}
 				if(contention_threshold == 0.100)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
 				}
 				if(contention_threshold == 0.200)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
 				}
 				if(contention_threshold == 0.500)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
 				}
 				break;	
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
 				}
 
 				break;
@@ -120311,37 +120311,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -120351,25 +120351,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -120381,22 +120381,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -120408,28 +120408,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -120534,16 +120534,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
 							break;
 						default:
 							break;
@@ -120553,16 +120553,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -120572,16 +120572,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
 							break;
 						default:
 							break;
@@ -120591,16 +120591,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -120610,16 +120610,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
 							break;
 						default:
 							break;
@@ -120630,16 +120630,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -120657,19 +120657,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -120679,19 +120679,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -120701,19 +120701,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -120723,19 +120723,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -120746,19 +120746,19 @@ void write_csv_results_routing()
 					{
 						
 						case(10):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -120768,19 +120768,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -120798,28 +120798,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -120829,28 +120829,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -120860,28 +120860,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -120891,28 +120891,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -120922,28 +120922,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -120953,19 +120953,19 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
 							break;
 						default:
 							break;
@@ -120982,22 +120982,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -121007,22 +121007,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -121032,22 +121032,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -121057,22 +121057,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -121082,22 +121082,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -121107,22 +121107,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -121172,22 +121172,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack1_100.csv";
 								break;
 							default:
 								break;
@@ -121197,22 +121197,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack1_100.csv";
 								break;
 							default:
 								break;
@@ -121222,22 +121222,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack1_100.csv";
 								break;
 							default:
 								break;
@@ -121247,22 +121247,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack1_100.csv";
 								break;
 							default:
 								break;
@@ -121272,22 +121272,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack1_100.csv";
 								break;
 							default:
 								break;
@@ -121298,22 +121298,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack1_100.csv";
 								break;
 							default:
 								break;
@@ -121330,22 +121330,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack2_100.csv";
 								break;
 							default:
 								break;
@@ -121355,22 +121355,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack2_100.csv";
 								break;
 							default:
 								break;
@@ -121380,22 +121380,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack2_100.csv";
 								break;
 							default:
 								break;
@@ -121405,22 +121405,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack2_100.csv";
 								break;
 							default:
 								break;
@@ -121430,22 +121430,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack2_100.csv";
 								break;
 							default:
 								break;
@@ -121456,22 +121456,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack2_100.csv";
 								break;
 							default:
 								break;
@@ -121488,22 +121488,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack3_100.csv";
 								break;
 							default:
 								break;
@@ -121513,22 +121513,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack3_100.csv";
 								break;
 							default:
 								break;
@@ -121538,22 +121538,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack3_100.csv";
 								break;
 							default:
 								break;
@@ -121563,22 +121563,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack3_100.csv";
 								break;
 							default:
 								break;
@@ -121588,22 +121588,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack3_100.csv";
 								break;
 							default:
 								break;
@@ -121614,22 +121614,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack3_100.csv";
 								break;
 							default:
 								break;
@@ -121646,22 +121646,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack4_100.csv";
 								break;
 							default:
 								break;
@@ -121671,22 +121671,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack4_100.csv";
 								break;
 							default:
 								break;
@@ -121696,22 +121696,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack4_100.csv";
 								break;
 							default:
 								break;
@@ -121721,22 +121721,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack4_100.csv";
 								break;
 							default:
 								break;
@@ -121746,22 +121746,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack4_100.csv";
 								break;
 							default:
 								break;
@@ -121772,22 +121772,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack4_100.csv";
 								break;
 							default:
 								break;
@@ -121804,22 +121804,22 @@ void write_csv_results_LLDP()
 					switch(attack_percentage)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Attack5_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Atack5_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Portbased_Atack5_100.csv";
 							break;
 						default:
 							break;
@@ -121829,22 +121829,22 @@ void write_csv_results_LLDP()
 					switch(attack_percentage)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/NormalLLDP_Attack5_100.csv";
 							break;
 						default:
 							break;
@@ -121854,22 +121854,22 @@ void write_csv_results_LLDP()
 					switch(attack_percentage)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/Purecrypto_Attack5_100.csv";
 							break;
 						default:
 							break;
@@ -121879,22 +121879,22 @@ void write_csv_results_LLDP()
 					switch(attack_percentage)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/LinkGuard_Attack5_100.csv";
 							break;
 						default:
 							break;
@@ -121904,22 +121904,22 @@ void write_csv_results_LLDP()
 					switch(attack_percentage)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/proposed_Attack5_100.csv";
 							break;
 						default:
 							break;
@@ -121930,22 +121930,22 @@ void write_csv_results_LLDP()
 					switch(attack_percentage)
 					{
 						case(0):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_0.csv";
 							break;
 						case(20):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_20.csv";
 							break;
 						case(40):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_40.csv";
 							break;
 						case(60):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_60.csv";
 							break;
 						case(80):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_80.csv";
 							break;
 						case(100):
-							filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/individual/HELLO_Attack5_100.csv";
 							break;
 						default:
 							break;
@@ -121969,22 +121969,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Portbased_combined_100.csv";
 								break;
 							default:
 								break;
@@ -121995,22 +121995,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Normal_LLDP_combined_100.csv";
 								break;
 							default:
 								break;
@@ -122020,22 +122020,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Pure_crypto_combined_100.csv";
 								break;
 							default:
 								break;
@@ -122045,22 +122045,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/LinkGuard_combined_100.csv";
 								break;
 							default:
 								break;
@@ -122070,22 +122070,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/Proposed_combined_100.csv";
 								break;
 							default:
 								break;
@@ -122095,22 +122095,22 @@ void write_csv_results_LLDP()
 						switch(attack_percentage)
 						{
 							case(0):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_0.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_0.csv";
 								break;
 							case(20):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_20.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_20.csv";
 								break;
 							case(40):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_40.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_40.csv";
 								break;
 							case(60):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_60.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_60.csv";
 								break;
 							case(80):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_80.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_80.csv";
 								break;
 							case(100):
-								filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_100.csv";
+								filename = "/home/user/ns-allinone-3.35/ns-3.35/results_LLDP/combined/HELLO_combined_100.csv";
 								break;
 							default:
 								break;
@@ -124219,7 +124219,7 @@ void transmit_LLDP_downlink(uint32_t u_src, uint32_t u_dst, uint32_t port_id)
 void optimize_subsequent()
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -124234,44 +124234,44 @@ void optimize_link_lifetime()
 	switch(routing_algorithm)
 	{
 		case(0):
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
 			break;
 		case(1):
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
 			break;
 		case(2):
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			break;
 		case(3):
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			break;
 		case(4):
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
 			break;
 		case(5):
 			/*
 			if(experiment_number == 0)
 			{
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			}
 			if(experiment_number == 1)
 			{
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
 			}
 			if(experiment_number == 2)
 			{
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			}
 			if(experiment_number == 3)
 			{
-				filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			}
 			*/
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			
 			break;
 		default:
-			filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
 			break;
 		
 	}
@@ -124282,7 +124282,7 @@ void optimize_link_lifetime()
 
 void optimize_first_time()
 {
-	std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -124411,44 +124411,44 @@ void read_lifetime_from_csv()
     switch(routing_algorithm)
     {
     	case(0):
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
     		break;
     	case(1):
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
     		break;
     	case(2):
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		break;
     	case(3):
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		break;
     	case(4):
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
     		break;	
     	case(5):
     		/*
     		if(experiment_number == 0)
     		{
-    			fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		}
     		if(experiment_number == 1)
     		{
-    			fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
     		}
     		if(experiment_number == 2)
     		{
-    			fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		}
     		if(experiment_number == 3)
     		{
-    			fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		}
     		*/
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		break;	
     		
     	default:
-    		fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
     		break;
     }
     
@@ -125733,7 +125733,7 @@ void send_dsrc_data_unicast(Ptr <Node> source_node, uint32_t node_index, uint32_
 		if(routing_algorithm == 4)
 		{
 			cout<<"Tryring to encyprt node id"<<endl;
-			std::string filename_sign_AES = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_nodepair_AES_data.csv";
+			std::string filename_sign_AES = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_nodepair_AES_data.csv";
 			string encrypted_nid = read_other_other_item_from_csv(filename_sign_AES, std::to_string(node_index), std::to_string(destination), std::to_string(port_id), 3);
 			cout<<"Encrypted string is "<<encrypted_nid<<endl;
 			const uint8_t* byteArray = reinterpret_cast<const uint8_t*>(encrypted_nid.data());
@@ -126659,7 +126659,7 @@ void continue_data_broadcasting(Ptr <NetDevice> nd, Ptr <Node> node, uint32_t no
 	string HMAC_string;
 	if(routing_algorithm == 4)
 	{
-		std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
+		std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
 	    HMAC_string = read_other_other_item_from_csv(filename_HMAC, std::to_string(node_index),std::to_string(0), std::to_string(port_index), 3);
 	}
 	else
@@ -127289,7 +127289,7 @@ void  run_optimization_subsequent()
 void initialize_blockchain()
 {
 	cout<<"Initializing blockchain"<<endl;
-	const char* fabric_dir = "/home/nilmantha/hyperledger_fabric/fabric-samples/first-network";	
+	const char* fabric_dir = "/home/user/hyperledger_fabric/fabric-samples/first-network";	
     	std::string cmd_down = "bash -c 'cd " + std::string(fabric_dir) + " && ./byfn.sh down'";
   	system(cmd_down.c_str());
     	// Call generate
@@ -127631,12 +127631,12 @@ void declare_attackers()
 
 void call_blockchain()
 {
-	int ret1 = system("cd /home/nilmantha/hyperledger_fabric/fabric-samples/first-network && ./byfn.sh -m down");
+	int ret1 = system("cd /home/user/hyperledger_fabric/fabric-samples/first-network && ./byfn.sh -m down");
     if (ret1 != 0) {
         std::cerr << "Failed to stop Hyperledger Fabric network" << std::endl;
     }
 	
-	int ret = system("cd /home/nilmantha/hyperledger_fabric/fabric-samples/first-network && ./byfn.sh -m up -l node");
+	int ret = system("cd /home/user/hyperledger_fabric/fabric-samples/first-network && ./byfn.sh -m up -l node");
     if (ret != 0) {
         std::cerr << "Failed to start Hyperledger Fabric network" << std::endl;
     }
@@ -127645,7 +127645,7 @@ void call_blockchain()
 
 void initialize_server()
 {
-	const char* fabric_dir = "/home/nilmantha/hyperledger_fabric/fabric-samples/fabric-rest-api";	
+	const char* fabric_dir = "/home/user/hyperledger_fabric/fabric-samples/fabric-rest-api";	
     	std::string app_conn =
     "bash -c '"
     "source ~/.nvm/nvm.sh && "
@@ -127945,7 +127945,7 @@ void call_testBC()
 {
 /*
 	cout<<"Calling blockchain"<<endl;
-	const char* fabric_dir = "/home/nilmantha/hyperledger_fabric/fabric-samples/fabric-rest-api";	
+	const char* fabric_dir = "/home/user/hyperledger_fabric/fabric-samples/fabric-rest-api";	
     	std::string app_conn = "bash -c 'cd " + std::string(fabric_dir) + " && node app.js'";
   	system(app_conn.c_str());
   	
@@ -127978,7 +127978,7 @@ curl -X POST "http://localhost:3000/invoke/putauthStates?user=peer1@org1" \
 void predict_DNN_link_lifetime()
 {
 	cout<<"predicting link lifetimes"<<endl;
-	std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -127987,7 +127987,7 @@ void predict_DNN_link_lifetime()
 void predict_DNN_delay()
 {
 	cout<<"predicting delay"<<endl;
-	std::string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -128077,7 +128077,7 @@ void read_delay_from_csv()
 {
     fstream fin;
     cout<<"reading delay from csv"<<endl;
-    fin.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
+    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -128145,7 +128145,7 @@ void calculate_dijkstra_stable_solution(uint32_t destination)
 void write_distance_metrics()
 {
 	fstream fout;
-	string filename = "/home/nilmantha/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
+	string filename = "/home/user/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
 	fout.open(filename,ios::out|ios::app);
 	
 	fout << Simulator::Now().GetSeconds();
@@ -128699,7 +128699,7 @@ void proceed_routing_packet(uint32_t node_index, uint32_t port, uint32_t destina
 		if(routing_algorithm == 4)
 		{
 				cout<<"Tryring to decrypt node id"<<endl;
-		   		std::string filename_sign_AES = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_nodepair_AES_data.csv";
+		   		std::string filename_sign_AES = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_nodepair_AES_data.csv";
 				string decrypted_nid = read_other_other_item_from_csv(filename_sign_AES, std::to_string(node_index), std::to_string(destination_node_id-2), std::to_string(port), 4);
 				cout<<"Decrypted string is "<<decrypted_nid<<endl;
 				uint32_t dec_val = 18250; // Default value
@@ -128764,7 +128764,7 @@ void AddglobalHMAC2(uint32_t casted_raw_source_nodeid, uint32_t casted_raw_desti
 	string HMAC_string(64, 'A');
 	if(routing_algorithm == 4)
 	{
-		std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
+		std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
 		HMAC_string = read_other_other_item_from_csv(filename_HMAC, std::to_string(casted_raw_destination_nodeid), std::to_string(casted_raw_source_nodeid), std::to_string(casted_raw_source_portid), 3);
 	}
 	cout<<"HMAC global string is "<<HMAC_string<<endl;
@@ -130216,7 +130216,7 @@ void RSU_dataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source
     uint8_t * HMAC1 = new uint8_t[64];	
 	if(routing_algorithm == 4)
 	{
-		std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
+		std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
 	    string HMAC_string = read_item_from_csv(filename_HMAC, std::to_string(nid-2), 1);
 	    cout<<"HMAC global string is "<<HMAC_string<<endl;
 		HexStringToBytes(HMAC_string, HMAC1, 64);
@@ -132291,7 +132291,7 @@ void send_LTE_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 	uint8_t * HMAC1 = new uint8_t[64];	
 	if(routing_algorithm == 4)
 	{
-		std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
+		std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
 	    string HMAC_string = read_item_from_csv(filename_HMAC, std::to_string(node_index),std::to_string(0), std::to_string(0), 3);
 	    cout<<"HMAC global string is "<<HMAC_string<<endl;
 		HexStringToBytes(HMAC_string, HMAC1, 64);
@@ -132751,7 +132751,7 @@ void send_LTE_data_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 		uint8_t * HMAC1 = new uint8_t[64];	
 		if(routing_algorithm == 4)
 		{
-			std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
+			std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
 			string HMAC_string = read_item_from_csv(filename_HMAC, std::to_string(node_index), 1);
 			cout<<"HMAC global string is "<<HMAC_string<<endl;
 			HexStringToBytes(HMAC_string, HMAC1, 64);
@@ -140856,7 +140856,7 @@ void RSU_dataunicast_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source
 		uint8_t * HMAC1 = new uint8_t[64];	
 		if(routing_algorithm == 4)
 		{
-			std::string filename_HMAC = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
+			std::string filename_HMAC = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv";
 			string HMAC_string = read_item_from_csv(filename_HMAC, std::to_string(nid-2), 1);
 			cout<<"HMAC global string is "<<HMAC_string<<endl;
 			HexStringToBytes(HMAC_string, HMAC1, 64);
@@ -149363,10 +149363,10 @@ int main(int argc, char *argv[])
 		  ltehelper = CreateObject<LteHelper> ();
 		  ltehelper->SetAttribute("FadingModel",StringValue("ns3::TraceFadingLossModel"));
 		  std::ifstream TraceFile;
-		  TraceFile.open("/home/nilmantha/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
+		  TraceFile.open("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
 		  if(TraceFile.good())
 		  {
-		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/nilmantha/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
+		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
 		  }
 		  
 		  ltehelper->SetFadingModelAttribute("TraceLength",TimeValue(Seconds(10.0)));
@@ -149479,25 +149479,25 @@ int main(int argc, char *argv[])
   	switch(maxspeed)
   	{
   		case (0):
-  			trace_file = "/home/nilmantha/mobility/mobility_urban_0.tcl";
+  			trace_file = "/home/user/mobility/mobility_urban_0.tcl";
   			break;
   		case (10):
-	  		trace_file = "/home/nilmantha/mobility/mobility_urban_10.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_10.tcl";
 	  		break;
 	  	case (20):
-	  		trace_file = "/home/nilmantha/mobility/mobility_urban_20.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_20.tcl";
 	  		break;
 	  	case (30):
-	  		trace_file = "/home/nilmantha/mobility/mobility_urban_30.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_30.tcl";
 	  		break;
 	  	case (40):
-	  		trace_file = "/home/nilmantha/mobility/mobility_urban_40.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/nilmantha/mobility/mobility_urban_50.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/nilmantha/mobility/mobility_urban_60.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_60.tcl";
 	  		break;
 	  	default:
 	  		break;
@@ -149509,37 +149509,37 @@ int main(int argc, char *argv[])
    	switch(maxspeed)
    	{
    		case (0):
-   			trace_file = "/home/nilmantha/mobility/mobility_rural_0.tcl";
+   			trace_file = "/home/user/mobility/mobility_rural_0.tcl";
    	  		break;
    		case (10):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_rural_10.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_10.tcl";
    	  		break;
    	  	case (20):
-	  		trace_file = "/home/nilmantha/mobility/mobility_rural_20.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_20.tcl";
 	  		break;
 	  	case (30):
-	   		trace_file = "/home/nilmantha/mobility/mobility_rural_30.tcl";
+	   		trace_file = "/home/user/mobility/mobility_rural_30.tcl";
 	   		break;
 	   	case (40):
-	  		trace_file = "/home/nilmantha/mobility/mobility_rural_40.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/nilmantha/mobility/mobility_rural_50.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/nilmantha/mobility/mobility_rural_60.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_60.tcl";
 	  		break;
    	  	case (70):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_rural_70.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_70.tcl";
    	  		break;
    	  	case (80):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_rural_80.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_80.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_rural_90.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_90.tcl";
    	  		break;
    	  	case (100):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_rural_100.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_100.tcl";
    	  		break;
    	  	default:
    	  		break;
@@ -149551,46 +149551,46 @@ int main(int argc, char *argv[])
    	  switch(maxspeed)
    	  {
    	  	case (0):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_0.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_0.tcl";
    	  		break;	
    	  	case (10):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_10.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_10.tcl";
    	  		break;
    	  	case (30):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_30.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_30.tcl";
    	  		break;
    	  	case (50):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_50.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_50.tcl";
    	  		break;
    	  	case (70):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_70.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_70.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_90.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_90.tcl";
    	  		break;
    	  	case (110):
-   	  		trace_file = "/home/nilmantha/mobility/mobility_autobahn_110.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_110.tcl";
    	  		break;
 	 	case (130):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_130.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_130.tcl";
 	 		break;
 	 	case (150):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_150.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_150.tcl";
 	 		break;
 	 	case (170):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_170.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_170.tcl";
 	 		break;
 	 	case (190):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_190.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_190.tcl";
 	 		break;
 	 	case (210):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_210.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_210.tcl";
 	 		break;
 	 	case (230):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_230.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_230.tcl";
 	 		break;
 	 	case (250):
-	 		trace_file = "/home/nilmantha/mobility/mobility_autobahn_250.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_250.tcl";
 	 		break;
 	 	default:
 	 		break;
@@ -150767,7 +150767,7 @@ cout<<"Routing algorithm is "<<routing_algorithm<<"experiment number is "<<exper
 	}
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/nilmantha/ns-allinone-3.35/ns-3.35/routing.xml");  
+  AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
 
   if (N_RSUs > 0)
   {
@@ -150810,7 +150810,7 @@ cout<<"Routing algorithm is "<<routing_algorithm<<"experiment number is "<<exper
 	    anim.UpdateNodeSize(node_management->GetId(),20.0,20.0);
     }
  
-  //AnimationInterface anim("/home/nilmantha/ns-allinone-3.35/ns-3.35/routing.xml"); 
+  //AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
   for (uint32_t i=0; i<Custom_Nodes.GetN() ; i++)

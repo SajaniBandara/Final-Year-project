@@ -17,7 +17,7 @@ try:
 	mobility_scenario = 1;
 	d_max = 270
 
-	with open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",'r',encoding='UTF8') as csvfile:
+	with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",'r',encoding='UTF8') as csvfile:
 		csvreader = csv.reader(csvfile,delimiter=',',quotechar='"',quoting=csv.QUOTE_MINIMAL)
 		
 		for row in csvreader:
@@ -121,7 +121,7 @@ try:
 				
 				#lifetime.append(1.0)
 	
-	with open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",'w',encoding='UTF8') as csvfile:
+	with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",'w',encoding='UTF8') as csvfile:
 		writer = csv.writer(csvfile,delimiter=',',quotechar='"',quoting=csv.QUOTE_MINIMAL)
 		for i in range(n**2):
 			s1 = str(float(lifetime[i]))
