@@ -118929,7 +118929,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 			}
 		}
 		//update other node status
-		for(uint32_t i=0;i<total_size;i++)
+		for(uint32_t i=0;i<linklifetimeMatrix_dsrc[nodeid].size();i++)
 		{
 			if((linklifetimeMatrix_dsrc[nodeid][i]) > 0.0)
 			{
@@ -118938,7 +118938,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 					txop_inst[f].busy[arguments.channel][i] = busy;
 					txop_inst[f].last_set_timestamp[arguments.channel][i] = Seconds(Now().GetSeconds());
 					//cout<<"Set node "<<i<<"as busy at "<<Now().GetSeconds()<<endl;
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -118961,7 +118961,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 						//cout<<"Node "<<i<<"remains busy "<<Now().GetSeconds()<<endl;
 					}
 					
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -118989,7 +118989,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 					txop_inst[f].busy[arguments.channel][i] = busy;
 					txop_inst[f].last_set_timestamp[arguments.channel][i] = Seconds(Now().GetSeconds());
 					//cout<<"Set node "<<i<<"as busy at "<<Now().GetSeconds()<<endl;
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -119012,7 +119012,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 						//cout<<"Node "<<i<<"remains busy "<<Now().GetSeconds()<<endl;
 					}
 					
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -119135,12 +119135,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 			{
 				
 				bool neighborhood_busy = false;
-				for(uint32_t i=0;i<total_size;i++)
+				for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 				{
 					if((linklifetimeMatrix_dsrc[current_hop][i]) > 0.0)
 					{
 						neighborhood_busy = neighborhood_busy | txop_inst[flow_id].busy[arguments.channel][i];	
-						for(uint32_t j=0;j<total_size;j++)
+						for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 						{
 							if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 							{
