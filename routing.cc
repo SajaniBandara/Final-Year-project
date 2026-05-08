@@ -93,6 +93,7 @@ const int flows = 2;
 
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
+int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
 // double simTime = 240;
@@ -114460,6 +114461,96 @@ double current_load_balance = 0.0;
 double average_load_balance = 0.0;
 double previous_cumulative_load_imbalance = 0.0;
 
+// ============================================================
+// SECURITY PERFORMANCE METRIC STATE — MOBIGUARD
+// ============================================================
+
+// Number of attack variants defined in proposal
+#define NUM_ATTACK_VARIANTS 8
+
+// Per-variant confusion matrix counters
+// Index 0-3: Selective Time Delay variants (S1-S4)
+// Index 4-7: Hidden Forwarding variants    (S5-S8)
+uint32_t sec_TP[NUM_ATTACK_VARIANTS] = {0};
+uint32_t sec_FP[NUM_ATTACK_VARIANTS] = {0};
+uint32_t sec_TN[NUM_ATTACK_VARIANTS] = {0};
+uint32_t sec_FN[NUM_ATTACK_VARIANTS] = {0};
+
+// Ground truth: is this node running an attack? (stub — set manually now)
+// When attack scenarios are implemented, connect real attack flags here.
+// Index maps to node index (0 to total_size-1)
+bool is_malicious_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
+
+// Detector decision: did the detector flag this node?
+// Set to true when your detection logic fires for that variant/node
+bool is_detected_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
+
+// Which variant is active for this run (set at simulation start)
+// -1 means no attack (baseline run)
+int active_attack_variant = -1;
+
+// Mitigation latency timestamps (seconds)
+// t_onset:     when malicious flag first becomes true for a node
+// t_quarantine: when quarantine/detection decision fires for that node
+double t_onset[total_size]      = {0.0};
+double t_quarantine[total_size] = {0.0};
+
+// Computed metric values (current cycle)
+double current_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
+double current_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
+double current_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
+double current_mitigation_latency                  = 0.0;
+double average_mitigation_latency                  = 0.0;
+
+// Cumulative accumulators for running averages
+double previous_cumulative_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
+double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
+double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
+double previous_cumulative_mitigation_latency                  = 0.0;
+
+// ============================================================
+// STUB ATTACK INITIALISER
+// Call this once from main() or the simulation setup block.
+// Replace body when real attack scenarios are implemented.
+// ============================================================
+void initialise_stub_attack_state()
+{
+    // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
+    // and node 3 as malicious for variant 4 (Active Hidden Forwarding CP)
+    // as a demonstration. Remove/replace when real attacks are added.
+    is_malicious_node[0][2] = true;
+    is_malicious_node[4][3] = true;
+
+    // Set onset timestamps for those nodes
+    t_onset[2] = 1.0;  // attack starts at t=1s
+    t_onset[3] = 1.0;
+
+	// Stub: simulate detection firing 50ms after onset
+	// Replace with real Simulator::Now() calls when attacks are implemented
+	t_quarantine[2] = 1.050;
+	t_quarantine[3] = 1.050;
+
+	// Only set if not already configured via command line
+	if (active_attack_variant == -1)
+	{
+		active_attack_variant = 0;
+	}
+}
+
+// Call when an attack node activates — v=variant(0-7), n=node index
+void record_attack_onset(int v, int n)
+{
+	is_malicious_node[v][n] = true;
+	t_onset[n] = Simulator::Now().GetSeconds();
+}
+
+// Call when detection/quarantine fires — v=variant(0-7), n=node index
+void record_detection_event(int v, int n)
+{
+	is_detected_node[v][n] = true;
+	t_quarantine[n] = Simulator::Now().GetSeconds();
+}
+
 void write_csv_results_routing()
 {
 	fstream fout;
@@ -116103,6 +116194,223 @@ void calculate_average_load_balance_routing()
 	previous_cumulative_load_imbalance = current_cumulative_load_imbalance;
 }
 
+// ============================================================
+// M1: MCC, M2: Per-Variant Detection Rate, M3: FPR
+// Computes from confusion matrix counters sec_TP/FP/TN/FN
+// ============================================================
+void calculate_security_detection_metrics()
+{
+    for (int v = 0; v < NUM_ATTACK_VARIANTS; v++)
+    {
+        // Update confusion matrix for this variant from node states
+        // Reset this variant's counters first
+        sec_TP[v] = 0; sec_FP[v] = 0;
+        sec_TN[v] = 0; sec_FN[v] = 0;
+
+        for (int n = 0; n < total_size; n++)
+        {
+            bool malicious = is_malicious_node[v][n];
+            bool detected  = is_detected_node[v][n];
+
+            if (malicious  && detected)  sec_TP[v]++;
+            if (!malicious && detected)  sec_FP[v]++;
+            if (!malicious && !detected) sec_TN[v]++;
+            if (malicious  && !detected) sec_FN[v]++;
+        }
+
+        double TP = (double)sec_TP[v];
+        double FP = (double)sec_FP[v];
+        double TN = (double)sec_TN[v];
+        double FN = (double)sec_FN[v];
+
+        // M2: Detection Rate (True Positive Rate) per variant
+        double dr_denominator = TP + FN;
+        if (dr_denominator > 0.0)
+            current_detection_rate[v] = TP / dr_denominator;
+        else
+            current_detection_rate[v] = 0.0;
+
+        // M3: False Positive Rate per variant
+        double fpr_denominator = FP + TN;
+        if (fpr_denominator > 0.0)
+            current_FPR[v] = FP / fpr_denominator;
+        else
+            current_FPR[v] = 0.0;
+
+        // M1: Matthews Correlation Coefficient per variant
+        // Formula from proposal Eq. (4.1)
+        double epsilon = 1e-6;
+        double numerator   = (TP * TN) - (FP * FN);
+        double denominator = sqrt(
+            (TP + FP + epsilon) *
+            (TP + FN + epsilon) *
+            (TN + FP + epsilon) *
+            (TN + FN + epsilon)
+        );
+        current_MCC[v] = numerator / denominator;
+
+        // Running averages
+        previous_cumulative_MCC[v]            += current_MCC[v];
+        previous_cumulative_detection_rate[v] += current_detection_rate[v];
+        previous_cumulative_FPR[v]            += current_FPR[v];
+
+        std::cout << "[SECURITY] Variant " << v
+                  << " | MCC=" << current_MCC[v]
+                  << " DR="    << 100.0 * current_detection_rate[v] << "%"
+                  << " FPR="   << 100.0 * current_FPR[v] << "%"
+                  << " TP=" << sec_TP[v] << " FP=" << sec_FP[v]
+                  << " TN=" << sec_TN[v] << " FN=" << sec_FN[v]
+                  << std::endl;
+    }
+}
+
+// ============================================================
+// M4: Mitigation Latency
+// Lmit = t_quarantine - t_onset  (seconds, converted to ms)
+// t_onset     = when malicious flag became true for a node
+// t_quarantine = when quarantine/detection decision fired
+//
+// To use: when your detection logic fires for node n, set:
+//   t_quarantine[n] = Simulator::Now().GetSeconds();
+// ============================================================
+void calculate_mitigation_latency_metric()
+{
+    double total_latency = 0.0;
+    uint32_t valid_count = 0;
+
+    for (int n = 0; n < total_size; n++)
+    {
+        // Only count nodes that have both timestamps set
+        if (t_onset[n] > 0.0 && t_quarantine[n] > t_onset[n])
+        {
+            double lmit = t_quarantine[n] - t_onset[n];  // seconds
+            total_latency += lmit;
+            valid_count++;
+
+            // Flag if exceeding the 100ms safety bound from proposal M4
+            if (lmit * 1000.0 > 100.0)
+            {
+                std::cout << "[SECURITY] WARNING: Node " << n
+                          << " mitigation latency " << lmit * 1000.0
+                          << " ms EXCEEDS 100ms bound" << std::endl;
+            }
+        }
+    }
+
+    if (valid_count > 0)
+        current_mitigation_latency = total_latency / (double)valid_count;
+    else
+        current_mitigation_latency = 0.0;
+
+    previous_cumulative_mitigation_latency += current_mitigation_latency;
+	double cycle = data_gathering_cycle_number - 1.0;
+	if (cycle < 1.0)
+		cycle = 1.0;
+	average_mitigation_latency =
+		previous_cumulative_mitigation_latency / cycle;
+
+    std::cout << "[SECURITY] Avg mitigation latency: "
+              << 1000.0 * average_mitigation_latency << " ms" << std::endl;
+}
+
+void write_security_metrics_csv()
+{
+	fstream fout;
+	string filename;
+	double cycle = data_gathering_cycle_number - 1.0;
+	if (cycle < 1.0)
+	{
+		cycle = 1.0;
+	}
+
+	int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;
+
+	int attack_id = 1;
+	switch (active_attack_variant)
+	{
+		case (-1):
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
+			break;
+		case (0):
+			attack_id = 1;
+			break;
+		case (1):
+			attack_id = 2;
+			break;
+		case (2):
+			attack_id = 3;
+			break;
+		case (3):
+			attack_id = 4;
+			break;
+		case (4):
+			attack_id = 5;
+			break;
+		case (5):
+			attack_id = 6;
+			break;
+		case (6):
+			attack_id = 7;
+			break;
+		case (7):
+			attack_id = 8;
+			break;
+		default:
+			attack_id = 1;
+			break;
+	}
+
+	if (active_attack_variant != -1)
+	{
+		switch (attack_percentage)
+		{
+			case (0):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
+				break;
+			case (20):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_20.csv";
+				break;
+			case (40):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_40.csv";
+				break;
+			case (60):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_60.csv";
+				break;
+			case (80):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_80.csv";
+				break;
+			case (100):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_100.csv";
+				break;
+			default:
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
+				break;
+		}
+	}
+
+	fout.open(filename, ios::out|ios::app);
+
+	fout << (uint32_t)cycle << ", "
+		 << current_packet_delivery_ratio * 100.0 << ", "
+		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
+		 << current_latency_routing * 1000.0 << ", "
+		 << average_latency_routing * 1000.0 << ", "
+		 << current_MCC[selected_variant] << ", "
+		 << (previous_cumulative_MCC[selected_variant] / cycle) << ", "
+		 << (current_detection_rate[selected_variant] * 100.0) << ", "
+		 << ((previous_cumulative_detection_rate[selected_variant] / cycle) * 100.0) << ", "
+		 << (current_FPR[selected_variant] * 100.0) << ", "
+		 << ((previous_cumulative_FPR[selected_variant] / cycle) * 100.0) << ", "
+		 << (current_mitigation_latency * 1000.0) << ", "
+		 << (average_mitigation_latency * 1000.0) << ", "
+		 << sec_TP[selected_variant] << ", "
+		 << sec_FP[selected_variant] << ", "
+		 << sec_TN[selected_variant] << ", "
+		 << sec_FN[selected_variant] << "\n";
+
+	fout.close();
+	cout << "written to file successfully" << endl;
+}
 
 void calculate_performance_evaluation_metrics()
 {
@@ -116112,6 +116420,12 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000040), calculate_average_jitter_routing);
 	Simulator::Schedule(Seconds(0.000060), calculate_average_load_balance_routing);
 	Simulator::Schedule(Seconds(0.000070), write_csv_results_routing);
+
+	// --- New security metrics (MOBIGUARD) ---
+	// Scheduled after existing writes to avoid timing conflicts
+	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
+	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
+	Simulator::Schedule(Seconds(0.000100), write_security_metrics_csv);
 }
 
 
@@ -138563,6 +138877,8 @@ int main(int argc, char *argv[])
     cmd.AddValue ("experiment_number", "experiment_number", experiment_number);
     cmd.AddValue ("routing_test", "routing_test", routing_test);
     cmd.AddValue ("routing_algorithm", "routing_algorithm", routing_algorithm);
+    cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
+    cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("qf", "qf", qf);
     cmd.Parse (argc, argv);	
     
@@ -140072,6 +140388,8 @@ int main(int argc, char *argv[])
 				  //Simulator::Schedule (Seconds (t), set_dsrc_initial_timestamp);
 			}
 			
+			// Initialize attack state before main loop
+			initialise_stub_attack_state();
 			
 			if (N_Vehicles > 0)
 			{
