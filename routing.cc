@@ -97,7 +97,7 @@ int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
 // double simTime = 240;
-double simTime = 10; //test
+double simTime = 5; //test
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -115479,7 +115479,7 @@ double average(double x, double y)
 void update_stable(uint32_t flow_id, uint32_t current_hop)
 {
 	proposed_algo2_output_inst[flow_id].met[current_hop] = true;
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
 		if(linklifetimeMatrix_dsrc[current_hop][i] >link_lifetime_threshold)
 		{
@@ -115532,7 +115532,7 @@ void run_stable_path_finding(uint32_t flow_id)
 void update_unstable(uint32_t flow_id, uint32_t current_hop)
 {
 	distance_algo2_output_inst[flow_id].met[current_hop] = true;
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
 		if(linklifetimeMatrix_dsrc[current_hop][i] >0.0)
 		{
@@ -116755,7 +116755,7 @@ void transmit_delta_values()
 {
 	//read_csv();
 	//After getting the solution, unicast the solution to the nodes.
-	for (uint32_t u=0; u<total_size; u++)
+	for (uint32_t u=0; u<(uint32_t)var; u++)
 	{
 		if (u < (N_Vehicles))
 		{
@@ -116855,12 +116855,12 @@ double delay_vector[2*total_size];
 
 void convert_link_lifetimes_dsrc()
 {
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	{
 		vector<double> x_dsrc;
-		for (uint32_t j = 0;j < (total_size);j++)
+		for (uint32_t j = 0;j < (uint32_t)var;j++)
 		{
-			x_dsrc.push_back(link_lifetime_vector[(i*total_size)+j]);
+			x_dsrc.push_back(link_lifetime_vector[(i*var)+j]);
 
 		}
 		
@@ -116868,7 +116868,7 @@ void convert_link_lifetimes_dsrc()
 	}
 		
 	vector<vector<double>> new_adjacencyMatrix_dsrc;
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	//for(uint32_t i=0;i<9;i++)
 	{
 		new_adjacencyMatrix_dsrc.push_back(link_lifetime_dsrc[i]);
@@ -117988,10 +117988,10 @@ void run_proposed_RL()
 		else
 		{
 			//cout<<"Running RL in fid "<<fid<<endl;
-			for(uint32_t cid=0;cid<total_size;cid++)	
+			for(uint32_t cid=0;cid<(uint32_t)var;cid++)	
 			{
 				//Initialize Q values with lifetime
-				for(uint32_t nid=0;nid<total_size;nid++)	
+				for(uint32_t nid=0;nid<(uint32_t)var;nid++)	
 				{
 					if ((cid==f_destination) || (nid==f_source))
 					{
@@ -118014,10 +118014,10 @@ void run_proposed_RL()
 			//cout<<"Q-values initialized"<<endl;
 			
 			//find cardinality
-			for(uint32_t cid=0;cid<total_size;cid++)	
+			for(uint32_t cid=0;cid<(uint32_t)var;cid++)	
 			{	
 				uint32_t summation = 0;
-				for(uint32_t nid=0;nid<total_size;nid++)	
+				for(uint32_t nid=0;nid<(uint32_t)var;nid++)	
 				{
 					double lt = unit_step(linklifetimeMatrix_dsrc[cid][nid]-link_lifetime_threshold, 0);
 					double product = (proposed_algo2_output_inst[fid].conn[nid])*lt;
@@ -118029,9 +118029,9 @@ void run_proposed_RL()
 			
 			
 			//convert to directed acyclic graph
-			for(uint32_t cid=0;cid<total_size;cid++)	
+			for(uint32_t cid=0;cid<(uint32_t)var;cid++)	
 			{	
-				for(uint32_t nid=0;nid<total_size;nid++)	
+				for(uint32_t nid=0;nid<(uint32_t)var;nid++)	
 				{
 					
 					(Y_at_controller_inst+fid)->Y_fi_inst[cid].Y_values[nid] = proposed_algo2_output_inst[fid].Y[cid];
@@ -121556,12 +121556,12 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 			else
 			{
 				bool neighborhood_busy = false;
-				for(uint32_t i=0;i<total_size;i++)
+				for(uint32_t i=0;i<linklifetimeMatrix_dsrc[source].size();i++)
 				{
 					if((linklifetimeMatrix_dsrc[source][i]) > 0.0)
 					{
 						neighborhood_busy = neighborhood_busy | txop_inst[fid].busy[arguments.channel][i];
-						for(uint32_t j=0;j<total_size;j++)
+						for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 						{
 							if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 							{
