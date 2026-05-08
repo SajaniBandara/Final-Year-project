@@ -114502,6 +114502,12 @@ double current_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double current_mitigation_latency                  = 0.0;
 double average_mitigation_latency                  = 0.0;
 
+// === ATTACK 2: Selective Time Delay — Data Plane ===
+// Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
+bool selective_delay_malicious_nodes[total_size];
+bool present_selective_delay_attack_nodes = false;
+double attack2_delay_seconds = 0.080; // 80ms injected delay
+
 // Cumulative accumulators for running averages
 double previous_cumulative_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
@@ -114535,6 +114541,8 @@ void initialise_stub_attack_state()
 	{
 		active_attack_variant = 0;
 	}
+	    // Activate Attack 2 for test network
+	    hardcode_test_network_attackers();
 }
 
 // Call when an attack node activates — v=variant(0-7), n=node index
@@ -114549,6 +114557,57 @@ void record_detection_event(int v, int n)
 {
 	is_detected_node[v][n] = true;
 	t_quarantine[n] = Simulator::Now().GetSeconds();
+}
+
+// Random boolean helper copied from LDA_2_.cc
+bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
+	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
+	double randomValue = 1.0*(rand()%100);
+	return randomValue < probabilityPercent;
+}
+
+void declare_attackers()
+{
+	for(uint32_t i=0; i<total_size; i++)
+	{
+		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
+		if(present_selective_delay_attack_nodes == true)
+		{
+			selective_delay_malicious_nodes[i] = attacking_state;
+		}
+		else
+		{
+			selective_delay_malicious_nodes[i] = false;
+		}
+		// For test network: hardcode node 2 (RSU) as malicious
+		// This will be replaced by declare_attackers() for full experiments
+	}
+	cout << "[ATTACK2] declare_attackers() completed" << endl;
+	for(uint32_t i=0; i<(uint32_t)var; i++)
+	{
+		cout << "[ATTACK2] Node " << i << " selective_delay_malicious = " 
+			 << selective_delay_malicious_nodes[i] << endl;
+	}
+}
+
+void hardcode_test_network_attackers()
+{
+	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
+	// Attack 2 scenario from Figure 3.2(b):
+	// Malicious RSU (node 2) intercepts and delays packets
+	for(uint32_t i=0; i<total_size; i++)
+	{
+		selective_delay_malicious_nodes[i] = false;
+	}
+	selective_delay_malicious_nodes[2] = true; // RSU is the attacker
+	present_selective_delay_attack_nodes = true;
+    
+	cout << "[ATTACK2] ① Test network attackers hardcoded" << endl;
+	cout << "[ATTACK2] ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
+	cout << "[ATTACK2] ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
+    
+	// Record attack onset for metric M4
+	record_attack_onset(1, 2);
 }
 
 void write_csv_results_routing()
@@ -119350,6 +119409,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					destination_counter[fid]++;
 					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
+					if(selective_delay_malicious_nodes[current_hop] == false)
+					{
+						cout << "[ATTACK2] Vehicle " << current_hop 
+							 << " (DESTINATION) received packet ID " << packet_ID 
+							 << " for flow " << fid 
+							 << " at t=" << Now().GetSeconds() << "s" << endl;
+					}
 					cout<<"Flow ID "<<fid<<"received "<<" Packet ID: "<<packet_ID<<"Totally received "<<destination_counter[fid]<<"packets at destination "<<destination<<" at "<<Now().GetSeconds()<<endl;
 				}
 				else
@@ -121101,7 +121167,43 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 			Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
 			Ptr <Node> ni = DynamicCast <Node> (source_node);
 			dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-			Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+			// === ATTACK 2: Selective Time Delay Data Plane ===
+			// Pattern follows LDA_2_.cc vanishing attack injection structure
+			if(!selective_delay_malicious_nodes[source])
+			{
+				// Normal behavior — send immediately
+				cout << "[ATTACK2] ② Node " << source 
+					 << " sending packet ID " << packet_ID 
+					 << " to next hop " << next_hop_id 
+					 << " normally at t=" << Now().GetSeconds() << "s" << endl;
+				Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+			}
+    
+			if(selective_delay_malicious_nodes[source])
+			{
+				bool attacking_state = GetBooleanWithProbability(attack_percentage, source);
+				if(!attacking_state)
+				{
+					// Malicious node but not attacking this moment
+					Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+				}
+				if(attacking_state)
+				{
+					// Attack behavior — inject delay
+					cout << "[ATTACK2] ③ Malicious node " << source 
+						 << " intercepting packet ID " << packet_ID 
+						 << " for flow " << flow_id 
+						 << " at t=" << Now().GetSeconds() << "s" << endl;
+					cout << "[ATTACK2] ④ Buffering packet — injecting delay of " 
+						 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+					Simulator::Schedule(Seconds(attack2_delay_seconds), &WifiNetDevice::Send, 
+									   wdi, packet_i, dest_address, protocolwave);
+					cout << "[ATTACK2] ⑤ Delayed packet scheduled to forward at t=" 
+						 << Now().GetSeconds() + attack2_delay_seconds << "s" 
+						 << " (injected delay=" << attack2_delay_seconds*1000.0 << "ms)" << endl;
+				}
+			}
+			// === END ATTACK 2 ===
 		}
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
