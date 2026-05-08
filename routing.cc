@@ -94515,7 +94515,7 @@ NodeContainer management_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
-bool routing_test = false;
+bool routing_test = true;
 
 NetDeviceContainer wifidevices;
 NetDeviceContainer wifidevices_172;
@@ -112832,10 +112832,10 @@ void write_csv_status_lifetime()
 			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 	}
-	for (uint32_t i=0; i<total_size ;i++)
-	{
+	for (uint32_t i=0; i<(uint32_t)var; i++)
+		{
 		//cout<<"writing status "<<i<<endl;
-		fout << total_size << ", "
+		fout << var << ", "
 		     << (routing_data_at_controller_inst+i)->nodeid << ", "
 		     << (routing_data_at_controller_inst+i)->position.x << ", "
 		     << (routing_data_at_controller_inst+i)->position.y << ", "
@@ -116755,7 +116755,7 @@ void transmit_delta_values()
 {
 	//read_csv();
 	//After getting the solution, unicast the solution to the nodes.
-	for (uint32_t u=0;u< total_size;u++)
+	for (uint32_t u=0; u<(uint32_t)var; u++)
 	{
 		if (u < (N_Vehicles))
 		{
