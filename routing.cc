@@ -114519,6 +114519,7 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 // Call this once from main() or the simulation setup block.
 // Replace body when real attack scenarios are implemented.
 // ============================================================
+void hardcode_test_network_attackers();
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -121167,43 +121168,7 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 			Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
 			Ptr <Node> ni = DynamicCast <Node> (source_node);
 			dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-			// === ATTACK 2: Selective Time Delay Data Plane ===
-			// Pattern follows LDA_2_.cc vanishing attack injection structure
-			if(!selective_delay_malicious_nodes[source])
-			{
-				// Normal behavior — send immediately
-				cout << "[ATTACK2] ② Node " << source 
-					 << " sending packet ID " << packet_ID 
-					 << " to next hop " << next_hop_id 
-					 << " normally at t=" << Now().GetSeconds() << "s" << endl;
-				Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
-			}
-    
-			if(selective_delay_malicious_nodes[source])
-			{
-				bool attacking_state = GetBooleanWithProbability(attack_percentage, source);
-				if(!attacking_state)
-				{
-					// Malicious node but not attacking this moment
-					Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
-				}
-				if(attacking_state)
-				{
-					// Attack behavior — inject delay
-					cout << "[ATTACK2] ③ Malicious node " << source 
-						 << " intercepting packet ID " << packet_ID 
-						 << " for flow " << flow_id 
-						 << " at t=" << Now().GetSeconds() << "s" << endl;
-					cout << "[ATTACK2] ④ Buffering packet — injecting delay of " 
-						 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-					Simulator::Schedule(Seconds(attack2_delay_seconds), &WifiNetDevice::Send, 
-									   wdi, packet_i, dest_address, protocolwave);
-					cout << "[ATTACK2] ⑤ Delayed packet scheduled to forward at t=" 
-						 << Now().GetSeconds() + attack2_delay_seconds << "s" 
-						 << " (injected delay=" << attack2_delay_seconds*1000.0 << "ms)" << endl;
-				}
-			}
-			// === END ATTACK 2 ===
+			Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 		}
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
@@ -121275,7 +121240,39 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
 	header.SetAddr1(dest_address);
 	packet_i->AddHeader(header);
 	//dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-	Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+	// === ATTACK 2: Selective Time Delay Data Plane ===
+	if(!selective_delay_malicious_nodes[source])
+	{
+		cout << "[ATTACK2] ② Node " << source 
+		     << " sending packet ID " << packet_ID 
+		     << " to next hop " << next_hop_id 
+		     << " normally at t=" << Now().GetSeconds() << "s" << endl;
+		Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+	}
+
+	if(selective_delay_malicious_nodes[source])
+	{
+		bool attacking_state = GetBooleanWithProbability(attack_percentage, source);
+		if(!attacking_state)
+		{
+			Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+		}
+		if(attacking_state)
+		{
+			cout << "[ATTACK2] ③ Malicious node " << source 
+			     << " intercepting packet ID " << packet_ID 
+			     << " for flow " << flow_id 
+			     << " at t=" << Now().GetSeconds() << "s" << endl;
+			cout << "[ATTACK2] ④ Buffering packet — injecting delay of " 
+			     << attack2_delay_seconds * 1000.0 << "ms" << endl;
+			Simulator::Schedule(Seconds(attack2_delay_seconds), &WifiNetDevice::Send, 
+			                   wdi, packet_i, dest_address, protocolwave);
+			cout << "[ATTACK2] ⑤ Delayed packet scheduled to forward at t=" 
+			     << Now().GetSeconds() + attack2_delay_seconds << "s" 
+			     << " (injected delay=" << attack2_delay_seconds*1000.0 << "ms)" << endl;
+		}
+	}
+	// === END ATTACK 2 ===
 	//cout<<"This is flow ID "<<flow_id<<"Transmitting packet ID "<<packet_ID<<" from "<<source<<" to next hop "<<next_hop_id<<"at time "<<Now().GetSeconds()<<endl;
 	//uint32_t * pt = tag.GetNodeId();
 	//cout<<"node id from tag is "<<*pt<<endl;	
