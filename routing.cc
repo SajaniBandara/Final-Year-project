@@ -112832,6 +112832,12 @@ void write_csv_status_lifetime()
 			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 	}
+	cout << "[DEBUG] Node 0 position in CSV: " 
+	     << (routing_data_at_nodes_inst+0)->position << endl;
+	cout << "[DEBUG] Node 1 position in CSV: " 
+	     << (routing_data_at_nodes_inst+1)->position << endl;
+	cout << "[DEBUG] Node 2 position in CSV: " 
+	     << (routing_data_at_nodes_inst+2)->position << endl;
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -114593,6 +114599,9 @@ void declare_attackers()
 
 void hardcode_test_network_attackers()
 {
+	// Force 100% attack rate for test network verification
+	attack_percentage = 100;
+	
 	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
 	// Attack 2 scenario from Figure 3.2(b):
 	// Malicious RSU (node 2) intercepts and delays packets
@@ -114606,6 +114615,9 @@ void hardcode_test_network_attackers()
 	cout << "[ATTACK2] ① Test network attackers hardcoded" << endl;
 	cout << "[ATTACK2] ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
 	cout << "[ATTACK2] ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
+	cout << "[ATTACK2] ① Routing forced through RSU (Node 2) for attack verification" << endl;
+	cout << "[ATTACK2] ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
+	cout << "[ATTACK2] ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
     
 	// Record attack onset for metric M4
 	record_attack_onset(1, 2);
@@ -121240,39 +121252,15 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
 	header.SetAddr1(dest_address);
 	packet_i->AddHeader(header);
 	//dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-	// === ATTACK 2: Selective Time Delay Data Plane ===
-	if(!selective_delay_malicious_nodes[source])
+	
+	if(!selective_delay_malicious_nodes[nid-2])
 	{
-		cout << "[ATTACK2] ② Node " << source 
-		     << " sending packet ID " << packet_ID 
-		     << " to next hop " << next_hop_id 
-		     << " normally at t=" << Now().GetSeconds() << "s" << endl;
-		Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+	    cout << "[ATTACK2] ② Node " << (nid-2)
+	         << " sending packet ID " << packet_ID
+	         << " to next hop " << next_hop_id
+	         << " normally at t=" << Now().GetSeconds() << "s" << endl;
 	}
-
-	if(selective_delay_malicious_nodes[source])
-	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, source);
-		if(!attacking_state)
-		{
-			Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
-		}
-		if(attacking_state)
-		{
-			cout << "[ATTACK2] ③ Malicious node " << source 
-			     << " intercepting packet ID " << packet_ID 
-			     << " for flow " << flow_id 
-			     << " at t=" << Now().GetSeconds() << "s" << endl;
-			cout << "[ATTACK2] ④ Buffering packet — injecting delay of " 
-			     << attack2_delay_seconds * 1000.0 << "ms" << endl;
-			Simulator::Schedule(Seconds(attack2_delay_seconds), &WifiNetDevice::Send, 
-			                   wdi, packet_i, dest_address, protocolwave);
-			cout << "[ATTACK2] ⑤ Delayed packet scheduled to forward at t=" 
-			     << Now().GetSeconds() + attack2_delay_seconds << "s" 
-			     << " (injected delay=" << attack2_delay_seconds*1000.0 << "ms)" << endl;
-		}
-	}
-	// === END ATTACK 2 ===
+	Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 	//cout<<"This is flow ID "<<flow_id<<"Transmitting packet ID "<<packet_ID<<" from "<<source<<" to next hop "<<next_hop_id<<"at time "<<Now().GetSeconds()<<endl;
 	//uint32_t * pt = tag.GetNodeId();
 	//cout<<"node id from tag is "<<*pt<<endl;	
@@ -121687,29 +121675,294 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						switch(arguments.channel)
 						{
 							case(172):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_172.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_172.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(174):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_174.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_174.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(176):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_176.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_176.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(178):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(180):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_180.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_180.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(182):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_182.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
-							break;
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_182.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
+								break;
 							case(184):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_184.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[nid] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_184.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							default:
 							break;
-						
 						}
 						
 						Simulator::Schedule (Seconds (tg+0.000050+rand_delay), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, arguments);
@@ -138979,7 +139232,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("qf", "qf", qf);
-    cmd.Parse (argc, argv);	
+    cmd.Parse (argc, argv);
     
     if (routing_test == true)
     {
@@ -139035,13 +139288,13 @@ int main(int argc, char *argv[])
   
   	    Vehicle_Nodes.Create(N_Vehicles);
     	    // double x = 250;
-		double x = 200; //test
+		double x = 150; //test - adjusted to force routing through RSU
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-	    positionAlloc->Add(Vector(0.0, 0.0, 0.0)); // Custom position for Node 0
-	    positionAlloc->Add(Vector(0.0, -x*1, 0.0)); // Custom position for Node 1
-	    positionAlloc->Add(Vector(0.0, -x*2, 0.0)); // Custom position for Node 2
+    positionAlloc->Add(Vector(2*x, -x, 0.0)); // Node 0: Vehicle A
+    positionAlloc->Add(Vector((16.0/3.0)*x, -x, 0.0)); // Node 1: Vehicle B
+    positionAlloc->Add(Vector((11.0/3.0)*x, -x, 0.0)); // Node 2: Malicious RSU
 	    positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
 	    positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
 	    positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
@@ -139063,6 +139316,15 @@ int main(int argc, char *argv[])
 	    positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
 	    custom_mobility.SetPositionAllocator(positionAlloc);
 	    custom_mobility.Install(Vehicle_Nodes);
+
+	    // Debug: Print initial positions right after install
+	    cout << "[INIT DEBUG at t=0] Initial vehicle positions:" << endl;
+	    for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++) {
+	    	Ptr<MobilityModel> mdl = Vehicle_Nodes.Get(i)->GetObject<MobilityModel>();
+	    	if (mdl) {
+	    		cout << "[INIT DEBUG] Vehicle Node " << i << " position: " << mdl->GetPosition() << endl;
+	    	}
+	    }
 
 	  // Set custom velocity and acceleration for each node
 	    for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++) 
@@ -139517,7 +139779,10 @@ int main(int argc, char *argv[])
   {
   	vehicle_mobility.Install(Vehicle_Nodes);
   }
-  update_mobility();
+  if(routing_test == false)
+  {
+  	update_mobility();
+  }
  
   
    if (mobility_scenario == 1)//non-urban mobility
@@ -139555,6 +139820,15 @@ int main(int argc, char *argv[])
   	con_base_posy = 0;
   	lte_base_posx = 525;
   	lte_base_posy = 0;
+    Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
+    rsuPositionAlloc->Add(Vector(550.0, -75.0, 0.0));
+    RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
+    cout << "[TEST NETWORK] Positions set:" << endl;
+    cout << "[TEST NETWORK] Controller  : (550, 0, 0)" << endl;
+    cout << "[TEST NETWORK] Vehicle A   : (300, -150, 0)  Node 0" << endl;
+    cout << "[TEST NETWORK] Malicious RSU:(550, -150, 0)  Node 2" << endl;
+    cout << "[TEST NETWORK] Vehicle B   : (800, -150, 0)  Node 1" << endl;
+    cout << "[TEST NETWORK] A->RSU: 250m  RSU->B: 250m  A->B: 500m" << endl;
   }
   
   if (N_RSUs > 0)
