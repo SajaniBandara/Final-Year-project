@@ -119289,9 +119289,40 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						Address addr = destination_nd->GetAddress();
 						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
 						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (current_nd);
-						Simulator::Schedule (Seconds(0.0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+
+						double tx_delay = 0.0;
+						bool apply_attack_delay = false;
+						if (present_selective_delay_attack_nodes &&
+							selective_delay_malicious_nodes[current_hop] &&
+							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
+						{
+							bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
+							if (atk)
+							{
+								apply_attack_delay = true;
+								tx_delay = attack2_delay_seconds;
+								cout << "[ATTACK2] ③ Malicious RSU (node " << current_hop
+									 << ") intercepting packet ID " << packet_id
+									 << " for flow " << flow_id
+									 << " at t=" << Now().GetSeconds() << "s" << endl;
+								cout << "[ATTACK2] ④ Buffering - injecting delay of "
+									 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+								cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+									 << Now().GetSeconds() + attack2_delay_seconds
+									 << "s (delay=" << attack2_delay_seconds * 1000.0
+									 << "ms)" << endl;
+							}
+						}
+
+						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
-						Simulator::Schedule (Seconds (tg+0.000100+rand_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
+						double retry_delay = tg + 0.000100 + rand_delay;
+						if (apply_attack_delay)
+						{
+							// Prevent immediate retries from bypassing the injected delay.
+							retry_delay += tx_delay;
+						}
+						Simulator::Schedule (Seconds (retry_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
 						//Simulator::Schedule (Seconds (tg), updateTxop, flow_id, current_hop, hop, packet_id, false,arguments.channel);
 						sent_IDS[flow_id][current_hop][packet_id] = true;
 						routing_packet_general_initial_timestamp[flow_id][current_hop][packet_id] = Now().GetSeconds();
@@ -121676,14 +121707,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						{
 							case(172):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
@@ -121717,14 +121748,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 								break;
 							case(174):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
@@ -121758,14 +121789,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 								break;
 							case(176):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
@@ -121799,14 +121830,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 								break;
 							case(178):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
@@ -121840,14 +121871,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 								break;
 							case(180):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
@@ -121881,14 +121912,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 								break;
 							case(182):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
@@ -121922,14 +121953,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 								break;
 							case(184):
 								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[nid] && 
+								if(selective_delay_malicious_nodes[source] && 
 								   present_selective_delay_attack_nodes &&
 								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
 								{
-									bool atk = GetBooleanWithProbability(attack_percentage, nid);
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << nid
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
