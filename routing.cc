@@ -139824,9 +139824,9 @@ int main(int argc, char *argv[])
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
     cout << "[TEST NETWORK] Positions set:" << endl;
     cout << "[TEST NETWORK] Controller  : (550, 0, 0)" << endl;
-    cout << "[TEST NETWORK] Vehicle A   : (300, -150, 0)  Node 0" << endl;
-    cout << "[TEST NETWORK] Malicious RSU:(550, -150, 0)  Node 2" << endl;
-    cout << "[TEST NETWORK] Vehicle B   : (800, -150, 0)  Node 1" << endl;
+    cout << "[TEST NETWORK] Vehicle A   : (300, 150, 0)  Node 0" << endl;
+    cout << "[TEST NETWORK] Malicious RSU:(550, 75, 0)  Node 2" << endl;
+    cout << "[TEST NETWORK] Vehicle B   : (800, 150, 0)  Node 1" << endl;
     cout << "[TEST NETWORK] A->RSU: 250m  RSU->B: 250m  A->B: 500m" << endl;
   }
   
