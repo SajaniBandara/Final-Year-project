@@ -139294,26 +139294,25 @@ int main(int argc, char *argv[])
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
     positionAlloc->Add(Vector(2*x, -x, 0.0)); // Node 0: Vehicle A
     positionAlloc->Add(Vector((16.0/3.0)*x, -x, 0.0)); // Node 1: Vehicle B
-    positionAlloc->Add(Vector((11.0/3.0)*x, -x, 0.0)); // Node 2: Malicious RSU
-	    positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
-	    positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
-	    positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
-	    positionAlloc->Add(Vector(2*x, -x*4, 0.0)); // Custom position for Node 6
-	    positionAlloc->Add(Vector(3*x, -x*4, 0.0)); // Custom position for Node 7
-	    positionAlloc->Add(Vector(3*x, -x*3, 0.0)); // Custom position for Node 8
-	    positionAlloc->Add(Vector(3*x, -x*2, 0.0)); // Custom position for Node 9
-	    positionAlloc->Add(Vector(3*x, -x, 0.0)); // Custom position for Node 10
-	    positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
-	    positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
-	    positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
-	    positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
-	    positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
-	    positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
-	    positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
-	    positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
-	    positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
-	    positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
-	    positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
+	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
+	    // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
+	    // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
+	    // positionAlloc->Add(Vector(2*x, -x*4, 0.0)); // Custom position for Node 6
+	    // positionAlloc->Add(Vector(3*x, -x*4, 0.0)); // Custom position for Node 7
+	    // positionAlloc->Add(Vector(3*x, -x*3, 0.0)); // Custom position for Node 8
+	    // positionAlloc->Add(Vector(3*x, -x*2, 0.0)); // Custom position for Node 9
+	    // positionAlloc->Add(Vector(3*x, -x, 0.0)); // Custom position for Node 10
+	    // positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
+	    // positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
+	    // positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
+	    // positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
+	    // positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
+	    // positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
+	    // positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
+	    // positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
+	    // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
+	    // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
+	    // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
 	    custom_mobility.SetPositionAllocator(positionAlloc);
 	    custom_mobility.Install(Vehicle_Nodes);
 
