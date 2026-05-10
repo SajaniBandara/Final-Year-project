@@ -139292,8 +139292,8 @@ int main(int argc, char *argv[])
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-    positionAlloc->Add(Vector(2*x, -x, 0.0)); // Node 0: Vehicle A
-    positionAlloc->Add(Vector((16.0/3.0)*x, -x, 0.0)); // Node 1: Vehicle B
+    positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
+    positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
 	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
 	    // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
 	    // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
@@ -139820,7 +139820,7 @@ int main(int argc, char *argv[])
   	lte_base_posx = 525;
   	lte_base_posy = 0;
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-    rsuPositionAlloc->Add(Vector(550.0, -75.0, 0.0));
+    rsuPositionAlloc->Add(Vector(550.0, 75.0, 0.0));
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
     cout << "[TEST NETWORK] Positions set:" << endl;
     cout << "[TEST NETWORK] Controller  : (550, 0, 0)" << endl;
