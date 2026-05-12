@@ -95,7 +95,7 @@ const int total_size = 100;
 uint32_t N_RSUs = 20;
 uint32_t N_Vehicles = 80;
 
-const int flows = 2;
+const int flows = 1;
 
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
