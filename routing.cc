@@ -89,7 +89,7 @@ const int total_size = 100;
 uint32_t N_RSUs = 20;
 uint32_t N_Vehicles = 80;
 
-const int flows = 2;
+const int flows = 1;
 
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
@@ -114514,6 +114514,14 @@ bool selective_delay_malicious_nodes[total_size];
 bool present_selective_delay_attack_nodes = false;
 double attack2_delay_seconds = 0.080; // 80ms injected delay
 
+// === SIGNATURE S2 DETECTION GLOBALS ===
+double t_fwd_packet[total_size][Flow_size+2];
+// records when each node forwarded each packet
+double delta_max_s2 = 0.050;
+// 50ms threshold per Equation 3.6 — half of 100ms safety bound
+bool s2_detection_active = true;
+// enable/disable S2 detection
+
 // Cumulative accumulators for running averages
 double previous_cumulative_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
@@ -119314,6 +119322,16 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							}
 						}
 
+						// Record forwarding timestamp for S2 signature detection
+						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
+						if(selective_delay_malicious_nodes[current_hop] == false)
+						{
+							cout << "[ATTACK2] ② Node " << current_hop
+								 << " sending packet ID " << packet_id
+								 << " to next hop " << hop
+								 << " normally at t=" << Now().GetSeconds() << "s" << endl;
+						}
+
 						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
 						double retry_delay = tg + 0.000100 + rand_delay;
@@ -119453,6 +119471,52 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					destination_counter[fid]++;
 					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
+					
+					// === SIGNATURE S2 DETECTION ===
+					// Check: t_recv - t_fwd > delta_max (Equation 3.6)
+					if(s2_detection_active && destination == current_hop)
+					{
+						// Use tagmodified_routing which is already peeked above
+						// Getprevious_senderId() returns the sim index of who forwarded this packet
+						uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+						
+						if(sender_sim_index < (uint32_t)var)
+						{
+							double t_recv_now = Now().GetSeconds();
+							double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
+							
+							if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
+							{
+								double hop_delay = t_recv_now - t_fwd_by_sender;
+								
+								cout << "[S2] Hop delay from node " << sender_sim_index
+								     << " to node " << current_hop
+								     << " for flow " << fid
+								     << " packet " << packet_ID
+								     << " = " << hop_delay * 1000.0 << "ms" << endl;
+								
+								if(hop_delay > delta_max_s2)
+								{
+									cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
+									cout << "[S2] Hop delay " << hop_delay * 1000.0
+									     << "ms exceeds threshold " 
+									     << delta_max_s2 * 1000.0 << "ms" << endl;
+									cout << "[S2] Node " << sender_sim_index
+									     << " detected as malicious attacker" << endl;
+									
+									if(!is_detected_node[1][sender_sim_index])
+									{
+										record_detection_event(1, sender_sim_index);
+										cout << "[S2] record_detection_event fired for node "
+										     << sender_sim_index 
+										     << " at t=" << Now().GetSeconds() << "s" << endl;
+									}
+								}
+							}
+						}
+					}
+					// === END SIGNATURE S2 DETECTION ===
+					
 					if(selective_delay_malicious_nodes[current_hop] == false)
 					{
 						cout << "[ATTACK2] Vehicle " << current_hop 
