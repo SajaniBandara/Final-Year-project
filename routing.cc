@@ -85,6 +85,12 @@ int lambda = 1; //test
 const int Flow_size = 55;
 uint32_t flow_size = 55;
 
+// Set to true to run exactly one packet per flow — useful for isolating
+// a single attack cycle in the logs without noise from retransmissions.
+// Pass --single_cycle=1 on the command line, or it auto-enables when
+// routing_test=true and active_attack_variant=7.
+bool single_cycle = false;
+
 const int total_size = 100;
 uint32_t N_RSUs = 20;
 uint32_t N_Vehicles = 80;
@@ -114565,6 +114571,7 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 // ============================================================
 void hardcode_test_network_attackers();
 void hardcode_attack7_test_network();
+void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
 void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t eavesdropper_index,
                            uint32_t flow_id,
@@ -114572,9 +114579,6 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t channel,
                            uint32_t p_size,
                            Time original_timestamp);
-// Zero-arg trampoline: reads g_hdup_* staging globals and calls send_hidden_duplicate.
-// Required because NS-3 3.35 MakeEvent has no lambda overload and caps free-function
-// overloads at 6 arguments — send_hidden_duplicate needs 7.
 void send_hidden_duplicate_trampoline();
 void initialise_stub_attack_state()
 {
@@ -114609,9 +114613,13 @@ void initialise_stub_attack_state()
             break;
 
         case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
-            is_malicious_node[7][2] = true;
-            t_onset[2] = 1.0;
+            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
+            is_malicious_node[7][3] = true;
+            t_onset[3] = 1.0;
             hardcode_attack7_test_network();
+            // linklifetimeMatrix_dsrc is declared after this function, so seeding
+            // is deferred to t=0 when all globals are fully initialised.
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
 
         default:
@@ -114719,18 +114727,27 @@ void hardcode_attack7_test_network()
     // RSU also secretly duplicates to B   (~225m, within WiFi range)
     // A -> C direct = 500m (out of range, forces routing through RSU)
 
-    passive_hf_malicious_nodes[2] = true;   // RSU (index 2) is the attacker
+    // Node index mapping for test network (N_Vehicles=3, N_RSUs=1):
+    // ns3 IDs:  controller=0, management=1, VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop = ns3_id - 2:  VehicleA=0, VehicleC=1, VehicleB=2, RSU=3
+    // wifidevices index = current_hop:  [0]=VehicleA, [1]=VehicleC, [2]=VehicleB, [3]=RSU
+    //
+    // The RSU has current_hop=3 (=wifidevices index 3).
+    // Vehicle B (eavesdropper) has current_hop=2 (=wifidevices index 2).
+    passive_hf_malicious_nodes[3] = true;   // RSU: current_hop=3 (ns3 ID 5, wifidevices[3])
     present_passive_hf_attack = true;
-    passive_hf_eavesdropper_index = 3;       // Vehicle B is at index 3
+    passive_hf_eavesdropper_index = 2;      // Vehicle B: current_hop=2 (ns3 ID 4, wifidevices[2])
+    // Link-lifetime seeding is done via seed_attack8_links(), scheduled
+    // from initialise_stub_attack_state() after all globals are initialised.
 
     active_attack_variant = 7;               // Attack 8 in the paper (0-indexed = 7)
-    record_attack_onset(7, 2);
+    record_attack_onset(7, 3);               // RSU is node index 3 in current_hop space
 
-    cout << attack_tag() << " ① Attack onset: RSU (node 2) flow rules modified by data plane attacker" << endl;
-    cout << attack_tag() << " ① Node 2 (RSU) marked as malicious passive hidden forwarder" << endl;
-    cout << attack_tag() << " ① Eavesdropper = Node 3 (Vehicle B) at (550, 300, 0)" << endl;
-    cout << attack_tag() << " ① Topology: VehicleA(0)->(250m)->RSU(2)->(250m)->VehicleC(1)" << endl;
-    cout << attack_tag() << " ① Hidden channel: RSU(2)->(225m)->VehicleB(3) [unauthorized]" << endl;
+    cout << attack_tag() << " ① Attack onset: RSU (current_hop=3) flow rules modified by data plane attacker" << endl;
+    cout << attack_tag() << " ① Node 3 (RSU, wifidevices[3]) marked as malicious passive hidden forwarder" << endl;
+    cout << attack_tag() << " ① Eavesdropper = Node 2 (Vehicle B, current_hop=2) at (550, 300, 0)" << endl;
+    cout << attack_tag() << " ① Topology: VehicleA(0)->(250m)->RSU(3)->(250m)->VehicleC(1)" << endl;
+    cout << attack_tag() << " ① Hidden channel: RSU(3)->(225m)->VehicleB(2) [unauthorized]" << endl;
 }
 
 void write_csv_results_routing()
@@ -115372,6 +115389,43 @@ vector<vector<double>> linklifetimeMatrix_dsrc;
 vector<vector<double>> linklifetimeMatrix_ethernet;
 vector<vector<double>> delayMatrix_dsrc;
 vector<vector<double>> delayMatrix_ethernet;
+
+// -----------------------------------------------------------------------
+// seed_attack8_links — pre-populates linklifetimeMatrix_dsrc with valid
+// lifetimes for the Attack 8 test topology so the routing system has a
+// working path from the very first packet, before the CSV optimizer runs.
+//
+// This function is defined here (after linklifetimeMatrix_dsrc) because
+// hardcode_attack7_test_network() is above the declaration of that global
+// and cannot access it directly. It is called via Simulator::Schedule at
+// t=0 from initialise_stub_attack_state(), which runs after all globals
+// are initialised.
+//
+// Topology (internal indices):
+//   VehicleA(0) <-250m-> RSU(2) <-250m-> VehicleC(1)   legitimate path
+//                         RSU(2) <-225m-> VehicleB(3)   hidden channel
+//
+// The optimizer overwrites these values when it reads the link-lifetime
+// CSV; the seeds only close the zero-value gap at simulation start.
+// -----------------------------------------------------------------------
+void seed_attack8_links()
+{
+    auto safe_set = [](uint32_t a, uint32_t b, double v) {
+        if (a < linklifetimeMatrix_dsrc.size() &&
+            b < linklifetimeMatrix_dsrc[a].size())
+            linklifetimeMatrix_dsrc[a][b] = v;
+    };
+    // Corrected indices: current_hop = ns3_id - 2
+    // ns3 IDs: VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop:    VehicleA=0,    VehicleC=1,    VehicleB=2, RSU=3
+    safe_set(0, 3, 999.0);   // VehicleA(0) -> RSU(3)
+    safe_set(3, 0, 999.0);   // RSU(3) -> VehicleA(0)
+    safe_set(3, 1, 999.0);   // RSU(3) -> VehicleC(1)  legitimate forwarding hop
+    safe_set(1, 3, 999.0);   // VehicleC(1) -> RSU(3)
+    safe_set(3, 2, 999.0);   // RSU(3) -> VehicleB(2)  hidden eavesdrop channel
+    safe_set(2, 3, 999.0);   // VehicleB(2) -> RSU(3)
+    cout << "[ATTACK8] Link-lifetime matrix seeded: VehicleA=0, VehicleC=1, VehicleB=2, RSU=3." << endl;
+}
 
 double shortestDistances[total_size];
 vector<int> parents[total_size];
@@ -121425,9 +121479,9 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp)
 {
-    // Get the malicious RSU's WiFi device as the sender
+    // wifidevices is indexed by internal node index (same as current_hop / hop
+    // throughout this codebase — NOT by NS-3 node ID).
     Ptr<NetDevice> source_nd   = wifidevices.Get(malicious_rsu_index);
-    // Get the eavesdropper's WiFi device as the receiver
     Ptr<NetDevice> eaves_nd    = wifidevices.Get(eavesdropper_index);
 
     Address addr               = eaves_nd->GetAddress();
@@ -139495,6 +139549,8 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("qf", "qf", qf);
+    cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
+    cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
     cmd.Parse (argc, argv);
     
     if (routing_test == true)
@@ -139502,12 +139558,29 @@ int main(int argc, char *argv[])
         if (active_attack_variant == 7)
         {
             N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
+            // Default to single_cycle for attack 7 test — one packet per flow
+            // shows exactly one eavesdrop event clearly in the log.
+            // Override with --single_cycle=0 to restore full flow volume.
+            if (!single_cycle)
+                single_cycle = true;
         }
         else
         {
             N_Vehicles = 2; // original Attack 2 layout
         }
         N_RSUs = 1;
+    }
+
+    // Apply single_cycle: cap every flow to exactly 1 packet.
+    // flow_size controls how many packets the optimizer targets per flow;
+    // setting it to 1 means only one packet is ever scheduled per flow,
+    // giving a clean single-event log for attack verification.
+    if (single_cycle)
+    {
+        flow_size = 1;
+        cout << "[SINGLE_CYCLE] flow_size forced to 1 — one packet per flow." << endl;
+        cout << "[SINGLE_CYCLE] Each attack step (①–⑥) should appear exactly once." << endl;
+        cout << "[SINGLE_CYCLE] Pass --single_cycle=0 to restore full flow volume." << endl;
     }
 	
     
