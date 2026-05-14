@@ -114608,8 +114608,9 @@ void declare_attackers()
 void hardcode_test_network_attackers()
 {
 	// Force 100% attack rate for test network verification
-	attack_percentage = 100;
-	
+	attack_percentage = 100;  //2.With attack 
+	// attack_percentage =0; //1. without the attack
+
 	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
 	// Attack 2 scenario from Figure 3.2(b):
 	// Malicious RSU (node 2) intercepts and delays packets
@@ -114618,7 +114619,24 @@ void hardcode_test_network_attackers()
 		selective_delay_malicious_nodes[i] = false;
 	}
 	selective_delay_malicious_nodes[2] = true; // RSU is the attacker
-	present_selective_delay_attack_nodes = true;
+
+
+	/*--------------------------------------------------------
+// Change 1: attack never fires
+//attack_percentage = 0;
+
+// Change 2: do not mark node 2 as malicious in ground truth
+// Comment out these two lines:
+// selective_delay_malicious_nodes[2] = true;
+// record_attack_onset(1, 2);
+
+// Keep this line (master switch stays false effect)
+//present_selective_delay_attack_nodes = false;
+
+//s2_detection_active=false;
+--------------------------------------------------------------*/
+
+	present_selective_delay_attack_nodes = true; //2. With attack scenario
     
 	cout << "[ATTACK2] ① Test network attackers hardcoded" << endl;
 	cout << "[ATTACK2] ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
@@ -114628,7 +114646,7 @@ void hardcode_test_network_attackers()
 	cout << "[ATTACK2] ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
     
 	// Record attack onset for metric M4
-	record_attack_onset(1, 2);
+record_attack_onset(1, 2);   
 }
 
 void write_csv_results_routing()
