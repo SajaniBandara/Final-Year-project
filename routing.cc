@@ -85,9 +85,9 @@ int lambda = 1; //test
 const int Flow_size = 55;
 uint32_t flow_size = 55;
 
-const int total_size = 100;
-uint32_t N_RSUs = 20;
-uint32_t N_Vehicles = 80;
+const int total_size = 6;
+uint32_t N_RSUs = 1;
+uint32_t N_Vehicles = 2;
 
 const int flows = 1;
 
@@ -130,6 +130,9 @@ double AIFS = 0.0;
 double mu1 = 0.10;
 double mu2 = 1.00;
 double mu3 = 0.50;
+
+//New Attack Variables
+
 
 
 bool training = false; //true if training data set for machine learnng is generated
@@ -115611,7 +115614,8 @@ void run_stable_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	for(uint32_t i=0; i<total_size; i++)
+	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		proposed_algo2_output_inst[flow_id].met[i] = false;
 		proposed_algo2_output_inst[flow_id].Y[i] = 1000;
@@ -115662,7 +115666,8 @@ void run_distance_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	for(uint32_t i=0; i<total_size; i++)
+	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		distance_algo2_output_inst[flow_id].met[i] = false;
 		distance_algo2_output_inst[flow_id].Y[i] = 1000;
@@ -116859,16 +116864,16 @@ void transmit_delta_values()
 		{
 			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
 			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),send_LTE_deltavalues_downlink_alone,udp_app,controller_Node.Get(0),Vehicle_Nodes.Get(u), u);
-		}
-		else
-		{
-			uint32_t index = u - N_Vehicles;
-			//cout<<"index is "<<index;
+        }
+        else
+        {
+            uint32_t index = u - N_Vehicles;
+//cout<<"index is "<<index;
 			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(index));	
 	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
 			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),RSU_deltavalues_downlink_unicast, udp_app, controller_Node.Get(0), nu);
-		}
-	}
+        }
+    }
 	cout<<"Transmitting delta values at"<<Now().GetSeconds()<<endl;
 }
 	
@@ -119380,6 +119385,102 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 		}
 	}		
 }
+//Attack helper functions
+
+
+
+// ---------- TCAM exhaustion helpers ----------
+
+// Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
+// Simulates the malicious controller spamming junk FlowMods to every RSU,
+// filling their TCAM so legitimate packets miss the table and go slow-path.
+void controller_flood_tcam_all_rsus()
+{
+    for (uint32_t i = N_Vehicles; i < total_size; i++)
+    {
+        // Each call "installs" 5 junk rules per RSU
+        simulated_tcam_counter[i] += 5;
+        if (simulated_tcam_counter[i] > TCAM_CAPACITY)
+            simulated_tcam_counter[i] = TCAM_CAPACITY;  // cap at full
+    }
+    cout << "[ATTACK 16 — CTRL TCAM FLOOD] Controller flooded all RSUs. "
+         << "RSU TCAM level: " << simulated_tcam_counter[N_Vehicles] 
+         << "/" << TCAM_CAPACITY << endl;
+}
+
+// Called every TCAM_FLOOD_INTERVAL seconds for each data-plane attacker node (Attack 17).
+// Simulates an attacker vehicle flooding the nearest RSU with unique-5-tuple packets
+// so the RSU's TCAM fills up with useless rules.
+void data_plane_flood_tcam(uint32_t attacker_node, uint32_t target_rsu)
+{
+    if (tcam_exhaust_malicious_nodes[attacker_node] == true)
+    {
+        simulated_tcam_counter[target_rsu] += 3;
+        if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
+            simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
+        cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
+             << " flooded RSU " << target_rsu
+             << ". TCAM level: " << simulated_tcam_counter[target_rsu]
+             << "/" << TCAM_CAPACITY << endl;
+    }
+}
+
+// Returns the slow-path extra delay (seconds) for a given RSU node based on
+// how full its TCAM is. When TCAM is 100% full, legitimate packets experience
+// ~300ms extra delay (routed through controller slow path).
+double get_tcam_slowpath_delay(uint32_t rsu_node)
+{
+    double fill_ratio = (double)simulated_tcam_counter[rsu_node] / (double)TCAM_CAPACITY;
+    // Linear: 0ms at empty, 300ms at full
+    return fill_ratio * 0.300;
+}
+
+// ---------- Hidden forwarding helpers ----------
+
+// Sends a COPY of the packet to spy_node_id.
+// active=true  → the copy is "fabricated" (active hidden forward — Attacks 18 & 19)
+// active=false → the copy is unmodified (passive hidden forward — Attacks 20 & 21)
+// In ns-3, Ptr<Packet> is a smart pointer and Create<Packet> always makes a new
+// independent copy, so both modes work correctly without modifying the original.
+void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
+                      Time original_timestamp, struct custom_struct arguments, bool active)
+{
+    uint16_t protocolwave = 0x88dc;
+    Ptr<NetDevice> spy_nd = wifidevices.Get(spy_node_id);
+    Ptr<NetDevice> from_nd = wifidevices.Get(from_node);
+
+    Ptr<Packet> hidden_pkt = Create<Packet>(arguments.p_size - 28);
+    CustomDataUnicastTag_ModifiedRouting hidden_tag;
+    hidden_tag.SetchannelId(arguments.channel);
+    hidden_tag.SetflowId(flow_id);
+    hidden_tag.SetpacketId(packet_id);
+    hidden_tag.Setprevious_senderId(from_node);
+    hidden_tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+    hidden_tag.Setoriginal_timestamp(original_timestamp);
+    hidden_pkt->AddPacketTag(hidden_tag);
+
+    Address spy_addr = spy_nd->GetAddress();
+    Mac48Address spy_mac = Mac48Address::ConvertFrom(spy_addr);
+    Ptr<WifiNetDevice> wdi = DynamicCast<WifiNetDevice>(from_nd);
+
+    Simulator::Schedule(Seconds(0.0), &WifiNetDevice::Send, wdi, hidden_pkt, spy_mac, protocolwave);
+
+    if (active)
+    {
+        cout << "[ATTACK ACTIVE HF] Node " << from_node
+             << " sent FABRICATED copy of packet " << packet_id
+             << " to spy node " << spy_node_id
+             << " at " << Now().GetSeconds() << endl;
+    }
+    else
+    {
+        cout << "[ATTACK PASSIVE HF] Node " << from_node
+             << " sent SILENT DUPLICATE of packet " << packet_id
+             << " to spy node " << spy_node_id
+             << " at " << Now().GetSeconds() << endl;
+    }
+}
+
 
 void MacRx (std::string context, Ptr <const Packet> pkt)
 {
@@ -139399,33 +139500,35 @@ int main(int argc, char *argv[])
   else
   {
   
+  
   	    Vehicle_Nodes.Create(N_Vehicles);
     	    // double x = 250;
 		double x = 150; //test - adjusted to force routing through RSU
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
+
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
     positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
     positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
 	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
-	    // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
-	    // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
-	    // positionAlloc->Add(Vector(2*x, -x*4, 0.0)); // Custom position for Node 6
-	    // positionAlloc->Add(Vector(3*x, -x*4, 0.0)); // Custom position for Node 7
-	    // positionAlloc->Add(Vector(3*x, -x*3, 0.0)); // Custom position for Node 8
-	    // positionAlloc->Add(Vector(3*x, -x*2, 0.0)); // Custom position for Node 9
-	    // positionAlloc->Add(Vector(3*x, -x, 0.0)); // Custom position for Node 10
-	    // positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
-	    // positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
-	    // positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
-	    // positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
-	    // positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
-	    // positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
-	    // positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
-	    // positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
-	    // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
-	    // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
-	    // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
+	    // // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
+	    // // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
+	    // // positionAlloc->Add(Vector(2*x, -x*4, 0.0)); // Custom position for Node 6
+	    // // positionAlloc->Add(Vector(3*x, -x*4, 0.0)); // Custom position for Node 7
+	    // // positionAlloc->Add(Vector(3*x, -x*3, 0.0)); // Custom position for Node 8
+	    // // positionAlloc->Add(Vector(3*x, -x*2, 0.0)); // Custom position for Node 9
+	    // // positionAlloc->Add(Vector(3*x, -x, 0.0)); // Custom position for Node 10
+	    // // positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
+	    // // positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
+	    // // positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
+	    // // positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
+	    // // positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
+	    // // positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
+	    // // positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
+	    // // positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
+	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
+	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
+	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
 	    custom_mobility.SetPositionAllocator(positionAlloc);
 	    custom_mobility.Install(Vehicle_Nodes);
 
@@ -140692,6 +140795,8 @@ int main(int argc, char *argv[])
 			
 		  	//DSRC flow instantiation
 		  	double t0 = 0;
+			declare_attack_states();  // Set attack flags
+  			declare_attackers();       // Mark which nodes are malicious
 			for (double t=t0+0.999; t<simTime-1; t=t+data_transmission_period)//All official data transmissions begin at t=0
 			{	
 				  //Go over all the wifi devices
