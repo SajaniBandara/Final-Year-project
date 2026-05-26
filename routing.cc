@@ -85,9 +85,15 @@ int lambda = 1; //test
 const int Flow_size = 55;
 uint32_t flow_size = 55;
 
-const int total_size = 6;
-uint32_t N_RSUs = 1;
-uint32_t N_Vehicles = 2;
+// Set to true to run exactly one packet per flow — useful for isolating
+// a single attack cycle in the logs without noise from retransmissions.
+// Pass --single_cycle=1 on the command line, or it auto-enables when
+// routing_test=true and active_attack_variant=7.
+bool single_cycle = false;
+
+const int total_size = 100;
+uint32_t N_RSUs = 20;
+uint32_t N_Vehicles = 80;
 
 const int flows = 1;
 
@@ -114524,6 +114530,43 @@ double delta_max_s2 = 0.050;
 // 50ms threshold per Equation 3.6 — half of 100ms safety bound
 bool s2_detection_active = true;
 // enable/disable S2 detection
+// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+bool passive_hf_malicious_nodes[total_size] = {false};
+bool present_passive_hf_attack = false;
+uint32_t passive_hf_eavesdropper_index = 2;
+
+// Staging globals for send_hidden_duplicate_trampoline().
+// NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
+// send_hidden_duplicate needs 7, so we use a zero-arg trampoline.
+uint32_t g_hdup_rsu       = 0;
+uint32_t g_hdup_eaves     = 0;
+uint32_t g_hdup_flow_id   = 0;
+uint32_t g_hdup_packet_id = 0;
+uint32_t g_hdup_channel   = 0;
+uint32_t g_hdup_p_size    = 0;
+Time     g_hdup_timestamp = Seconds(0.0);
+
+// ---------------------------------------------------------------------------
+// attack_tag() — returns the correct "[ATTACKx]" prefix for the currently
+// active attack variant. Add a new case here whenever you add a new attack.
+// All logging throughout the file uses this so labels stay correct
+// automatically regardless of which --active_attack_variant is passed.
+// ---------------------------------------------------------------------------
+inline std::string attack_tag()
+{
+    switch (active_attack_variant)
+    {
+        case 0:  return "[ATTACK1]";
+        case 1:  return "[ATTACK2]";
+        case 2:  return "[ATTACK3]";
+        case 3:  return "[ATTACK4]";
+        case 4:  return "[ATTACK5]";
+        case 5:  return "[ATTACK6]";
+        case 6:  return "[ATTACK7]";
+        case 7:  return "[ATTACK8]";
+        default: return "[ATTACK?]";
+    }
+}
 
 // Cumulative accumulators for running averages
 double previous_cumulative_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
@@ -114537,6 +114580,16 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 // Replace body when real attack scenarios are implemented.
 // ============================================================
 void hardcode_test_network_attackers();
+void hardcode_attack7_test_network();
+void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
+void send_hidden_duplicate(uint32_t malicious_rsu_index,
+                           uint32_t eavesdropper_index,
+                           uint32_t flow_id,
+                           uint32_t packet_id,
+                           uint32_t channel,
+                           uint32_t p_size,
+                           Time original_timestamp);
+void send_hidden_duplicate_trampoline();
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -114560,7 +114613,30 @@ void initialise_stub_attack_state()
 		active_attack_variant = 0;
 	}
 	    // Activate Attack 2 for test network
-	    hardcode_test_network_attackers();
+	switch (active_attack_variant)
+    {
+        case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
+            is_malicious_node[1][2] = true;
+            t_onset[2] = 1.0;
+            t_quarantine[2] = 1.050;
+            hardcode_test_network_attackers();
+            break;
+
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
+            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
+            is_malicious_node[7][3] = true;
+            t_onset[3] = 1.0;
+            hardcode_attack7_test_network();
+            // linklifetimeMatrix_dsrc is declared after this function, so seeding
+            // is deferred to t=0 when all globals are fully initialised.
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            break;
+
+        default:
+            cout << "[INIT] No specific attack init for variant "
+                 << active_attack_variant << ", running baseline." << endl;
+            break;
+    }
 }
 
 // Call when an attack node activates — v=variant(0-7), n=node index
@@ -114600,10 +114676,10 @@ void declare_attackers()
 		// For test network: hardcode node 2 (RSU) as malicious
 		// This will be replaced by declare_attackers() for full experiments
 	}
-	cout << "[ATTACK2] declare_attackers() completed" << endl;
+	cout << attack_tag() << " declare_attackers() completed" << endl;
 	for(uint32_t i=0; i<(uint32_t)var; i++)
 	{
-		cout << "[ATTACK2] Node " << i << " selective_delay_malicious = " 
+		cout << attack_tag() << " Node " << i << " selective_delay_malicious = " 
 			 << selective_delay_malicious_nodes[i] << endl;
 	}
 }
@@ -114641,15 +114717,65 @@ void hardcode_test_network_attackers()
 
 	present_selective_delay_attack_nodes = true; //2. With attack scenario
     
-	cout << "[ATTACK2] ① Test network attackers hardcoded" << endl;
-	cout << "[ATTACK2] ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
-	cout << "[ATTACK2] ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
-	cout << "[ATTACK2] ① Routing forced through RSU (Node 2) for attack verification" << endl;
-	cout << "[ATTACK2] ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
-	cout << "[ATTACK2] ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
+	cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
+	cout << attack_tag() << " ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
+	cout << attack_tag() << " ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
+	cout << attack_tag() << " ① Routing forced through RSU (Node 2) for attack verification" << endl;
+	cout << attack_tag() << " ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
+	cout << attack_tag() << " ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
     
 	// Record attack onset for metric M4
 record_attack_onset(1, 2);   
+}
+
+void hardcode_attack7_test_network()
+{
+    // Reset all malicious flags for this attack
+    for (uint32_t i = 0; i < total_size; i++)
+    {
+        passive_hf_malicious_nodes[i] = false;
+    }
+
+    // Clear Attack 2 (selective delay) state — selective_delay_malicious_nodes[]
+    // is a plain bool[] with no initialiser so values are undefined for variant-7 runs.
+    for (uint32_t i = 0; i < total_size; i++)
+    {
+        selective_delay_malicious_nodes[i] = false;
+    }
+    present_selective_delay_attack_nodes = false;
+    attack_percentage = 0;
+
+    // Test network topology for Attack 7 (Passive Hidden Forwarding - Data Plane):
+    // Node 0 = Vehicle A  (sender)          at (300, 150, 0)
+    // Node 1 = Vehicle C  (legit dest)      at (800, 150, 0)
+    // Node 2 = RSU        (malicious)       at (550,  75, 0)
+    // Node 3 = Vehicle B  (eavesdropper)    at (550, 300, 0)
+    //
+    // A -> RSU -> C  (legitimate path, ~250m each hop)
+    // RSU also secretly duplicates to B   (~225m, within WiFi range)
+    // A -> C direct = 500m (out of range, forces routing through RSU)
+
+    // Node index mapping for test network (N_Vehicles=3, N_RSUs=1):
+    // ns3 IDs:  controller=0, management=1, VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop = ns3_id - 2:  VehicleA=0, VehicleC=1, VehicleB=2, RSU=3
+    // wifidevices index = current_hop:  [0]=VehicleA, [1]=VehicleC, [2]=VehicleB, [3]=RSU
+    //
+    // The RSU has current_hop=3 (=wifidevices index 3).
+    // Vehicle B (eavesdropper) has current_hop=2 (=wifidevices index 2).
+    passive_hf_malicious_nodes[3] = true;   // RSU: current_hop=3 (ns3 ID 5, wifidevices[3])
+    present_passive_hf_attack = true;
+    passive_hf_eavesdropper_index = 2;      // Vehicle B: current_hop=2 (ns3 ID 4, wifidevices[2])
+    // Link-lifetime seeding is done via seed_attack8_links(), scheduled
+    // from initialise_stub_attack_state() after all globals are initialised.
+
+    active_attack_variant = 7;               // Attack 8 in the paper (0-indexed = 7)
+    record_attack_onset(7, 3);               // RSU is node index 3 in current_hop space
+
+    cout << attack_tag() << " ① Attack onset: RSU (current_hop=3) flow rules modified by data plane attacker" << endl;
+    cout << attack_tag() << " ① Node 3 (RSU, wifidevices[3]) marked as malicious passive hidden forwarder" << endl;
+    cout << attack_tag() << " ① Eavesdropper = Node 2 (Vehicle B, current_hop=2) at (550, 300, 0)" << endl;
+    cout << attack_tag() << " ① Topology: VehicleA(0)->(250m)->RSU(3)->(250m)->VehicleC(1)" << endl;
+    cout << attack_tag() << " ① Hidden channel: RSU(3)->(225m)->VehicleB(2) [unauthorized]" << endl;
 }
 
 void write_csv_results_routing()
@@ -115291,6 +115417,43 @@ vector<vector<double>> linklifetimeMatrix_dsrc;
 vector<vector<double>> linklifetimeMatrix_ethernet;
 vector<vector<double>> delayMatrix_dsrc;
 vector<vector<double>> delayMatrix_ethernet;
+
+// -----------------------------------------------------------------------
+// seed_attack8_links — pre-populates linklifetimeMatrix_dsrc with valid
+// lifetimes for the Attack 8 test topology so the routing system has a
+// working path from the very first packet, before the CSV optimizer runs.
+//
+// This function is defined here (after linklifetimeMatrix_dsrc) because
+// hardcode_attack7_test_network() is above the declaration of that global
+// and cannot access it directly. It is called via Simulator::Schedule at
+// t=0 from initialise_stub_attack_state(), which runs after all globals
+// are initialised.
+//
+// Topology (internal indices):
+//   VehicleA(0) <-250m-> RSU(2) <-250m-> VehicleC(1)   legitimate path
+//                         RSU(2) <-225m-> VehicleB(3)   hidden channel
+//
+// The optimizer overwrites these values when it reads the link-lifetime
+// CSV; the seeds only close the zero-value gap at simulation start.
+// -----------------------------------------------------------------------
+void seed_attack8_links()
+{
+    auto safe_set = [](uint32_t a, uint32_t b, double v) {
+        if (a < linklifetimeMatrix_dsrc.size() &&
+            b < linklifetimeMatrix_dsrc[a].size())
+            linklifetimeMatrix_dsrc[a][b] = v;
+    };
+    // Corrected indices: current_hop = ns3_id - 2
+    // ns3 IDs: VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop:    VehicleA=0,    VehicleC=1,    VehicleB=2, RSU=3
+    safe_set(0, 3, 999.0);   // VehicleA(0) -> RSU(3)
+    safe_set(3, 0, 999.0);   // RSU(3) -> VehicleA(0)
+    safe_set(3, 1, 999.0);   // RSU(3) -> VehicleC(1)  legitimate forwarding hop
+    safe_set(1, 3, 999.0);   // VehicleC(1) -> RSU(3)
+    safe_set(3, 2, 999.0);   // RSU(3) -> VehicleB(2)  hidden eavesdrop channel
+    safe_set(2, 3, 999.0);   // VehicleB(2) -> RSU(3)
+    cout << "[ATTACK8] Link-lifetime matrix seeded: VehicleA=0, VehicleC=1, VehicleB=2, RSU=3." << endl;
+}
 
 double shortestDistances[total_size];
 vector<int> parents[total_size];
@@ -119332,13 +119495,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							{
 								apply_attack_delay = true;
 								tx_delay = attack2_delay_seconds;
-								cout << "[ATTACK2] ③ Malicious RSU (node " << current_hop
+								cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
 									 << ") intercepting packet ID " << packet_id
 									 << " for flow " << flow_id
 									 << " at t=" << Now().GetSeconds() << "s" << endl;
-								cout << "[ATTACK2] ④ Buffering - injecting delay of "
+								cout << attack_tag() << " ④ Buffering - injecting delay of "
 									 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-								cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+								cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 									 << Now().GetSeconds() + attack2_delay_seconds
 									 << "s (delay=" << attack2_delay_seconds * 1000.0
 									 << "ms)" << endl;
@@ -119354,6 +119517,36 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 								 << " to next hop " << hop
 								 << " normally at t=" << Now().GetSeconds() << "s" << endl;
 						}
+						// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+                        // Malicious RSU intercepts packet and secretly duplicates it
+                        // to the eavesdropper, while forwarding the original normally.
+                        // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
+                        if (present_passive_hf_attack &&
+                            passive_hf_malicious_nodes[current_hop] &&
+                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
+                        {
+                            cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
+                                 << ") intercepted packet ID " << packet_id
+                                 << " (flow " << flow_id << ") at t="
+                                 << Now().GetSeconds() << "s" << endl;
+                            cout << attack_tag() << " ④ Forwarding ORIGINAL packet to legitimate"
+                                 << " next hop (node " << hop << ") as normal" << endl;
+
+                            // Schedule the hidden duplicate to eavesdropper.
+                            // Use a tiny offset (0.001s) so the original goes first.
+                            // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
+                            // send_hidden_duplicate needs 7, so stage args then trampoline.
+                            g_hdup_rsu       = current_hop;
+                            g_hdup_eaves     = passive_hf_eavesdropper_index;
+                            g_hdup_flow_id   = flow_id;
+                            g_hdup_packet_id = packet_id;
+                            g_hdup_channel   = arguments.channel;
+                            g_hdup_p_size    = arguments.p_size;
+                            g_hdup_timestamp = originail_timestamp;
+                            Simulator::Schedule(Seconds(0.001),
+                                                send_hidden_duplicate_trampoline);
+                        }
+                        // === END ATTACK 7 ===
 
 						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
@@ -119581,6 +119774,23 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//updateTxop(fid, previous_sender_ID, packets, false);
 			
 			uint32_t destination =  (delta_at_nodes_inst+fid)->destination_f;
+			
+			// === ATTACK 7: Detect hidden duplicate arriving at eavesdropper ===
+            if (present_passive_hf_attack &&
+                current_hop == passive_hf_eavesdropper_index &&
+                current_hop != destination)
+            {
+                cout << attack_tag() << " ⑥ Vehicle B (node " << current_hop
+                     << ") RECEIVED hidden duplicate of packet ID " << packet_ID
+                     << " (flow " << fid << ") at t=" << Now().GetSeconds()
+                     << "s — PASSIVE HIDDEN FORWARDING CONFIRMED. Eavesdropping successful." << endl;
+                // Drop it here — Vehicle B is not a legitimate hop,
+                // do NOT forward it further or mark delivery
+                return;  // exit MacRx for this packet
+            }
+            // === END ATTACK 7 ===
+
+
 			if(pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] == false)
 			{
 				pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] = true;
@@ -119638,12 +119848,22 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
 					{
-						cout << "[ATTACK2] Vehicle " << current_hop 
+						cout << attack_tag() << " Vehicle " << current_hop 
 							 << " (DESTINATION) received packet ID " << packet_ID 
 							 << " for flow " << fid 
 							 << " at t=" << Now().GetSeconds() << "s" << endl;
 					}
 					cout<<"Flow ID "<<fid<<"received "<<" Packet ID: "<<packet_ID<<"Totally received "<<destination_counter[fid]<<"packets at destination "<<destination<<" at "<<Now().GetSeconds()<<endl;
+					
+					// === ATTACK 7: Log legitimate delivery (step ④ confirmation) ===
+                    if (present_passive_hf_attack && current_hop == destination)
+                    {
+                        cout << attack_tag() << " ④-confirm Vehicle C (node " << current_hop
+                             << ") received ORIGINAL packet ID " << packet_ID
+                             << " (flow " << fid << ") normally at t="
+                             << Now().GetSeconds() << "s — legitimate path unaffected" << endl;
+                    }
+				
 				}
 				else
 				{
@@ -121408,6 +121628,70 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 	}
 }
 
+// =========================================================
+// ATTACK 7 TRAMPOLINE — zero-arg wrapper for Simulator::Schedule.
+// NS-3 3.35 MakeEvent has no lambda support and caps free-function
+// overloads at 6 args. Reads g_hdup_* staging globals and forwards
+// to send_hidden_duplicate.
+// =========================================================
+void send_hidden_duplicate_trampoline()
+{
+    send_hidden_duplicate(g_hdup_rsu,
+                          g_hdup_eaves,
+                          g_hdup_flow_id,
+                          g_hdup_packet_id,
+                          g_hdup_channel,
+                          g_hdup_p_size,
+                          g_hdup_timestamp);
+}
+
+// =========================================================
+// ATTACK 7: Passive Hidden Forwarding — Data Plane
+// Called by the malicious RSU to send a secret duplicate
+// of a packet to the unauthorized eavesdropper (Vehicle B).
+// The original packet is forwarded normally by the existing
+// check_delivery_and_retransmit logic — this only adds the copy.
+// =========================================================
+void send_hidden_duplicate(uint32_t malicious_rsu_index,
+                           uint32_t eavesdropper_index,
+                           uint32_t flow_id,
+                           uint32_t packet_id,
+                           uint32_t channel,
+                           uint32_t p_size,
+                           Time original_timestamp)
+{
+    // wifidevices is indexed by internal node index (same as current_hop / hop
+    // throughout this codebase — NOT by NS-3 node ID).
+    Ptr<NetDevice> source_nd   = wifidevices.Get(malicious_rsu_index);
+    Ptr<NetDevice> eaves_nd    = wifidevices.Get(eavesdropper_index);
+
+    Address addr               = eaves_nd->GetAddress();
+    Mac48Address dest_address  = Mac48Address::ConvertFrom(addr);
+    uint16_t protocolwave      = 0x88dc;
+    Ptr<WifiNetDevice> wdi     = DynamicCast<WifiNetDevice>(source_nd);
+
+    // Build the duplicate packet with the same tag structure
+    // so MacRx can identify it properly when Vehicle B receives it
+    Ptr<Packet> dup_pkt = Create<Packet>(p_size - 28);
+    CustomDataUnicastTag_ModifiedRouting dup_tag;
+    dup_tag.SetflowId(flow_id);
+    dup_tag.SetpacketId(packet_id);
+    dup_tag.SetchannelId(channel);
+    dup_tag.Setprevious_senderId(malicious_rsu_index);
+    dup_tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+    dup_tag.Setoriginal_timestamp(original_timestamp);
+    dup_pkt->AddPacketTag(dup_tag);
+
+    cout << attack_tag() << " ⑤ Malicious RSU (node " << malicious_rsu_index
+         << ") sending HIDDEN DUPLICATE of packet ID " << packet_id
+         << " (flow " << flow_id << ") to unauthorized Vehicle B (node "
+         << eavesdropper_index << ") at t=" << Now().GetSeconds() << "s" << endl;
+
+    // Send immediately — no delay, attack is passive (silent eavesdrop)
+    Simulator::Schedule(Seconds(0.0), &WifiNetDevice::Send,
+                        wdi, dup_pkt, dest_address, protocolwave);
+}
+
 void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint32_t flow_id, uint32_t next_hop_id, struct custom_struct arguments, uint32_t packet_ID)
 {
 	//cout<<"transmiiting a a packet at "<<Now().GetMilliSeconds()<<endl;
@@ -121469,7 +121753,7 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
 	
 	if(!selective_delay_malicious_nodes[nid-2])
 	{
-	    cout << "[ATTACK2] ② Node " << (nid-2)
+	    cout << attack_tag() << " ② Node " << (nid-2)
 	         << " sending packet ID " << packet_ID
 	         << " to next hop " << next_hop_id
 	         << " normally at t=" << Now().GetSeconds() << "s" << endl;
@@ -121897,17 +122181,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -121938,17 +122222,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -121979,17 +122263,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -122020,17 +122304,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -122061,17 +122345,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -122102,17 +122386,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -122143,17 +122427,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 									bool atk = GetBooleanWithProbability(attack_percentage, source);
 									if(atk)
 									{
-										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+										cout << attack_tag() << " ③ Malicious RSU (node " << source
 											 << ") intercepting packet ID " << packet_id
 											 << " for flow " << fid
 											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+										cout << attack_tag() << " ④ Buffering — injecting delay of "
 											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
 										Simulator::Schedule(Seconds(attack2_delay_seconds),
 											routing_dsrc_data_unicast,
 											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
 											fid, nid, arguments, total_packet_counter+1);
-										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
 											 << Now().GetSeconds() + attack2_delay_seconds
 											 << "s (delay=" << attack2_delay_seconds*1000.0
 											 << "ms)" << endl;
@@ -139446,14 +139730,38 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("qf", "qf", qf);
+    cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
+    cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
     cmd.Parse (argc, argv);
     
     if (routing_test == true)
     {
-     	// N_Vehicles = 22;
-		N_Vehicles = 2; //test
-     	N_RSUs = 1;
-     	//flows = 1;
+        if (active_attack_variant == 7)
+        {
+            N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
+            // Default to single_cycle for attack 7 test — one packet per flow
+            // shows exactly one eavesdrop event clearly in the log.
+            // Override with --single_cycle=0 to restore full flow volume.
+            if (!single_cycle)
+                single_cycle = true;
+        }
+        else
+        {
+            N_Vehicles = 2; // original Attack 2 layout
+        }
+        N_RSUs = 1;
+    }
+
+    // Apply single_cycle: cap every flow to exactly 1 packet.
+    // flow_size controls how many packets the optimizer targets per flow;
+    // setting it to 1 means only one packet is ever scheduled per flow,
+    // giving a clean single-event log for attack verification.
+    if (single_cycle)
+    {
+        flow_size = 1;
+        cout << "[SINGLE_CYCLE] flow_size forced to 1 — one packet per flow." << endl;
+        cout << "[SINGLE_CYCLE] Each attack step (①–⑥) should appear exactly once." << endl;
+        cout << "[SINGLE_CYCLE] Pass --single_cycle=0 to restore full flow volume." << endl;
     }
 	
     
@@ -139529,6 +139837,27 @@ int main(int argc, char *argv[])
 	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
 	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
 	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
+
+		if (active_attack_variant == 7)
+    {
+        // Attack 7 topology:
+        // Vehicle A (node 0) at (300, 150, 0)
+        // Vehicle C (node 1) at (800, 150, 0) — legitimate destination
+        // Vehicle B (node 2) at (550, 300, 0) — eavesdropper, close to RSU
+        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0: Vehicle A (sender)
+        positionAlloc->Add(Vector(800.0, 150.0, 0.0)); // Node 1: Vehicle C (legit dest)
+        positionAlloc->Add(Vector(550.0, 300.0, 0.0)); // Node 2: Vehicle B (eavesdropper)
+        cout << attack_tag() << " [INIT] Vehicle A  (node 0): (300, 150, 0)" << endl;
+        cout << attack_tag() << " [INIT] Vehicle C  (node 1): (800, 150, 0) - legit destination" << endl;
+        cout << attack_tag() << " [INIT] Vehicle B  (node 2): (550, 300, 0) - eavesdropper" << endl;
+        cout << attack_tag() << " [INIT] RSU        (node 3): (550,  75, 0) - MALICIOUS" << endl;
+    }
+    else
+    {
+        positionAlloc->Add(Vector(2*x, x, 0.0));           // Node 0: Vehicle A
+        positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
+    }
+
 	    custom_mobility.SetPositionAllocator(positionAlloc);
 	    custom_mobility.Install(Vehicle_Nodes);
 
@@ -140041,9 +140370,12 @@ int main(int argc, char *argv[])
     cout << "[TEST NETWORK] Positions set:" << endl;
     cout << "[TEST NETWORK] Controller  : (550, 0, 0)" << endl;
     cout << "[TEST NETWORK] Vehicle A   : (300, 150, 0)  Node 0" << endl;
-    cout << "[TEST NETWORK] Malicious RSU:(550, 75, 0)  Node 2" << endl;
+    // cout << "[TEST NETWORK] Malicious RSU:(550, 75, 0)  Node 2" << endl;
+	cout << "[TEST NETWORK] RSU (malicious for Attack7): (550, 75, 0) Node index 2" << endl;
     cout << "[TEST NETWORK] Vehicle B   : (800, 150, 0)  Node 1" << endl;
-    cout << "[TEST NETWORK] A->RSU: 250m  RSU->B: 250m  A->B: 500m" << endl;
+    // cout << "[TEST NETWORK] A->RSU: 250m  RSU->B: 250m  A->B: 500m" << endl;
+	cout << "[TEST NETWORK] A->RSU: ~250m, RSU->C: ~250m, RSU->B: ~225m, A->C: 500m (out of range)" << endl;
+    
   }
   
   if (N_RSUs > 0)
