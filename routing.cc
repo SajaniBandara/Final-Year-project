@@ -79,7 +79,8 @@
 #define max24 24
 #define max25 25
 
-int lambda = 1; //NUMBER OF PACKETS IN THE FLOW //saja
+// int lambda = 30;
+int lambda = 1; //test
 
 const int Flow_size = 55;
 uint32_t flow_size = 55;
@@ -88,12 +89,15 @@ const int total_size = 6;
 uint32_t N_RSUs = 1;
 uint32_t N_Vehicles = 2;
 
-const int flows = 1;  //saja
+const int flows = 1;
+
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
+int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
-double simTime = 20; //when testing set to 3 or 4 seconds  //saja
+// double simTime = 240;
+double simTime = 5; //test
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -101,7 +105,8 @@ uint32_t large=50000;
 
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
-double data_transmission_frequency = 5.0;  //change according to lambda //saja
+// double data_transmission_frequency = 1.0;
+double data_transmission_frequency = 5.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -129,55 +134,6 @@ double mu3 = 0.50;
 //New Attack Variables
 
 
-int attack_number = 14; //1 - Attack 1, etc. 2-Attack 2, 3-Attack 3, 4-Attack 4, 5-Attack 5, 6-Combined attack //Sajani
-int attack_percentage = 34; // 1 out of 3 are attackers
-bool selective_time_delay_attack_nodes = true; //sajani
-bool selective_time_delay_malicious_nodes[total_size]; //sajani
-
-// --- Data-plane delay (Attack 15) ---
-bool data_plane_delay_malicious_nodes[total_size];   // nodes that buffer+delay packets
-double DATA_PLANE_DELAY_SECONDS = 0.300;             // 300ms buffer (value in the proposal)
-
-// --- TCAM exhaustion (Attacks 16 & 17) ---
-bool tcam_exhaust_malicious_nodes[total_size];       // data-plane TCAM flood nodes (Attack 17)
-bool controller_tcam_flood = false;                  // true when controller does the flooding (Attack 16)
-uint32_t simulated_tcam_counter[total_size];         // per-RSU simulated TCAM fill level
-uint32_t TCAM_CAPACITY = 100;                        // simulated TCAM table size (rules)
-double TCAM_FLOOD_INTERVAL = 0.200;                  // how often attacker floods (seconds)
-
-// --- Hidden forwarding (Attacks 18–21) ---
-bool hidden_forward_malicious_nodes[total_size];     // data-plane hidden-forward nodes
-bool controller_hidden_forward = false;              // true when controller does it
-bool passive_mode = false;                           // false=active(fabricated), true=passive(copy)
-uint32_t spy_node_id = 3;                           // unauthorized destination node
-
-// --- MISSING ATTACK VARIABLES FROM LDA(2).cc ---
-// Attack state flags
-bool present_location_attack_nodes = false;
-bool present_flooding_attack_nodes = false;
-bool present_fabrication_attack_nodes = false;
-bool present_MIM_attack_nodes = false;
-bool present_vanishing_attack_nodes = false;
-
-bool controller_malicious_assumption = false;
-bool present_flooding_attack_controllers = false;
-bool present_fabrication_attack_controllers = false;
-bool present_MIM_attack_controllers = false;
-bool present_vanishing_attack_controllers = false;
-
-// Malicious node tracking arrays (Assuming max 500 nodes to be safe)
-bool location_malicious_nodes[500];
-bool flooding_malicious_nodes[500];
-bool fabrication_malicious_nodes[500];
-bool MIM_malicious_nodes[500];
-bool vanishing_malicious_nodes[500];
-
-// Malicious controller tracking arrays
-bool flooding_malicious_controllers[10];
-bool fabrication_malicious_controllers[10];
-bool MIM_malicious_controllers[10];
-bool vanishing_malicious_controllers[10];
-// -----------------------------------------------
 
 bool training = false; //true if training data set for machine learnng is generated
 bool training_delay = false;
@@ -221,7 +177,6 @@ private:
 	uint32_t m_nodeId;
 	
 	/* Current status data */
-	//saja
 	
 	Vector m_currentPosition;
 	Vector m_currentVelocity;
@@ -265,7 +220,7 @@ TypeId CustomDataTag::GetInstanceTypeId (void) const
  
 uint32_t CustomDataTag::GetSerializedSize (void) const
 {
-	return sizeof(Vector) + sizeof(Vector) + sizeof(Vector) + sizeof (ns3::Time) + sizeof(uint32_t); //change if there are additional data //saja
+	return sizeof(Vector) + sizeof(Vector) + sizeof(Vector) + sizeof (ns3::Time) + sizeof(uint32_t);
 }
 
 /*
@@ -275,7 +230,7 @@ uint32_t CustomDataTag::GetSerializedSize (void) const
 
 double flow_initiation_time; 
 
-void CustomDataTag::Serialize (TagBuffer i) const  //write //saja
+void CustomDataTag::Serialize (TagBuffer i) const
 {
 	//we store timestamp first
 	i.WriteDouble(m_timestamp.GetDouble());
@@ -304,7 +259,7 @@ void CustomDataTag::Serialize (TagBuffer i) const  //write //saja
 */
 
 
-void CustomDataTag::Deserialize (TagBuffer i)   // read //saja
+void CustomDataTag::Deserialize (TagBuffer i)
 {
 	//We extract what we stored first, so we extract the timestamp
 	m_timestamp =  Time::FromDouble (i.ReadDouble(), Time::NS);;
@@ -340,7 +295,7 @@ void CustomDataTag::Print (std::ostream &os) const
   os << "Custom Data --- Node :" << m_nodeId <<  "\t(" << m_timestamp  << ")" << " Pos (" << m_currentPosition << ")";
 }
 
-//Your accessor and mutator functions   //if wwe want new variable add them //saja
+//Your accessor and mutator functions 
 uint32_t CustomDataTag::GetNodeId() {
 	return m_nodeId;
 }
@@ -76609,15 +76564,6 @@ private:
 
 };
 
-//atackker probability function
-bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
-    // Create a uniform random variable between 0.0 and 100.0
-    //ns3::Ptr<ns3::UniformRandomVariable> uv = ns3::CreateObject<ns3::UniformRandomVariable>();
-    //double randomValue = uv->GetValue(0.0, 100.0);
-    srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
-    double randomValue = 1.0*(rand()%100);    
-    return randomValue < probabilityPercent;
-}
 
 //NS_LOG_COMPONENT_DEFINE("CustomMetaDataUnicastTagN2007");
 NS_OBJECT_ENSURE_REGISTERED (CustomMetaDataUnicastTagN2007);
@@ -94572,7 +94518,7 @@ NodeContainer management_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
-bool routing_test = true; //when implementing test change to TRUE //saja
+bool routing_test = true;
 
 NetDeviceContainer wifidevices;
 NetDeviceContainer wifidevices_172;
@@ -94635,7 +94581,7 @@ void reset_delays_and_packets()
 void write_csv_delay_training(uint32_t index, uint32_t mode)
 {
 	fstream fout;
-	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
 	fout << mode << ", "
 	     << mode*D_wl_bar[index] << ", "
 	     <<	(1-mode)*D_wi_bar[index] << ", "
@@ -94663,7 +94609,7 @@ void write_csv_delay_training(uint32_t index, uint32_t mode)
 void write_csv_delay_prediction()
 {
 	fstream fout;
-	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
 	for (uint32_t index=0;index<total_size;index++)
 	{
 		for(double mode=0.0;mode < 2.0;mode++)
@@ -112820,7 +112766,7 @@ void RSU_metadata_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <Node
 void write_csv()
 {
 	fstream fout;
-	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
 	for (uint32_t i=2; i<total_size+2 ;i++)
 	{
 		fout << total_size << ", "
@@ -112849,51 +112795,56 @@ void write_csv_status_lifetime()
 	switch(routing_algorithm)
 	{
 		case(0):
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
 			break;
 		case(1):
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
 			break;
 		case(2):
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			break;
 		case(3):
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			break;
 		case(4):
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 		case(5):
 			/*
 			if(experiment_number == 0)
 			{
-				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 1)
 			{
-				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 2)
 			{
-				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 3)
 			{
-				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			}
 			*/
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			break;
 			
 		default:
-			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 	}
-	uint32_t moving_nodes = N_Vehicles + N_RSUs;  // = 3
-	for (uint32_t i=0; i < moving_nodes; i++)
-	{
+	cout << "[DEBUG] Node 0 position in CSV: " 
+	     << (routing_data_at_nodes_inst+0)->position << endl;
+	cout << "[DEBUG] Node 1 position in CSV: " 
+	     << (routing_data_at_nodes_inst+1)->position << endl;
+	cout << "[DEBUG] Node 2 position in CSV: " 
+	     << (routing_data_at_nodes_inst+2)->position << endl;
+	for (uint32_t i=0; i<(uint32_t)var; i++)
+		{
 		//cout<<"writing status "<<i<<endl;
-		fout << total_size << ", "
+		fout << var << ", "
 		     << (routing_data_at_controller_inst+i)->nodeid << ", "
 		     << (routing_data_at_controller_inst+i)->position.x << ", "
 		     << (routing_data_at_controller_inst+i)->position.y << ", "
@@ -112913,7 +112864,7 @@ void write_csv_status_lifetime()
 void write_csv_status()
 {
 	fstream fout;
-	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 	for (uint32_t i=2; i<total_size+2 ;i++)
 	{
 		Ptr <Node> node;
@@ -112950,7 +112901,7 @@ void write_csv_status()
 void read_csv()
 {
     fstream fin;
-    fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
+    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -113015,59 +112966,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
 				}
 
 				break;
@@ -113075,37 +113026,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113115,25 +113066,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113145,37 +113096,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
+					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113187,46 +113138,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113246,126 +113197,126 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://threshold experiment
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;	
 			case (8)://threshold experiment
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
 				}
 				break;
 			case (10): //number of nodes for routing
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113375,25 +113326,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113405,22 +113356,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
 				  	  		break;
 				   	  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113432,28 +113383,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113468,59 +113419,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
 				}
 
 				break;
@@ -113528,37 +113479,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113568,25 +113519,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113598,22 +113549,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113625,27 +113576,27 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
 					 	case (130):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113665,89 +113616,89 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime threshold experiment
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;	
 			case (8)://contention threshold experiment
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
 				}
 
 				break;
@@ -113755,37 +113706,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113795,25 +113746,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
+				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113825,22 +113776,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113852,28 +113803,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113890,93 +113841,93 @@ void write_csv_results()
 			case (0)://entropy experiment
 				if (entropy_threshold == 0.000)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
 				}
 				if(entropy_threshold == 0.001)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
 				}
 				if(entropy_threshold == 0.002)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
 				}
 				if(entropy_threshold == 0.005)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
 				}
 				if(entropy_threshold == 0.010)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
 				}
 				if(entropy_threshold == 0.020)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
 				}
 				if(entropy_threshold == 0.050)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
 				}
 				if(entropy_threshold == 0.100)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
 				}
 				if(entropy_threshold == 0.200)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
 				}
 				if(entropy_threshold == 0.500)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
 				}
 				break;
 			case (1)://optimization frequency
 				if (optimization_frequency == 0.02)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
 				}
 				if (optimization_frequency ==0.05)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
 				}
 				if (optimization_frequency ==0.10)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
 				}
 				if (optimization_frequency ==0.25)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
 				}
 				if (optimization_frequency ==0.50)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
 				}
 				if (optimization_frequency == 1.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
 				}
 				if (optimization_frequency ==2.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
 				}
 
 				if (optimization_frequency ==4.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
 				}
 		
 				if (optimization_frequency == 6.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
 				}
 
 				if (optimization_frequency ==8.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
 				}
 
 				if (optimization_frequency ==10.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
 				}
 
 				break;
@@ -113984,37 +113935,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
 						break;
 				}
 				break;
@@ -114024,25 +113975,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -114054,37 +114005,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
+					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -114096,46 +114047,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -114155,167 +114106,167 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime experiment
 				if (link_lifetime_threshold == 0.000)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
 				}
 				if(link_lifetime_threshold == 0.100)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
 				}
 				if(link_lifetime_threshold == 0.200)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
 				}
 				if(link_lifetime_threshold == 0.500)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
 				}
 				if(link_lifetime_threshold == 1.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
 				}
 				if(link_lifetime_threshold == 2.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
 				}
 				if(link_lifetime_threshold == 4.00)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
 				}
 				if(link_lifetime_threshold == 6.000)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
 				}
 				if(link_lifetime_threshold == 8.000)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
 				}
 				if(link_lifetime_threshold == 12.000)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
 				}
 				break;	
 			case (8)://contention experiment
 				if (contention_threshold == 0.000)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
 				}
 				if(contention_threshold == 0.001)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
 				}
 				if(contention_threshold == 0.002)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
 				}
 				if(contention_threshold == 0.005)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
 				}
 				if(contention_threshold == 0.010)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
 				}
 				if(contention_threshold == 0.020)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
 				}
 				if(contention_threshold == 0.050)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
 				}
 				if(contention_threshold == 0.100)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
 				}
 				if(contention_threshold == 0.200)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
 				}
 				if(contention_threshold == 0.500)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
 				}
 				break;	
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
+					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
 				}
 
 				break;
@@ -114323,37 +114274,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
+						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -114363,25 +114314,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -114393,22 +114344,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
+					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -114420,28 +114371,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -114519,6 +114470,188 @@ double current_load_balance = 0.0;
 double average_load_balance = 0.0;
 double previous_cumulative_load_imbalance = 0.0;
 
+// ============================================================
+// SECURITY PERFORMANCE METRIC STATE — MOBIGUARD
+// ============================================================
+
+// Number of attack variants defined in proposal
+#define NUM_ATTACK_VARIANTS 8
+
+// Per-variant confusion matrix counters
+// Index 0-3: Selective Time Delay variants (S1-S4)
+// Index 4-7: Hidden Forwarding variants    (S5-S8)
+uint32_t sec_TP[NUM_ATTACK_VARIANTS] = {0};
+uint32_t sec_FP[NUM_ATTACK_VARIANTS] = {0};
+uint32_t sec_TN[NUM_ATTACK_VARIANTS] = {0};
+uint32_t sec_FN[NUM_ATTACK_VARIANTS] = {0};
+
+// Ground truth: is this node running an attack? (stub — set manually now)
+// When attack scenarios are implemented, connect real attack flags here.
+// Index maps to node index (0 to total_size-1)
+bool is_malicious_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
+
+// Detector decision: did the detector flag this node?
+// Set to true when your detection logic fires for that variant/node
+bool is_detected_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
+
+// Which variant is active for this run (set at simulation start)
+// -1 means no attack (baseline run)
+int active_attack_variant = -1;
+
+// Mitigation latency timestamps (seconds)
+// t_onset:     when malicious flag first becomes true for a node
+// t_quarantine: when quarantine/detection decision fires for that node
+double t_onset[total_size]      = {0.0};
+double t_quarantine[total_size] = {0.0};
+
+// Computed metric values (current cycle)
+double current_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
+double current_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
+double current_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
+double current_mitigation_latency                  = 0.0;
+double average_mitigation_latency                  = 0.0;
+
+// === ATTACK 2: Selective Time Delay — Data Plane ===
+// Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
+bool selective_delay_malicious_nodes[total_size];
+bool present_selective_delay_attack_nodes = false;
+double attack2_delay_seconds = 0.080; // 80ms injected delay
+
+// === SIGNATURE S2 DETECTION GLOBALS ===
+double t_fwd_packet[total_size][Flow_size+2];
+// records when each node forwarded each packet
+double delta_max_s2 = 0.050;
+// 50ms threshold per Equation 3.6 — half of 100ms safety bound
+bool s2_detection_active = true;
+// enable/disable S2 detection
+
+// Cumulative accumulators for running averages
+double previous_cumulative_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
+double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
+double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
+double previous_cumulative_mitigation_latency                  = 0.0;
+
+// ============================================================
+// STUB ATTACK INITIALISER
+// Call this once from main() or the simulation setup block.
+// Replace body when real attack scenarios are implemented.
+// ============================================================
+void hardcode_test_network_attackers();
+void initialise_stub_attack_state()
+{
+    // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
+    // and node 3 as malicious for variant 4 (Active Hidden Forwarding CP)
+    // as a demonstration. Remove/replace when real attacks are added.
+    is_malicious_node[0][2] = true;
+    is_malicious_node[4][3] = true;
+
+    // Set onset timestamps for those nodes
+    t_onset[2] = 1.0;  // attack starts at t=1s
+    t_onset[3] = 1.0;
+
+	// Stub: simulate detection firing 50ms after onset
+	// Replace with real Simulator::Now() calls when attacks are implemented
+	t_quarantine[2] = 1.050;
+	t_quarantine[3] = 1.050;
+
+	// Only set if not already configured via command line
+	if (active_attack_variant == -1)
+	{
+		active_attack_variant = 0;
+	}
+	    // Activate Attack 2 for test network
+	    hardcode_test_network_attackers();
+}
+
+// Call when an attack node activates — v=variant(0-7), n=node index
+void record_attack_onset(int v, int n)
+{
+	is_malicious_node[v][n] = true;
+	t_onset[n] = Simulator::Now().GetSeconds();
+}
+
+// Call when detection/quarantine fires — v=variant(0-7), n=node index
+void record_detection_event(int v, int n)
+{
+	is_detected_node[v][n] = true;
+	t_quarantine[n] = Simulator::Now().GetSeconds();
+}
+
+// Random boolean helper copied from LDA_2_.cc
+bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
+	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
+	double randomValue = 1.0*(rand()%100);
+	return randomValue < probabilityPercent;
+}
+
+void declare_attackers()
+{
+	for(uint32_t i=0; i<total_size; i++)
+	{
+		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
+		if(present_selective_delay_attack_nodes == true)
+		{
+			selective_delay_malicious_nodes[i] = attacking_state;
+		}
+		else
+		{
+			selective_delay_malicious_nodes[i] = false;
+		}
+		// For test network: hardcode node 2 (RSU) as malicious
+		// This will be replaced by declare_attackers() for full experiments
+	}
+	cout << "[ATTACK2] declare_attackers() completed" << endl;
+	for(uint32_t i=0; i<(uint32_t)var; i++)
+	{
+		cout << "[ATTACK2] Node " << i << " selective_delay_malicious = " 
+			 << selective_delay_malicious_nodes[i] << endl;
+	}
+}
+
+void hardcode_test_network_attackers()
+{
+	// Force 100% attack rate for test network verification
+	attack_percentage = 100;  //2.With attack 
+	// attack_percentage =0; //1. without the attack
+
+	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
+	// Attack 2 scenario from Figure 3.2(b):
+	// Malicious RSU (node 2) intercepts and delays packets
+	for(uint32_t i=0; i<total_size; i++)
+	{
+		selective_delay_malicious_nodes[i] = false;
+	}
+	selective_delay_malicious_nodes[2] = true; // RSU is the attacker
+
+
+	/*--------------------------------------------------------
+// Change 1: attack never fires
+//attack_percentage = 0;
+
+// Change 2: do not mark node 2 as malicious in ground truth
+// Comment out these two lines:
+// selective_delay_malicious_nodes[2] = true;
+// record_attack_onset(1, 2);
+
+// Keep this line (master switch stays false effect)
+//present_selective_delay_attack_nodes = false;
+
+//s2_detection_active=false;
+--------------------------------------------------------------*/
+
+	present_selective_delay_attack_nodes = true; //2. With attack scenario
+    
+	cout << "[ATTACK2] ① Test network attackers hardcoded" << endl;
+	cout << "[ATTACK2] ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
+	cout << "[ATTACK2] ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
+	cout << "[ATTACK2] ① Routing forced through RSU (Node 2) for attack verification" << endl;
+	cout << "[ATTACK2] ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
+	cout << "[ATTACK2] ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
+    
+	// Record attack onset for metric M4
+record_attack_onset(1, 2);   
+}
+
 void write_csv_results_routing()
 {
 	fstream fout;
@@ -114533,16 +114666,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114552,16 +114685,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114571,16 +114704,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114590,16 +114723,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114609,16 +114742,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114629,16 +114762,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114656,19 +114789,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114678,19 +114811,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114700,19 +114833,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114722,19 +114855,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114745,19 +114878,19 @@ void write_csv_results_routing()
 					{
 						
 						case(10):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114767,19 +114900,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114797,28 +114930,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -114828,28 +114961,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -114859,28 +114992,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -114890,28 +115023,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -114921,28 +115054,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -114952,19 +115085,19 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(40):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
 							break;
 						default:
 							break;
@@ -114981,22 +115114,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115006,22 +115139,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115031,22 +115164,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115056,22 +115189,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115081,22 +115214,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115106,22 +115239,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
+							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115447,8 +115580,7 @@ double average(double x, double y)
 void update_stable(uint32_t flow_id, uint32_t current_hop)
 {
 	proposed_algo2_output_inst[flow_id].met[current_hop] = true;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
-	for(uint32_t i=0; i < active_nodes; i++)
+	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
 		if(linklifetimeMatrix_dsrc[current_hop][i] >link_lifetime_threshold)
 		{
@@ -115502,8 +115634,7 @@ void run_stable_path_finding(uint32_t flow_id)
 void update_unstable(uint32_t flow_id, uint32_t current_hop)
 {
 	distance_algo2_output_inst[flow_id].met[current_hop] = true;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
-	for(uint32_t i=0; i < active_nodes; i++)
+	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
 		if(linklifetimeMatrix_dsrc[current_hop][i] >0.0)
 		{
@@ -116166,6 +116297,223 @@ void calculate_average_load_balance_routing()
 	previous_cumulative_load_imbalance = current_cumulative_load_imbalance;
 }
 
+// ============================================================
+// M1: MCC, M2: Per-Variant Detection Rate, M3: FPR
+// Computes from confusion matrix counters sec_TP/FP/TN/FN
+// ============================================================
+void calculate_security_detection_metrics()
+{
+    for (int v = 0; v < NUM_ATTACK_VARIANTS; v++)
+    {
+        // Update confusion matrix for this variant from node states
+        // Reset this variant's counters first
+        sec_TP[v] = 0; sec_FP[v] = 0;
+        sec_TN[v] = 0; sec_FN[v] = 0;
+
+        for (int n = 0; n < total_size; n++)
+        {
+            bool malicious = is_malicious_node[v][n];
+            bool detected  = is_detected_node[v][n];
+
+            if (malicious  && detected)  sec_TP[v]++;
+            if (!malicious && detected)  sec_FP[v]++;
+            if (!malicious && !detected) sec_TN[v]++;
+            if (malicious  && !detected) sec_FN[v]++;
+        }
+
+        double TP = (double)sec_TP[v];
+        double FP = (double)sec_FP[v];
+        double TN = (double)sec_TN[v];
+        double FN = (double)sec_FN[v];
+
+        // M2: Detection Rate (True Positive Rate) per variant
+        double dr_denominator = TP + FN;
+        if (dr_denominator > 0.0)
+            current_detection_rate[v] = TP / dr_denominator;
+        else
+            current_detection_rate[v] = 0.0;
+
+        // M3: False Positive Rate per variant
+        double fpr_denominator = FP + TN;
+        if (fpr_denominator > 0.0)
+            current_FPR[v] = FP / fpr_denominator;
+        else
+            current_FPR[v] = 0.0;
+
+        // M1: Matthews Correlation Coefficient per variant
+        // Formula from proposal Eq. (4.1)
+        double epsilon = 1e-6;
+        double numerator   = (TP * TN) - (FP * FN);
+        double denominator = sqrt(
+            (TP + FP + epsilon) *
+            (TP + FN + epsilon) *
+            (TN + FP + epsilon) *
+            (TN + FN + epsilon)
+        );
+        current_MCC[v] = numerator / denominator;
+
+        // Running averages
+        previous_cumulative_MCC[v]            += current_MCC[v];
+        previous_cumulative_detection_rate[v] += current_detection_rate[v];
+        previous_cumulative_FPR[v]            += current_FPR[v];
+
+        std::cout << "[SECURITY] Variant " << v
+                  << " | MCC=" << current_MCC[v]
+                  << " DR="    << 100.0 * current_detection_rate[v] << "%"
+                  << " FPR="   << 100.0 * current_FPR[v] << "%"
+                  << " TP=" << sec_TP[v] << " FP=" << sec_FP[v]
+                  << " TN=" << sec_TN[v] << " FN=" << sec_FN[v]
+                  << std::endl;
+    }
+}
+
+// ============================================================
+// M4: Mitigation Latency
+// Lmit = t_quarantine - t_onset  (seconds, converted to ms)
+// t_onset     = when malicious flag became true for a node
+// t_quarantine = when quarantine/detection decision fired
+//
+// To use: when your detection logic fires for node n, set:
+//   t_quarantine[n] = Simulator::Now().GetSeconds();
+// ============================================================
+void calculate_mitigation_latency_metric()
+{
+    double total_latency = 0.0;
+    uint32_t valid_count = 0;
+
+    for (int n = 0; n < total_size; n++)
+    {
+        // Only count nodes that have both timestamps set
+        if (t_onset[n] > 0.0 && t_quarantine[n] > t_onset[n])
+        {
+            double lmit = t_quarantine[n] - t_onset[n];  // seconds
+            total_latency += lmit;
+            valid_count++;
+
+            // Flag if exceeding the 100ms safety bound from proposal M4
+            if (lmit * 1000.0 > 100.0)
+            {
+                std::cout << "[SECURITY] WARNING: Node " << n
+                          << " mitigation latency " << lmit * 1000.0
+                          << " ms EXCEEDS 100ms bound" << std::endl;
+            }
+        }
+    }
+
+    if (valid_count > 0)
+        current_mitigation_latency = total_latency / (double)valid_count;
+    else
+        current_mitigation_latency = 0.0;
+
+    previous_cumulative_mitigation_latency += current_mitigation_latency;
+	double cycle = data_gathering_cycle_number - 1.0;
+	if (cycle < 1.0)
+		cycle = 1.0;
+	average_mitigation_latency =
+		previous_cumulative_mitigation_latency / cycle;
+
+    std::cout << "[SECURITY] Avg mitigation latency: "
+              << 1000.0 * average_mitigation_latency << " ms" << std::endl;
+}
+
+void write_security_metrics_csv()
+{
+	fstream fout;
+	string filename;
+	double cycle = data_gathering_cycle_number - 1.0;
+	if (cycle < 1.0)
+	{
+		cycle = 1.0;
+	}
+
+	int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;
+
+	int attack_id = 1;
+	switch (active_attack_variant)
+	{
+		case (-1):
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
+			break;
+		case (0):
+			attack_id = 1;
+			break;
+		case (1):
+			attack_id = 2;
+			break;
+		case (2):
+			attack_id = 3;
+			break;
+		case (3):
+			attack_id = 4;
+			break;
+		case (4):
+			attack_id = 5;
+			break;
+		case (5):
+			attack_id = 6;
+			break;
+		case (6):
+			attack_id = 7;
+			break;
+		case (7):
+			attack_id = 8;
+			break;
+		default:
+			attack_id = 1;
+			break;
+	}
+
+	if (active_attack_variant != -1)
+	{
+		switch (attack_percentage)
+		{
+			case (0):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
+				break;
+			case (20):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_20.csv";
+				break;
+			case (40):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_40.csv";
+				break;
+			case (60):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_60.csv";
+				break;
+			case (80):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_80.csv";
+				break;
+			case (100):
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_100.csv";
+				break;
+			default:
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
+				break;
+		}
+	}
+
+	fout.open(filename, ios::out|ios::app);
+
+	fout << (uint32_t)cycle << ", "
+		 << current_packet_delivery_ratio * 100.0 << ", "
+		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
+		 << current_latency_routing * 1000.0 << ", "
+		 << average_latency_routing * 1000.0 << ", "
+		 << current_MCC[selected_variant] << ", "
+		 << (previous_cumulative_MCC[selected_variant] / cycle) << ", "
+		 << (current_detection_rate[selected_variant] * 100.0) << ", "
+		 << ((previous_cumulative_detection_rate[selected_variant] / cycle) * 100.0) << ", "
+		 << (current_FPR[selected_variant] * 100.0) << ", "
+		 << ((previous_cumulative_FPR[selected_variant] / cycle) * 100.0) << ", "
+		 << (current_mitigation_latency * 1000.0) << ", "
+		 << (average_mitigation_latency * 1000.0) << ", "
+		 << sec_TP[selected_variant] << ", "
+		 << sec_FP[selected_variant] << ", "
+		 << sec_TN[selected_variant] << ", "
+		 << sec_FN[selected_variant] << "\n";
+
+	fout.close();
+	cout << "written to file successfully" << endl;
+}
 
 void calculate_performance_evaluation_metrics()
 {
@@ -116175,6 +116523,12 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000040), calculate_average_jitter_routing);
 	Simulator::Schedule(Seconds(0.000060), calculate_average_load_balance_routing);
 	Simulator::Schedule(Seconds(0.000070), write_csv_results_routing);
+
+	// --- New security metrics (MOBIGUARD) ---
+	// Scheduled after existing writes to avoid timing conflicts
+	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
+	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
+	Simulator::Schedule(Seconds(0.000100), write_security_metrics_csv);
 }
 
 
@@ -116504,7 +116858,7 @@ void transmit_delta_values()
 {
 	//read_csv();
 	//After getting the solution, unicast the solution to the nodes.
-	for (uint32_t u=0;u< total_size;u++)
+	for (uint32_t u=0; u<(uint32_t)var; u++)
 	{
 		if (u < (N_Vehicles))
 		{
@@ -116527,7 +116881,7 @@ void transmit_delta_values()
 void optimize_subsequent()
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -116540,44 +116894,44 @@ void optimize_link_lifetime()
 	switch(routing_algorithm)
 	{
 		case(0):
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
 			break;
 		case(1):
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
 			break;
 		case(2):
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			break;
 		case(3):
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			break;
 		case(4):
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
 			break;
 		case(5):
 			/*
 			if(experiment_number == 0)
 			{
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			}
 			if(experiment_number == 1)
 			{
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
 			}
 			if(experiment_number == 2)
 			{
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			}
 			if(experiment_number == 3)
 			{
-				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			}
 			*/
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			
 			break;
 		default:
-			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
+			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
 			break;
 		
 	}
@@ -116588,7 +116942,7 @@ void optimize_link_lifetime()
 
 void optimize_first_time()
 {
-	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -116604,12 +116958,12 @@ double delay_vector[2*total_size];
 
 void convert_link_lifetimes_dsrc()
 {
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	{
 		vector<double> x_dsrc;
-		for (uint32_t j = 0;j < (total_size);j++)
+		for (uint32_t j = 0;j < (uint32_t)var;j++)
 		{
-			x_dsrc.push_back(link_lifetime_vector[(i*total_size)+j]);
+			x_dsrc.push_back(link_lifetime_vector[(i*var)+j]);
 
 		}
 		
@@ -116617,7 +116971,7 @@ void convert_link_lifetimes_dsrc()
 	}
 		
 	vector<vector<double>> new_adjacencyMatrix_dsrc;
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	//for(uint32_t i=0;i<9;i++)
 	{
 		new_adjacencyMatrix_dsrc.push_back(link_lifetime_dsrc[i]);
@@ -116717,44 +117071,44 @@ void read_lifetime_from_csv()
     switch(routing_algorithm)
     {
     	case(0):
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
     		break;
     	case(1):
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
     		break;
     	case(2):
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		break;
     	case(3):
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		break;
     	case(4):
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
     		break;	
     	case(5):
     		/*
     		if(experiment_number == 0)
     		{
-    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		}
     		if(experiment_number == 1)
     		{
-    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
     		}
     		if(experiment_number == 2)
     		{
-    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		}
     		if(experiment_number == 3)
     		{
-    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		}
     		*/
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		break;	
     		
     	default:
-    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
+    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
     		break;
     }
     
@@ -117737,10 +118091,10 @@ void run_proposed_RL()
 		else
 		{
 			//cout<<"Running RL in fid "<<fid<<endl;
-			for(uint32_t cid=0;cid<total_size;cid++)	
+			for(uint32_t cid=0;cid<(uint32_t)var;cid++)	
 			{
 				//Initialize Q values with lifetime
-				for(uint32_t nid=0;nid<total_size;nid++)	
+				for(uint32_t nid=0;nid<(uint32_t)var;nid++)	
 				{
 					if ((cid==f_destination) || (nid==f_source))
 					{
@@ -117763,10 +118117,10 @@ void run_proposed_RL()
 			//cout<<"Q-values initialized"<<endl;
 			
 			//find cardinality
-			for(uint32_t cid=0;cid<total_size;cid++)	
+			for(uint32_t cid=0;cid<(uint32_t)var;cid++)	
 			{	
 				uint32_t summation = 0;
-				for(uint32_t nid=0;nid<total_size;nid++)	
+				for(uint32_t nid=0;nid<(uint32_t)var;nid++)	
 				{
 					double lt = unit_step(linklifetimeMatrix_dsrc[cid][nid]-link_lifetime_threshold, 0);
 					double product = (proposed_algo2_output_inst[fid].conn[nid])*lt;
@@ -117778,9 +118132,9 @@ void run_proposed_RL()
 			
 			
 			//convert to directed acyclic graph
-			for(uint32_t cid=0;cid<total_size;cid++)	
+			for(uint32_t cid=0;cid<(uint32_t)var;cid++)	
 			{	
-				for(uint32_t nid=0;nid<total_size;nid++)	
+				for(uint32_t nid=0;nid<(uint32_t)var;nid++)	
 				{
 					
 					(Y_at_controller_inst+fid)->Y_fi_inst[cid].Y_values[nid] = proposed_algo2_output_inst[fid].Y[cid];
@@ -118316,7 +118670,7 @@ void  run_optimization_subsequent()
 void predict_DNN_link_lifetime()
 {
 	cout<<"predicting link lifetimes"<<endl;
-	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -118325,7 +118679,7 @@ void predict_DNN_link_lifetime()
 void predict_DNN_delay()
 {
 	cout<<"predicting delay"<<endl;
-	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
+	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -118415,7 +118769,7 @@ void read_delay_from_csv()
 {
     fstream fin;
     cout<<"reading delay from csv"<<endl;
-    fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
+    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -118483,7 +118837,7 @@ void calculate_dijkstra_stable_solution(uint32_t destination)
 void write_distance_metrics()
 {
 	fstream fout;
-	string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
+	string filename = "/home/user/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
 	fout.open(filename,ios::out|ios::app);
 	
 	fout << Simulator::Now().GetSeconds();
@@ -118678,7 +119032,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 			}
 		}
 		//update other node status
-		for(uint32_t i=0;i<total_size;i++)
+		for(uint32_t i=0;i<linklifetimeMatrix_dsrc[nodeid].size();i++)
 		{
 			if((linklifetimeMatrix_dsrc[nodeid][i]) > 0.0)
 			{
@@ -118687,7 +119041,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 					txop_inst[f].busy[arguments.channel][i] = busy;
 					txop_inst[f].last_set_timestamp[arguments.channel][i] = Seconds(Now().GetSeconds());
 					//cout<<"Set node "<<i<<"as busy at "<<Now().GetSeconds()<<endl;
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -118710,7 +119064,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 						//cout<<"Node "<<i<<"remains busy "<<Now().GetSeconds()<<endl;
 					}
 					
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -118738,7 +119092,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 					txop_inst[f].busy[arguments.channel][i] = busy;
 					txop_inst[f].last_set_timestamp[arguments.channel][i] = Seconds(Now().GetSeconds());
 					//cout<<"Set node "<<i<<"as busy at "<<Now().GetSeconds()<<endl;
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -118761,7 +119115,7 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 						//cout<<"Node "<<i<<"remains busy "<<Now().GetSeconds()<<endl;
 					}
 					
-					for(uint32_t j=0;j<total_size;j++)
+					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 					{
 						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 						{
@@ -118884,12 +119238,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 			{
 				
 				bool neighborhood_busy = false;
-				for(uint32_t i=0;i<total_size;i++)
+				for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 				{
 					if((linklifetimeMatrix_dsrc[current_hop][i]) > 0.0)
 					{
 						neighborhood_busy = neighborhood_busy | txop_inst[flow_id].busy[arguments.channel][i];	
-						for(uint32_t j=0;j<total_size;j++)
+						for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 						{
 							if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 							{
@@ -118966,9 +119320,50 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						Address addr = destination_nd->GetAddress();
 						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
 						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (current_nd);
-						Simulator::Schedule (Seconds(0.0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+
+						double tx_delay = 0.0;
+						bool apply_attack_delay = false;
+						if (present_selective_delay_attack_nodes &&
+							selective_delay_malicious_nodes[current_hop] &&
+							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
+						{
+							bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
+							if (atk)
+							{
+								apply_attack_delay = true;
+								tx_delay = attack2_delay_seconds;
+								cout << "[ATTACK2] ③ Malicious RSU (node " << current_hop
+									 << ") intercepting packet ID " << packet_id
+									 << " for flow " << flow_id
+									 << " at t=" << Now().GetSeconds() << "s" << endl;
+								cout << "[ATTACK2] ④ Buffering - injecting delay of "
+									 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+								cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+									 << Now().GetSeconds() + attack2_delay_seconds
+									 << "s (delay=" << attack2_delay_seconds * 1000.0
+									 << "ms)" << endl;
+							}
+						}
+
+						// Record forwarding timestamp for S2 signature detection
+						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
+						if(selective_delay_malicious_nodes[current_hop] == false)
+						{
+							cout << "[ATTACK2] ② Node " << current_hop
+								 << " sending packet ID " << packet_id
+								 << " to next hop " << hop
+								 << " normally at t=" << Now().GetSeconds() << "s" << endl;
+						}
+
+						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
-						Simulator::Schedule (Seconds (tg+0.000100+rand_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
+						double retry_delay = tg + 0.000100 + rand_delay;
+						if (apply_attack_delay)
+						{
+							// Prevent immediate retries from bypassing the injected delay.
+							retry_delay += tx_delay;
+						}
+						Simulator::Schedule (Seconds (retry_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
 						//Simulator::Schedule (Seconds (tg), updateTxop, flow_id, current_hop, hop, packet_id, false,arguments.channel);
 						sent_IDS[flow_id][current_hop][packet_id] = true;
 						routing_packet_general_initial_timestamp[flow_id][current_hop][packet_id] = Now().GetSeconds();
@@ -119170,7 +119565,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//uint32_t nid = source_node->GetId();
 			
 			
-			uint32_t current_hop = destination_node_id -2;  //current node id //saja
+			uint32_t current_hop = destination_node_id -2;
 			uint32_t fid = tagmodified_routing.GetflowId();
 			uint32_t packet_ID = tagmodified_routing.GetpacketId();
 			uint32_t channel = tagmodified_routing.GetchannelId();
@@ -119195,6 +119590,59 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					destination_counter[fid]++;
 					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
+					
+					// === SIGNATURE S2 DETECTION ===
+					// Check: t_recv - t_fwd > delta_max (Equation 3.6)
+					if(s2_detection_active && destination == current_hop)
+					{
+						// Use tagmodified_routing which is already peeked above
+						// Getprevious_senderId() returns the sim index of who forwarded this packet
+						uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+						
+						if(sender_sim_index < (uint32_t)var)
+						{
+							double t_recv_now = Now().GetSeconds();
+							double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
+							
+							if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
+							{
+								double hop_delay = t_recv_now - t_fwd_by_sender;
+								
+								cout << "[S2] Hop delay from node " << sender_sim_index
+								     << " to node " << current_hop
+								     << " for flow " << fid
+								     << " packet " << packet_ID
+								     << " = " << hop_delay * 1000.0 << "ms" << endl;
+								
+								if(hop_delay > delta_max_s2)
+								{
+									cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
+									cout << "[S2] Hop delay " << hop_delay * 1000.0
+									     << "ms exceeds threshold " 
+									     << delta_max_s2 * 1000.0 << "ms" << endl;
+									cout << "[S2] Node " << sender_sim_index
+									     << " detected as malicious attacker" << endl;
+									
+									if(!is_detected_node[1][sender_sim_index])
+									{
+										record_detection_event(1, sender_sim_index);
+										cout << "[S2] record_detection_event fired for node "
+										     << sender_sim_index 
+										     << " at t=" << Now().GetSeconds() << "s" << endl;
+									}
+								}
+							}
+						}
+					}
+					// === END SIGNATURE S2 DETECTION ===
+					
+					if(selective_delay_malicious_nodes[current_hop] == false)
+					{
+						cout << "[ATTACK2] Vehicle " << current_hop 
+							 << " (DESTINATION) received packet ID " << packet_ID 
+							 << " for flow " << fid 
+							 << " at t=" << Now().GetSeconds() << "s" << endl;
+					}
 					cout<<"Flow ID "<<fid<<"received "<<" Packet ID: "<<packet_ID<<"Totally received "<<destination_counter[fid]<<"packets at destination "<<destination<<" at "<<Now().GetSeconds()<<endl;
 				}
 				else
@@ -119302,95 +119750,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 								
 								uint32_t updated_packet_ID = packet_ID;
 								//cout<<"updated packet ID is "<<updated_packet_ID<<endl;
-								//check the node id is o then add a delay here or else as it is //saja
-								// --- Attack 14 & 15: Selective Time Delay (data plane) ---
-								 if (selective_time_delay_malicious_nodes[current_hop] == true ||
-									data_plane_delay_malicious_nodes[current_hop] == true)
-								{
-									// Buffer packet for DATA_PLANE_DELAY_SECONDS then forward normally
-									Simulator::Schedule(Seconds(DATA_PLANE_DELAY_SECONDS),
-														check_delivery_and_retransmit,
-														fid, updated_packet_ID, nid, current_hop,
-														originail_timestamp, arguments);
-									cout << "[ATTACK 14/15 — DATA DELAY] Node " << current_hop
-										<< " buffering packet " << updated_packet_ID
-										<< " for " << DATA_PLANE_DELAY_SECONDS << "s at "
-										<< Now().GetSeconds() << endl;
-								}
-
-								// --- Attacks 16 & 17: TCAM Exhaustion (slow-path delay) ---
-								else if (attack_number == 16 || attack_number == 17)
-								{
-									// Check if this forwarding node's TCAM is exhausted
-									double slow_delay = get_tcam_slowpath_delay(current_hop);
-									if (slow_delay > 0.001)
-									{
-										// Legitimate packet misses the flow table → goes to controller slow-path
-										Simulator::Schedule(Seconds(slow_delay),
-															check_delivery_and_retransmit,
-															fid, updated_packet_ID, nid, current_hop,
-															originail_timestamp, arguments);
-										cout << "[ATTACK 16/17 — TCAM SLOW PATH] Node " << current_hop
-											<< " packet " << updated_packet_ID
-											<< " slow-pathed with " << slow_delay*1000.0 << "ms delay at "
-											<< Now().GetSeconds() << endl;
-									}
-									else
-									{
-										// TCAM not full yet — normal forward
-										Simulator::Schedule(Seconds(0.0),
-															check_delivery_and_retransmit,
-															fid, updated_packet_ID, nid, current_hop,
-															originail_timestamp, arguments);
-									}
-								}
-
-								// --- Attacks 18 & 19: Active Hidden Forwarding ---
-								else if ((attack_number == 18 && controller_hidden_forward == true) ||
-										(attack_number == 19 && hidden_forward_malicious_nodes[current_hop] == true))
-								{
-									// Step 1: Forward normally to legitimate next hop (nid)
-									Simulator::Schedule(Seconds(0.0),
-														check_delivery_and_retransmit,
-														fid, updated_packet_ID, nid, current_hop,
-														originail_timestamp, arguments);
-
-									// Step 2: Send a FABRICATED copy to spy node (active = true)
-									// Only do this if spy_node is NOT the legitimate next hop
-									if (nid != spy_node_id && current_hop != spy_node_id)
-									{
-										send_hidden_copy(fid, updated_packet_ID, current_hop,
-														originail_timestamp, arguments, true /*active*/);
-									}
-								}
-
-								// --- Attacks 20 & 21: Passive Hidden Forwarding ---
-								else if ((attack_number == 20 && controller_hidden_forward == true) ||
-										(attack_number == 21 && hidden_forward_malicious_nodes[current_hop] == true))
-								{
-									// Step 1: Forward normally to legitimate next hop (nid) — path unchanged
-									Simulator::Schedule(Seconds(0.0),
-														check_delivery_and_retransmit,
-														fid, updated_packet_ID, nid, current_hop,
-														originail_timestamp, arguments);
-
-									// Step 2: Send UNMODIFIED silent copy to spy node (active = false)
-									if (nid != spy_node_id && current_hop != spy_node_id)
-									{
-										send_hidden_copy(fid, updated_packet_ID, current_hop,
-														originail_timestamp, arguments, false /*passive*/);
-									}
-								}
-
-								// --- No attack / baseline ---
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-														check_delivery_and_retransmit,
-														fid, updated_packet_ID, nid, current_hop,
-														originail_timestamp, arguments);
-								}
-															
+								Simulator::Schedule (Seconds (0.0), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
 								sub_flow_counter++;
 								total_packet_counter++;
 								if(get<2>(*index_innermost) > 0)
@@ -119400,7 +119760,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 								sent = true;
 							}
 						}
-						else 
+						else
 						{
 							for(uint32_t j =0;j<total_size;j++)
 							{
@@ -121034,7 +121394,7 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 			Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
 			Ptr <Node> ni = DynamicCast <Node> (source_node);
 			dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-			Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+			Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 		}
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
@@ -121106,7 +121466,15 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
 	header.SetAddr1(dest_address);
 	packet_i->AddHeader(header);
 	//dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-	Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+	
+	if(!selective_delay_malicious_nodes[nid-2])
+	{
+	    cout << "[ATTACK2] ② Node " << (nid-2)
+	         << " sending packet ID " << packet_ID
+	         << " to next hop " << next_hop_id
+	         << " normally at t=" << Now().GetSeconds() << "s" << endl;
+	}
+	Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 	//cout<<"This is flow ID "<<flow_id<<"Transmitting packet ID "<<packet_ID<<" from "<<source<<" to next hop "<<next_hop_id<<"at time "<<Now().GetSeconds()<<endl;
 	//uint32_t * pt = tag.GetNodeId();
 	//cout<<"node id from tag is "<<*pt<<endl;	
@@ -121489,12 +121857,12 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 			else
 			{
 				bool neighborhood_busy = false;
-				for(uint32_t i=0;i<total_size;i++)
+				for(uint32_t i=0;i<linklifetimeMatrix_dsrc[source].size();i++)
 				{
 					if((linklifetimeMatrix_dsrc[source][i]) > 0.0)
 					{
 						neighborhood_busy = neighborhood_busy | txop_inst[fid].busy[arguments.channel][i];
-						for(uint32_t j=0;j<total_size;j++)
+						for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
 						{
 							if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
 							{
@@ -121521,29 +121889,294 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						switch(arguments.channel)
 						{
 							case(172):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_172.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_172.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(174):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_174.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_174.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(176):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_176.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_176.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(178):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(180):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_180.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_180.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							case(182):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_182.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
-							break;
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_182.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
+								break;
 							case(184):
-								Simulator::Schedule (Seconds (0.0), routing_dsrc_data_unicast, wifidevices_184.Get (source), dsrc_Nodes.Get(source), fid, nid, arguments, total_packet_counter+1);
+								// === ATTACK 2 INJECTION ===
+								if(selective_delay_malicious_nodes[source] && 
+								   present_selective_delay_attack_nodes &&
+								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
+								{
+									bool atk = GetBooleanWithProbability(attack_percentage, source);
+									if(atk)
+									{
+										cout << "[ATTACK2] ③ Malicious RSU (node " << source
+											 << ") intercepting packet ID " << packet_id
+											 << " for flow " << fid
+											 << " at t=" << Now().GetSeconds() << "s" << endl;
+										cout << "[ATTACK2] ④ Buffering — injecting delay of "
+											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
+										Simulator::Schedule(Seconds(attack2_delay_seconds),
+											routing_dsrc_data_unicast,
+											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+										cout << "[ATTACK2] ⑤ Delayed forward scheduled at t="
+											 << Now().GetSeconds() + attack2_delay_seconds
+											 << "s (delay=" << attack2_delay_seconds*1000.0
+											 << "ms)" << endl;
+									}
+									else
+									{
+										Simulator::Schedule(Seconds(0.0),
+											routing_dsrc_data_unicast,
+											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
+											fid, nid, arguments, total_packet_counter+1);
+									}
+								}
+								else
+								{
+									Simulator::Schedule(Seconds(0.0),
+										routing_dsrc_data_unicast,
+										wifidevices_184.Get(source), dsrc_Nodes.Get(source),
+										fid, nid, arguments, total_packet_counter+1);
+								}
+								// === END ATTACK 2 INJECTION ===
 								break;
 							default:
 							break;
-						
 						}
 						
 						Simulator::Schedule (Seconds (tg+0.000050+rand_delay), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, arguments);
@@ -138792,380 +139425,11 @@ double inv_factorial(long int n)
 }
 
 
-// ---------- Print metrics ----------
-void print_attack_metrics()
-{
-    cout << "===== ATTACK METRICS SNAPSHOT at " << Now().GetSeconds() << "s =====" << endl;
-    cout << "Attack number: " << attack_number << endl;
-    if (attack_number == 16 || attack_number == 17)
-    {
-        cout << "TCAM fill levels (RSU nodes):" << endl;
-        for (uint32_t i = N_Vehicles; i < total_size; i++)
-            cout << "  RSU " << i << ": " << simulated_tcam_counter[i]
-                 << "/" << TCAM_CAPACITY << " rules" << endl;
-    }
-    cout << "========================================================" << endl;
-}
-
-
-
-//saja
-void declare_attack_states()   
-{
-	 // Zero-initialise all new arrays
-    for (uint32_t i = 0; i < total_size; i++)
-    {
-        data_plane_delay_malicious_nodes[i]  = false;
-        tcam_exhaust_malicious_nodes[i]      = false;
-        hidden_forward_malicious_nodes[i]    = false;
-        simulated_tcam_counter[i]            = 0;
-    }
-    controller_tcam_flood      = false;
-    controller_hidden_forward  = false;
-    passive_mode               = false;
-
-    // ---- Original attacks (preserved) ----
-    if (attack_number == 14)
-    {
-        // Attack 2 (b) — Selective Time Delay, Data Plane 
-        selective_time_delay_attack_nodes = true;
-    }
-
-    // ---- New Attacks ----
-
-    else if (attack_number == 15)
-    {
-        // Attack 2 (b) — Selective Time Delay, Data Plane (clean implementation)
-        // A malicious RSU or relay vehicle intercepts packets and buffers them
-        // for DATA_PLANE_DELAY_SECONDS before forwarding. Original path is preserved.
-        selective_time_delay_attack_nodes = false;
-        // data_plane_delay_malicious_nodes set in declare_attackers()
-    }
-
-    else if (attack_number == 16)
-    {
-        // Attack 3 (c) — Slow TCAM Exhaustion, Control Plane
-        // Malicious controller floods all RSUs with junk FlowMods.
-        // Their TCAM fills → legitimate packets go slow-path → extra delay.
-        selective_time_delay_attack_nodes = false;
-        controller_tcam_flood             = true;
-        controller_malicious_assumption   = true;
-    }
-
-    else if (attack_number == 17)
-    {
-        // Attack 4 (d) — Slow TCAM Exhaustion, Data Plane
-        // Attacker vehicle floods nearest RSU with unique 5-tuple packets.
-        // RSU TCAM exhausted → victim's legitimate packet slow-pathed → delayed.
-        selective_time_delay_attack_nodes = false;
-        // tcam_exhaust_malicious_nodes set in declare_attackers()
-    }
-
-    else if (attack_number == 18)
-    {
-        // Attack 5 (e) — Active Hidden Forwarding, Control Plane
-        // Malicious controller installs forwarding rule that sends packets to
-        // BOTH legitimate destination AND spy node, with fabricated content to spy.
-        selective_time_delay_attack_nodes = false;
-        controller_hidden_forward         = true;
-        controller_malicious_assumption   = true;
-        passive_mode                      = false;
-    }
-
-    else if (attack_number == 19)
-    {
-        // Attack 6 (f) — Active Hidden Forwarding, Data Plane
-        // Malicious RSU / vehicle intercepts packet, forwards to legitimate next-hop,
-        // AND sends a fabricated copy to spy_node_id simultaneously.
-        selective_time_delay_attack_nodes = false;
-        passive_mode                      = false;
-        // hidden_forward_malicious_nodes set in declare_attackers()
-    }
-
-    else if (attack_number == 20)
-    {
-        // Attack 7 (g) — Passive Hidden Forwarding, Control Plane
-        // Malicious controller installs rule that silently duplicates packets
-        // to spy node. No fabrication — raw copy goes to spy (eavesdropping).
-        selective_time_delay_attack_nodes = false;
-        controller_hidden_forward         = true;
-        controller_malicious_assumption   = true;
-        passive_mode                      = true;
-    }
-
-    else if (attack_number == 21)
-    {
-        // Attack 8 (h) — Passive Hidden Forwarding, Data Plane
-        // Malicious RSU / vehicle forwards original packet correctly AND
-        // sends an unmodified duplicate to spy node — silent eavesdropping.
-        selective_time_delay_attack_nodes = false;
-        passive_mode                      = true;
-        // hidden_forward_malicious_nodes set in declare_attackers()
-    }
-}  //saja
-
-
-//use in routing file  //saja
-void declare_attackers()
-{
-	
-	for(uint32_t i=0;i<total_size;i++)
-	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);  //decide randomly based on attack percentage whether the node is attacking or not.
-		if (present_location_attack_nodes == true)
-		{
-			location_malicious_nodes[i] = attacking_state;
-		}
-		else if (present_location_attack_nodes == false)
-		{
-			location_malicious_nodes[i] = false;
-		}
-		//cout<<"Location malicious state of node "<<i<<" is "<<location_malicious_nodes[i]<<endl;
-		
-		if (present_flooding_attack_nodes == true)
-		{
-			flooding_malicious_nodes[i] = attacking_state;
-		}
-		else if (present_flooding_attack_nodes == false)
-		{
-			flooding_malicious_nodes[i] = false;
-		}
-		//cout<<"Flooding malicious state of node "<<i<<" is "<<flooding_malicious_nodes[i]<<endl;
-		
-		if (present_fabrication_attack_nodes == true)
-		{
-			fabrication_malicious_nodes[i] = attacking_state;
-		}
-		else if (present_fabrication_attack_nodes == false)
-		{
-			fabrication_malicious_nodes[i] = false;
-		}
-		//cout<<"Fabrication malicious state of node "<<i<<" is "<<fabrication_malicious_nodes[i]<<endl;
-		
-		if (present_MIM_attack_nodes == true)
-		{
-			MIM_malicious_nodes[i] = attacking_state;
-		}
-		else if (present_MIM_attack_nodes == false)
-		{
-			MIM_malicious_nodes[i] = false;
-		}
-		
-		
-		if (present_vanishing_attack_nodes == true)
-		{
-			vanishing_malicious_nodes[i] = attacking_state;
-		}
-		else if (present_vanishing_attack_nodes == false)
-		{
-			vanishing_malicious_nodes[i] = false;
-		}
-
-
-		if(selective_time_delay_attack_nodes == true){  //sajani
-			selective_time_delay_malicious_nodes[i] = attacking_state;
-		}
-		else if (selective_time_delay_attack_nodes == false)
-		{
-			selective_time_delay_malicious_nodes[i] = false;
-		}
-
-		// --- Attack 15: Data-plane delay ---
-        if (attack_number == 15)
-            data_plane_delay_malicious_nodes[i] = attacking_state;
-        else
-            data_plane_delay_malicious_nodes[i] = false;
-
-        // --- Attack 17: Data-plane TCAM flood ---
-        if (attack_number == 17)
-            tcam_exhaust_malicious_nodes[i] = attacking_state;
-        else
-            tcam_exhaust_malicious_nodes[i] = false;
-
-        // --- Attacks 19 & 21: Data-plane hidden forwarding ---
-        if (attack_number == 19 || attack_number == 21)
-            hidden_forward_malicious_nodes[i] = attacking_state;
-        else
-            hidden_forward_malicious_nodes[i] = false;
-	}
-	
-	if (present_flooding_attack_controllers == true)
-	{
-		if(attack_percentage < 10)
-		{
-			flooding_malicious_controllers[0] = false;
-			flooding_malicious_controllers[1] = false;
-			flooding_malicious_controllers[2] = false;
-			flooding_malicious_controllers[3] = false;
-			
-		}
-		else if (attack_percentage < 35)
-		{
-			flooding_malicious_controllers[0] = true;
-			flooding_malicious_controllers[1] = false;
-			flooding_malicious_controllers[2] = false;
-			flooding_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage < 67)
-		{
-			flooding_malicious_controllers[0] = true;
-			flooding_malicious_controllers[1] = true;
-			flooding_malicious_controllers[2] = false;
-			flooding_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage < 101)
-		{
-			flooding_malicious_controllers[0] = true;
-			flooding_malicious_controllers[1] = true;
-			flooding_malicious_controllers[2] = true;
-			flooding_malicious_controllers[3] = false;
-		}
-	}
-	else if (present_flooding_attack_controllers == false)
-	{
-		flooding_malicious_controllers[0] = false;
-		flooding_malicious_controllers[1] = false;
-		flooding_malicious_controllers[2] = false;
-		flooding_malicious_controllers[3] = false;
-	}
-	
-	
-	if (present_fabrication_attack_controllers == true)
-	{
-		if(attack_percentage<10)
-		{
-			fabrication_malicious_controllers[0] = false;
-			fabrication_malicious_controllers[1] = false;
-			fabrication_malicious_controllers[2] = false;
-			fabrication_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage<35)
-		{
-			fabrication_malicious_controllers[0] = true;
-			fabrication_malicious_controllers[1] = false;
-			fabrication_malicious_controllers[2] = false;
-			fabrication_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage<67)
-		{
-			fabrication_malicious_controllers[0] = true;
-			fabrication_malicious_controllers[1] = true;
-			fabrication_malicious_controllers[2] = false;
-			fabrication_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage<101)
-		{
-			fabrication_malicious_controllers[0] = true;
-			fabrication_malicious_controllers[1] = true;
-			fabrication_malicious_controllers[2] = true;
-			fabrication_malicious_controllers[3] = false;
-		}
-		
-		
-	}
-	else if (present_fabrication_attack_controllers == false)
-	{
-		fabrication_malicious_controllers[0] = false;
-		fabrication_malicious_controllers[1] = false;
-		fabrication_malicious_controllers[2] = false;
-		fabrication_malicious_controllers[3] = false;
-	}
-	
-	
-	if (present_MIM_attack_controllers == true)
-	{
-		if(attack_percentage<10)
-		{
-			MIM_malicious_controllers[0] = false;
-			MIM_malicious_controllers[1] = false;
-			MIM_malicious_controllers[2] = false;
-			MIM_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage<35)
-		{
-			MIM_malicious_controllers[0] = true;
-			MIM_malicious_controllers[1] = false;
-			MIM_malicious_controllers[2] = false;
-			MIM_malicious_controllers[3] = false;
-		}
-		else if (attack_percentage<67)
-		{
-			MIM_malicious_controllers[0] = true;
-			MIM_malicious_controllers[1] = true;
-			MIM_malicious_controllers[2] = false;
-			MIM_malicious_controllers[3] = false;
-		}
-		
-		else if (attack_percentage<101)
-		{
-			MIM_malicious_controllers[0] = true;
-			MIM_malicious_controllers[1] = true;
-			MIM_malicious_controllers[2] = true;
-			MIM_malicious_controllers[3] = false;
-		}		
-		
-		
-	}
-	else if (present_MIM_attack_controllers == false)
-	{
-		MIM_malicious_controllers[0] = false;
-		MIM_malicious_controllers[1] = false;
-		MIM_malicious_controllers[2] = false;
-		MIM_malicious_controllers[3] = false;
-	}
-	
-	
-	if (present_vanishing_attack_controllers == true)
-	{
-		if(attack_percentage<10)
-		{
-			vanishing_malicious_controllers[0] = false;
-			vanishing_malicious_controllers[1] = false;
-			vanishing_malicious_controllers[2] = false;
-			vanishing_malicious_controllers[3] = false;
-		}
-		else if(attack_percentage<35)
-		{
-			vanishing_malicious_controllers[0] = true;
-			vanishing_malicious_controllers[1] = false;
-			vanishing_malicious_controllers[2] = false;
-			vanishing_malicious_controllers[3] = false;
-		}
-		else if(attack_percentage<67)
-		{
-			vanishing_malicious_controllers[0] = true;
-			vanishing_malicious_controllers[1] = true;
-			vanishing_malicious_controllers[2] = false;
-			vanishing_malicious_controllers[3] = false;
-		}
-		else if(attack_percentage<101)
-		{
-			vanishing_malicious_controllers[0] = true;
-			vanishing_malicious_controllers[1] = true;
-			vanishing_malicious_controllers[2] = true;
-			vanishing_malicious_controllers[3] = false;
-		}
-		
-	}
-	else if (present_vanishing_attack_controllers == false)
-	{
-		vanishing_malicious_controllers[0] = false;
-		vanishing_malicious_controllers[1] = false;
-		vanishing_malicious_controllers[2] = false;
-		vanishing_malicious_controllers[3] = false;
-	}
-} 
- //saja
-
-
 int main(int argc, char *argv[])
 {        
     initialize_empty();
     nodeid_sum();   
     
-
-	//meka command line ekn denna puluwan instead hardcoding like previously
-
     CommandLine cmd;
     cmd.AddValue ("N_RSUs", "N_RSUs", N_RSUs);
     cmd.AddValue ("N_Vehicles", "N_Vehicles", N_Vehicles);
@@ -139179,12 +139443,15 @@ int main(int argc, char *argv[])
     cmd.AddValue ("experiment_number", "experiment_number", experiment_number);
     cmd.AddValue ("routing_test", "routing_test", routing_test);
     cmd.AddValue ("routing_algorithm", "routing_algorithm", routing_algorithm);
+    cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
+    cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("qf", "qf", qf);
-    cmd.Parse (argc, argv);	
+    cmd.Parse (argc, argv);
     
     if (routing_test == true)
     {
-     	N_Vehicles = 5; //CHANGE ACCORDING TO THE ATTACk SCENARIOS OF OURS //saja
+     	// N_Vehicles = 22;
+		N_Vehicles = 2; //test
      	N_RSUs = 1;
      	//flows = 1;
     }
@@ -139222,7 +139489,7 @@ int main(int argc, char *argv[])
   
   controller_Node.Create(1);
   management_Node.Create(1); 
-  if (routing_test == false) //saja define positions of nodes
+  if (routing_test == false)
   {
   	  if(N_Vehicles > 0)
   	{ 
@@ -139234,20 +139501,15 @@ int main(int argc, char *argv[])
   {
   
   
-		Vehicle_Nodes.Create(N_Vehicles);
-    	double x = 100;
+  	    Vehicle_Nodes.Create(N_Vehicles);
+    	    // double x = 250;
+		double x = 150; //test - adjusted to force routing through RSU
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-		positionAlloc->Add(Vector(  0.0,   0.0, 0.0));  // Node 0 — source
-		positionAlloc->Add(Vector(100.0,   0.0, 0.0));  // Node 1 — legitimate
-		positionAlloc->Add(Vector(200.0,   0.0, 0.0));  // Node 2 — ATTACKER
-		positionAlloc->Add(Vector(100.0, 100.0, 0.0));  // Node 3 — legitimate
-		positionAlloc->Add(Vector(200.0, 100.0, 0.0));  // Node 4 — destination
-	    // positionAlloc->Add(Vector(0.0, 0.0, 0.0)); // Custom position for Node 0
-	    // positionAlloc->Add(Vector(0.0, -x*2, 0.0)); // Custom position for Node 1
-	    // positionAlloc->Add(Vector(0.0, -x*1, 0.0)); // Custom position for Node 2
+    positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
+    positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
 	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
 	    // // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
 	    // // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
@@ -139270,6 +139532,15 @@ int main(int argc, char *argv[])
 	    custom_mobility.SetPositionAllocator(positionAlloc);
 	    custom_mobility.Install(Vehicle_Nodes);
 
+	    // Debug: Print initial positions right after install
+	    cout << "[INIT DEBUG at t=0] Initial vehicle positions:" << endl;
+	    for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++) {
+	    	Ptr<MobilityModel> mdl = Vehicle_Nodes.Get(i)->GetObject<MobilityModel>();
+	    	if (mdl) {
+	    		cout << "[INIT DEBUG] Vehicle Node " << i << " position: " << mdl->GetPosition() << endl;
+	    	}
+	    }
+
 	  // Set custom velocity and acceleration for each node
 	    for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++) 
 	    {
@@ -139277,7 +139548,7 @@ int main(int argc, char *argv[])
 	    	Ptr<ConstantVelocityMobilityModel> cvmm = DynamicCast <ConstantVelocityMobilityModel> (Vehicle_Nodes.Get(i)->GetObject<MobilityModel>());
 	    	if (i == 1)
 	    	{
-	    		cvmm->SetVelocity(Vector(0.0, -0.0, 0.0)); //velocities of nodes  //saja  // can check test network without the velocities as well
+	    		cvmm->SetVelocity(Vector(0.0, -0.0, 0.0));
 	    	}
 	    	else if (i == 12)
 	    	{
@@ -139435,10 +139706,10 @@ int main(int argc, char *argv[])
 		  ltehelper = CreateObject<LteHelper> ();
 		  ltehelper->SetAttribute("FadingModel",StringValue("ns3::TraceFadingLossModel"));
 		  std::ifstream TraceFile;
-		  TraceFile.open("/home/sajani/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
+		  TraceFile.open("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
 		  if(TraceFile.good())
 		  {
-		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/sajani/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
+		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
 		  }
 		  
 		  ltehelper->SetFadingModelAttribute("TraceLength",TimeValue(Seconds(10.0)));
@@ -139521,7 +139792,7 @@ int main(int argc, char *argv[])
   	dsrc_Nodes.Add(RSU_Nodes);
   }
   
-  if (routing_test == false)  //saja // if the network was a real network (currently we are running test network)
+  if (routing_test == false)
   {
   //vehicular nodes mobility trace files
   string trace_file; 
@@ -139530,25 +139801,25 @@ int main(int argc, char *argv[])
   	switch(maxspeed)
   	{
   		case (0):
-  			trace_file = "/home/sajani/mobility/mobility_urban_0.tcl";
+  			trace_file = "/home/user/mobility/mobility_urban_0.tcl";
   			break;
   		case (10):
-	  		trace_file = "/home/sajani/mobility/mobility_urban_10.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_10.tcl";
 	  		break;
 	  	case (20):
-	  		trace_file = "/home/sajani/mobility/mobility_urban_20.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_20.tcl";
 	  		break;
 	  	case (30):
-	  		trace_file = "/home/sajani/mobility/mobility_urban_30.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_30.tcl";
 	  		break;
 	  	case (40):
-	  		trace_file = "/home/sajani/mobility/mobility_urban_40.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/sajani/mobility/mobility_urban_50.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/sajani/mobility/mobility_urban_60.tcl";
+	  		trace_file = "/home/user/mobility/mobility_urban_60.tcl";
 	  		break;
 	  	default:
 	  		break;
@@ -139560,37 +139831,37 @@ int main(int argc, char *argv[])
    	switch(maxspeed)
    	{
    		case (0):
-   			trace_file = "/home/sajani/mobility/mobility_rural_0.tcl";
+   			trace_file = "/home/user/mobility/mobility_rural_0.tcl";
    	  		break;
    		case (10):
-   	  		trace_file = "/home/sajani/mobility/mobility_rural_10.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_10.tcl";
    	  		break;
    	  	case (20):
-	  		trace_file = "/home/sajani/mobility/mobility_rural_20.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_20.tcl";
 	  		break;
 	  	case (30):
-	   		trace_file = "/home/sajani/mobility/mobility_rural_30.tcl";
+	   		trace_file = "/home/user/mobility/mobility_rural_30.tcl";
 	   		break;
 	   	case (40):
-	  		trace_file = "/home/sajani/mobility/mobility_rural_40.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/sajani/mobility/mobility_rural_50.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/sajani/mobility/mobility_rural_60.tcl";
+	  		trace_file = "/home/user/mobility/mobility_rural_60.tcl";
 	  		break;
    	  	case (70):
-   	  		trace_file = "/home/sajani/mobility/mobility_rural_70.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_70.tcl";
    	  		break;
    	  	case (80):
-   	  		trace_file = "/home/sajani/mobility/mobility_rural_80.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_80.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/sajani/mobility/mobility_rural_90.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_90.tcl";
    	  		break;
    	  	case (100):
-   	  		trace_file = "/home/sajani/mobility/mobility_rural_100.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_rural_100.tcl";
    	  		break;
    	  	default:
    	  		break;
@@ -139602,46 +139873,46 @@ int main(int argc, char *argv[])
    	  switch(maxspeed)
    	  {
    	  	case (0):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_0.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_0.tcl";
    	  		break;	
    	  	case (10):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_10.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_10.tcl";
    	  		break;
    	  	case (30):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_30.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_30.tcl";
    	  		break;
    	  	case (50):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_50.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_50.tcl";
    	  		break;
    	  	case (70):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_70.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_70.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_90.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_90.tcl";
    	  		break;
    	  	case (110):
-   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_110.tcl";
+   	  		trace_file = "/home/user/mobility/mobility_autobahn_110.tcl";
    	  		break;
 	 	case (130):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_130.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_130.tcl";
 	 		break;
 	 	case (150):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_150.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_150.tcl";
 	 		break;
 	 	case (170):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_170.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_170.tcl";
 	 		break;
 	 	case (190):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_190.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_190.tcl";
 	 		break;
 	 	case (210):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_210.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_210.tcl";
 	 		break;
 	 	case (230):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_230.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_230.tcl";
 	 		break;
 	 	case (250):
-	 		trace_file = "/home/sajani/mobility/mobility_autobahn_250.tcl";
+	 		trace_file = "/home/user/mobility/mobility_autobahn_250.tcl";
 	 		break;
 	 	default:
 	 		break;
@@ -139681,7 +139952,6 @@ int main(int argc, char *argv[])
   }
   
  
-  //sumo don't give for RSUs this is RSU setup for actual netwrok not test network //saja
   
   int x = ((N_RSUs)/12) + 1;
   double delta_x;
@@ -139724,7 +139994,10 @@ int main(int argc, char *argv[])
   {
   	vehicle_mobility.Install(Vehicle_Nodes);
   }
-  update_mobility();
+  if(routing_test == false)
+  {
+  	update_mobility();
+  }
  
   
    if (mobility_scenario == 1)//non-urban mobility
@@ -139762,6 +140035,15 @@ int main(int argc, char *argv[])
   	con_base_posy = 0;
   	lte_base_posx = 525;
   	lte_base_posy = 0;
+    Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
+    rsuPositionAlloc->Add(Vector(550.0, 75.0, 0.0));
+    RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
+    cout << "[TEST NETWORK] Positions set:" << endl;
+    cout << "[TEST NETWORK] Controller  : (550, 0, 0)" << endl;
+    cout << "[TEST NETWORK] Vehicle A   : (300, 150, 0)  Node 0" << endl;
+    cout << "[TEST NETWORK] Malicious RSU:(550, 75, 0)  Node 2" << endl;
+    cout << "[TEST NETWORK] Vehicle B   : (800, 150, 0)  Node 1" << endl;
+    cout << "[TEST NETWORK] A->RSU: 250m  RSU->B: 250m  A->B: 500m" << endl;
   }
   
   if (N_RSUs > 0)
@@ -140527,26 +140809,22 @@ int main(int argc, char *argv[])
 					uint32_t destination;
 					uint32_t source;
 					
-					if (routing_test == true) //saja
+					if (routing_test == true)
     					{
-							// --- FORCE THE ATTACK ON ---
-							attack_number = 14; 
-							selective_time_delay_attack_nodes = true; // Force the attack globally ON
-							selective_time_delay_malicious_nodes[2] = true; // Force Node 2 to be the attacker!
-							// ---------------------------
-
     						if(i==0)
-							{
-								destination = 3;  
+    						{
+    							// destination = 11;
+								destination = 1; //test
     							source = 0;
     						}
     						else
     						{
-    							source = 3; 
+    							// source = 11;
+								source = 1;
     							destination = 0;
     						}
     					}
-    					else  //if routing_test is false, then we randomly select source and destination for each flow. We also make sure that the same source-destination pair is not selected for more than one flow.
+    					else
     					{
     					
 						srand(t*i);
@@ -140700,6 +140978,8 @@ int main(int argc, char *argv[])
 				  //Simulator::Schedule (Seconds (t), set_dsrc_initial_timestamp);
 			}
 			
+			// Initialize attack state before main loop
+			initialise_stub_attack_state();
 			
 			if (N_Vehicles > 0)
 			{
@@ -140747,30 +141027,10 @@ int main(int argc, char *argv[])
 					 		break;
 					  }
 					 
-					  Simulator::Schedule(Seconds(t+0.036000),transmit_delta_values); // FLOWMOD PACKET TRANSMISSION  //saja
-							// --- Attack 16: Controller floods TCAM of all RSUs ---
-						if (attack_number == 16 && controller_tcam_flood == true)
-						{
-							for (double tf = t+0.040; tf < t+data_transmission_period-0.010; tf += TCAM_FLOOD_INTERVAL)
-							{
-								Simulator::Schedule(Seconds(tf), controller_flood_tcam_all_rsus);
-							}
-						}
-
-						// --- Attack 17: Data-plane attacker floods nearest RSU TCAM ---
-						if (attack_number == 17)
-						{
-							// In routing_test mode: node 2 attacks RSU at index N_Vehicles (first RSU)
-							uint32_t attacker = 2;
-							uint32_t target_rsu = N_Vehicles; // first RSU
-							for (double tf = t+0.040; tf < t+data_transmission_period-0.010; tf += TCAM_FLOOD_INTERVAL)
-							{
-								Simulator::Schedule(Seconds(tf), data_plane_flood_tcam, attacker, target_rsu);
-							}
-						}
+					  Simulator::Schedule(Seconds(t+0.036000),transmit_delta_values);
 					  
-					  Simulator::Schedule(Seconds(t+0.099500),initialize_flow_counters); //START OF ROUTING  //saja
-					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows); //FLOW PACKET TRANSMISSION STARTS //saja
+					  Simulator::Schedule(Seconds(t+0.099500),initialize_flow_counters);
+					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows); 
 					  Simulator::Schedule(Seconds(t+data_transmission_period-0.002),calculate_performance_evaluation_metrics);
  		          		  
 				   	  
@@ -141045,7 +141305,7 @@ int main(int argc, char *argv[])
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Enqueue",MakeCallback (&Enqueue));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/sajani/ns-allinone-3.35/ns-3.35/routing.xml");  
+  AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
 
   if (N_RSUs > 0)
   {
@@ -141088,7 +141348,7 @@ int main(int argc, char *argv[])
 	    anim.UpdateNodeSize(node_management->GetId(),20.0,20.0);
     }
  
-  //AnimationInterface anim("/home/sajani/ns-allinone-3.35/ns-3.35/routing.xml"); 
+  //AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
   for (uint32_t i=0; i<Custom_Nodes.GetN() ; i++)
@@ -141107,7 +141367,6 @@ int main(int argc, char *argv[])
   //apb.SetFinish();
   return 0;  
 }
-
 
 
 

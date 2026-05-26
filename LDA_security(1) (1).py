@@ -254,35 +254,35 @@ AY = list()
 mobility_scenario = 1;
 d_max = 270
 
-csv_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_data.csv"#All other keys
+csv_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_data.csv"#All other keys
 
-csv_AES_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_AES_data.csv"#AES key pairs
+csv_AES_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_AES_data.csv"#AES key pairs
 
-csv_HMAC2_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_HMAC2_data.csv"#HMAC2 keys
+csv_HMAC2_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_HMAC2_data.csv"#HMAC2 keys
 
-csv_HMAC2_other_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data4.csv"#HMAC2 keys
+csv_HMAC2_other_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data4.csv"#HMAC2 keys
 
 
 
-csv_con_dig_sig_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv"
+csv_con_dig_sig_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_con_dig_sig_data.csv"
 
-csv_node1_dig_sig_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_dig_sig_data.csv"
+csv_node1_dig_sig_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_dig_sig_data.csv"
 
-csv_node2_dig_sig_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node2_dig_sig_data.csv"
+csv_node2_dig_sig_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node2_dig_sig_data.csv"
 
-csv_global_HMAC_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv"
+csv_global_HMAC_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_data.csv"
 
-csv_global_HMAC_verification_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_verification_data.csv"
+csv_global_HMAC_verification_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_global_HMAC_verification_data.csv"
 
-csv_node1_HMAC_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv"
+csv_node1_HMAC_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node1_HMAC_data.csv"
 
-csv_node2_HMAC_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_node2_HMAC_data.csv"
+csv_node2_HMAC_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_node2_HMAC_data.csv"
 
-csv_nodepair_AES_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_nodepair_AES_data.csv"
+csv_nodepair_AES_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_nodepair_AES_data.csv"
 
-csv_ASCON_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data.csv"
+csv_ASCON_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ASCON_data.csv"
 
-csv_ECDH_file_path = "/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/security_ECDH_data.csv"
+csv_ECDH_file_path = "/home/user/ns-allinone-3.35/ns-3.35/scratch/security_ECDH_data.csv"
 
 def search_csv_nodeid(csv_file_path, node_id):
     print(f"searching for node id {node_id}")
@@ -538,7 +538,7 @@ class SecurityManager_controller:
         return defaultdict(SecurityManager_controller.nested_dict)
     def __init__(self, net_size):
         """
-        with open("/home/nilmantha/ns-allinone-3.35/ns-3.35/scratch/controller_security_data.csv",'r',encoding='UTF8') as csvfile:
+        with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/controller_security_data.csv",'r',encoding='UTF8') as csvfile:
             csvreader = csv.reader(csvfile,delimiter=',',quotechar='"',quoting=csv.QUOTE_MINIMAL)
             for row in csvreader:
                p = str(row)
