@@ -116871,9 +116871,12 @@ void calculate_tap_security_metrics()
 	uint32_t valid_count = 0;
 	for (int n = 0; n < total_size; n++)
 	{
-		if (t_onset[n] > 0.0 && tap_t_quarantine[n] > t_onset[n])
+		double effective_quarantine = tap_t_quarantine[n];
+		if (effective_quarantine <= 0.0 && tap_detected_node[n])
+			effective_quarantine = Simulator::Now().GetSeconds();
+		if (t_onset[n] > 0.0 && effective_quarantine > t_onset[n])
 		{
-			total_latency += tap_t_quarantine[n] - t_onset[n];
+			total_latency += effective_quarantine - t_onset[n];
 			valid_count++;
 		}
 	}
