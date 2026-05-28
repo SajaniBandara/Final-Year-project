@@ -114658,9 +114658,9 @@ void initialise_stub_attack_state()
 	switch (active_attack_variant)
     {
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-			is_malicious_node[1][2] = (attack_percentage > 0) ? true : false;
-            t_onset[2] = 1.0;
-            t_quarantine[2] = 1.050;
+            // Ground truth is now set inside hardcode_test_network_attackers()
+            // based on attack_percentage — do not set it here
+            t_onset[2] = 1.0;  // kept for legacy reference only
             hardcode_test_network_attackers();
 			// Reset all TAP state before each Attack 2 simulation run
 			for (int _n = 0; _n < total_size; _n++)
@@ -114741,46 +114741,48 @@ void declare_attackers()
 
 void hardcode_test_network_attackers()
 {
-	// Force 100% attack rate for test network verification
-	// attack_percentage = 100;  //2.With attack 
-	// attack_percentage =0; //1. without the attack
+	// Extended 10-node test network for Attack 2
+	// Node mapping: current_hop 0-4 = Vehicles, current_hop 5-9 = RSUs
+	// Node 0 = sender, Node 1 = destination — never malicious
+	// attack_percentage controls how many intermediate nodes are malicious
 
-	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
-	// Attack 2 scenario from Figure 3.2(b):
-	// Malicious RSU (node 2) intercepts and delays packets
-	for(uint32_t i=0; i<total_size; i++)
+	// Clear all malicious flags first
+	for (uint32_t i = 0; i < total_size; i++)
 	{
 		selective_delay_malicious_nodes[i] = false;
 	}
-	selective_delay_malicious_nodes[2] = true; // RSU is the attacker
 
+	// Mark malicious nodes based on attack_percentage
+	// Malicious node sets (intermediate nodes only, never node 0 or node 1):
+	//   20% → 2 nodes: RSU0(5), RSU1(6)
+	//   40% → 4 nodes: RSU0(5), RSU1(6), VehicleC(2), VehicleD(3)
+	//   60% → 6 nodes: RSU0(5), RSU1(6), RSU2(7), VehicleC(2), VehicleD(3), VehicleE(4)
+	//   80% → 8 nodes: RSU0(5), RSU1(6), RSU2(7), RSU3(8), VehicleC(2), VehicleD(3), VehicleE(4), RSU4(9)
+	//  100% → 10 nodes: all 10 nodes including source and destination paths
 
-	/*--------------------------------------------------------
-// Change 1: attack never fires
-//attack_percentage = 0;
+	// List of intermediate nodes in order of increasing attack percentage
+	uint32_t attacker_candidates[] = {5, 6, 2, 3, 7, 4, 8, 9, 0, 1};
+	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
+	// 80% = first 8, 100% = all 10
+	uint32_t num_attackers = (uint32_t)(10 * attack_percentage / 100.0);
 
-// Change 2: do not mark node 2 as malicious in ground truth
-// Comment out these two lines:
-// selective_delay_malicious_nodes[2] = true;
-// record_attack_onset(1, 2);
+	for (uint32_t i = 0; i < num_attackers; i++)
+	{
+		uint32_t node = attacker_candidates[i];
+		selective_delay_malicious_nodes[node] = true;
+		is_malicious_node[1][node] = true;
+		record_attack_onset(1, node);
+		cout << attack_tag() << " Node " << node
+		     << " marked as malicious selective delay attacker" << endl;
+	}
 
-// Keep this line (master switch stays false effect)
-//present_selective_delay_attack_nodes = false;
+	present_selective_delay_attack_nodes = (num_attackers > 0);
 
-//s2_detection_active=false;
---------------------------------------------------------------*/
-
-	present_selective_delay_attack_nodes = true; //2. With attack scenario
-    
-	cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
-	cout << attack_tag() << " ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
-	cout << attack_tag() << " ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
-	cout << attack_tag() << " ① Routing forced through RSU (Node 2) for attack verification" << endl;
-	cout << attack_tag() << " ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
-	cout << attack_tag() << " ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
-    
-	// Record attack onset for metric M4
-record_attack_onset(1, 2);   
+	cout << attack_tag() << " Attack 2 extended test network: "
+	     << num_attackers << " malicious nodes out of 10 ("
+	     << attack_percentage << "%)" << endl;
+	cout << attack_tag() << " Traffic path: Vehicle A(0) -> RSU0(5) -> "
+	     << "RSU1(6) -> RSU2(7) -> Vehicle B(1)" << endl;
 }
 
 void hardcode_attack7_test_network()
@@ -140009,9 +140011,9 @@ int main(int argc, char *argv[])
         }
         else
         {
-            N_Vehicles = 2; // original Attack 2 layout
+			N_Vehicles = 5; // Extended Attack 2 topology — 5 vehicles
         }
-        N_RSUs = 1;
+		N_RSUs = 5; // Extended Attack 2 topology — 5 RSUs
     }
 
     // Apply single_cycle: cap every flow to exactly 1 packet.
@@ -140116,8 +140118,11 @@ int main(int argc, char *argv[])
     }
     else
     {
-        positionAlloc->Add(Vector(2*x, x, 0.0));           // Node 0: Vehicle A
-        positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
+			positionAlloc->Add(Vector(150.0,  150.0, 0.0)); // Node 0: Vehicle A (sender)
+			positionAlloc->Add(Vector(1350.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
+			positionAlloc->Add(Vector(150.0,  450.0, 0.0)); // Node 2: Vehicle C
+			positionAlloc->Add(Vector(750.0,  450.0, 0.0)); // Node 3: Vehicle D
+			positionAlloc->Add(Vector(1350.0, 450.0, 0.0)); // Node 4: Vehicle E
     }
 
 	    custom_mobility.SetPositionAllocator(positionAlloc);
@@ -140627,16 +140632,24 @@ int main(int argc, char *argv[])
   	lte_base_posx = 525;
   	lte_base_posy = 0;
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-    rsuPositionAlloc->Add(Vector(550.0, 75.0, 0.0));
+		rsuPositionAlloc->Add(Vector(450.0,  75.0, 0.0));  // RSU 0 (current_hop 5)
+		rsuPositionAlloc->Add(Vector(750.0,  75.0, 0.0));  // RSU 1 (current_hop 6)
+		rsuPositionAlloc->Add(Vector(1050.0, 75.0, 0.0));  // RSU 2 (current_hop 7)
+		rsuPositionAlloc->Add(Vector(450.0,  300.0, 0.0)); // RSU 3 (current_hop 8)
+		rsuPositionAlloc->Add(Vector(1050.0, 300.0, 0.0)); // RSU 4 (current_hop 9)
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
-    cout << "[TEST NETWORK] Positions set:" << endl;
-    cout << "[TEST NETWORK] Controller  : (550, 0, 0)" << endl;
-    cout << "[TEST NETWORK] Vehicle A   : (300, 150, 0)  Node 0" << endl;
-    // cout << "[TEST NETWORK] Malicious RSU:(550, 75, 0)  Node 2" << endl;
-	cout << "[TEST NETWORK] RSU (malicious for Attack7): (550, 75, 0) Node index 2" << endl;
-    cout << "[TEST NETWORK] Vehicle B   : (800, 150, 0)  Node 1" << endl;
-    // cout << "[TEST NETWORK] A->RSU: 250m  RSU->B: 250m  A->B: 500m" << endl;
-	cout << "[TEST NETWORK] A->RSU: ~250m, RSU->C: ~250m, RSU->B: ~225m, A->C: 500m (out of range)" << endl;
+		cout << "[TEST NETWORK] 10-node topology: 5 Vehicles + 5 RSUs" << endl;
+		cout << "[TEST NETWORK] Vehicle A (node 0): (150, 150, 0) — SENDER" << endl;
+		cout << "[TEST NETWORK] Vehicle B (node 1): (1350, 150, 0) — DESTINATION" << endl;
+		cout << "[TEST NETWORK] Vehicle C (node 2): (150, 450, 0)" << endl;
+		cout << "[TEST NETWORK] Vehicle D (node 3): (750, 450, 0)" << endl;
+		cout << "[TEST NETWORK] Vehicle E (node 4): (1350, 450, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 0 (node 5): (450, 75, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 1 (node 6): (750, 75, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 2 (node 7): (1050, 75, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 3 (node 8): (450, 300, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 4 (node 9): (1050, 300, 0)" << endl;
+		cout << "[TEST NETWORK] Traffic path: Vehicle A->RSU0->RSU1->RSU2->Vehicle B" << endl;
     
   }
   
