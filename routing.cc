@@ -140080,8 +140080,8 @@ int main(int argc, char *argv[])
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-    positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
-    positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
+    // positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
+    // positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
 	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
 	    // // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
 	    // // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
