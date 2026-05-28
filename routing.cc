@@ -140118,11 +140118,11 @@ int main(int argc, char *argv[])
     }
     else
     {
-			positionAlloc->Add(Vector(150.0,  150.0, 0.0)); // Node 0: Vehicle A (sender)
-			positionAlloc->Add(Vector(1350.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
-			positionAlloc->Add(Vector(150.0,  450.0, 0.0)); // Node 2: Vehicle C
-			positionAlloc->Add(Vector(750.0,  450.0, 0.0)); // Node 3: Vehicle D
-			positionAlloc->Add(Vector(1350.0, 450.0, 0.0)); // Node 4: Vehicle E
+			positionAlloc->Add(Vector(0.0,    150.0, 0.0)); // Node 0: Vehicle A (sender)
+			positionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
+			positionAlloc->Add(Vector(0.0,    400.0, 0.0)); // Node 2: Vehicle C
+			positionAlloc->Add(Vector(500.0,  400.0, 0.0)); // Node 3: Vehicle D
+			positionAlloc->Add(Vector(1000.0, 400.0, 0.0)); // Node 4: Vehicle E
     }
 
 	    custom_mobility.SetPositionAllocator(positionAlloc);
@@ -140632,23 +140632,23 @@ int main(int argc, char *argv[])
   	lte_base_posx = 525;
   	lte_base_posy = 0;
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-		rsuPositionAlloc->Add(Vector(450.0,  75.0, 0.0));  // RSU 0 (current_hop 5)
-		rsuPositionAlloc->Add(Vector(750.0,  75.0, 0.0));  // RSU 1 (current_hop 6)
-		rsuPositionAlloc->Add(Vector(1050.0, 75.0, 0.0));  // RSU 2 (current_hop 7)
-		rsuPositionAlloc->Add(Vector(450.0,  300.0, 0.0)); // RSU 3 (current_hop 8)
-		rsuPositionAlloc->Add(Vector(1050.0, 300.0, 0.0)); // RSU 4 (current_hop 9)
+		rsuPositionAlloc->Add(Vector(250.0,  75.0, 0.0));  // RSU 0 (current_hop 5)
+		rsuPositionAlloc->Add(Vector(500.0,  75.0, 0.0));  // RSU 1 (current_hop 6)
+		rsuPositionAlloc->Add(Vector(750.0,  75.0, 0.0));  // RSU 2 (current_hop 7)
+		rsuPositionAlloc->Add(Vector(250.0,  300.0, 0.0)); // RSU 3 (current_hop 8)
+		rsuPositionAlloc->Add(Vector(750.0,  300.0, 0.0)); // RSU 4 (current_hop 9)
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
 		cout << "[TEST NETWORK] 10-node topology: 5 Vehicles + 5 RSUs" << endl;
-		cout << "[TEST NETWORK] Vehicle A (node 0): (150, 150, 0) — SENDER" << endl;
-		cout << "[TEST NETWORK] Vehicle B (node 1): (1350, 150, 0) — DESTINATION" << endl;
-		cout << "[TEST NETWORK] Vehicle C (node 2): (150, 450, 0)" << endl;
-		cout << "[TEST NETWORK] Vehicle D (node 3): (750, 450, 0)" << endl;
-		cout << "[TEST NETWORK] Vehicle E (node 4): (1350, 450, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 0 (node 5): (450, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 1 (node 6): (750, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 2 (node 7): (1050, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 3 (node 8): (450, 300, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 4 (node 9): (1050, 300, 0)" << endl;
+		cout << "[TEST NETWORK] Vehicle A (node 0): (0, 150, 0) — SENDER" << endl;
+		cout << "[TEST NETWORK] Vehicle B (node 1): (1000, 150, 0) — DESTINATION" << endl;
+		cout << "[TEST NETWORK] Vehicle C (node 2): (0, 400, 0)" << endl;
+		cout << "[TEST NETWORK] Vehicle D (node 3): (500, 400, 0)" << endl;
+		cout << "[TEST NETWORK] Vehicle E (node 4): (1000, 400, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 0 (node 5): (250, 75, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 1 (node 6): (500, 75, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 2 (node 7): (750, 75, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 3 (node 8): (250, 300, 0)" << endl;
+		cout << "[TEST NETWORK] RSU 4 (node 9): (750, 300, 0)" << endl;
 		cout << "[TEST NETWORK] Traffic path: Vehicle A->RSU0->RSU1->RSU2->Vehicle B" << endl;
     
   }
