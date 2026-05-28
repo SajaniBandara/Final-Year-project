@@ -103,7 +103,7 @@ int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
 // double simTime = 240;
-double simTime = 5; //test
+double simTime = 20; //test
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -114742,7 +114742,7 @@ void declare_attackers()
 void hardcode_test_network_attackers()
 {
 	// Force 100% attack rate for test network verification
-	attack_percentage = 100;  //2.With attack 
+	// attack_percentage = 100;  //2.With attack 
 	// attack_percentage =0; //1. without the attack
 
 	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
