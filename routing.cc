@@ -114658,7 +114658,7 @@ void initialise_stub_attack_state()
 	switch (active_attack_variant)
     {
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            is_malicious_node[1][2] = true;
+			is_malicious_node[1][2] = (attack_percentage > 0) ? true : false;
             t_onset[2] = 1.0;
             t_quarantine[2] = 1.050;
             hardcode_test_network_attackers();
