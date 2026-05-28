@@ -114574,6 +114574,38 @@ double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
 double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
+// === TAP BASELINE GLOBALS ===
+bool tap_detection_active = true;
+// When false, all TAP functions return immediately
+
+static const double TAP_SIGNAL_SPEED = 3.0e8;
+// Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
+
+static const double TAP_MARGIN = 0.020;
+// 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+
+bool tap_defaulter_list[total_size] = {false};
+// Controller-Defaulter-List from TAP paper — true means node is blacklisted.
+
+bool tap_detected_node[total_size] = {false};
+// Per-node detection flag for TAP
+
+double tap_t_quarantine[total_size] = {0.0};
+// Timestamp when TAP detection fired for each node
+
+uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;
+// Confusion matrix counters for TAP on Attack 2 (variant index 1)
+
+double tap_current_MCC            = 0.0;
+double tap_current_DR             = 0.0;
+double tap_current_FPR            = 0.0;
+double tap_current_mitigation_ms  = 0.0;
+double tap_previous_cumulative_MCC = 0.0;
+double tap_previous_cumulative_DR  = 0.0;
+double tap_previous_cumulative_FPR = 0.0;
+double tap_previous_cumulative_mit = 0.0;
+
+
 // ============================================================
 // STUB ATTACK INITIALISER
 // Call this once from main() or the simulation setup block.
@@ -114590,6 +114622,12 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
+// TAP function prototypes
+bool tap_check_defaulter_list(uint32_t sender_current_hop);
+void tap_report_to_controller(uint32_t attacker_current_hop);
+void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
+void calculate_tap_security_metrics();
+void write_tap_csv();
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -114620,6 +114658,19 @@ void initialise_stub_attack_state()
             t_onset[2] = 1.0;
             t_quarantine[2] = 1.050;
             hardcode_test_network_attackers();
+			// Reset all TAP state before each Attack 2 simulation run
+			for (int _n = 0; _n < total_size; _n++)
+			{
+				tap_defaulter_list[_n] = false;
+				tap_detected_node[_n]  = false;
+				tap_t_quarantine[_n]   = 0.0;
+			}
+			tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
+			tap_current_MCC=0.0; tap_current_DR=0.0;
+			tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
+			tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
+			tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
+			cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
             break;
 
         case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
@@ -116692,6 +116743,179 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
 	Simulator::Schedule(Seconds(0.000100), write_security_metrics_csv);
+
+	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
+	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+}
+
+
+// === TAP BASELINE FUNCTIONS ===
+// Function 1: tap_check_defaulter_list
+bool tap_check_defaulter_list(uint32_t sender_current_hop)
+{
+	if (!tap_detection_active) return false;
+	if (sender_current_hop >= (uint32_t)total_size) return false;
+	if (tap_defaulter_list[sender_current_hop])
+	{
+		cout << "[TAP] Packet from node " << sender_current_hop
+			 << " dropped — in Controller Defaulter List." << endl;
+		return true;
+	}
+	return false;
+}
+
+// Function 2: tap_report_to_controller
+void tap_report_to_controller(uint32_t attacker_current_hop)
+{
+	if (attacker_current_hop >= (uint32_t)total_size) return;
+	if (tap_defaulter_list[attacker_current_hop]) return;
+	tap_defaulter_list[attacker_current_hop] = true;
+	cout << "[TAP] ATTACKER DETECTED: node " << attacker_current_hop
+		 << " reported to controller at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+	cout << "[TAP] Controller Defaulter List updated — node " << attacker_current_hop
+		 << " blacklisted." << endl;
+	if (!tap_detected_node[attacker_current_hop])
+	{
+		tap_detected_node[attacker_current_hop] = true;
+		tap_t_quarantine[attacker_current_hop] = Simulator::Now().GetSeconds();
+		cout << "[TAP] Detection event recorded for node " << attacker_current_hop
+			 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+	}
+}
+
+// Function 3: tap_run_detection
+void tap_run_detection(uint32_t receiver_current_hop,
+					   uint32_t sender_current_hop,
+					   uint32_t packet_id)
+{
+	if (!tap_detection_active) return;
+	if (sender_current_hop >= (uint32_t)total_size) return;
+	if (receiver_current_hop >= (uint32_t)total_size) return;
+	if (packet_id >= (uint32_t)(Flow_size+2)) return;
+
+	double PAT = Simulator::Now().GetSeconds();
+	double PPAT = t_fwd_packet[sender_current_hop][packet_id];
+	if (PPAT <= 0.0) return;
+
+	// Receiver position
+	Ptr<Node> rx_node = wifidevices.Get(receiver_current_hop)->GetNode();
+	Ptr<MobilityModel> rx_mob = rx_node->GetObject<MobilityModel>();
+	if (!rx_mob) return;
+	Vector rx_pos = rx_mob->GetPosition();
+
+	// Sender position (fallback to controller-stored position)
+	Vector tx_pos = routing_data_at_controller_inst[sender_current_hop].position;
+	if (tx_pos.x == 0.0 && tx_pos.y == 0.0 && tx_pos.z == 0.0)
+	{
+		Ptr<Node> tx_node = wifidevices.Get(sender_current_hop)->GetNode();
+		Ptr<MobilityModel> tx_mob = tx_node->GetObject<MobilityModel>();
+		if (!tx_mob) return;
+		tx_pos = tx_mob->GetPosition();
+	}
+
+	double dx = rx_pos.x - tx_pos.x;
+	double dy = rx_pos.y - tx_pos.y;
+	double dz = rx_pos.z - tx_pos.z;
+	double D = std::sqrt(dx*dx + dy*dy + dz*dz);
+	double delta = D / TAP_SIGNAL_SPEED;
+	double v = PAT - delta;
+
+	cout << "[TAP] Node " << receiver_current_hop << " received from " << sender_current_hop
+		 << ": D=" << D << "m PAT=" << PAT << "s ∂=" << (delta*1000.0) << "ms v=" << v
+		 << " PPAT=" << PPAT << "s" << endl;
+
+	if (std::abs(v - PPAT) > TAP_MARGIN)
+	{
+		cout << "[TAP] TIMING VIOLATION: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0
+			 << "ms exceeds TAP_MARGIN=" << TAP_MARGIN*1000.0 << "ms" << endl;
+		cout << "[TAP] v=" << v << "s PPAT=" << PPAT << "s difference=" << (std::abs(v-PPAT)*1000.0) << "ms" << endl;
+		tap_report_to_controller(sender_current_hop);
+	}
+	else
+	{
+		cout << "[TAP] No violation: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0
+			 << "ms within TAP_MARGIN=" << TAP_MARGIN*1000.0 << "ms" << endl;
+	}
+}
+
+// Function 4: calculate_tap_security_metrics
+void calculate_tap_security_metrics()
+{
+	tap_TP = tap_FP = tap_TN = tap_FN = 0;
+	for (int n = 0; n < total_size; n++)
+	{
+		bool malicious = is_malicious_node[1][n]; // Attack 2 is variant index 1
+		bool detected = tap_detected_node[n];
+		if (malicious && detected) tap_TP++;
+		if (!malicious && detected) tap_FP++;
+		if (!malicious && !detected) tap_TN++;
+		if (malicious && !detected) tap_FN++;
+	}
+	double TP = tap_TP, FP = tap_FP, TN = tap_TN, FN = tap_FN;
+	tap_current_DR = (TP + FN > 0.0) ? (TP / (TP + FN)) : 0.0;
+	tap_current_FPR = (FP + TN > 0.0) ? (FP / (FP + TN)) : 0.0;
+	double eps = 1e-6;
+	double num = (TP * TN) - (FP * FN);
+	double den = std::sqrt((TP + FP + eps) * (TP + FN + eps) * (TN + FP + eps) * (TN + FN + eps));
+	tap_current_MCC = den > 0.0 ? (num / den) : 0.0;
+	tap_previous_cumulative_MCC += tap_current_MCC;
+	tap_previous_cumulative_DR  += tap_current_DR;
+	tap_previous_cumulative_FPR += tap_current_FPR;
+
+	double total_latency = 0.0;
+	uint32_t valid_count = 0;
+	for (int n = 0; n < total_size; n++)
+	{
+		if (t_onset[n] > 0.0 && tap_t_quarantine[n] > t_onset[n])
+		{
+			total_latency += tap_t_quarantine[n] - t_onset[n];
+			valid_count++;
+		}
+	}
+	tap_current_mitigation_ms = valid_count > 0 ? (total_latency / valid_count) * 1000.0 : 0.0;
+	tap_previous_cumulative_mit += tap_current_mitigation_ms;
+	double cycle = std::max(1.0, data_gathering_cycle_number - 1.0);
+	cout << "[TAP][SECURITY] Variant 1 | MCC=" << tap_current_MCC
+		 << " DR=" << (tap_current_DR * 100.0) << "% FPR=" << (tap_current_FPR * 100.0) << "% TP=" << tap_TP
+		 << " FP=" << tap_FP << " TN=" << tap_TN << " FN=" << tap_FN << endl;
+	cout << "[TAP][SECURITY] Avg mitigation latency: " << tap_current_mitigation_ms << "ms" << endl;
+}
+
+// Function 5: write_tap_csv
+void write_tap_csv()
+{
+	double cycle = std::max(1.0, data_gathering_cycle_number - 1.0);
+	string filename;
+	switch (attack_percentage)
+	{
+		case 0:  filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_0.csv"; break;
+		case 20: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_20.csv"; break;
+		case 40: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_40.csv"; break;
+		case 60: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_60.csv"; break;
+		case 80: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_80.csv"; break;
+		case 100:filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_100.csv"; break;
+		default: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_0.csv"; break;
+	}
+
+	fstream fout;
+	fout.open(filename, ios::out | ios::app);
+	fout << (uint32_t)cycle << ", "
+		 << current_packet_delivery_ratio * 100.0 << ", "
+		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
+		 << current_latency_routing * 1000.0 << ", "
+		 << average_latency_routing * 1000.0 << ", "
+		 << tap_current_MCC << ", "
+		 << (tap_previous_cumulative_MCC / cycle) << ", "
+		 << tap_current_DR * 100.0 << ", "
+		 << (tap_previous_cumulative_DR / cycle) * 100.0 << ", "
+		 << tap_current_FPR * 100.0 << ", "
+		 << (tap_previous_cumulative_FPR / cycle) * 100.0 << ", "
+		 << tap_current_mitigation_ms << ", "
+		 << (tap_previous_cumulative_mit / cycle) << ", "
+		 << tap_TP << ", " << tap_FP << ", " << tap_TN << ", " << tap_FN << "\n";
+	fout.close();
+	cout << "[TAP] written to file successfully: " << filename << endl;
 }
 
 
@@ -120085,6 +120309,33 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 	
 	
 	CustomDataUnicastTag_Routing tag_routing;
+
+	// === TAP BASELINE DETECTION ===
+	// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
+	// OnReceivedEmergencyPacket logic. Placed OUTSIDE if(destination==current_hop)
+	// so it fires at EVERY intermediate hop — matching TAP paper which runs on
+	// every received packet.
+	if (tap_detection_active)
+	{
+		uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
+		uint32_t tap_fid = tagmodified_routing.GetflowId();
+		uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
+		uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
+
+		// Algorithm 1 Line 10: check Controller-Defaulter-List first
+		if (tap_check_defaulter_list(tap_sender))
+		{
+			// Lines 19-20: discard packet from blacklisted node
+			cout << "[TAP] Retransmission packet dropped for flow id "
+				 << tap_fid << " #packet: " << tap_packet_ID << endl;
+		}
+		else
+		{
+			// Lines 11-18: run timing-based detection
+			tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
+		}
+	}
+	// === END TAP BASELINE DETECTION ===
 	
 	
 
