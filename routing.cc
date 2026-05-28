@@ -119724,11 +119724,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							selective_delay_malicious_nodes[current_hop] &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
 						{
-							bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
+							bool atk = (attack_percentage == 0) ? false : true;
 							if (atk)
 							{
 								apply_attack_delay = true;
-								tx_delay = attack2_delay_seconds;
+								tx_delay = attack2_delay_seconds * (attack_percentage / 100.0);
 								cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
 									 << ") intercepting packet ID " << packet_id
 									 << " for flow " << flow_id
