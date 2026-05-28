@@ -114574,6 +114574,10 @@ double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
 double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
+// TCAM simulation globals for Attack 3 and Attack 4
+static const uint32_t TCAM_CAPACITY = 1500;
+uint32_t simulated_tcam_counter[total_size] = {0};
+
 // === TAP BASELINE GLOBALS ===
 bool tap_detection_active = true;
 // When false, all TAP functions return immediately
@@ -116875,7 +116879,8 @@ void calculate_tap_security_metrics()
 	}
 	tap_current_mitigation_ms = valid_count > 0 ? (total_latency / valid_count) * 1000.0 : 0.0;
 	tap_previous_cumulative_mit += tap_current_mitigation_ms;
-	double cycle = std::max(1.0, data_gathering_cycle_number - 1.0);
+	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
+	               (data_gathering_cycle_number - 1.0) : 1.0;
 	cout << "[TAP][SECURITY] Variant 1 | MCC=" << tap_current_MCC
 		 << " DR=" << (tap_current_DR * 100.0) << "% FPR=" << (tap_current_FPR * 100.0) << "% TP=" << tap_TP
 		 << " FP=" << tap_FP << " TN=" << tap_TN << " FN=" << tap_FN << endl;
@@ -116885,7 +116890,8 @@ void calculate_tap_security_metrics()
 // Function 5: write_tap_csv
 void write_tap_csv()
 {
-	double cycle = std::max(1.0, data_gathering_cycle_number - 1.0);
+	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
+	               (data_gathering_cycle_number - 1.0) : 1.0;
 	string filename;
 	switch (attack_percentage)
 	{
@@ -119830,16 +119836,17 @@ void controller_flood_tcam_all_rsus()
 // so the RSU's TCAM fills up with useless rules.
 void data_plane_flood_tcam(uint32_t attacker_node, uint32_t target_rsu)
 {
-    if (tcam_exhaust_malicious_nodes[attacker_node] == true)
-    {
-        simulated_tcam_counter[target_rsu] += 3;
-        if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
-            simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
-        cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
-             << " flooded RSU " << target_rsu
-             << ". TCAM level: " << simulated_tcam_counter[target_rsu]
-             << "/" << TCAM_CAPACITY << endl;
-    }
+	return;
+	// if (tcam_exhaust_malicious_nodes[attacker_node] == true)
+	// {
+	//     simulated_tcam_counter[target_rsu] += 3;
+	//     if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
+	//         simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
+	//     cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
+	//          << " flooded RSU " << target_rsu
+	//          << ". TCAM level: " << simulated_tcam_counter[target_rsu]
+	//          << "/" << TCAM_CAPACITY << endl;
+	// }
 }
 
 // Returns the slow-path extra delay (seconds) for a given RSU node based on
@@ -119863,7 +119870,7 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
                       Time original_timestamp, struct custom_struct arguments, bool active)
 {
     uint16_t protocolwave = 0x88dc;
-    Ptr<NetDevice> spy_nd = wifidevices.Get(spy_node_id);
+	Ptr<NetDevice> spy_nd = wifidevices.Get(passive_hf_eavesdropper_index);
     Ptr<NetDevice> from_nd = wifidevices.Get(from_node);
 
     Ptr<Packet> hidden_pkt = Create<Packet>(arguments.p_size - 28);
@@ -119886,14 +119893,14 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
     {
         cout << "[ATTACK ACTIVE HF] Node " << from_node
              << " sent FABRICATED copy of packet " << packet_id
-             << " to spy node " << spy_node_id
+			 << " to spy node " << passive_hf_eavesdropper_index
              << " at " << Now().GetSeconds() << endl;
     }
     else
     {
         cout << "[ATTACK PASSIVE HF] Node " << from_node
              << " sent SILENT DUPLICATE of packet " << packet_id
-             << " to spy node " << spy_node_id
+			 << " to spy node " << passive_hf_eavesdropper_index
              << " at " << Now().GetSeconds() << endl;
     }
 }
@@ -141378,8 +141385,7 @@ int main(int argc, char *argv[])
 			
 		  	//DSRC flow instantiation
 		  	double t0 = 0;
-			declare_attack_states();  // Set attack flags
-  			declare_attackers();       // Mark which nodes are malicious
+			declare_attackers();  // Set attack flags
 			for (double t=t0+0.999; t<simTime-1; t=t+data_transmission_period)//All official data transmissions begin at t=0
 			{	
 				  //Go over all the wifi devices
