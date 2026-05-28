@@ -114761,10 +114761,11 @@ void hardcode_test_network_attackers()
 	//  100% → 10 nodes: all 10 nodes including source and destination paths
 
 	// List of intermediate nodes in order of increasing attack percentage
-	uint32_t attacker_candidates[] = {5, 6, 2, 3, 7, 4, 8, 9, 0, 1};
+	uint32_t attacker_candidates[] = {5, 6, 7, 8, 9, 2, 3, 4};
 	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
 	// 80% = first 8, 100% = all 10
-	uint32_t num_attackers = (uint32_t)(10 * attack_percentage / 100.0);
+	uint32_t num_attackers = (uint32_t)(8 * attack_percentage / 100.0);
+	if (num_attackers > 8) num_attackers = 8;
 
 	for (uint32_t i = 0; i < num_attackers; i++)
 	{
