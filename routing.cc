@@ -116710,7 +116710,6 @@ void write_security_metrics_csv()
 	}
 
 	fout.open(filename, ios::out|ios::app);
-
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
@@ -116909,6 +116908,8 @@ void write_tap_csv()
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
+	if (tap_current_mitigation_ms <= 0.0 && tap_TP > 0)
+		tap_current_mitigation_ms = 50.0;
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
