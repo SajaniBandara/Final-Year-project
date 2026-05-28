@@ -1,4 +1,4 @@
-# Final Year Project: Routing and Selective Time Delay Attack
+# Final Year Project
 
 This project contains an NS-3 based routing simulation with attack-aware routing logic and visualization support through NetAnim. The main focus of this branch is the selective time delay attack scenario, but the simulation also supports baseline runs and other attack variants through command-line flags.
 
