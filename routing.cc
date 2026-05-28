@@ -120305,37 +120305,37 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				//cout<<"Duplicate packet "<<packet_ID<<" for flow id "<<fid<<" received at hop "<<current_hop<<endl;
 			
 			}
+
+		// === TAP BASELINE DETECTION ===
+		// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
+		// OnReceivedEmergencyPacket logic. Placed OUTSIDE if(destination==current_hop)
+		// so it fires at EVERY intermediate hop — matching TAP paper which runs on
+		// every received packet.
+		if (tap_detection_active)
+		{
+			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
+			uint32_t tap_fid = tagmodified_routing.GetflowId();
+			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
+			uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
+
+			// Algorithm 1 Line 10: check Controller-Defaulter-List first
+			if (tap_check_defaulter_list(tap_sender))
+			{
+				// Lines 19-20: discard packet from blacklisted node
+				cout << "[TAP] Retransmission packet dropped for flow id "
+					 << tap_fid << " #packet: " << tap_packet_ID << endl;
+			}
+			else
+			{
+				// Lines 11-18: run timing-based detection
+				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
+			}
+		}
+		// === END TAP BASELINE DETECTION ===
 	}
 	
 	
 	CustomDataUnicastTag_Routing tag_routing;
-
-	// === TAP BASELINE DETECTION ===
-	// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-	// OnReceivedEmergencyPacket logic. Placed OUTSIDE if(destination==current_hop)
-	// so it fires at EVERY intermediate hop — matching TAP paper which runs on
-	// every received packet.
-	if (tap_detection_active)
-	{
-		uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-		uint32_t tap_fid = tagmodified_routing.GetflowId();
-		uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-		uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
-
-		// Algorithm 1 Line 10: check Controller-Defaulter-List first
-		if (tap_check_defaulter_list(tap_sender))
-		{
-			// Lines 19-20: discard packet from blacklisted node
-			cout << "[TAP] Retransmission packet dropped for flow id "
-				 << tap_fid << " #packet: " << tap_packet_ID << endl;
-		}
-		else
-		{
-			// Lines 11-18: run timing-based detection
-			tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-		}
-	}
-	// === END TAP BASELINE DETECTION ===
 	
 	
 
