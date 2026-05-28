@@ -116880,6 +116880,8 @@ void calculate_tap_security_metrics()
 		}
 	}
 	tap_current_mitigation_ms = valid_count > 0 ? (total_latency / valid_count) * 1000.0 : 0.0;
+	if (tap_current_mitigation_ms <= 0.0 && tap_TP > 0)
+		tap_current_mitigation_ms = 50.0;
 	tap_previous_cumulative_mit += tap_current_mitigation_ms;
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;
@@ -116908,8 +116910,6 @@ void write_tap_csv()
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
-	if (tap_current_mitigation_ms <= 0.0 && tap_TP > 0)
-		tap_current_mitigation_ms = 50.0;
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
