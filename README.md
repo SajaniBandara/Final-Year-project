@@ -39,6 +39,35 @@ cd ~/ns-allinone-3.35/ns-3.35
 
 The simulation is launched with `waf` and the `scratch/routing` program.
 
+## TAP Implementation (Attack 2)
+
+This project includes TAP-based security evaluation for Attack 2 (Selective Time Delay - Data Plane).
+
+Current TAP workflow in `routing.cc`:
+
+- Attack is selected with `--active_attack_variant=1`
+- Attack intensity is controlled by `--attack_percentage`
+- TAP metrics are calculated per cycle and written to CSV
+- Security metrics include MCC, Detection Rate (DR), False Positive Rate (FPR), mitigation latency, TP, FP, TN, and FN
+
+### Attack Percentage Meaning
+
+In this Attack 2 setup, `attack_percentage` controls two things at the same time:
+
+- Delay strength per malicious forwarding event: `tx_delay = attack2_delay_seconds * (attack_percentage / 100.0)`
+- Number of malicious nodes in the 10-node test topology: `num_attackers = 10 * attack_percentage / 100`
+
+Meaning for each run:
+
+- `0` -> baseline (`0` attackers, `0%` injected delay)
+- `20` -> `2` attackers, `20%` of `attack2_delay_seconds`
+- `40` -> `4` attackers, `40%` of `attack2_delay_seconds`
+- `60` -> `6` attackers, `60%` of `attack2_delay_seconds`
+- `80` -> `8` attackers, `80%` of `attack2_delay_seconds`
+- `100` -> `10` attackers, `100%` of `attack2_delay_seconds`
+
+This is why the sweep `0,20,40,60,80,100` is used: it gives a controlled progression from clean baseline to maximum attack impact for both routing and TAP security metrics.
+
 ### Baseline Run
 
 Run the routing model with the default settings:
@@ -61,6 +90,34 @@ This configuration means:
 - `routing_algorithm=4` selects the proposed routing method
 - `experiment_number=3` runs the network size experiment
 - `active_attack_variant=1` activates Attack 2, the selective time delay scenario
+
+## TAP Experiment Commands (Attack 2 Sweep)
+
+Use the following sequence to build, clear old CSV files, and run all six attack percentage cases.
+
+```bash
+cd ~/ns-allinone-3.35/ns-3.35
+./waf build 2>&1 | tail -5
+
+rm -f results_routing/TAP_Attack2_*.csv
+rm -f results_routing/MOBIGUARD_Attack2_*.csv
+
+./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=0"   2>&1 | tail -3
+./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=20"  2>&1 | tail -3
+./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=40"  2>&1 | tail -3
+./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=60"  2>&1 | tail -3
+./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=80"  2>&1 | tail -3
+./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=100" 2>&1 | tail -3
+```
+
+### Output Files
+
+After runs complete, check:
+
+- `results_routing/TAP_Attack2_*.csv` for TAP security metrics
+- `results_routing/MOBIGUARD_Attack2_*.csv` for routing/performance metrics
+
+Each attack percentage writes to its own CSV file suffix (`_0`, `_20`, `_40`, `_60`, `_80`, `_100`).
 
 ## Useful Command-Line Flags
 
@@ -135,3 +192,4 @@ cd ~/ns-allinone-3.35/ns-3.35
 - Keep the `routing.cc` copy in the NS-3 scratch folder in sync with the project copy.
 - If you want to compare attack and no-attack behavior, run the same simulation once with `active_attack_variant=1` and once with `active_attack_variant=-1`.
 - The simulation code also contains support for other attack variants, so the README can be extended later with those scenarios if needed.
+- For TAP Attack 2 evaluation, always clear old `TAP_Attack2_*.csv` and `MOBIGUARD_Attack2_*.csv` files before a fresh sweep.
