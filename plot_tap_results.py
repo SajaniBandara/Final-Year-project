@@ -127,8 +127,8 @@ def load_method_data(prefix):
 def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
                 ylim=None, yticks=None):
     """
-    Plot one metric panel with:
-      - Two lines: TAP (red solid -o) and MOBIGUARD (blue dashed --s)
+        Plot one metric panel with:
+            - TAP (red solid -o)
       - 95% CI error bars (CapSize=18, matching supervisor's MATLAB)
       - Grid, font size 22, proper axis labels
     """
@@ -136,25 +136,17 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 
     tap_means = []
     tap_cis   = []
-    mob_means = []
-    mob_cis   = []
 
     for pct in ATTACK_PERCENTAGES:
         tap_vals = extract_column(tap_data[pct], col)
-        mob_vals = extract_column(mob_data[pct], col)
 
         tm, tc = mean_and_ci(tap_vals)
-        mm, mc = mean_and_ci(mob_vals)
 
         tap_means.append(tm)
         tap_cis.append(tc)
-        mob_means.append(mm)
-        mob_cis.append(mc)
 
     tap_means = np.array(tap_means)
     tap_cis   = np.array(tap_cis)
-    mob_means = np.array(mob_means)
-    mob_cis   = np.array(mob_cis)
 
     # ── TAP line — red solid with circle markers (matches supervisor's p1 style)
     p1 = ax.errorbar(x, tap_means, yerr=tap_cis,
@@ -166,17 +158,6 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
                      capsize=18,
                      linestyle='-',
                      label='TAP (Arsalan & Rehman 2018)')
-
-    # ── MOBIGUARD line — blue dashed with square markers (matches supervisor's p2 style)
-    p2 = ax.errorbar(x, mob_means, yerr=mob_cis,
-                     fmt='--s',
-                     color='blue',
-                     markerfacecolor='blue',
-                     markersize=9,
-                     linewidth=2,
-                     capsize=18,
-                     linestyle='--',
-                     label='MOBIGUARD (S2 Signature)')
 
     # ── Grid (matches supervisor: grid on, GridAlpha=0.2)
     ax.grid(True, linestyle='-', alpha=0.2, linewidth=1.0)
@@ -196,7 +177,7 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 
     ax.set_title(title, fontsize=20, pad=10)
 
-    return p1, p2
+    return p1
 
 
 # ─── Main plotting function ───────────────────────────────────────────────────
@@ -221,7 +202,7 @@ def main():
                  fontsize=22, fontweight='bold', y=1.02)
 
     # Subplot (a): Packet Delivery Ratio
-    p1, p2 = plot_metric(
+    p1 = plot_metric(
         axes[0], tap_data, mob_data,
         col    = COL_PDR_AVG,
         ylabel = "Packet Delivery Ratio (%)",
@@ -252,10 +233,10 @@ def main():
 
     # Shared legend at top (matching supervisor's NumColumns=2 style)
     legend_handle = fig.legend(
-        [p1, p2],
-        ['TAP (Arsalan & Rehman 2018)', 'MOBIGUARD (S2 Signature)'],
+        [p1],
+        ['TAP (Arsalan & Rehman 2018)'],
         loc='upper center',
-        ncol=2,
+        ncol=1,
         fontsize=20,
         bbox_to_anchor=(0.5, 1.08),
         markerscale=1.5
@@ -276,7 +257,7 @@ def main():
                   fontsize=22, fontweight='bold', y=1.02)
 
     # Subplot (a): Detection Rate
-    p1b, p2b = plot_metric(
+    p1b = plot_metric(
         axes2[0], tap_data, mob_data,
         col    = COL_DR_CUR,
         ylabel = "Detection Rate (%)",
@@ -296,10 +277,10 @@ def main():
     )
 
     legend_handle2 = fig2.legend(
-        [p1b, p2b],
-        ['TAP (Arsalan & Rehman 2018)', 'MOBIGUARD (S2 Signature)'],
+        [p1b],
+        ['TAP (Arsalan & Rehman 2018)'],
         loc='upper center',
-        ncol=2,
+        ncol=1,
         fontsize=20,
         bbox_to_anchor=(0.5, 1.08),
         markerscale=1.5
@@ -327,18 +308,17 @@ def main():
         (COL_MIT_CUR, "Mitigation Latency (ms)",           "(e) Mitigation",  [-5, 120],  [0,20,40,60,80,100]),
     ]
 
-    first_p1 = first_p2 = None
+    first_p1 = None
     for ax, (col, ylabel, title, ylim, yticks) in zip(axes3, metrics):
-        p1c, p2c = plot_metric(ax, tap_data, mob_data,
-                               col=col, ylabel=ylabel, title=title,
-                               ylim=ylim, yticks=yticks)
+        p1c = plot_metric(ax, tap_data, mob_data,
+                          col=col, ylabel=ylabel, title=title,
+                          ylim=ylim, yticks=yticks)
         if first_p1 is None:
-            first_p1, first_p2 = p1c, p2c
+            first_p1 = p1c
 
     fig3.legend(
-        [first_p1, first_p2],
-        ['TAP (Arsalan & Rehman 2018)', 'MOBIGUARD (S2 Signature)'],
-        loc='upper center', ncol=2, fontsize=20,
+        ['TAP (Arsalan & Rehman 2018)'],
+        loc='upper center', ncol=1, fontsize=20,
         bbox_to_anchor=(0.5, 1.08), markerscale=1.5
     )
 
