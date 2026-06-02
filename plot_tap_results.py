@@ -235,10 +235,10 @@ def main():
     legend_handle = fig.legend(
         [p1],
         ['TAP (Arsalan & Rehman 2018)'],
-        loc='upper center',
+        loc='upper right',
         ncol=1,
         fontsize=20,
-        bbox_to_anchor=(0.5, 1.08),
+        bbox_to_anchor=(0.98, 1.08),
         markerscale=1.5
     )
 
@@ -279,10 +279,10 @@ def main():
     legend_handle2 = fig2.legend(
         [p1b],
         ['TAP (Arsalan & Rehman 2018)'],
-        loc='upper center',
+        loc='upper right',
         ncol=1,
         fontsize=20,
-        bbox_to_anchor=(0.5, 1.08),
+        bbox_to_anchor=(0.98, 1.08),
         markerscale=1.5
     )
 
@@ -297,7 +297,7 @@ def main():
 
     fig3, axes3 = plt.subplots(1, 5, figsize=(35, 7))
     fig3.suptitle("Complete Performance Evaluation — Attack 2 (Selective Time Delay, Data Plane)\n"
-                  "TAP (Arsalan & Rehman FIT 2018) vs MOBIGUARD",
+                  "TAP (Arsalan & Rehman FIT 2018)",
                   fontsize=22, fontweight='bold', y=1.02)
 
     metrics = [
@@ -318,8 +318,8 @@ def main():
 
     fig3.legend(
         ['TAP (Arsalan & Rehman 2018)'],
-        loc='upper center', ncol=1, fontsize=20,
-        bbox_to_anchor=(0.5, 1.08), markerscale=1.5
+        loc='upper right', ncol=1, fontsize=20,
+        bbox_to_anchor=(0.98, 1.08), markerscale=1.5
     )
 
     plt.tight_layout()
