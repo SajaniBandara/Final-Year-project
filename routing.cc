@@ -114666,25 +114666,18 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 
 // === TAP BASELINE GLOBALS ===
 bool tap_detection_active = true;
-// When false, all TAP functions return immediately
 
-static const double TAP_SIGNAL_SPEED = 3.0e8;
-// Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
+static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.020;
-// 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+static const double TAP_MARGIN = 0.020;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
 
-bool tap_defaulter_list[total_size] = {false};
-// Controller-Defaulter-List from TAP paper — true means node is blacklisted.
+bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
-bool tap_detected_node[total_size] = {false};
-// Per-node detection flag for TAP
+bool tap_detected_node[total_size] = {false};      // Per-node detection flag for TAP
 
-double tap_t_quarantine[total_size] = {0.0};
-// Timestamp when TAP detection fired for each node
+double tap_t_quarantine[total_size] = {0.0};       // Timestamp when TAP detection fired for each node
 
-uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;
-// Confusion matrix counters for TAP on Attack 2 (variant index 1)
+uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;    // Confusion matrix counters for TAP on Attack 2 (variant index 1)
 
 double tap_current_MCC            = 0.0;
 double tap_current_DR             = 0.0;
