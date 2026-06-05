@@ -114656,6 +114656,8 @@ inline std::string attack_tag()
         case 5:  return "[ATTACK6]";
         case 6:  return "[ATTACK7]";
         case 7:  return "[ATTACK8]";
+        case 8:  return "[ATTACK3-TCAM-CP]";
+        case 9:  return "[ATTACK4-TCAM-DP]";
         default: return "[ATTACK?]";
     }
 }
@@ -119901,40 +119903,42 @@ void tcam_install(uint32_t rsu_node, uint32_t key)
     reactive_tcam[rsu_node][slot].seq   = ++tcam_seq_counter;
 }
 
-// Attack 3 (control plane): malicious controller installs junk FlowMods into
-// every RSU's reactive TCAM. 5 unique junk rules per RSU per tick. Reschedules
-// itself every 50ms while enabled.
+// Fills EVERY slot of rsu_node's reactive TCAM with fresh unique junk keys,
+// fully saturating it. Called each flood tick so a victim entry installed
+// between ticks is guaranteed evicted by the next tick (sustained exhaustion).
+void tcam_saturate(uint32_t rsu_node)
+{
+    if (rsu_node >= (uint32_t)total_size) return;
+    for (int s = 0; s < TCAM_CAPACITY; s++)
+    {
+        uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + (uint32_t)s + 1;
+        reactive_tcam[rsu_node][s].valid = true;
+        reactive_tcam[rsu_node][s].key   = junk_key;
+        reactive_tcam[rsu_node][s].seq   = ++tcam_seq_counter;
+    }
+}
+
+// Attack 3 (control plane): malicious controller floods every RSU's reactive
+// TCAM with junk FlowMods, fully saturating each one. Reschedules every 50ms.
 void controller_flood_tcam_all_rsus()
 {
     if (!tcam_attack_cp_enabled) return;
     for (uint32_t r = N_Vehicles; r < total_size && r < N_Vehicles + N_RSUs; r++)
-    {
-        for (int j = 0; j < 5; j++)
-        {
-            // Junk flow ids that never correspond to the real flow (>= total_size).
-            uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + j;
-            tcam_install(r, junk_key);
-        }
-    }
-    cout << attack_tag() << " [ATTACK 3 — CTRL TCAM FLOOD] Controller spammed junk FlowMods to all RSUs at "
+        tcam_saturate(r);
+    cout << attack_tag() << " [ATTACK 3 — CTRL TCAM FLOOD] Controller saturated all RSU TCAMs at "
          << Simulator::Now().GetSeconds() << "s" << endl;
     Simulator::Schedule(Seconds(0.050), &controller_flood_tcam_all_rsus);
 }
 
-// Attack 4 (data plane): attacker vehicle sends unique low-rate packets to its
-// RSU, each causing a new reactive install. 3 unique junk rules per tick.
-// Reschedules itself every 50ms while enabled.
+// Attack 4 (data plane): attacker vehicle floods its serving RSU with unique
+// low-rate packets, fully saturating that RSU's TCAM. Reschedules every 50ms.
 void data_plane_flood_tcam()
 {
     if (!tcam_attack_dp_enabled) return;
     uint32_t target_rsu = N_Vehicles;  // attacker's serving RSU (first RSU index)
-    for (int j = 0; j < 3; j++)
-    {
-        uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + j;
-        tcam_install(target_rsu, junk_key);
-    }
+    tcam_saturate(target_rsu);
     cout << attack_tag() << " [ATTACK 4 — DATA TCAM FLOOD] Attacker node " << tcam_dp_attacker_node
-         << " flooded RSU " << target_rsu << " at "
+         << " saturated RSU " << target_rsu << " TCAM at "
          << Simulator::Now().GetSeconds() << "s" << endl;
     Simulator::Schedule(Seconds(0.050), &data_plane_flood_tcam);
 }
