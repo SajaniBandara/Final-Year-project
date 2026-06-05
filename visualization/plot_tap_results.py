@@ -45,7 +45,9 @@ import scipy.stats as stats
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 RESULTS_DIR = "/home/user/ns-allinone-3.35/ns-3.35/results_routing"
-OUTPUT_DIR  = "/home/user/ns-allinone-3.35/ns-3.35/results_routing"
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
 
 ATTACK_PERCENTAGES = [0, 20, 40, 60, 80, 100]
 
@@ -186,6 +188,7 @@ def main():
     print("Loading CSV data...")
     tap_data = load_method_data("TAP")
     mob_data = load_method_data("MOBIGUARD")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # Verify files loaded
     for pct in ATTACK_PERCENTAGES:
