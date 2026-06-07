@@ -114697,7 +114697,7 @@ double tap_previous_cumulative_mit = 0.0;
 // Call this once from main() or the simulation setup block.
 // Replace body when real attack scenarios are implemented.
 // ============================================================
-void hardcode_test_network_attackers();
+void hardcode_attack2_test_network_attackers();
 void hardcode_attack7_test_network();
 void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
 // Slow TCAM Exhaustion (Attacks 3 & 4) — defined later, near the attack helpers.
@@ -114747,9 +114747,9 @@ void initialise_stub_attack_state()
     {
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
             // Ground truth (is_malicious_node[1][*], t_onset[*]) is set inside
-            // hardcode_test_network_attackers() and scales with attack_percentage.
+            // hardcode_attack2_test_network_attackers() and scales with attack_percentage.
             // Do NOT hardcode a single attacker here.
-            hardcode_test_network_attackers();
+            hardcode_attack2_test_network_attackers();
 			// Reset all TAP state before each Attack 2 simulation run
 			for (int _n = 0; _n < total_size; _n++)
 			{
@@ -114860,7 +114860,7 @@ void declare_attackers()
 	}
 }
 
-void hardcode_test_network_attackers()
+void hardcode_attack2_test_network_attackers()
 {
 	// Extended 10-node test network for Attack 2
 	// Node mapping: current_hop 0-4 = Vehicles, current_hop 5-9 = RSUs
