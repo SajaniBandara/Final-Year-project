@@ -114570,11 +114570,13 @@ double previous_cumulative_load_imbalance = 0.0;
 // ============================================================
 
 // Number of attack variants defined in proposal
-#define NUM_ATTACK_VARIANTS 8
+#define NUM_ATTACK_VARIANTS 10
 
 // Per-variant confusion matrix counters
 // Index 0-3: Selective Time Delay variants (S1-S4)
 // Index 4-7: Hidden Forwarding variants    (S5-S8)
+// Index 8:   Slow TCAM Exhaustion - control plane (Attack 3)
+// Index 9:   Slow TCAM Exhaustion - data plane    (Attack 4)
 uint32_t sec_TP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_FP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_TN[NUM_ATTACK_VARIANTS] = {0};
@@ -114653,6 +114655,8 @@ inline std::string attack_tag()
         case 5:  return "[ATTACK6]";
         case 6:  return "[ATTACK7]";
         case 7:  return "[ATTACK8]";
+        case 8:  return "[ATTACK3-TCAM-CP]";
+        case 9:  return "[ATTACK4-TCAM-DP]";
         default: return "[ATTACK?]";
     }
 }
@@ -114696,6 +114700,16 @@ double tap_previous_cumulative_mit = 0.0;
 void hardcode_test_network_attackers();
 void hardcode_attack7_test_network();
 void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
+// Slow TCAM Exhaustion (Attacks 3 & 4) — defined later, near the attack helpers.
+void tcam_init_all();
+void controller_flood_tcam_all_rsus();
+void data_plane_flood_tcam();
+extern const int TCAM_CAPACITY;
+extern const double TCAM_SLOWPATH_DELAY;
+extern bool tcam_attack_cp_enabled;
+extern bool tcam_attack_dp_enabled;
+extern uint32_t tcam_dp_attacker_node;
+extern uint32_t reactive_flow_id;
 void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t eavesdropper_index,
                            uint32_t flow_id,
@@ -114759,6 +114773,39 @@ void initialise_stub_attack_state()
             // linklifetimeMatrix_dsrc is declared after this function, so seeding
             // is deferred to t=0 when all globals are fully initialised.
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            break;
+
+        case (8): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
+            // Malicious controller floods every RSU's reactive TCAM with junk
+            // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
+            // (current_hop = ns3_id - 2) is marked malicious for ground truth.
+            tcam_init_all();
+            tcam_attack_cp_enabled = true;
+            reactive_flow_id = 0;
+            is_malicious_node[8][N_Vehicles] = true;   // controller-driven, attributed to serving RSU
+            t_onset[N_Vehicles] = 1.0;
+            Simulator::Schedule(Seconds(1.0), &controller_flood_tcam_all_rsus);
+            cout << attack_tag() << " ① Attack 3 (Slow TCAM Exhaustion - Control Plane) enabled. "
+                 << "Victim flow " << reactive_flow_id
+                 << ", TCAM capacity " << TCAM_CAPACITY
+                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
+            break;
+
+        case (9): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
+            // Attacker vehicle sends unique low-rate flows to its RSU, filling
+            // the same reactive TCAM. Victim = reactive flow 0.
+            tcam_init_all();
+            tcam_attack_dp_enabled = true;
+            reactive_flow_id = 0;
+            tcam_dp_attacker_node = 0;                 // attacker vehicle (current_hop index)
+            is_malicious_node[9][tcam_dp_attacker_node] = true;
+            t_onset[tcam_dp_attacker_node] = 1.0;
+            Simulator::Schedule(Seconds(1.0), &data_plane_flood_tcam);
+            cout << attack_tag() << " ① Attack 4 (Slow TCAM Exhaustion - Data Plane) enabled. "
+                 << "Attacker node " << tcam_dp_attacker_node
+                 << ", victim flow " << reactive_flow_id
+                 << ", TCAM capacity " << TCAM_CAPACITY
+                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
             break;
 
         default:
@@ -119984,59 +120031,147 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 
 
-// ---------- TCAM exhaustion helpers ----------
+// ---------- Slow TCAM Exhaustion Attack (Attacks 3 & 4) ----------
+//
+// Reactive TCAM model layered on top of the existing proactive (delta-value)
+// routing. The proactive routing in architecture 3 is UNCHANGED: find_next_hop
+// still decides the next hop. This layer only governs *timing* at the RSU
+// forwarding step:
+//   - The designated reactive (safety-critical) flow has NO proactive rule, so
+//     at the RSU it must be served from the reactive TCAM.
+//   - TCAM HIT  -> fast path (0 extra delay).
+//   - TCAM MISS -> packet goes to the controller "slow path": the RSU installs
+//     the rule (FIFO-evicting if the small table is full) and the packet eats
+//     TCAM_SLOWPATH_DELAY (controller round-trip, ~100ms on a wired backhaul).
+//
+// Both attacks fill the SAME per-RSU reactive TCAM:
+//   - Attack 3 (control plane): a malicious controller spams junk FlowMods.
+//   - Attack 4 (data plane):    an attacker vehicle sends unique low-rate flows.
+// Either way the 8 slots fill with junk, evicting the victim flow's entry, so
+// the victim keeps missing -> repeated 100ms penalties on safety packets.
+//
+// Keyed on flow id (fid), read from the modified-routing tag at the RSU
+// forwarding step. Junk attacker flows use synthetic ids >= total_size so they
+// never collide with the single real flow (id 0).
 
+const int TCAM_CAPACITY        = 8;       // small reactive table per RSU (sim)
+const double TCAM_SLOWPATH_DELAY = 0.100; // 100 ms controller round-trip per miss
 
-int simulated_tcam_counter[200] = {0};
-int TCAM_CAPACITY = 1000;
-bool tcam_exhaust_malicious_nodes[200] = {false};
-uint32_t spy_node_id = 0;
-void declare_attack_states() {}
+// Attack toggles (set by initialise_stub_attack_state() for variants 8/9 only).
+bool tcam_attack_cp_enabled = false;  // Attack 3 (control plane)
+bool tcam_attack_dp_enabled = false;  // Attack 4 (data plane)
+uint32_t tcam_dp_attacker_node = 0;   // attacker vehicle (current_hop index) for Attack 4
+uint32_t reactive_flow_id = 0;        // victim flow: served reactively (no proactive rule)
 
+// A single reactive TCAM entry: a flow-id key, valid flag, and an insertion
+// sequence number used for FIFO eviction.
+struct TcamEntry {
+    bool     valid;
+    uint32_t key;   // flow id
+    uint64_t seq;   // monotonically increasing; lowest seq = oldest = evicted first
+};
 
-// Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
-// Simulates the malicious controller spamming junk FlowMods to every RSU,
-// filling their TCAM so legitimate packets miss the table and go slow-path.
+// One table per node index (indexed by current_hop = ns3_id - 2); only RSU
+// indices are ever used. Sized by total_size (compile-time const) because
+// N_Vehicles/N_RSUs are reassigned at runtime by the test-network setups.
+TcamEntry reactive_tcam[total_size][TCAM_CAPACITY];
+uint64_t  tcam_seq_counter = 0;  // global monotonic sequence for FIFO ordering
+
+void tcam_init_all()
+{
+    for (int n = 0; n < total_size; n++)
+        for (int s = 0; s < TCAM_CAPACITY; s++)
+        {
+            reactive_tcam[n][s].valid = false;
+            reactive_tcam[n][s].key   = 0;
+            reactive_tcam[n][s].seq   = 0;
+        }
+    tcam_seq_counter = 0;
+}
+
+// Returns true if flow `key` is currently resident in rsu_node's reactive TCAM.
+bool tcam_lookup(uint32_t rsu_node, uint32_t key)
+{
+    if (rsu_node >= (uint32_t)total_size) return false;
+    for (int s = 0; s < TCAM_CAPACITY; s++)
+    {
+        if (reactive_tcam[rsu_node][s].valid &&
+            reactive_tcam[rsu_node][s].key == key)
+            return true;
+    }
+    return false;
+}
+
+// Installs flow `key` into rsu_node's reactive TCAM. Uses a free slot if one
+// exists; otherwise FIFO-evicts the oldest (lowest seq) entry. No-op if the
+// flow is already resident (FIFO, not LRU — does not refresh).
+void tcam_install(uint32_t rsu_node, uint32_t key)
+{
+    if (rsu_node >= (uint32_t)total_size) return;
+    if (tcam_lookup(rsu_node, key)) return;  // already present
+
+    int free_slot = -1;
+    int oldest_slot = 0;
+    uint64_t oldest_seq = 0;
+    bool oldest_set = false;
+    for (int s = 0; s < TCAM_CAPACITY; s++)
+    {
+        if (!reactive_tcam[rsu_node][s].valid) { free_slot = s; break; }
+        if (!oldest_set || reactive_tcam[rsu_node][s].seq < oldest_seq)
+        {
+            oldest_seq  = reactive_tcam[rsu_node][s].seq;
+            oldest_slot = s;
+            oldest_set  = true;
+        }
+    }
+    int slot = (free_slot >= 0) ? free_slot : oldest_slot;
+    reactive_tcam[rsu_node][slot].valid = true;
+    reactive_tcam[rsu_node][slot].key   = key;
+    reactive_tcam[rsu_node][slot].seq   = ++tcam_seq_counter;
+}
+
+// Fills EVERY slot of rsu_node's reactive TCAM with fresh unique junk keys,
+// fully saturating it. Called each flood tick so a victim entry installed
+// between ticks is guaranteed evicted by the next tick (sustained exhaustion).
+void tcam_saturate(uint32_t rsu_node)
+{
+    if (rsu_node >= (uint32_t)total_size) return;
+    for (int s = 0; s < TCAM_CAPACITY; s++)
+    {
+        uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + (uint32_t)s + 1;
+        reactive_tcam[rsu_node][s].valid = true;
+        reactive_tcam[rsu_node][s].key   = junk_key;
+        reactive_tcam[rsu_node][s].seq   = ++tcam_seq_counter;
+    }
+}
+
+// Attack 3 (control plane): malicious controller floods every RSU's reactive
+// TCAM with junk FlowMods, fully saturating each one. Reschedules every 50ms.
 void controller_flood_tcam_all_rsus()
 {
-    for (uint32_t i = N_Vehicles; i < total_size; i++)
-    {
-        // Each call "installs" 5 junk rules per RSU
-        simulated_tcam_counter[i] += 5;
-        if (simulated_tcam_counter[i] > TCAM_CAPACITY)
-            simulated_tcam_counter[i] = TCAM_CAPACITY;  // cap at full
-    }
-    cout << "[ATTACK 16 — CTRL TCAM FLOOD] Controller flooded all RSUs. "
-         << "RSU TCAM level: " << simulated_tcam_counter[N_Vehicles] 
-         << "/" << TCAM_CAPACITY << endl;
+    if (!tcam_attack_cp_enabled) return;
+    for (uint32_t r = N_Vehicles; r < total_size && r < N_Vehicles + N_RSUs; r++)
+        tcam_saturate(r);
+    cout << attack_tag() << " [ATTACK 3 — CTRL TCAM FLOOD] Controller saturated all RSU TCAMs at "
+         << Simulator::Now().GetSeconds() << "s" << endl;
+    Simulator::Schedule(Seconds(0.050), &controller_flood_tcam_all_rsus);
 }
 
-// Called every TCAM_FLOOD_INTERVAL seconds for each data-plane attacker node (Attack 17).
-// Simulates an attacker vehicle flooding the nearest RSU with unique-5-tuple packets
-// so the RSU's TCAM fills up with useless rules.
-void data_plane_flood_tcam(uint32_t attacker_node, uint32_t target_rsu)
+// Attack 4 (data plane): attacker vehicle floods its serving RSU with unique
+// low-rate packets, fully saturating that RSU's TCAM. Reschedules every 50ms.
+void data_plane_flood_tcam()
 {
-    if (tcam_exhaust_malicious_nodes[attacker_node] == true)
-    {
-        simulated_tcam_counter[target_rsu] += 3;
-        if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
-            simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
-        cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
-             << " flooded RSU " << target_rsu
-             << ". TCAM level: " << simulated_tcam_counter[target_rsu]
-             << "/" << TCAM_CAPACITY << endl;
-    }
+    if (!tcam_attack_dp_enabled) return;
+    uint32_t target_rsu = N_Vehicles;  // attacker's serving RSU (first RSU index)
+    tcam_saturate(target_rsu);
+    cout << attack_tag() << " [ATTACK 4 — DATA TCAM FLOOD] Attacker node " << tcam_dp_attacker_node
+         << " saturated RSU " << target_rsu << " TCAM at "
+         << Simulator::Now().GetSeconds() << "s" << endl;
+    Simulator::Schedule(Seconds(0.050), &data_plane_flood_tcam);
 }
 
-// Returns the slow-path extra delay (seconds) for a given RSU node based on
-// how full its TCAM is. When TCAM is 100% full, legitimate packets experience
-// ~300ms extra delay (routed through controller slow path).
-double get_tcam_slowpath_delay(uint32_t rsu_node)
-{
-    double fill_ratio = (double)simulated_tcam_counter[rsu_node] / (double)TCAM_CAPACITY;
-    // Linear: 0ms at empty, 300ms at full
-    return fill_ratio * 0.300;
-}
+uint32_t spy_node_id = 0;
+void declare_attack_states() {}
 
 // ---------- Hidden forwarding helpers ----------
 
@@ -120474,7 +120609,38 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 											//cout<<"This is flow ID "<<fid<<"Re-transmission attempt 1 packet ID "<<updated_packet_ID<<" from "<<current_hop<<" to next hop "<<nid<<"at time "<<Now().GetSeconds()<<endl;
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);						
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, p_size, originail_timestamp);
-											Simulator::Schedule (Seconds (0.0), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
+
+											// ---- Slow TCAM Exhaustion (Attacks 3 & 4): reactive-TCAM timing ----
+											// Layered on top of proactive routing. Next hop (nid) is UNCHANGED;
+											// this only adds slow-path delay on a TCAM miss for the reactive
+											// (safety-critical) flow when it is being forwarded BY an RSU.
+											// Inert unless an attack variant enabled the flags.
+											double tcam_extra_delay = 0.0;
+											bool current_is_rsu =
+												(current_hop >= N_Vehicles &&
+												 current_hop <  N_Vehicles + N_RSUs);
+											if ((tcam_attack_cp_enabled || tcam_attack_dp_enabled) &&
+												current_is_rsu && fid == reactive_flow_id)
+											{
+												if (tcam_lookup(current_hop, fid))
+												{
+													// HIT: rule resident -> fast path, no extra delay.
+												}
+												else
+												{
+													// MISS: controller slow path. Install the rule
+													// (FIFO-evicting if full) and pay the round-trip.
+													tcam_install(current_hop, fid);
+													tcam_extra_delay = TCAM_SLOWPATH_DELAY;
+													cout << attack_tag()
+														 << " [TCAM MISS] RSU " << current_hop
+														 << " flow " << fid
+														 << " -> slow path +" << TCAM_SLOWPATH_DELAY
+														 << "s at " << Simulator::Now().GetSeconds()
+														 << "s" << endl;
+												}
+											}
+											Simulator::Schedule (Seconds (tcam_extra_delay), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
 											
 											/*		
 											if (retransmitted[fid][nid][updated_packet_ID] == true)
@@ -142279,10 +142445,10 @@ if (architecture == 3 && N_Vehicles > 0)
     Ptr<MobilityModel> mob1 = NodeList::GetNode(3)->GetObject<MobilityModel>(); // Vehicle 1 (Node ID 3)
     Ptr<MobilityModel> mobRSU = RSU_Nodes.Get(0)->GetObject<MobilityModel>();   // The RSU
     
-    // Put them all within 10 meters of each other!
+  
     mobRSU->SetPosition(Vector(500.0, 150.0, 0.0));
-    mob0->SetPosition(Vector(300.0, 150.0, 0.0)); 
-    mob1->SetPosition(Vector(700.0, 150.0, 0.0));
+    mob0->SetPosition(Vector(400.0, 100.0, 0.0)); 
+    mob1->SetPosition(Vector(600.0, 100.0, 0.0));
 
 
   Simulator::Run();
