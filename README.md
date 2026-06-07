@@ -165,8 +165,8 @@ The code currently uses these routing algorithm values:
 
 The `active_attack_variant` flag controls which attack is active during the run. The code uses 0-based indexing for the attack tag helper, so:
 
-- `0` - Attack 1
-- `1` - Attack 2, selective time delay
+- `0` - Attack 1, selective time delay control plane
+- `1` - Attack 2, selective time delay data plane
 - `2` - Attack 3
 - `3` - Attack 4
 - `4` - Attack 5
