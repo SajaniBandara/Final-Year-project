@@ -106842,7 +106842,7 @@ double attack2_delay_seconds = 0.080; // 80ms injected delay
 
 double t_fwd_packet[total_size][Flow_size + 2];     // records when each node forwarded each packet
 double delta_max_s2 = 0.050;                        // 50ms threshold per Equation 3.6 — half of 100ms safety bound
-bool s2_detection_active = true;                    // enable/disable S2 detection
+bool s2_detection_active = false;                    // enable/disable S2 detection
 
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 
@@ -106900,19 +106900,12 @@ double previous_cumulative_mitigation_latency = 0.0;
 
 // === TAP BASELINE GLOBALS ===
 bool tap_detection_active = true;
-
 static const double TAP_SIGNAL_SPEED = 3.0e8; // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
-
 static const double TAP_MARGIN = 0.020; // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
-
 bool tap_defaulter_list[total_size] = {false}; // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
-
 bool tap_detected_node[total_size] = {false}; // Per-node detection flag for TAP
-
 double tap_t_quarantine[total_size] = {0.0}; // Timestamp when TAP detection fired for each node
-
 uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0; // Confusion matrix counters for TAP on Attack 2 (variant index 1)
-
 double tap_current_MCC = 0.0;
 double tap_current_DR = 0.0;
 double tap_current_FPR = 0.0;
@@ -106949,7 +106942,7 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
 						   uint32_t channel,
 						   uint32_t p_size,
 						   Time original_timestamp);
-						   
+
 void send_hidden_duplicate_trampoline();
 
 // TAP function prototypes
@@ -106957,7 +106950,6 @@ bool tap_check_defaulter_list(uint32_t sender_current_hop);
 void tap_report_to_controller(uint32_t attacker_current_hop);
 void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
 void calculate_tap_security_metrics();
-
 void write_tap_csv();
 
 // ============================================================
