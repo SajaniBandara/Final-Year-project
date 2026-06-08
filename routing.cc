@@ -114724,48 +114724,34 @@ void tap_report_to_controller(uint32_t attacker_current_hop);
 void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
 void calculate_tap_security_metrics();
 void write_tap_csv();
+
 void initialise_stub_attack_state()
 {
-    // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
-    // and node 3 as malicious for variant 4 (Active Hidden Forwarding CP)
-    // as a demonstration. Remove/replace when real attacks are added.
-    is_malicious_node[0][2] = true;
-    is_malicious_node[4][3] = true;
-
-    // Set onset timestamps for those nodes
-    t_onset[2] = 1.0;  // attack starts at t=1s
-    t_onset[3] = 1.0;
-
-	// Stub: simulate detection firing 50ms after onset
-	// Replace with real Simulator::Now() calls when attacks are implemented
-	t_quarantine[2] = 1.050;
-	t_quarantine[3] = 1.050;
-
-	switch (active_attack_variant)
+    switch (active_attack_variant)
     {
-		case(0):
-		    //TODO: Implement Attack 1 (Selective Time Delay - Control Plane) 
-			break;
-
-        case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            hardcode_attack2_test_network_attackers();
-			// Reset all TAP state before each Attack 2 simulation run
-			for (int _n = 0; _n < total_size; _n++)
-			{
-				tap_defaulter_list[_n] = false;
-				tap_detected_node[_n]  = false;
-				tap_t_quarantine[_n]   = 0.0;
-			}
-			tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
-			tap_current_MCC=0.0; tap_current_DR=0.0;
-			tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
-			tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
-			tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
-			cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+        case (0):
+            // TODO: Implement Attack 1 (Selective Time Delay - Control Plane)
             break;
 
-		case (2):
-			/ implement Attack 3 - TCAM Exhaustion attack control plane
+        case (1): // Attack 2 — Selective Time Delay, Data Plane
+            hardcode_attack2_test_network_attackers();
+
+            // Reset all TAP state before each Attack 2 simulation run
+            for (int _n = 0; _n < total_size; _n++)
+            {
+                tap_defaulter_list[_n] = false;
+                tap_detected_node[_n]  = false;
+                tap_t_quarantine[_n]   = 0.0;
+            }
+            tap_TP = 0; tap_FP = 0; tap_TN = 0; tap_FN = 0;
+            tap_current_MCC = 0.0; tap_current_DR = 0.0;
+            tap_current_FPR = 0.0; tap_current_mitigation_ms = 0.0;
+            tap_previous_cumulative_MCC = 0.0; tap_previous_cumulative_DR = 0.0;
+            tap_previous_cumulative_FPR = 0.0; tap_previous_cumulative_mit = 0.0;
+            cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+            break;
+
+        case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane
             // Malicious controller floods every RSU's reactive TCAM with junk
             // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
             // (current_hop = ns3_id - 2) is marked malicious for ground truth.
@@ -114781,8 +114767,7 @@ void initialise_stub_attack_state()
                  << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
             break;
 
-		case (3):
-			// implement Attack 4 - TCAM Exhauustion attack data plane
+        case (3): // Attack 4 — Slow TCAM Exhaustion, Data Plane
             // Attacker vehicle sends unique low-rate flows to its RSU, filling
             // the same reactive TCAM. Victim = reactive flow 0.
             tcam_init_all();
@@ -114797,21 +114782,21 @@ void initialise_stub_attack_state()
                  << ", victim flow " << reactive_flow_id
                  << ", TCAM capacity " << TCAM_CAPACITY
                  << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
-		    break;
+            break;
 
-		case(4):
-			// TODO: implement Attack 5 - Active hidden forwarding attack control plane
-			break;
+        case (4):
+            // TODO: implement Attack 5 - Active hidden forwarding attack control plane
+            break;
 
-		case(5):
-			// TODO: implement  Attack 6 - Active hidden forwarding attack data plane
-			break;
+        case (5):
+            // TODO: implement Attack 6 - Active hidden forwarding attack data plane
+            break;
 
-		case(6): 
-			// TODO: implement Attack 7 - Passive hidden forwarding attack control plane
-			break;
+        case (6):
+            // TODO: implement Attack 7 - Passive hidden forwarding attack control plane
+            break;
 
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
             // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
             is_malicious_node[7][3] = true;
             t_onset[3] = 1.0;
