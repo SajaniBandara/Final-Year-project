@@ -106959,8 +106959,59 @@ void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_ho
 void calculate_tap_security_metrics();
 void write_tap_csv();
 
+// ============================================================
+// Reset ALL detection/metric state before any attack run. Covers both the MOBIGUARD framework and the TAP baseline, for every variant.
+// MUST run BEFORE any variant case sets its ground truth.
+// ============================================================
+void reset_all_attack_detection_state()
+{
+	// --- MOBIGUARD framework per-node state ---
+	for (int v = 0; v < NUM_ATTACK_VARIANTS; v++)
+	{
+		for (int n = 0; n < total_size; n++)
+		{
+			is_malicious_node[v][n] = false;
+			is_detected_node[v][n] = false;
+		}
+		previous_cumulative_MCC[v] = 0.0;
+		previous_cumulative_detection_rate[v] = 0.0;
+		previous_cumulative_FPR[v] = 0.0;
+	}
+	for (int n = 0; n < total_size; n++)
+	{
+		t_onset[n] = 0.0;
+		t_quarantine[n] = 0.0;
+	}
+
+	// --- TAP baseline state (reset for ALL variants) ---
+	for (int n = 0; n < total_size; n++)
+	{
+		tap_defaulter_list[n] = false;
+		tap_detected_node[n] = false;
+		tap_t_quarantine[n] = 0.0;
+	}
+	tap_TP = 0;
+	tap_FP = 0;
+	tap_TN = 0;
+	tap_FN = 0;
+	tap_current_MCC = 0.0;
+	tap_current_DR = 0.0;
+	tap_current_FPR = 0.0;
+	tap_current_mitigation_ms = 0.0;
+	tap_previous_cumulative_MCC = 0.0;
+	tap_previous_cumulative_DR = 0.0;
+	tap_previous_cumulative_FPR = 0.0;
+	tap_previous_cumulative_mit = 0.0;
+
+	cout << "[RESET] All MOBIGUARD + TAP detection state reset for variant "
+		 << active_attack_variant << "." << endl;
+}
+
 void initialise_stub_attack_state()
 {
+	// Reset all framework + TAP detection state for EVERY variant, before any case below sets its ground truth.
+	reset_all_attack_detection_state();
+
 	switch (active_attack_variant)
 	{
 	case (0):
@@ -106969,27 +107020,6 @@ void initialise_stub_attack_state()
 
 	case (1): // Attack 2 — Selective Time Delay, Data Plane
 		hardcode_attack2_test_network_attackers();
-
-		// Reset all TAP state before each Attack 2 simulation run
-		for (int _n = 0; _n < total_size; _n++)
-		{
-			tap_defaulter_list[_n] = false;
-			tap_detected_node[_n] = false;
-			tap_t_quarantine[_n] = 0.0;
-		}
-		tap_TP = 0;
-		tap_FP = 0;
-		tap_TN = 0;
-		tap_FN = 0;
-		tap_current_MCC = 0.0;
-		tap_current_DR = 0.0;
-		tap_current_FPR = 0.0;
-		tap_current_mitigation_ms = 0.0;
-		tap_previous_cumulative_MCC = 0.0;
-		tap_previous_cumulative_DR = 0.0;
-		tap_previous_cumulative_FPR = 0.0;
-		tap_previous_cumulative_mit = 0.0;
-		cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
 		break;
 
 	case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane .Malicious controller floods every RSU's reactive TCAM with junk FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU(current_hop = ns3_id - 2) is marked malicious for ground truth.
@@ -107068,7 +107098,6 @@ bool GetBooleanWithProbability(double probabilityPercent, int nodeID)
 	double randomValue = 1.0 * (rand() % 100);
 	return randomValue < probabilityPercent;
 }
-
 
 void hardcode_attack2_test_network_attackers()
 {
@@ -133278,8 +133307,8 @@ int main(int argc, char *argv[])
 		channel_180.AddPropagationLoss("ns3::Cost231PropagationLossModel"); // For urban -v2v
 		channel_182.AddPropagationLoss("ns3::Cost231PropagationLossModel"); // For urban -v2v
 		channel_184.AddPropagationLoss("ns3::Cost231PropagationLossModel"); // For urban -v2v
-		// channel.AddPropagationLoss("ns3::LogDistancePropagationLossModel");
-		// channel.AddPropagationLoss("ns3::FriisPropagationLossModel");
+																			// channel.AddPropagationLoss("ns3::LogDistancePropagationLossModel");
+																			// channel.AddPropagationLoss("ns3::FriisPropagationLossModel");
 	}
 	if ((mobility_scenario == 1) or (mobility_scenario == 2))
 	{
@@ -133839,8 +133868,8 @@ int main(int argc, char *argv[])
 
 	// DSRC flow instantiation
 	double t0 = 0;
-	declare_attack_states();	
-														   // Mark which nodes are malicious
+	declare_attack_states();
+	// Mark which nodes are malicious
 	for (double t = t0 + 0.999; t < simTime - 1; t = t + data_transmission_period) // All official data transmissions begin at t=0
 	{
 		// Go over all the wifi devices
