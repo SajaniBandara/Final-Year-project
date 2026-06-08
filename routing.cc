@@ -106931,6 +106931,7 @@ void hardcode_attack2_test_network_attackers();
 void hardcode_attack7_test_network();
 void seed_attack8_links(); // seeds linklifetimeMatrix_dsrc after it is declared
 // Slow TCAM Exhaustion (Attacks 3 & 4) — defined later, near the attack helpers.
+
 void tcam_init_all();
 void controller_flood_tcam_all_rsus();
 void data_plane_flood_tcam();
@@ -106940,6 +106941,7 @@ extern bool tcam_attack_cp_enabled;
 extern bool tcam_attack_dp_enabled;
 extern uint32_t tcam_dp_attacker_node;
 extern uint32_t reactive_flow_id;
+
 void send_hidden_duplicate(uint32_t malicious_rsu_index,
 						   uint32_t eavesdropper_index,
 						   uint32_t flow_id,
@@ -106947,12 +106949,15 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
 						   uint32_t channel,
 						   uint32_t p_size,
 						   Time original_timestamp);
+						   
 void send_hidden_duplicate_trampoline();
+
 // TAP function prototypes
 bool tap_check_defaulter_list(uint32_t sender_current_hop);
 void tap_report_to_controller(uint32_t attacker_current_hop);
 void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
 void calculate_tap_security_metrics();
+
 void write_tap_csv();
 
 // ============================================================
