@@ -114741,14 +114741,13 @@ void initialise_stub_attack_state()
 	t_quarantine[2] = 1.050;
 	t_quarantine[3] = 1.050;
 
-
-	    // Activate Attack 2 for test network
 	switch (active_attack_variant)
     {
+		case(0):
+		    //TODO: Implement Attack 1 (Selective Time Delay - Control Plane) 
+			break;
+
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            // Ground truth (is_malicious_node[1][*], t_onset[*]) is set inside
-            // hardcode_attack2_test_network_attackers() and scales with attack_percentage.
-            // Do NOT hardcode a single attacker here.
             hardcode_attack2_test_network_attackers();
 			// Reset all TAP state before each Attack 2 simulation run
 			for (int _n = 0; _n < total_size; _n++)
@@ -114765,24 +114764,15 @@ void initialise_stub_attack_state()
 			cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
             break;
 
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
-            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
-            is_malicious_node[7][3] = true;
-            t_onset[3] = 1.0;
-            hardcode_attack7_test_network();
-            // linklifetimeMatrix_dsrc is declared after this function, so seeding
-            // is deferred to t=0 when all globals are fully initialised.
-            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            break;
-
-        case (8): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
+		case (2):
+			/ implement Attack 3 - TCAM Exhaustion attack control plane
             // Malicious controller floods every RSU's reactive TCAM with junk
             // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
             // (current_hop = ns3_id - 2) is marked malicious for ground truth.
             tcam_init_all();
             tcam_attack_cp_enabled = true;
             reactive_flow_id = 0;
-            is_malicious_node[8][N_Vehicles] = true;   // controller-driven, attributed to serving RSU
+            is_malicious_node[2][N_Vehicles] = true;   // controller-driven, attributed to serving RSU
             t_onset[N_Vehicles] = 1.0;
             Simulator::Schedule(Seconds(1.0), &controller_flood_tcam_all_rsus);
             cout << attack_tag() << " ① Attack 3 (Slow TCAM Exhaustion - Control Plane) enabled. "
@@ -114791,14 +114781,15 @@ void initialise_stub_attack_state()
                  << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
             break;
 
-        case (9): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
+		case (3):
+			// implement Attack 4 - TCAM Exhauustion attack data plane
             // Attacker vehicle sends unique low-rate flows to its RSU, filling
             // the same reactive TCAM. Victim = reactive flow 0.
             tcam_init_all();
             tcam_attack_dp_enabled = true;
             reactive_flow_id = 0;
             tcam_dp_attacker_node = 0;                 // attacker vehicle (current_hop index)
-            is_malicious_node[9][tcam_dp_attacker_node] = true;
+            is_malicious_node[3][tcam_dp_attacker_node] = true;
             t_onset[tcam_dp_attacker_node] = 1.0;
             Simulator::Schedule(Seconds(1.0), &data_plane_flood_tcam);
             cout << attack_tag() << " ① Attack 4 (Slow TCAM Exhaustion - Data Plane) enabled. "
@@ -114806,6 +114797,28 @@ void initialise_stub_attack_state()
                  << ", victim flow " << reactive_flow_id
                  << ", TCAM capacity " << TCAM_CAPACITY
                  << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
+		    break;
+
+		case(4):
+			// TODO: implement Attack 5 - Active hidden forwarding attack control plane
+			break;
+
+		case(5):
+			// TODO: implement  Attack 6 - Active hidden forwarding attack data plane
+			break;
+
+		case(6): 
+			// TODO: implement Attack 7 - Passive hidden forwarding attack control plane
+			break;
+
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
+            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
+            is_malicious_node[7][3] = true;
+            t_onset[3] = 1.0;
+            hardcode_attack7_test_network();
+            // linklifetimeMatrix_dsrc is declared after this function, so seeding
+            // is deferred to t=0 when all globals are fully initialised.
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
 
         default:
