@@ -106992,10 +106992,7 @@ void initialise_stub_attack_state()
 		cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
 		break;
 
-	case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane
-		// Malicious controller floods every RSU's reactive TCAM with junk
-		// FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
-		// (current_hop = ns3_id - 2) is marked malicious for ground truth.
+	case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane .Malicious controller floods every RSU's reactive TCAM with junk FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU(current_hop = ns3_id - 2) is marked malicious for ground truth.
 		tcam_init_all();
 		tcam_attack_cp_enabled = true;
 		reactive_flow_id = 0;
@@ -107008,9 +107005,7 @@ void initialise_stub_attack_state()
 			 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
 		break;
 
-	case (3): // Attack 4 — Slow TCAM Exhaustion, Data Plane
-		// Attacker vehicle sends unique low-rate flows to its RSU, filling
-		// the same reactive TCAM. Victim = reactive flow 0.
+	case (3): // Attack 4 — Slow TCAM Exhaustion, Data Plane Attacker vehicle sends unique low-rate flows to its RSU, filling the same reactive TCAM. Victim = reactive flow 0.
 		tcam_init_all();
 		tcam_attack_dp_enabled = true;
 		reactive_flow_id = 0;
@@ -107037,13 +107032,11 @@ void initialise_stub_attack_state()
 		// TODO: implement Attack 7 - Passive hidden forwarding attack control plane
 		break;
 
-	case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
-		// RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
+	case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
 		is_malicious_node[7][3] = true;
 		t_onset[3] = 1.0;
 		hardcode_attack7_test_network();
-		// linklifetimeMatrix_dsrc is declared after this function, so seeding
-		// is deferred to t=0 when all globals are fully initialised.
+		// linklifetimeMatrix_dsrc is declared after this function, so seeding is deferred to t=0 when all globals are fully initialised.
 		Simulator::Schedule(Seconds(0.0), seed_attack8_links);
 		break;
 
