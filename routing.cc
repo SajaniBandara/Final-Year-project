@@ -106840,9 +106840,9 @@ double attack2_delay_seconds = 0.080; // 80ms injected delay
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
 
-double t_fwd_packet[total_size][Flow_size + 2];     // records when each node forwarded each packet
-double delta_max_s2 = 0.050;                        // 50ms threshold per Equation 3.6 — half of 100ms safety bound
-bool s2_detection_active = false;                    // enable/disable S2 detection
+double t_fwd_packet[total_size][Flow_size + 2]; // records when each node forwarded each packet
+double delta_max_s2 = 0.050;					// 50ms threshold per Equation 3.6 — half of 100ms safety bound
+bool s2_detection_active = false;				// enable/disable S2 detection
 
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 
@@ -106900,11 +106900,11 @@ double previous_cumulative_mitigation_latency = 0.0;
 
 // === TAP BASELINE GLOBALS ===
 bool tap_detection_active = true;
-static const double TAP_SIGNAL_SPEED = 3.0e8; // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
-static const double TAP_MARGIN = 0.020; // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
-bool tap_defaulter_list[total_size] = {false}; // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
-bool tap_detected_node[total_size] = {false}; // Per-node detection flag for TAP
-double tap_t_quarantine[total_size] = {0.0}; // Timestamp when TAP detection fired for each node
+static const double TAP_SIGNAL_SPEED = 3.0e8;			 // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
+static const double TAP_MARGIN = 0.020;					 // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+bool tap_defaulter_list[total_size] = {false};			 // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
+bool tap_detected_node[total_size] = {false};			 // Per-node detection flag for TAP
+double tap_t_quarantine[total_size] = {0.0};			 // Timestamp when TAP detection fired for each node
 uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0; // Confusion matrix counters for TAP on Attack 2 (variant index 1)
 double tap_current_MCC = 0.0;
 double tap_current_DR = 0.0;
@@ -114441,14 +114441,22 @@ Ptr<NetDevice> dsrc_device_for_channel(int channel, uint32_t source)
 {
 	switch (channel)
 	{
-	case (172): return wifidevices_172.Get(source);
-	case (174): return wifidevices_174.Get(source);
-	case (176): return wifidevices_176.Get(source);
-	case (178): return wifidevices.Get(source);
-	case (180): return wifidevices_180.Get(source);
-	case (182): return wifidevices_182.Get(source);
-	case (184): return wifidevices_184.Get(source);
-	default:    return wifidevices.Get(source);
+	case (172):
+		return wifidevices_172.Get(source);
+	case (174):
+		return wifidevices_174.Get(source);
+	case (176):
+		return wifidevices_176.Get(source);
+	case (178):
+		return wifidevices.Get(source);
+	case (180):
+		return wifidevices_180.Get(source);
+	case (182):
+		return wifidevices_182.Get(source);
+	case (184):
+		return wifidevices_184.Get(source);
+	default:
+		return wifidevices.Get(source);
 	}
 }
 
