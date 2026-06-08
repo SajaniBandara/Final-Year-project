@@ -107076,29 +107076,6 @@ bool GetBooleanWithProbability(double probabilityPercent, int nodeID)
 	return randomValue < probabilityPercent;
 }
 
-void declare_attackers()
-{
-	for (uint32_t i = 0; i < total_size; i++)
-	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
-		if (present_selective_delay_attack_nodes == true)
-		{
-			selective_delay_malicious_nodes[i] = attacking_state;
-		}
-		else
-		{
-			selective_delay_malicious_nodes[i] = false;
-		}
-		// For test network: hardcode node 2 (RSU) as malicious
-		// This will be replaced by declare_attackers() for full experiments
-	}
-	cout << attack_tag() << " declare_attackers() completed" << endl;
-	for (uint32_t i = 0; i < (uint32_t)var; i++)
-	{
-		cout << attack_tag() << " Node " << i << " selective_delay_malicious = "
-			 << selective_delay_malicious_nodes[i] << endl;
-	}
-}
 
 void hardcode_attack2_test_network_attackers()
 {
@@ -133869,8 +133846,8 @@ int main(int argc, char *argv[])
 
 	// DSRC flow instantiation
 	double t0 = 0;
-	declare_attack_states();													   // Set attack flags
-	declare_attackers();														   // Mark which nodes are malicious
+	declare_attack_states();	
+														   // Mark which nodes are malicious
 	for (double t = t0 + 0.999; t < simTime - 1; t = t + data_transmission_period) // All official data transmissions begin at t=0
 	{
 		// Go over all the wifi devices
