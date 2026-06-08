@@ -119,6 +119,22 @@ After runs complete, check:
 
 Each attack percentage writes to its own CSV file suffix (`_0`, `_20`, `_40`, `_60`, `_80`, `_100`).
 
+## Plot TAP Results
+
+After the CSV files are generated, run the plotting script from the project root:
+
+```bash
+python3 visualization/plot_tap_results.py
+```
+
+If you are already inside the `visualization` folder, use:
+
+```bash
+python3 plot_tap_results.py
+```
+
+The plots are saved in `output/tap/` inside the project folder.
+
 ## Useful Command-Line Flags
 
 The simulation exposes several command-line options through NS-3 `CommandLine` parsing:

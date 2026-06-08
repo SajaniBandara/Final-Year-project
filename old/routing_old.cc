@@ -1,4 +1,3 @@
-#include <set>
 #include "ns3/wave-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/lte-helper.h"
@@ -51,7 +50,6 @@
 #include <cstdlib>
 #include <limits.h>
 #include <bits/stdc++.h>
-#include <random>
 
 #define max 40
 
@@ -104,6 +102,7 @@ int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
+// double simTime = 240;
 double simTime = 20; //test
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
@@ -113,20 +112,14 @@ uint32_t large=50000;
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
 // double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 1.0; //test
+double data_transmission_frequency = 5.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
 double contention_threshold = 0.0;
 double link_lifetime_threshold = 0.400;
-// Maximum reliable DSRC link distance (metres). Links longer than this are
-// physically unreliable at the PHY layer (Cost231 path loss), so we gate the
-// link-lifetime matrix on it: any link longer than d_max_dsrc gets lifetime 0,
-// which makes routing rule out the direct link and select a relay (e.g. via the
-// RSU) instead of sending direct and dropping. Tune to match your radio range.
-double d_max_dsrc = 270.0;
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
-int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
+int architecture = 0; // 0 - centralized, 1 - distributed, 2 - hybrid
 int maxspeed = 80;	
 
 int paper = 1; //0-optimization, 1 -architecture
@@ -94128,25 +94121,12 @@ void add_routing_data_at_nodes(struct routing_data_at_nodes * nd1, Ptr <NetDevic
 
 void add_demanding_flow_struct_nodes(struct demanding_flow_struct_nodes * nd1, uint32_t source, uint32_t destination, uint32_t x, uint32_t z, uint32_t q)
 {	
-	extern bool routing_test;
 
 	nd1->source = source;
 	nd1->destination = destination;
 	nd1->f_size = x;
 	nd1->p_size = z;
 	nd1->qos = q;
-	if (routing_test)
-	{
-		uint32_t idx = nd1 - demanding_flow_struct_nodes_inst;
-		if (idx < 2 * flows)
-		{
-			demanding_flow_struct_controller_inst[idx].source = source;
-			demanding_flow_struct_controller_inst[idx].destination = destination;
-			demanding_flow_struct_controller_inst[idx].f_size = x;
-			demanding_flow_struct_controller_inst[idx].p_size = z;
-			demanding_flow_struct_controller_inst[idx].qos = q;
-		}
-	}
 	//cout<<"updating flow with source as: "<<nd1->source<<"destination: "<<nd1->destination<<endl;
 }	
 
@@ -94517,51 +94497,20 @@ void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * pat
 
 uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_hop)
 {
-    // ==============================================================
-    // ENFORCE ARCHITECTURE 3: VEHICLES MUST ROUTE THROUGH RSU
-    // ==============================================================
-	cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
-    if (architecture == 3 && N_RSUs > 0)
-    {
-        uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
-        
-        // 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
-        if (current_hop < N_Vehicles && destination < N_Vehicles && current_hop != destination)
-        {
-            return rsu_index; 
-        }
-        
-        // 2. If the RSU is holding the packet, it forwards it down to the destination Vehicle
-        if (current_hop == rsu_index && destination < N_Vehicles)
-        {
-            return destination;
-        }
-    }
-
-    // ==============================================================
-    // FALLBACK: ORIGINAL CONTROLLER LOGIC
-    // ==============================================================
-    bool found = false;
-    uint32_t k = 0;
-    uint32_t next_hop = 0;
-    
-    while(found == false)
-    {
-        // Safety Break: Prevent infinite loop if the path is broken
-        if (k > 50) { 
-            cout << "ERROR: Route not found in proposed_routing_tables!" << endl;
-            return destination; 
-        }
-        
-        uint32_t this_hop = proposed_routing_tables[source].rows[destination].path[k];
-        if (current_hop == this_hop)
-        {
-            next_hop = proposed_routing_tables[source].rows[destination].path[k+1];
-            found = true;
-        }
-        k++;
-    }
-    return next_hop;
+	bool found = false;
+	uint32_t k=0;
+	uint32_t next_hop=0;
+	while(found==false)
+	{
+		uint32_t this_hop = proposed_routing_tables[source].rows[destination].path[k];
+		if (current_hop == this_hop)
+		{
+			next_hop = proposed_routing_tables[source].rows[destination].path[k+1];
+			found = true;
+		}
+		k++;
+	}
+	return next_hop;
 }
 
 long dsrc_total_packet_size = 0;
@@ -95089,70 +95038,17 @@ bool X_nodes[total_size+2];
 					}
 					
 					else
-                    {
-                        uint32_t final_next_hop = next_hop;
-                        uint32_t current_hop = nid - 2;
-
-                        // ==============================================================
-                        // ENFORCE ARCHITECTURE 3: MAC-LAYER OVERRIDE
-                        // ==============================================================
-                        if (architecture == 3 && N_RSUs > 0)
-                        {
-                            uint32_t rsu_index = N_Vehicles; // e.g., index 2
-                            if (current_hop < N_Vehicles && destination-2 < N_Vehicles && current_hop != destination-2) {
-                                final_next_hop = rsu_index;
-                            } else if (current_hop == rsu_index && destination-2 < N_Vehicles) {
-                                final_next_hop = destination - 2;
-                            }
-                        }
-
-                        // ==============================================================
-                        // 1. BULLETPROOF DESTINATION MAC LOOKUP
-                        // ==============================================================
-                        Mac48Address dest_address;
-                        if (final_next_hop < N_Vehicles) {
-                            // Find the Vehicle's Node globally (Vehicles are usually nid = 2 and 3)
-                            uint32_t global_dest_nid = final_next_hop + 2; 
-                            Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
-                            
-                            // Scan the node for its Wi-Fi device
-                            for (uint32_t i = 0; i < dest_node->GetNDevices(); i++) {
-                                Ptr<NetDevice> dev = dest_node->GetDevice(i);
-                                if (DynamicCast<WifiNetDevice>(dev) != 0) {
-                                    dest_address = Mac48Address::ConvertFrom(dev->GetAddress());
-                                    break;
-                                }
-                            }
-                        } else {
-                            // Sending to the RSU -> Broadcast
-                            dest_address = Mac48Address("ff:ff:ff:ff:ff:ff");
-                        }
-
-                        // ==============================================================
-                        // 2. BULLETPROOF SENDER DEVICE LOOKUP
-                        // ==============================================================
-                        Ptr <WifiNetDevice> wdi = 0;
-                        Ptr<Node> sender_node = NodeList::GetNode(nid); // We already have the global nid!
-                        
-                        for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
-                            Ptr<NetDevice> dev = sender_node->GetDevice(i);
-                            if (DynamicCast<WifiNetDevice>(dev) != 0) {
-                                wdi = DynamicCast<WifiNetDevice>(dev);
-                                break;
-                            }
-                        }
-
-                        if (wdi == 0) {
-                            cout << "[CRITICAL ERROR] Could not find sender device for Node " << current_hop << endl;
-                            return;
-                        }
-
-                        uint16_t protocolwave = 0x88dc;
-                        cout << "[ARCH 3 FORWARDING] Node " << current_hop << " successfully forwarding DSRC to MAC " << dest_address << endl;
-                        
-                        dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-                        Simulator::Schedule (Seconds(0.000000), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
-                    }
+					{
+						Ptr <NetDevice> destination_nd = wifidevices.Get(next_hop);
+						Address addr = destination_nd->GetAddress();
+						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
+						//cout <<endl<<"MAC address of next hop node "<<next_hop<<" is "<<dest_address<<endl;
+					  	uint16_t protocolwave = 0x88dc;//
+						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (wifidevices.Get(nid -2));
+						cout<<"DSRC data Unicasting from node "<<nid - 2<<endl;
+						dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
+						Simulator::Schedule (Seconds(0.000000) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+					}
 					
 					Y[nid - 2] = Y[nid - 2] + 1;	
 					//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
@@ -114585,13 +114481,11 @@ double previous_cumulative_load_imbalance = 0.0;
 // ============================================================
 
 // Number of attack variants defined in proposal
-#define NUM_ATTACK_VARIANTS 10
+#define NUM_ATTACK_VARIANTS 8
 
 // Per-variant confusion matrix counters
 // Index 0-3: Selective Time Delay variants (S1-S4)
 // Index 4-7: Hidden Forwarding variants    (S5-S8)
-// Index 8:   Slow TCAM Exhaustion - control plane (Attack 3)
-// Index 9:   Slow TCAM Exhaustion - data plane    (Attack 4)
 uint32_t sec_TP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_FP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_TN[NUM_ATTACK_VARIANTS] = {0};
@@ -114639,36 +114533,18 @@ bool s2_detection_active = true;
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
-uint32_t passive_hf_eavesdropper_index = 2;  // legacy single-RSU fallback — kept for Attack 2 path
-// Multi-RSU Attack 8: maps each malicious RSU (current_hop index) to its paired eavesdropper index.
-// Populated by hardcode_attack7_test_network() based on attack_percentage.
-std::map<uint32_t, uint32_t> passive_hf_rsu_to_eavesdropper;
-
-// Active Hidden Forwarding globals (Attacks 5 & 6 — content-modified copy)
-bool active_hf_malicious_nodes[total_size] = {false};
-bool present_active_hf_attack = false;
-uint32_t active_hf_eavesdropper_index = 2;  // default: same node as passive
+uint32_t passive_hf_eavesdropper_index = 2;
 
 // Staging globals for send_hidden_duplicate_trampoline().
 // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
 // send_hidden_duplicate needs 7, so we use a zero-arg trampoline.
-uint32_t g_hdup_rsu           = 0;
-uint32_t g_hdup_eaves         = 0;
-uint32_t g_hdup_flow_id       = 0;
-uint32_t g_hdup_packet_id     = 0;
-uint32_t g_hdup_channel       = 0;
-uint32_t g_hdup_p_size        = 0;
-Time     g_hdup_timestamp     = Seconds(0.0);
-// PIR FIX: flag set to true ONLY when GetBooleanWithProbability approved
-// the eavesdrop (i.e. a hidden duplicate was intentionally sent).
-// MacRx increments fade_eavesdrop_counter only when this flag is true,
-// preventing ambient Wi-Fi overhear from inflating PIR at low intensities.
-bool     g_hdup_intentional      = false;
-// Count of packets for which a hidden duplicate was SCHEDULED (approved by
-// GetBooleanWithProbability).  Used as the PIR denominator so PIR expresses
-// "fraction of scheduled copies actually received by eavesdropper" and
-// scales linearly with attack_percentage.
-uint32_t g_total_copies_scheduled = 0;
+uint32_t g_hdup_rsu       = 0;
+uint32_t g_hdup_eaves     = 0;
+uint32_t g_hdup_flow_id   = 0;
+uint32_t g_hdup_packet_id = 0;
+uint32_t g_hdup_channel   = 0;
+uint32_t g_hdup_p_size    = 0;
+Time     g_hdup_timestamp = Seconds(0.0);
 
 // ---------------------------------------------------------------------------
 // attack_tag() — returns the correct "[ATTACKx]" prefix for the currently
@@ -114688,8 +114564,6 @@ inline std::string attack_tag()
         case 5:  return "[ATTACK6]";
         case 6:  return "[ATTACK7]";
         case 7:  return "[ATTACK8]";
-        case 8:  return "[ATTACK3-TCAM-CP]";
-        case 9:  return "[ATTACK4-TCAM-DP]";
         default: return "[ATTACK?]";
     }
 }
@@ -114700,20 +114574,31 @@ double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
 double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
+// TCAM simulation globals for Attack 3 and Attack 4
+static const uint32_t TCAM_CAPACITY = 1500;
+uint32_t simulated_tcam_counter[total_size] = {0};
+
 // === TAP BASELINE GLOBALS ===
 bool tap_detection_active = true;
+// When false, all TAP functions return immediately
 
-static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
+static const double TAP_SIGNAL_SPEED = 3.0e8;
+// Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.020;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+static const double TAP_MARGIN = 0.020;
+// 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
 
-bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
+bool tap_defaulter_list[total_size] = {false};
+// Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
-bool tap_detected_node[total_size] = {false};      // Per-node detection flag for TAP
+bool tap_detected_node[total_size] = {false};
+// Per-node detection flag for TAP
 
-double tap_t_quarantine[total_size] = {0.0};       // Timestamp when TAP detection fired for each node
+double tap_t_quarantine[total_size] = {0.0};
+// Timestamp when TAP detection fired for each node
 
-uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;    // Confusion matrix counters for TAP on Attack 2 (variant index 1)
+uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;
+// Confusion matrix counters for TAP on Attack 2 (variant index 1)
 
 double tap_current_MCC            = 0.0;
 double tap_current_DR             = 0.0;
@@ -114730,457 +114615,9 @@ double tap_previous_cumulative_mit = 0.0;
 // Call this once from main() or the simulation setup block.
 // Replace body when real attack scenarios are implemented.
 // ============================================================
-
-
-// =====================================================
-// FADE — Forwarding Anomaly Detection architEcture
-//
-// Implements Li et al., IEEE TPDS 32(11) 2021.
-//
-//  Component 1 – Flow selection:
-//      Flows are the same logical flows already tracked by
-//      delta_at_nodes_inst[].  Each flow's full hop path is
-//      read from proposed_routing_tables[src].rows[dst].path[].
-//
-//  Component 2 – Measurement points:
-//      All nodes along the active flow path are selected as measurement points.
-//
-//  Component 3 – Rule installation:
-//      No separate SDN rule install is needed in simulation: instead
-//      each node on the path acts as a measurement point to count
-//      incoming and outgoing packets.
-//      A measurement epoch of FADE_EPOCH_SEC seconds mirrors the
-//      R1 hard-timeout (t1) from the paper; counters are reset each
-//      epoch so that only packets belonging to the same window are
-//      compared (satisfies the synchronisation invariant).
-//
-//  Component 4 – Anomaly identification:
-//      For each node on the flow path (excluding the source), the detector
-//      compares packets received (fade_node_in) against packets forwarded
-//      (fade_node_out). If the outbound count exceeds the inbound count,
-//      the node is duplicating traffic and is flagged as a "duplication"
-//      anomaly, with that node recorded as the localisation.
-// =====================================================
-
-static const double   FADE_EPOCH_SEC   = 1.0;   // measurement window (= R1 hard timeout)
-
-// ── Per-flow path configuration ─────────────────────────────────────────────
-struct FadeFlowConfig
-{
-    uint32_t source;
-    uint32_t destination;
-    uint32_t path_len;
-    uint32_t path_nodes[total_size]; // store the actual path nodes of the flow
-    bool     configured;
-    FadeFlowConfig() : source(0), destination(0),
-                       path_len(0), configured(false)
-    { memset(path_nodes, 0, sizeof(path_nodes)); }
-};
-
-// ── Per-flow detection result ─────────────────────────────────────────────────
-struct FadeDetectionResult
-{
-    bool        detected;
-    double      detection_time;
-    std::string anomaly_type;    // "duplication" | "none"
-    uint32_t    loc_from;        
-    uint32_t    loc_to;          
-    uint32_t    duplicating_node;
-    FadeDetectionResult()
-        : detected(false), detection_time(-1.0),
-          anomaly_type("none"), loc_from(large), loc_to(large), duplicating_node(large) {}
-};
-
-std::map<uint32_t, FadeFlowConfig>     fade_flow_config;
-std::map<uint32_t, FadeDetectionResult> fade_results;
-std::ofstream fade_csv;
-
-// received[flow_id][node] = set of distinct packet_ids that arrived at node
-std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> fade_received;
-// forwarded[flow_id][node][packet_id] = set of distinct next-hop destinations
-std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded;
-std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded_all;
-
-// PIR counter — incremented in MacRx before the eavesdropper-return early exit
-uint32_t fade_eavesdrop_counter = 0;
-std::set<std::pair<uint32_t, uint32_t>> fade_eavesdropped_packets;
-uint32_t hf_target_flow_id = 0;   // malicious RSU duplicates ONLY this flow; all others honest
-
-// ── FADE per-cycle CSV state ──────────────────────────────────────────────────
-// Mirror MOBIGUARD's cur/avg columns so FADE per-scenario CSVs match shape.
-double   fade_cum_pdr = 0.0;
-double   fade_cum_pir = 0.0;
-double   fade_cum_mcc = 0.0;
-double   fade_cum_dr  = 0.0;
-double   fade_cum_fpr = 0.0;
-uint32_t fade_prev_eavesdrop  = 0;
-uint32_t fade_prev_copies     = 0;
-
-// ── Configure a flow's probes from the routing table ─────────────────────────
-// Called lazily (on first packet send) so that routing tables are populated.
-void fade_configure_flow(uint32_t flow_id)
-{
-    if (fade_flow_config.count(flow_id) &&
-        fade_flow_config[flow_id].configured) return;
-
-    uint32_t src = (delta_at_nodes_inst + flow_id)->source_f;
-    uint32_t dst = (delta_at_nodes_inst + flow_id)->destination_f;
-
-    FadeFlowConfig cfg;
-    cfg.source      = src;
-    cfg.destination = dst;
-    cfg.path_len    = 0;
-
-    // Walk the stored path to find its nodes and length
-    for (uint32_t step = 0; step < (uint32_t)total_size; step++)
-    {
-        uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-        if (node >= (uint32_t)total_size) break;
-        cfg.path_nodes[cfg.path_len++] = node;
-    }
-
-    std::cout << "[eFADE DEBUG] configure flow " << flow_id
-              << " src=" << src << " dst=" << dst
-              << " path_len=" << cfg.path_len << " nodes:";
-    for (uint32_t i = 0; i < cfg.path_len; i++) std::cout << " " << cfg.path_nodes[i];
-    std::cout << std::endl;
-
-    if (cfg.path_len < 2)
-    {
-        // No valid route — mark as configured but skip
-        cfg.configured = true;
-        fade_flow_config[flow_id] = cfg;
-        return;
-    }
-
-    cfg.configured  = true;
-    fade_flow_config[flow_id] = cfg;
-
-    std::cout << "[eFADE] Flow " << flow_id
-              << "  src=" << src << " dst=" << dst
-              << "  path_len=" << cfg.path_len
-              << "  path:";
-    for (uint32_t i = 0; i < cfg.path_len; i++)
-        std::cout << " " << cfg.path_nodes[i];
-    std::cout << std::endl;
-}
-
-// ── Call once after routing tables are stable to pre-configure all flows ─────
-void fade_configure_all_flows()
-{
-    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
-        fade_configure_flow(fid);
-}
-
-// ── Helper: is any node on this flow's path a malicious node? ────────────────
-// Used to classify TP / FP / TN / FN for the FADE MCC calculation.
-bool fade_is_flow_attacked(uint32_t flow_id)
-{
-    auto it = fade_flow_config.find(flow_id);
-    if (it == fade_flow_config.end() || !it->second.configured) return false;
-
-    FadeFlowConfig &cfg = it->second;
-    uint32_t src = cfg.source;
-    uint32_t dst = cfg.destination;
-
-    for (uint32_t step = 0; step < (uint32_t)total_size; step++)
-    {
-        uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-        if (node >= (uint32_t)total_size) break;
-        // Only check the array that corresponds to the active attack variant.
-        // variant 1  = Attack 2 (Selective Time Delay, Data Plane)
-        // variant 7  = Attack 8 (Passive Hidden Forwarding, Data Plane)
-        if (active_attack_variant == 1 && selective_delay_malicious_nodes[node]) return true;
-        if (active_attack_variant == 7 && passive_hf_malicious_nodes[node])      return true;
-        // Active Hidden Forwarding (variant 4 = Attack 5 Control Plane,
-        // variant 5 = Attack 6 Data Plane): malicious RSU is in active_hf array.
-        if ((active_attack_variant == 4 || active_attack_variant == 5)
-            && active_hf_malicious_nodes[node])                                  return true;
-        // Passive Hidden Forwarding, Control Plane (variant 6 = Attack 7):
-        // malicious RSU is in passive_hf array.
-        if (active_attack_variant == 6 && passive_hf_malicious_nodes[node])      return true;
-    }
-    return false;
-}
-
-// ── Compute + append one metrics row to fade_metrics.csv ─────────────────────
-// Called once after Simulator::Run() so all counters are final.
-//
-// Forward declaration — destination_counter is defined later in the file
-// (after packet_delivery structs) but is needed here by fade_save_metrics().
-extern uint32_t destination_counter[2*flows];
-
-bool fade_is_flow_active(uint32_t flow_id)
-{
-    if (destination_counter[flow_id] > 0) return true;
-    auto it = fade_received.find(flow_id);
-    if (it != fade_received.end())
-    {
-        for (auto &node_entry : it->second)
-        {
-            if (!node_entry.second.empty()) return true;
-        }
-    }
-    return false;
-}
-
-
-// CSV columns:
-//   attack_variant, attack_percentage,
-//   total_flows, total_sent, total_received,
-//   pdr, pir,
-//   tp, fp, tn, fn, mcc
-void fade_save_metrics()
-{
-    // Count total sent across all flows
-    uint32_t total_flows    = 0;
-    for (auto &entry : fade_flow_config)
-    {
-        uint32_t flow_id = entry.first;
-        if (!entry.second.configured) continue;
-        if (!fade_is_flow_active(flow_id)) continue;
-        total_flows++;
-    }
-
-    uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
-    int32_t atk_fid = -1;
-    int32_t mal_node = -1;
-    for (auto const &entry : fade_flow_config)
-    {
-        uint32_t flow_id = entry.first;
-        if (!entry.second.configured) continue;
-        if (!fade_is_flow_active(flow_id)) continue;
-        
-        uint32_t src = entry.second.source;
-        uint32_t dst = entry.second.destination;
-        for (uint32_t step = 0; step < (uint32_t)total_size; step++)
-        {
-            uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-            if (node >= (uint32_t)total_size) break;
-            if (passive_hf_malicious_nodes[node] || active_hf_malicious_nodes[node] || selective_delay_malicious_nodes[node])
-            {
-                atk_fid = flow_id;
-                mal_node = node;
-                break;
-            }
-        }
-        if (atk_fid != -1) break;
-    }
-
-    if (atk_fid == -1 || mal_node == -1)
-    {
-        std::cout << "[eFADE PP WARNING] No malicious node found on any active flow path. Using fallback Flow 0 Node 6." << std::endl;
-        atk_fid = 0;
-        mal_node = 6;
-    }
-
-    std::cout << "[eFADE PP] counting per-packet at flow " << atk_fid
-              << " node " << mal_node
-              << " (forwarded packets=" << fade_forwarded_all[atk_fid][mal_node].size() << ")" << std::endl;
-
-    for (auto const &pkt_entry : fade_forwarded_all[atk_fid][mal_node])
-    {
-        uint32_t pid = pkt_entry.first;
-        bool duplicated = (pkt_entry.second.size() >= 2);
-        bool flagged    = duplicated;   // detector keys on the same signal
-        if (duplicated && flagged)   tp++;
-        else if (!duplicated && !flagged) tn++;
-        else if (duplicated && !flagged)  fn++;
-        else fp++;
-    }
-
-    // True end-to-end PDR across the whole simulation:
-    //   total delivered = sum of destination_counter[fid] over active flows
-    //   total scheduled = f_size * number_of_data_cycles per active flow
-    // data_gathering_cycle_number starts at 1 and increments each cycle,
-    // so after Simulator::Run() it equals (num_cycles + 1); num_cycles = it - 1.
-    uint32_t num_cycles = (uint32_t)(data_gathering_cycle_number - 1.0);
-    if (num_cycles == 0) num_cycles = 1; // guard
-    uint32_t g_total_delivered = 0;
-    uint32_t g_total_scheduled = 0;
-    for (auto &entry2 : fade_flow_config)
-    {
-        uint32_t fid2 = entry2.first;
-        if (!entry2.second.configured) continue;
-        if (!fade_is_flow_active(fid2)) continue;
-        uint32_t fsz = (demanding_flow_struct_nodes_inst + fid2)->f_size;
-        if (fsz == 0) fsz = flow_size;
-        g_total_delivered += destination_counter[fid2];
-        g_total_scheduled += fsz * num_cycles;
-    }
-    double pdr = (g_total_scheduled > 0)
-        ? 100.0 * (double)g_total_delivered / (double)g_total_scheduled
-        : 0.0;
-    if (pdr > 100.0) pdr = 100.0;
-
-    // PIR = fraction of intentionally-scheduled hidden duplicates that were
-    // successfully received by the eavesdropper.
-    //
-    // PIR FIX explanation:
-    //   OLD (broken): denominator = g_total_scheduled (all packets in simulation).
-    //     fade_eavesdrop_counter was incremented in MacRx on every packet
-    //     physically overheard by Vehicle B — including ambient Wi-Fi broadcast
-    //     at 0% attack intensity — so PIR was always 100%.
-    //
-    //   NEW (fixed): denominator = g_total_copies_scheduled (only packets for
-    //     which GetBooleanWithProbability returned true AND send_hidden_duplicate
-    //     was called).  fade_eavesdrop_counter is now gated on g_hdup_intentional
-    //     so only confirmed-received duplicates count.  At 0% intensity,
-    //     g_total_copies_scheduled == 0 → PIR = 0%.  At 100% intensity, every
-    //     forwarded packet triggers a copy → PIR ≈ 100% (subject to channel loss).
-    //     At intermediate intensities PIR scales linearly with attack_percentage.
-    double pir = (g_total_copies_scheduled > 0)
-        ? 100.0 * (double)fade_eavesdrop_counter / (double)g_total_copies_scheduled
-        : 0.0;
-
-    // Matthews Correlation Coefficient
-    double denom = std::sqrt(
-        (double)(tp+fp) * (double)(tp+fn) *
-        (double)(tn+fp) * (double)(tn+fn));
-    double mcc = (denom > 0.0)
-        ? ((double)(tp * tn) - (double)(fp * fn)) / denom
-        : 0.0;
-
-    // Append row to fade_metrics.csv (append so repeated runs accumulate)
-    // Check if file exists BEFORE opening — once ofstream opens it, it always exists.
-    bool write_header = false;
-    {
-        std::ifstream check("fade_metrics.csv");
-        write_header = !check.good();
-    }
-    std::ofstream mfile;
-    mfile.open("fade_metrics.csv", std::ios::out | std::ios::app);
-    if (write_header)
-        mfile << "attack_variant,attack_percentage,"
-              << "total_flows,pdr,pir,tp,fp,tn,fn,mcc\n";
-
-    mfile << active_attack_variant   << ","
-          << attack_percentage       << ","
-          << total_flows             << ","
-          << std::fixed << std::setprecision(2) << pdr << ","
-          << std::fixed << std::setprecision(2) << pir << ","
-          << tp << "," << fp << "," << tn << "," << fn << ","
-          << std::fixed << std::setprecision(4) << mcc << "\n";
-
-    mfile.close();
-
-    std::cout << "[FADE METRICS] variant=" << active_attack_variant
-              << " atk%=" << attack_percentage
-              << " PDR=" << pdr << "% PIR=" << pir << "%"
-              << " MCC=" << mcc
-              << " (TP=" << tp << " FP=" << fp
-              << " TN=" << tn << " FN=" << fn << ")"
-              << std::endl;
-}
-
-void fade_detect_anomaly()
-{
-    double now = Simulator::Now().GetSeconds();
-
-    for (auto &entry : fade_flow_config)
-    {
-        uint32_t        flow_id = entry.first;
-        FadeFlowConfig &cfg     = entry.second;
-        if (!cfg.configured) continue;
-
-        FadeDetectionResult &res = fade_results[flow_id];
-
-        std::cout << "[eFADE DEBUG] detect flow " << flow_id << " path_len=" << cfg.path_len;
-        for (uint32_t i = 0; i < cfg.path_len; i++) {
-            uint32_t n = cfg.path_nodes[i];
-            std::cout << "  node" << n << "(recv=" << fade_received[flow_id][n].size();
-            uint32_t multi = 0;
-            for (auto const &kv : fade_forwarded[flow_id][n]) {
-                if (kv.second.size() >= 2) multi++;
-            }
-            std::cout << ",multi_dest_pkts=" << multi << ")";
-        }
-        std::cout << " [attacked=" << fade_is_flow_attacked(flow_id) << "]" << std::endl;
-
-        // Loop over path nodes
-        for (uint32_t i = 0; i < cfg.path_len; i++)
-        {
-            uint32_t node = cfg.path_nodes[i];
-            
-            // EXCLUDE the source node from the check
-            if (node != cfg.source)
-            {
-                bool duplication_detected = false;
-
-                for (auto const &pkt_entry : fade_forwarded[flow_id][node])
-                {
-                    uint32_t pid = pkt_entry.first;
-                    auto const &dest_set = pkt_entry.second;
-
-                    // Condition (a): forwarded packet_id not in received-set
-                    bool not_received = (fade_received[flow_id][node].find(pid) == fade_received[flow_id][node].end());
-
-                    // Condition (b): forwarded same packet_id to >= 2 destinations
-                    bool multi_dest = (dest_set.size() >= 2);
-
-                    if (not_received || multi_dest)
-                    {
-                        duplication_detected = true;
-                        break;
-                    }
-                }
-
-                if (duplication_detected)
-                {
-                    if (!res.detected)
-                    {
-                        res.detected         = true;
-                        res.detection_time   = now;
-                        res.anomaly_type     = "duplication";
-                        res.duplicating_node = node;
-                        res.loc_from         = node;
-                        res.loc_to           = node;
-
-                        std::cout << "[eFADE ALERT] Flow " << flow_id
-                                  << " DUPLICATION anomaly detected at node " << node
-                                  << " at t=" << now << "s" << std::endl;
-                        break; // Stop checking once an attacker is found on this flow
-                    }
-                }
-            }
-        }
-    }
-
-    // Accumulate epoch's forwarded packets to fade_forwarded_all
-    for (auto const &f_entry : fade_forwarded)
-    {
-        uint32_t fid = f_entry.first;
-        for (auto const &n_entry : f_entry.second)
-        {
-            uint32_t node = n_entry.first;
-            for (auto const &p_entry : n_entry.second)
-            {
-                uint32_t pid = p_entry.first;
-                fade_forwarded_all[fid][node][pid].insert(p_entry.second.begin(), p_entry.second.end());
-            }
-        }
-    }
-
-    // Clear the maps at the end of the epoch.
-    fade_received.clear();
-    fade_forwarded.clear();
-
-    Simulator::Schedule(Seconds(FADE_EPOCH_SEC), &fade_detect_anomaly);
-}
-
 void hardcode_test_network_attackers();
 void hardcode_attack7_test_network();
 void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
-// Slow TCAM Exhaustion (Attacks 3 & 4) — defined later, near the attack helpers.
-void tcam_init_all();
-void controller_flood_tcam_all_rsus();
-void data_plane_flood_tcam();
-extern const int TCAM_CAPACITY;
-extern const double TCAM_SLOWPATH_DELAY;
-extern bool tcam_attack_cp_enabled;
-extern bool tcam_attack_dp_enabled;
-extern uint32_t tcam_dp_attacker_node;
-extern uint32_t reactive_flow_id;
 void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t eavesdropper_index,
                            uint32_t flow_id,
@@ -115212,14 +114649,18 @@ void initialise_stub_attack_state()
 	t_quarantine[2] = 1.050;
 	t_quarantine[3] = 1.050;
 
-
+	// Only set if not already configured via command line
+	if (active_attack_variant == -1)
+	{
+		active_attack_variant = 0;
+	}
 	    // Activate Attack 2 for test network
 	switch (active_attack_variant)
     {
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            // Ground truth (is_malicious_node[1][*], t_onset[*]) is set inside
-            // hardcode_test_network_attackers() and scales with attack_percentage.
-            // Do NOT hardcode a single attacker here.
+            // Ground truth is now set inside hardcode_test_network_attackers()
+            // based on attack_percentage — do not set it here
+            t_onset[2] = 1.0;  // kept for legacy reference only
             hardcode_test_network_attackers();
 			// Reset all TAP state before each Attack 2 simulation run
 			for (int _n = 0; _n < total_size; _n++)
@@ -115236,83 +114677,14 @@ void initialise_stub_attack_state()
 			cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
             break;
 
-        case (4): // Attack 5 — Active Hidden Forwarding, Control Plane
-            is_malicious_node[4][6] = true;
-            t_onset[6] = 1.0;
-            t_quarantine[6] = 1.050;
-            active_hf_malicious_nodes[6] = true;
-            active_hf_eavesdropper_index = 2;
-            passive_hf_rsu_to_eavesdropper.clear();
-            passive_hf_rsu_to_eavesdropper[6] = 2;
-            passive_hf_rsu_to_eavesdropper[7] = 5;
-            present_active_hf_attack = true;
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
+            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
+            is_malicious_node[7][3] = true;
+            t_onset[3] = 1.0;
+            hardcode_attack7_test_network();
+            // linklifetimeMatrix_dsrc is declared after this function, so seeding
+            // is deferred to t=0 when all globals are fully initialised.
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK5] [INIT] Active Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
-            break;
-
-        case (5): // Attack 6 — Active Hidden Forwarding, Data Plane
-            is_malicious_node[5][6] = true;
-            t_onset[6] = 1.0;
-            t_quarantine[6] = 1.050;
-            active_hf_malicious_nodes[6] = true;
-            active_hf_eavesdropper_index = 2;
-            passive_hf_rsu_to_eavesdropper.clear();
-            passive_hf_rsu_to_eavesdropper[6] = 2;
-            passive_hf_rsu_to_eavesdropper[7] = 5;
-            present_active_hf_attack = true;
-            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK6] [INIT] Active Hidden Forwarding (Data Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
-            break;
-
-        case (6): // Attack 7 — Passive Hidden Forwarding, Control Plane
-            is_malicious_node[6][6] = true;
-            t_onset[6] = 1.0;
-            passive_hf_malicious_nodes[6] = true;
-            passive_hf_eavesdropper_index = 2;
-            passive_hf_rsu_to_eavesdropper.clear();
-            passive_hf_rsu_to_eavesdropper[6] = 2;
-            passive_hf_rsu_to_eavesdropper[7] = 5;
-            present_passive_hf_attack = true;
-            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
-            break;
-
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
-            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
-            break;
-
-        case (8): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
-            // Malicious controller floods every RSU's reactive TCAM with junk
-            // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
-            // (current_hop = ns3_id - 2) is marked malicious for ground truth.
-            tcam_init_all();
-            tcam_attack_cp_enabled = true;
-            reactive_flow_id = 0;
-            is_malicious_node[8][N_Vehicles] = true;   // controller-driven, attributed to serving RSU
-            t_onset[N_Vehicles] = 1.0;
-            Simulator::Schedule(Seconds(1.0), &controller_flood_tcam_all_rsus);
-            cout << attack_tag() << " ① Attack 3 (Slow TCAM Exhaustion - Control Plane) enabled. "
-                 << "Victim flow " << reactive_flow_id
-                 << ", TCAM capacity " << TCAM_CAPACITY
-                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
-            break;
-
-        case (9): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
-            // Attacker vehicle sends unique low-rate flows to its RSU, filling
-            // the same reactive TCAM. Victim = reactive flow 0.
-            tcam_init_all();
-            tcam_attack_dp_enabled = true;
-            reactive_flow_id = 0;
-            tcam_dp_attacker_node = 0;                 // attacker vehicle (current_hop index)
-            is_malicious_node[9][tcam_dp_attacker_node] = true;
-            t_onset[tcam_dp_attacker_node] = 1.0;
-            Simulator::Schedule(Seconds(1.0), &data_plane_flood_tcam);
-            cout << attack_tag() << " ① Attack 4 (Slow TCAM Exhaustion - Data Plane) enabled. "
-                 << "Attacker node " << tcam_dp_attacker_node
-                 << ", victim flow " << reactive_flow_id
-                 << ", TCAM capacity " << TCAM_CAPACITY
-                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
             break;
 
         default:
@@ -115337,10 +114709,10 @@ void record_detection_event(int v, int n)
 }
 
 // Random boolean helper copied from LDA_2_.cc
-bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
-    static std::mt19937 rng(12345);  // fixed seed for reproducibility
-    static std::uniform_real_distribution<double> dist(0.0, 100.0);
-    return dist(rng) < probabilityPercent;
+bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
+	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
+	double randomValue = 1.0*(rand()%100);
+	return randomValue < probabilityPercent;
 }
 
 void declare_attackers()
@@ -115386,12 +114758,12 @@ void hardcode_test_network_attackers()
 	//   40% → 4 nodes: RSU0(5), RSU1(6), VehicleC(2), VehicleD(3)
 	//   60% → 6 nodes: RSU0(5), RSU1(6), RSU2(7), VehicleC(2), VehicleD(3), VehicleE(4)
 	//   80% → 8 nodes: RSU0(5), RSU1(6), RSU2(7), RSU3(8), VehicleC(2), VehicleD(3), VehicleE(4), RSU4(9)
-	//  100% → all 8 intermediate candidate nodes
+	//  100% → 10 nodes: all 10 nodes including source and destination paths
 
 	// List of intermediate nodes in order of increasing attack percentage
 	uint32_t attacker_candidates[] = {5, 6, 7, 8, 9, 2, 3, 4};
 	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
-	// 80% = first 8, 100% = all candidates
+	// 80% = first 8, 100% = all 10
 	uint32_t num_attackers = (uint32_t)(8 * attack_percentage / 100.0);
 	if (num_attackers > 8) num_attackers = 8;
 
@@ -115422,64 +114794,46 @@ void hardcode_attack7_test_network()
         passive_hf_malicious_nodes[i] = false;
     }
 
-    // Clear Attack 2 (selective delay) state
+    // Clear Attack 2 (selective delay) state — selective_delay_malicious_nodes[]
+    // is a plain bool[] with no initialiser so values are undefined for variant-7 runs.
     for (uint32_t i = 0; i < total_size; i++)
     {
         selective_delay_malicious_nodes[i] = false;
     }
     present_selective_delay_attack_nodes = false;
+    attack_percentage = 0;
 
-    // RSU0 (index 6) maps to Eavesdropper0 (index 2); RSU1 (index 7) maps to Eavesdropper1 (index 5)
-    passive_hf_rsu_to_eavesdropper.clear();
-    passive_hf_rsu_to_eavesdropper[6] = 2;
-    passive_hf_rsu_to_eavesdropper[7] = 5;
+    // Test network topology for Attack 7 (Passive Hidden Forwarding - Data Plane):
+    // Node 0 = Vehicle A  (sender)          at (300, 150, 0)
+    // Node 1 = Vehicle C  (legit dest)      at (800, 150, 0)
+    // Node 2 = RSU        (malicious)       at (550,  75, 0)
+    // Node 3 = Vehicle B  (eavesdropper)    at (550, 300, 0)
+    //
+    // A -> RSU -> C  (legitimate path, ~250m each hop)
+    // RSU also secretly duplicates to B   (~225m, within WiFi range)
+    // A -> C direct = 500m (out of range, forces routing through RSU)
 
-    // RSU0 (index 6) is malicious; RSU1 (index 7) is honest
-    passive_hf_malicious_nodes[6] = true;
+    // Node index mapping for test network (N_Vehicles=3, N_RSUs=1):
+    // ns3 IDs:  controller=0, management=1, VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop = ns3_id - 2:  VehicleA=0, VehicleC=1, VehicleB=2, RSU=3
+    // wifidevices index = current_hop:  [0]=VehicleA, [1]=VehicleC, [2]=VehicleB, [3]=RSU
+    //
+    // The RSU has current_hop=3 (=wifidevices index 3).
+    // Vehicle B (eavesdropper) has current_hop=2 (=wifidevices index 2).
+    passive_hf_malicious_nodes[3] = true;   // RSU: current_hop=3 (ns3 ID 5, wifidevices[3])
     present_passive_hf_attack = true;
-
-    // Legacy single-RSU fallback
-    passive_hf_eavesdropper_index = 2;
-
-    // Reset metrics
-    fade_eavesdrop_counter   = 0;
-    fade_eavesdropped_packets.clear();
-    g_total_copies_scheduled = 0;
-    g_hdup_intentional       = false;
-    fade_cum_pdr = 0.0; fade_cum_pir = 0.0; fade_cum_mcc = 0.0;
-    fade_cum_dr  = 0.0; fade_cum_fpr = 0.0;
-    fade_prev_eavesdrop = 0; fade_prev_copies = 0;
+    passive_hf_eavesdropper_index = 2;      // Vehicle B: current_hop=2 (ns3 ID 4, wifidevices[2])
+    // Link-lifetime seeding is done via seed_attack8_links(), scheduled
+    // from initialise_stub_attack_state() after all globals are initialised.
 
     active_attack_variant = 7;               // Attack 8 in the paper (0-indexed = 7)
-    record_attack_onset(7, 6);
+    record_attack_onset(7, 3);               // RSU is node index 3 in current_hop space
 
-    uint32_t n_malicious = 1;
-    uint32_t RSU_BASE = 6;
-    uint32_t EAVES_BASE = 2;
-
-    cout << attack_tag() << " ① Attack onset: RSU0 (global node ID 6) is malicious passive hidden forwarder." << endl;
-    if (n_malicious > 0)
-    {
-        cout << attack_tag() << " ① Malicious RSUs: ";
-        for (uint32_t r = 0; r < n_malicious; r++)
-        {
-            if (r > 0) cout << ", ";
-            cout << "RSU(" << (RSU_BASE + r) << ")";
-        }
-        cout << endl;
-    }
-    else
-    {
-        cout << attack_tag() << " ① Malicious RSUs: none" << endl;
-    }
-
-    cout << attack_tag() << " ① Eavesdropper map: ";
-    for (uint32_t r = 0; r < N_RSUs; r++)
-    {
-        if (r > 0) cout << ", ";
-        cout << "RSU(" << (RSU_BASE + r) << ") -> Node " << (EAVES_BASE + r);
-    }
-    cout << endl;
+    cout << attack_tag() << " ① Attack onset: RSU (current_hop=3) flow rules modified by data plane attacker" << endl;
+    cout << attack_tag() << " ① Node 3 (RSU, wifidevices[3]) marked as malicious passive hidden forwarder" << endl;
+    cout << attack_tag() << " ① Eavesdropper = Node 2 (Vehicle B, current_hop=2) at (550, 300, 0)" << endl;
+    cout << attack_tag() << " ① Topology: VehicleA(0)->(250m)->RSU(3)->(250m)->VehicleC(1)" << endl;
+    cout << attack_tag() << " ① Hidden channel: RSU(3)->(225m)->VehicleB(2) [unauthorized]" << endl;
 }
 
 void write_csv_results_routing()
@@ -116147,17 +115501,16 @@ void seed_attack8_links()
             b < linklifetimeMatrix_dsrc[a].size())
             linklifetimeMatrix_dsrc[a][b] = v;
     };
-    // Unit 0 links:
-    safe_set(0, 6, 999.0); safe_set(6, 0, 999.0);   // 0 <-> RSU0(6)
-    safe_set(6, 1, 999.0); safe_set(1, 6, 999.0);   // RSU0(6) <-> 1
-    safe_set(6, 2, 999.0); safe_set(2, 6, 999.0);   // RSU0(6) <-> Eavesdropper0(2) (hidden eavesdrop channel)
-
-    // Unit 1 links:
-    safe_set(3, 7, 999.0); safe_set(7, 3, 999.0);   // 3 <-> RSU1(7)
-    safe_set(7, 4, 999.0); safe_set(4, 7, 999.0);   // RSU1(7) <-> 4
-    safe_set(7, 5, 999.0); safe_set(5, 7, 999.0);   // RSU1(7) <-> Eavesdropper1(5) (hidden eavesdrop channel)
-
-    cout << "[ATTACK8] seeded link-lifetime matrix for 2 units (6 Vehicles + 2 RSUs)." << endl;
+    // Corrected indices: current_hop = ns3_id - 2
+    // ns3 IDs: VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop:    VehicleA=0,    VehicleC=1,    VehicleB=2, RSU=3
+    safe_set(0, 3, 999.0);   // VehicleA(0) -> RSU(3)
+    safe_set(3, 0, 999.0);   // RSU(3) -> VehicleA(0)
+    safe_set(3, 1, 999.0);   // RSU(3) -> VehicleC(1)  legitimate forwarding hop
+    safe_set(1, 3, 999.0);   // VehicleC(1) -> RSU(3)
+    safe_set(3, 2, 999.0);   // RSU(3) -> VehicleB(2)  hidden eavesdrop channel
+    safe_set(2, 3, 999.0);   // VehicleB(2) -> RSU(3)
+    cout << "[ATTACK8] Link-lifetime matrix seeded: VehicleA=0, VehicleC=1, VehicleB=2, RSU=3." << endl;
 }
 
 double shortestDistances[total_size];
@@ -116339,7 +115692,7 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 	
 	Ptr<ConstantVelocityMobilityModel> mdl1 = DynamicCast <ConstantVelocityMobilityModel> (reference_node->GetObject<MobilityModel>());
         Vector posi_reference = mdl1->GetPosition();
-        for (uint32_t index = 2; index < ((uint32_t)var + 2); index++)
+        for (uint32_t index = 2; index < (total_size + 2); index++)
 	{
 		if ((index-2) < N_Vehicles)
 		{	
@@ -116361,7 +115714,7 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 void generate_adjacency_matrix()
 {
 	
-	for(uint32_t i=0;i<(uint32_t)var;i++)
+	for(uint32_t i=0;i<total_size;i++)
 	{
 		node_distance[i] = calculate_distance_to_each_node(i+2);	
 	}
@@ -116380,7 +115733,7 @@ void generate_adjacency_matrix()
 	*/
 	
 	vector<vector<double>> new_adjacencyMatrix;
-	for(uint32_t i=0;i<(uint32_t)var;i++)
+	for(uint32_t i=0;i<total_size;i++)
 	//for(uint32_t i=0;i<9;i++)
 	{
 		new_adjacencyMatrix.push_back(node_distance[i]);
@@ -116584,10 +115937,15 @@ void filter_flows()
 		{
 			if (routing_test == true)
     			{
-    				(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
-    				(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
-    				flow_counter++;
-    				scheduled_flows++;
+    				if(flow_id ==1)
+    				{
+    					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
+    				}
+    				else
+    				{
+    					flow_counter++;
+    					scheduled_flows++;
+    				}
     			}
     			else
     			{
@@ -116614,10 +115972,15 @@ void filter_flows()
 		  	
 		  	if (routing_test == true)
     			{
-    				(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
-    				(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
-    				flow_counter++;
-    				scheduled_flows++;
+    				if(flow_id ==1)
+    				{
+    					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
+    				}
+    				else
+    				{
+    					flow_counter++;
+    					scheduled_flows++;
+    				}
     			}
     			else
     			{
@@ -116964,7 +116327,6 @@ void calculate_average_packet_delivery_ratio_routing()
 		if (f_size > 0)
 		{
 			flow_counter++;
-			total_packets = total_packets + f_size;  // only count active flows
 			for (uint32_t i=1; i<f_size+1;i++)
 			{
 				if (routing_packet_final_timestamp[fid][i] > routing_packet_initial_timestamp[fid][i])
@@ -116976,7 +116338,7 @@ void calculate_average_packet_delivery_ratio_routing()
 				//total_latency = total_latency + packet_delay_routing[fid][i];
 			}
 		}
-		// total_packets moved inside if(f_size>0) — do NOT add here
+		total_packets = total_packets + f_size;
 	}
 	//cout<<"PDR calculation: flow counter is "<<flow_counter<<" delivered packets is "<<delivered_packet_counter<<endl;
 	//total_latency = total_latency;
@@ -117351,17 +116713,9 @@ void write_security_metrics_csv()
 	}
 
 	fout.open(filename, ios::out|ios::app);
-
-	// PDR: use supervisor's per-cycle timestamp-based variables.
-	// current_packet_delivery_ratio is recomputed fresh each cycle by
-	// calculate_average_packet_delivery_ratio_routing() using final_timestamp
-	// > initial_timestamp, so it is correct at every cycle, not just the last.
-	double pdr_curr = 100.0 * current_packet_delivery_ratio;
-	double pdr_avg  = 100.0 * average_packet_delivery_ratio_dsrc;
-
 	fout << (uint32_t)cycle << ", "
-		 << pdr_curr << ", "
-		 << pdr_avg  << ", "
+		 << current_packet_delivery_ratio * 100.0 << ", "
+		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
 		 << current_latency_routing * 1000.0 << ", "
 		 << average_latency_routing * 1000.0 << ", "
 		 << current_MCC[selected_variant] << ", "
@@ -117381,126 +116735,6 @@ void write_security_metrics_csv()
 	cout << "written to file successfully" << endl;
 }
 
-// ============================================================
-// FADE per-cycle CSV writer. Mirrors write_security_metrics_csv() so FADE
-// output files share the SAME shape: one file per scenario
-// (FADE_baseline.csv / FADE_AttackN_PCT.csv), one row per cycle. The MOBIGUARD
-// columns are reproduced position-for-position; cur_PIR and avg_PIR are appended
-// as two trailing columns. FADE has no mitigation stage so those two columns
-// are always 0 (kept for positional compatibility).
-//   cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms,
-//   cur_MCC, avg_MCC, cur_DR%, avg_DR%, cur_FPR%, avg_FPR%,
-//   cur_mit_ms, avg_mit_ms, TP, FP, TN, FN, cur_PIR%, avg_PIR%
-// ============================================================
-void fade_write_per_cycle_csv()
-{
-	fstream fout;
-	string filename;
-	double cycle = data_gathering_cycle_number - 1.0;
-	if (cycle < 1.0)
-		cycle = 1.0;
-
-	int attack_id = 1;
-	switch (active_attack_variant)
-	{
-		case (-1): break;
-		case (0): attack_id = 1; break;
-		case (1): attack_id = 2; break;
-		case (2): attack_id = 3; break;
-		case (3): attack_id = 4; break;
-		case (4): attack_id = 5; break;
-		case (5): attack_id = 6; break;
-		case (6): attack_id = 7; break;
-		case (7): attack_id = 8; break;
-		default:  attack_id = 1; break;
-	}
-
-	const string base = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
-	if (active_attack_variant == -1)
-	{
-		filename = base + "FADE_baseline.csv";
-	}
-	else
-	{
-		int pct = 0;
-		if      (attack_percentage <= 0)   pct = 0;
-		else if (attack_percentage <= 20)  pct = 20;
-		else if (attack_percentage <= 40)  pct = 40;
-		else if (attack_percentage <= 60)  pct = 60;
-		else if (attack_percentage <= 80)  pct = 80;
-		else                               pct = 100;
-		filename = base + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + ".csv";
-	}
-
-	uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
-	for (auto &entry : fade_flow_config)
-	{
-		uint32_t flow_id = entry.first;
-		if (!entry.second.configured) continue;
-		if (!fade_is_flow_active(flow_id)) continue;
-
-		bool attacked = fade_is_flow_attacked(flow_id);
-		bool detected = fade_results[flow_id].detected;
-		if ( attacked &&  detected) tp++;
-		if (!attacked &&  detected) fp++;
-		if (!attacked && !detected) tn++;
-		if ( attacked && !detected) fn++;
-	}
-
-	double cur_pdr = 100.0 * current_packet_delivery_ratio;
-
-	uint32_t d_eaves  = fade_eavesdrop_counter   - fade_prev_eavesdrop;
-	uint32_t d_copies = g_total_copies_scheduled - fade_prev_copies;
-	double cur_pir = (d_copies > 0)
-		? 100.0 * (double)d_eaves / (double)d_copies
-		: 0.0;
-	fade_prev_eavesdrop = fade_eavesdrop_counter;
-	fade_prev_copies    = g_total_copies_scheduled;
-
-	double dTP = (double)tp, dFP = (double)fp, dTN = (double)tn, dFN = (double)fn;
-	double dr_den  = dTP + dFN;
-	double cur_dr  = (dr_den  > 0.0) ? dTP / dr_den  : 0.0;
-	double fpr_den = dFP + dTN;
-	double cur_fpr = (fpr_den > 0.0) ? dFP / fpr_den : 0.0;
-	double eps = 1e-6;
-	double mcc_den = sqrt((dTP+dFP+eps)*(dTP+dFN+eps)*(dTN+dFP+eps)*(dTN+dFN+eps));
-	double cur_mcc = ((dTP*dTN) - (dFP*dFN)) / mcc_den;
-
-	fade_cum_pdr += cur_pdr;
-	fade_cum_pir += cur_pir;
-	fade_cum_mcc += cur_mcc;
-	fade_cum_dr  += cur_dr;
-	fade_cum_fpr += cur_fpr;
-	double avg_pdr = fade_cum_pdr / cycle;
-	double avg_pir = fade_cum_pir / cycle;
-	double avg_mcc = fade_cum_mcc / cycle;
-	double avg_dr  = fade_cum_dr  / cycle;
-	double avg_fpr = fade_cum_fpr / cycle;
-
-	fout.open(filename, ios::out | ios::app);
-	fout << (uint32_t)cycle << ", "
-	     << cur_pdr << ", "
-	     << avg_pdr << ", "
-	     << current_latency_routing * 1000.0 << ", "
-	     << average_latency_routing * 1000.0 << ", "
-	     << cur_mcc << ", "
-	     << avg_mcc << ", "
-	     << (cur_dr  * 100.0) << ", "
-	     << (avg_dr  * 100.0) << ", "
-	     << (cur_fpr * 100.0) << ", "
-	     << (avg_fpr * 100.0) << ", "
-	     << 0.0 << ", "
-	     << 0.0 << ", "
-	     << tp << ", "
-	     << fp << ", "
-	     << tn << ", "
-	     << fn << ", "
-	     << cur_pir << ", "
-	     << avg_pir << "\n";
-	fout.close();
-	cout << "FADE per-cycle row written to " << filename << endl;
-}
-
 void calculate_performance_evaluation_metrics()
 {
 
@@ -117514,18 +116748,12 @@ void calculate_performance_evaluation_metrics()
 	// Scheduled after existing writes to avoid timing conflicts
 	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
-	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000100), write_security_metrics_csv);
-	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
-	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv);
 
 	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
 	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
 	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 }
-
-
-
 
 
 // === TAP BASELINE FUNCTIONS ===
@@ -117600,7 +116828,7 @@ void tap_run_detection(uint32_t receiver_current_hop,
 	double v = PAT - delta;
 
 	cout << "[TAP] Node " << receiver_current_hop << " received from " << sender_current_hop
-		 << ": D=" << D << "m PAT=" << PAT << "s delta=" << (delta*1000.0) << "ms v=" << v
+		 << ": D=" << D << "m PAT=" << PAT << "s ∂=" << (delta*1000.0) << "ms v=" << v
 		 << " PPAT=" << PPAT << "s" << endl;
 
 	if (std::abs(v - PPAT) > TAP_MARGIN)
@@ -117702,6 +116930,8 @@ void write_tap_csv()
 	fout.close();
 	cout << "[TAP] written to file successfully: " << filename << endl;
 }
+
+
 
 
 void calculate_average_latency()
@@ -118009,7 +117239,7 @@ void transmit_solution()
 	{
 		if (u < (N_Vehicles))
 		{
-			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
 			Simulator::Schedule(Seconds(0.002 + 0.000015*u),send_LTE_metadata_downlink_alone,udp_app,controller_Node.Get(0),Vehicle_Nodes.Get(u), u);
 		}
 		else
@@ -118032,7 +117262,7 @@ void transmit_delta_values()
 	{
 		if (u < (N_Vehicles))
 		{
-			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
 			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),send_LTE_deltavalues_downlink_alone,udp_app,controller_Node.Get(0),Vehicle_Nodes.Get(u), u);
         }
         else
@@ -118148,40 +117378,6 @@ void convert_link_lifetimes_dsrc()
 	}
 	linklifetimeMatrix_dsrc = new_adjacencyMatrix_dsrc;
 	//cout<<"link lifetime matrix converted"<<endl;
-
-	// === DSRC RANGE GATE ===
-	// Make routing reachability a clean function of radio range:
-	//   - a link within d_max_dsrc is usable (if the optimizer reported 0 for an
-	//     in-range link — e.g. vehicle<->RSU links — we floor it to a usable
-	//     value so the relay path can form);
-	//   - a link beyond d_max_dsrc is removed (lifetime 0) so routing won't pick
-	//     an unreliable direct link and will relay via the RSU instead.
-	// Positions come from routing_data_at_nodes_inst (the struct the [DEBUG]
-	// "position in CSV" prints use). Self-link (i==j) is left untouched.
-	double in_range_floor = link_lifetime_threshold + 1.0; // safely above threshold
-	for(uint32_t i=0;i<(uint32_t)var;i++)
-	{
-		for(uint32_t j=0;j<(uint32_t)var;j++)
-		{
-			if(i==j) continue;
-			double dist = get_length((routing_data_at_nodes_inst+i)->position,
-			                         (routing_data_at_nodes_inst+j)->position);
-			cout<<"[RANGE GATE] link "<<i<<"->"<<j<<" dist="<<dist
-			    <<" lifetime(before)="<<linklifetimeMatrix_dsrc[i][j];
-			if(dist > d_max_dsrc)
-			{
-				linklifetimeMatrix_dsrc[i][j] = 0.0;
-				cout<<" -> ZEROED (over "<<d_max_dsrc<<"m)";
-			}
-			else if(linklifetimeMatrix_dsrc[i][j] <= link_lifetime_threshold)
-			{
-				// in range but optimizer reported it unusable: floor it
-				linklifetimeMatrix_dsrc[i][j] = in_range_floor;
-				cout<<" -> FLOORED to "<<in_range_floor<<" (in range)";
-			}
-			cout<<endl;
-		}
-	}
 	
 	/*
 	for (uint32_t i=0;i<total_size;i++)
@@ -119907,11 +119103,11 @@ void  run_DNN_delay()
 void convert_delay()
 {
 	cout<<"converting delay"<<endl;
-	for(uint32_t i=0;i<(2*(uint32_t)var);i=i+2)
+	for(uint32_t i=0;i<(2*total_size);i=i+2)
 	{
 		vector<double> x_dsrc;
 		vector<double> x_ethernet;
-		for (uint32_t j = 0;j < (uint32_t)var;j++)
+		for (uint32_t j = 0;j < total_size;j++)
 		{
 			double dij_dsrc;
 			double dij_ethernet;
@@ -119936,7 +119132,7 @@ void convert_delay()
 	
 	vector<vector<double>> new_adjacencyMatrix_dsrc;
 	vector<vector<double>> new_adjacencyMatrix_ethernet;
-	for(uint32_t i=0;i<(uint32_t)var;i++)
+	for(uint32_t i=0;i<total_size;i++)
 	//for(uint32_t i=0;i<9;i++)
 	{
 		new_adjacencyMatrix_dsrc.push_back(delay_dsrc[i]);
@@ -119947,11 +119143,11 @@ void convert_delay()
 	cout<<"delay matrix converted"<<endl;
 	
 	
-	for (uint32_t i=0;i<(uint32_t)var;i++)
+	for (uint32_t i=0;i<total_size;i++)
 	//for (uint32_t i=0;i<9;i++)
 	{
 		
-		for (uint32_t j=0;j<(uint32_t)var;j++)
+		for (uint32_t j=0;j<total_size;j++)
 		//for (uint32_t j=0;j<9;j++)
 		{
 			cout<<"DSRC delay from source node"<<(i)<<"to node "<<(j)<<"is "<<delayMatrix_dsrc[i][j]<<endl;
@@ -120398,15 +119594,6 @@ uint32_t s_flow_counter[2*flows][total_size][Flow_size+2];
 
 void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_t hop, uint32_t current_hop, Time originail_timestamp, struct custom_struct arguments)
 {
-	// Guard: hop must be a valid node index.
-	// hop=99 or >= wifidevices.GetN() means an uninitialised routing table
-	// entry -- silently drop rather than crash on wifidevices.Get(99).
-	if (hop >= (uint32_t)wifidevices.GetN() || current_hop >= (uint32_t)wifidevices.GetN())
-	{
-		cout << "check_delivery_and_retransmit: invalid hop=" << hop
-		     << " or current_hop=" << current_hop << " -- dropping" << endl;
-		return;
-	}
 	double diff = Now().GetSeconds() - flow_initiation_time;
 	arguments.CW = pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] + 2;
 	if(diff > (0.90*data_transmission_period))
@@ -120482,109 +119669,57 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						double tg = compute_individual_link_delay(0, pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] + 2, 1, flow_packet_size, 1, zeta);
 						//cout<<"retransmitting"<<endl;
 						uint16_t protocolwave = 0x88dc;
-						// ==============================================================
-                        // 1. SAFETY GUARD: DROP INVALID HOPS (e.g., 99)
-                        // ==============================================================
-                        if (hop >= N_Vehicles + N_RSUs) 
-                        {
-                            cout << "[ROUTING DROP] Invalid next hop " << hop << ". Dropping retransmission." << endl;
-                            pd_all_inst[flow_id].pd_inst[current_hop].pending[arguments.channel][packet_id] = false;
-                            return; // Stop execution immediately, saving us from a crash!
-                        }
+						Ptr <NetDevice> current_nd = wifidevices.Get(current_hop);
+					
+						Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
+						CustomDataUnicastTag_ModifiedRouting tag;
+						tag.SetchannelId(arguments.channel);
+						tag.SetflowId(flow_id);
+						tag.SetpacketId(packet_id);
+						tag.Setprevious_senderId(current_hop);
+						tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+						tag.Setoriginal_timestamp(originail_timestamp);
+						packet_i->AddPacketTag(tag);
+						
+						Ptr <NetDevice> destination_nd = wifidevices.Get(hop);
 
-                        
-                        Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
-                        CustomDataUnicastTag_ModifiedRouting tag;
-                        tag.SetchannelId(arguments.channel);
-                        tag.SetflowId(flow_id);
-                        tag.SetpacketId(packet_id);
-                        tag.Setprevious_senderId(current_hop);
-                        tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
-                        tag.Setoriginal_timestamp(originail_timestamp);
-                        packet_i->AddPacketTag(tag);
-
-                        Simulator::Schedule (Seconds (0.0), updateTxop, flow_id, current_hop, hop, packet_id, true, arguments);
-
-                        // ==============================================================
-                        // 2. BULLETPROOF DESTINATION MAC LOOKUP
-                        // ==============================================================
-                        Mac48Address dest_address;
-						if (hop < N_Vehicles) {
-							uint32_t global_dest_nid = hop + 2;
-							Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
-							Mac48Address fallback_addr;
-							bool found_channel_match = false;
-
-							for (uint32_t i = 0; i < dest_node->GetNDevices(); i++) {
-								Ptr<NetDevice> dev = dest_node->GetDevice(i);
-								Ptr<WifiNetDevice> wifi_dev = DynamicCast<WifiNetDevice>(dev);
-								if (wifi_dev != 0) {
-									// Always record the first WiFi device as fallback
-									if (!found_channel_match) {
-										fallback_addr = Mac48Address::ConvertFrom(dev->GetAddress());
-									}
-									// Prefer the device whose channel matches arguments.channel
-									Ptr<WifiPhy> phy = wifi_dev->GetPhy();
-									if (phy != 0 && phy->GetChannelNumber() == arguments.channel) {
-										dest_address = Mac48Address::ConvertFrom(dev->GetAddress());
-										found_channel_match = true;
-										break;
-									}
-								}
-							}
-
-							// Fall back to first WiFi device if no channel match found
-							if (!found_channel_match) {
-								dest_address = fallback_addr;
-								cout << "[RELAY TX WARN] No channel-" << arguments.channel
-									<< " device found on hop " << hop
-									<< ", falling back to " << dest_address << endl;
-							}
-						} else {
-							dest_address = Mac48Address("ff:ff:ff:ff:ff:ff");
+						Simulator::Schedule (Seconds (0.0), updateTxop, flow_id, current_hop, hop, packet_id, true, arguments);
+						switch(arguments.channel)
+						{
+							case(172):
+								current_nd = wifidevices_172.Get(current_hop);
+								destination_nd = wifidevices_172.Get(hop);
+								break;
+							case(174):
+								current_nd = wifidevices_174.Get(current_hop);
+								destination_nd = wifidevices_174.Get(hop);
+								break;
+							case(176):
+								current_nd = wifidevices_176.Get(current_hop);
+								destination_nd = wifidevices_176.Get(hop);
+								break;
+							case(178):
+								current_nd = wifidevices.Get(current_hop);
+								destination_nd = wifidevices.Get(hop);
+								break;
+							case(180):
+								current_nd = wifidevices_180.Get(current_hop);
+								destination_nd = wifidevices_180.Get(hop);
+								break;
+							case(182):
+								current_nd = wifidevices_182.Get(current_hop);
+								destination_nd = wifidevices_182.Get(hop);
+								break;
+							case(184):
+								current_nd = wifidevices_184.Get(current_hop);
+								destination_nd = wifidevices_184.Get(hop);
+								break;
+							default:
+								break;
 						}
-
-                        // ==============================================================
-                        // 3. BULLETPROOF SENDER DEVICE LOOKUP (CHANNEL-AWARE)
-                        // ==============================================================
-                        Ptr <WifiNetDevice> wdi = 0;
-                        uint32_t global_src_nid = current_hop + 2;
-                        Ptr<Node> sender_node = NodeList::GetNode(global_src_nid);
-                        
-                        for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
-                            Ptr<NetDevice> dev = sender_node->GetDevice(i);
-                            Ptr<WifiNetDevice> wifi_dev = DynamicCast<WifiNetDevice>(dev);
-                            if (wifi_dev != 0) {
-                                Ptr<WifiPhy> phy = wifi_dev->GetPhy();
-                                // Match the exact Wi-Fi card to the channel we are transmitting on
-                                if (phy != 0 && phy->GetChannelNumber() == arguments.channel) {
-                                    wdi = wifi_dev;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Failsafe: if we couldn't match the channel, just grab the first Wi-Fi card
-                        if (wdi == 0) {
-                            for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
-                                Ptr<NetDevice> dev = sender_node->GetDevice(i);
-                                if (DynamicCast<WifiNetDevice>(dev) != 0) {
-                                    wdi = DynamicCast<WifiNetDevice>(dev);
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (wdi == 0) {
-                            cout << "[CRITICAL ERROR] Retransmit could not find sender device for Node " << current_hop << endl;
-                            return;
-                        }
-
-                        // eFADE: record outbound destination for this hop on the first forwarding attempt
-                        if (pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
-                        {
-                            fade_forwarded[flow_id][current_hop][packet_id].insert(hop);
-                        }
+						Address addr = destination_nd->GetAddress();
+						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
+						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (current_nd);
 
 						double tx_delay = 0.0;
 						bool apply_attack_delay = false;
@@ -120592,11 +119727,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							selective_delay_malicious_nodes[current_hop] &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
 						{
-							bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
+							bool atk = (attack_percentage == 0) ? false : true;
 							if (atk)
 							{
 								apply_attack_delay = true;
-								tx_delay = attack2_delay_seconds;
+								tx_delay = attack2_delay_seconds * (attack_percentage / 100.0);
 								cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
 									 << ") intercepting packet ID " << packet_id
 									 << " for flow " << flow_id
@@ -120612,55 +119747,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 						// Record forwarding timestamp for S2 signature detection
 						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
-						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
-							{
-								cout << "[ATTACK2] ② Node " << current_hop
-									<< " sending packet ID " << packet_id
-									<< " to next hop " << hop
-									<< " normally at t=" << Now().GetSeconds() << "s" << endl;
-							}
-						// === ACTIVE HIDDEN FORWARDING (Attacks 5 & 6) ===
-						// RSU intercepts, forwards original normally, sends MODIFIED copy to eavesdropper.
-						// The modification is simulated by flipping a content-modified flag in the log.
-						// In the real system, EdDSA would fail on the modified copy.
-						if (present_active_hf_attack &&
-						    active_hf_malicious_nodes[current_hop] &&
-						    fade_is_flow_attacked(flow_id))
+						if(selective_delay_malicious_nodes[current_hop] == false)
 						{
-						    uint32_t active_eaves = active_hf_eavesdropper_index;
-						    {
-						        auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
-						        if (_it != passive_hf_rsu_to_eavesdropper.end())
-						        {
-						            active_eaves = _it->second;
-						        }
-						    }
-						    cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
- 						         << ") intercepted packet ID " << packet_id
-						         << " (flow " << flow_id << ") at t=" << Now().GetSeconds() << "s" << endl;
-						    cout << attack_tag() << " ④ Forwarding ORIGINAL packet to legitimate next hop ("
-						         << hop << ") as normal" << endl;
-						    cout << attack_tag() << " ⑤ Sending CONTENT-MODIFIED duplicate of packet ID "
- 						         << packet_id << " (flow " << flow_id
-						         << ") to unauthorized Node(" << active_eaves
-						         << ") at t=" << Now().GetSeconds() << "s [EdDSA will FAIL — content fabricated]" << endl;
-						    // Reuse send_hidden_duplicate infrastructure — same channel, different eavesdropper
-						    g_hdup_rsu       = current_hop;
-						    g_hdup_eaves     = active_eaves;
-						    g_hdup_flow_id   = flow_id;
-						    g_hdup_packet_id = packet_id;
-						    g_hdup_channel   = arguments.channel;
-						    g_hdup_p_size    = arguments.p_size;
-						    g_hdup_timestamp = originail_timestamp;
-						    // PIR FIX: mark intentional eavesdrop so MacRx distinguishes the
-						    // hidden duplicate from ambient Wi-Fi overhear, and count it as a
-						    // scheduled copy (matches the passive-HF block bookkeeping).
-						    g_hdup_intentional = true;
-						    g_total_copies_scheduled++;
-						    // eFADE: record duplicate destination immediately at scheduling
-						    // to ensure it falls within the same measurement epoch as the incoming packet.
-						    fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
-						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
+							cout << "[ATTACK2] ② Node " << current_hop
+								 << " sending packet ID " << packet_id
+								 << " to next hop " << hop
+								 << " normally at t=" << Now().GetSeconds() << "s" << endl;
 						}
 						// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
                         // Malicious RSU intercepts packet and secretly duplicates it
@@ -120668,15 +119760,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
                         if (present_passive_hf_attack &&
                             passive_hf_malicious_nodes[current_hop] &&
-                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
-                            fade_is_flow_attacked(flow_id))
+                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
                         {
-                            // PIR FIX: gate on attack_percentage — previously this block had
-                            // NO probability check so every packet was always duplicated
-                            // regardless of attack_percentage, causing PIR=100% at all intensities.
-                            bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
-                            if (atk)
-                            {
                             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
                                  << ") intercepted packet ID " << packet_id
                                  << " (flow " << flow_id << ") at t="
@@ -120688,37 +119773,18 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // Use a tiny offset (0.001s) so the original goes first.
                             // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
                             // send_hidden_duplicate needs 7, so stage args then trampoline.
-                            g_hdup_rsu           = current_hop;
-                            // Use per-RSU eavesdropper from map; fall back to legacy index if not found
-                            {
-                            auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
-                            g_hdup_eaves = (_it != passive_hf_rsu_to_eavesdropper.end())
-                                ? _it->second
-                                : passive_hf_eavesdropper_index;
-                            }
-                            g_hdup_flow_id       = flow_id;
-                            g_hdup_packet_id     = packet_id;
-                            g_hdup_channel       = arguments.channel;
-                            g_hdup_p_size        = arguments.p_size;
-                            g_hdup_timestamp     = originail_timestamp;
-                            // PIR FIX: mark this as an intentional eavesdrop so
-                            // MacRx can distinguish it from ambient Wi-Fi overhear.
-                            g_hdup_intentional    = true;
-                            g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
-                            // eFADE: record duplicate destination immediately at scheduling
-                            // to ensure it falls within the same measurement epoch as the incoming packet.
-                            fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
+                            g_hdup_rsu       = current_hop;
+                            g_hdup_eaves     = passive_hf_eavesdropper_index;
+                            g_hdup_flow_id   = flow_id;
+                            g_hdup_packet_id = packet_id;
+                            g_hdup_channel   = arguments.channel;
+                            g_hdup_p_size    = arguments.p_size;
+                            g_hdup_timestamp = originail_timestamp;
                             Simulator::Schedule(Seconds(0.001),
                                                 send_hidden_duplicate_trampoline);
-                            } // end if (atk)
                         }
                         // === END ATTACK 7 ===
 
-						cout<<"[RELAY TX] node "<<current_hop<<" -> hop "<<hop
-						    <<" destMAC="<<dest_address
-						    <<" arguments.channel="<<arguments.channel
-						    <<" txCardChannel="<<(wdi!=0 && wdi->GetPhy()!=0 ? (int)wdi->GetPhy()->GetChannelNumber() : -1)
-						    <<" at t="<<Now().GetSeconds()<<endl;
 						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
 						double retry_delay = tg + 0.000100 + rand_delay;
@@ -120753,147 +119819,52 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 
 
-// ---------- Slow TCAM Exhaustion Attack (Attacks 3 & 4) ----------
-//
-// Reactive TCAM model layered on top of the existing proactive (delta-value)
-// routing. The proactive routing in architecture 3 is UNCHANGED: find_next_hop
-// still decides the next hop. This layer only governs *timing* at the RSU
-// forwarding step:
-//   - The designated reactive (safety-critical) flow has NO proactive rule, so
-//     at the RSU it must be served from the reactive TCAM.
-//   - TCAM HIT  -> fast path (0 extra delay).
-//   - TCAM MISS -> packet goes to the controller "slow path": the RSU installs
-//     the rule (FIFO-evicting if the small table is full) and the packet eats
-//     TCAM_SLOWPATH_DELAY (controller round-trip, ~100ms on a wired backhaul).
-//
-// Both attacks fill the SAME per-RSU reactive TCAM:
-//   - Attack 3 (control plane): a malicious controller spams junk FlowMods.
-//   - Attack 4 (data plane):    an attacker vehicle sends unique low-rate flows.
-// Either way the 8 slots fill with junk, evicting the victim flow's entry, so
-// the victim keeps missing -> repeated 100ms penalties on safety packets.
-//
-// Keyed on flow id (fid), read from the modified-routing tag at the RSU
-// forwarding step. Junk attacker flows use synthetic ids >= total_size so they
-// never collide with the single real flow (id 0).
+// ---------- TCAM exhaustion helpers ----------
 
-const int TCAM_CAPACITY        = 8;       // small reactive table per RSU (sim)
-const double TCAM_SLOWPATH_DELAY = 0.100; // 100 ms controller round-trip per miss
-
-// Attack toggles (set by initialise_stub_attack_state() for variants 8/9 only).
-bool tcam_attack_cp_enabled = false;  // Attack 3 (control plane)
-bool tcam_attack_dp_enabled = false;  // Attack 4 (data plane)
-uint32_t tcam_dp_attacker_node = 0;   // attacker vehicle (current_hop index) for Attack 4
-uint32_t reactive_flow_id = 0;        // victim flow: served reactively (no proactive rule)
-
-// A single reactive TCAM entry: a flow-id key, valid flag, and an insertion
-// sequence number used for FIFO eviction.
-struct TcamEntry {
-    bool     valid;
-    uint32_t key;   // flow id
-    uint64_t seq;   // monotonically increasing; lowest seq = oldest = evicted first
-};
-
-// One table per node index (indexed by current_hop = ns3_id - 2); only RSU
-// indices are ever used. Sized by total_size (compile-time const) because
-// N_Vehicles/N_RSUs are reassigned at runtime by the test-network setups.
-TcamEntry reactive_tcam[total_size][TCAM_CAPACITY];
-uint64_t  tcam_seq_counter = 0;  // global monotonic sequence for FIFO ordering
-
-void tcam_init_all()
-{
-    for (int n = 0; n < total_size; n++)
-        for (int s = 0; s < TCAM_CAPACITY; s++)
-        {
-            reactive_tcam[n][s].valid = false;
-            reactive_tcam[n][s].key   = 0;
-            reactive_tcam[n][s].seq   = 0;
-        }
-    tcam_seq_counter = 0;
-}
-
-// Returns true if flow `key` is currently resident in rsu_node's reactive TCAM.
-bool tcam_lookup(uint32_t rsu_node, uint32_t key)
-{
-    if (rsu_node >= (uint32_t)total_size) return false;
-    for (int s = 0; s < TCAM_CAPACITY; s++)
-    {
-        if (reactive_tcam[rsu_node][s].valid &&
-            reactive_tcam[rsu_node][s].key == key)
-            return true;
-    }
-    return false;
-}
-
-// Installs flow `key` into rsu_node's reactive TCAM. Uses a free slot if one
-// exists; otherwise FIFO-evicts the oldest (lowest seq) entry. No-op if the
-// flow is already resident (FIFO, not LRU — does not refresh).
-void tcam_install(uint32_t rsu_node, uint32_t key)
-{
-    if (rsu_node >= (uint32_t)total_size) return;
-    if (tcam_lookup(rsu_node, key)) return;  // already present
-
-    int free_slot = -1;
-    int oldest_slot = 0;
-    uint64_t oldest_seq = 0;
-    bool oldest_set = false;
-    for (int s = 0; s < TCAM_CAPACITY; s++)
-    {
-        if (!reactive_tcam[rsu_node][s].valid) { free_slot = s; break; }
-        if (!oldest_set || reactive_tcam[rsu_node][s].seq < oldest_seq)
-        {
-            oldest_seq  = reactive_tcam[rsu_node][s].seq;
-            oldest_slot = s;
-            oldest_set  = true;
-        }
-    }
-    int slot = (free_slot >= 0) ? free_slot : oldest_slot;
-    reactive_tcam[rsu_node][slot].valid = true;
-    reactive_tcam[rsu_node][slot].key   = key;
-    reactive_tcam[rsu_node][slot].seq   = ++tcam_seq_counter;
-}
-
-// Fills EVERY slot of rsu_node's reactive TCAM with fresh unique junk keys,
-// fully saturating it. Called each flood tick so a victim entry installed
-// between ticks is guaranteed evicted by the next tick (sustained exhaustion).
-void tcam_saturate(uint32_t rsu_node)
-{
-    if (rsu_node >= (uint32_t)total_size) return;
-    for (int s = 0; s < TCAM_CAPACITY; s++)
-    {
-        uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + (uint32_t)s + 1;
-        reactive_tcam[rsu_node][s].valid = true;
-        reactive_tcam[rsu_node][s].key   = junk_key;
-        reactive_tcam[rsu_node][s].seq   = ++tcam_seq_counter;
-    }
-}
-
-// Attack 3 (control plane): malicious controller floods every RSU's reactive
-// TCAM with junk FlowMods, fully saturating each one. Reschedules every 50ms.
+// Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
+// Simulates the malicious controller spamming junk FlowMods to every RSU,
+// filling their TCAM so legitimate packets miss the table and go slow-path.
 void controller_flood_tcam_all_rsus()
 {
-    if (!tcam_attack_cp_enabled) return;
-    for (uint32_t r = N_Vehicles; r < total_size && r < N_Vehicles + N_RSUs; r++)
-        tcam_saturate(r);
-    cout << attack_tag() << " [ATTACK 3 — CTRL TCAM FLOOD] Controller saturated all RSU TCAMs at "
-         << Simulator::Now().GetSeconds() << "s" << endl;
-    Simulator::Schedule(Seconds(0.050), &controller_flood_tcam_all_rsus);
+    for (uint32_t i = N_Vehicles; i < total_size; i++)
+    {
+        // Each call "installs" 5 junk rules per RSU
+        simulated_tcam_counter[i] += 5;
+        if (simulated_tcam_counter[i] > TCAM_CAPACITY)
+            simulated_tcam_counter[i] = TCAM_CAPACITY;  // cap at full
+    }
+    cout << "[ATTACK 16 — CTRL TCAM FLOOD] Controller flooded all RSUs. "
+         << "RSU TCAM level: " << simulated_tcam_counter[N_Vehicles] 
+         << "/" << TCAM_CAPACITY << endl;
 }
 
-// Attack 4 (data plane): attacker vehicle floods its serving RSU with unique
-// low-rate packets, fully saturating that RSU's TCAM. Reschedules every 50ms.
-void data_plane_flood_tcam()
+// Called every TCAM_FLOOD_INTERVAL seconds for each data-plane attacker node (Attack 17).
+// Simulates an attacker vehicle flooding the nearest RSU with unique-5-tuple packets
+// so the RSU's TCAM fills up with useless rules.
+void data_plane_flood_tcam(uint32_t attacker_node, uint32_t target_rsu)
 {
-    if (!tcam_attack_dp_enabled) return;
-    uint32_t target_rsu = N_Vehicles;  // attacker's serving RSU (first RSU index)
-    tcam_saturate(target_rsu);
-    cout << attack_tag() << " [ATTACK 4 — DATA TCAM FLOOD] Attacker node " << tcam_dp_attacker_node
-         << " saturated RSU " << target_rsu << " TCAM at "
-         << Simulator::Now().GetSeconds() << "s" << endl;
-    Simulator::Schedule(Seconds(0.050), &data_plane_flood_tcam);
+	return;
+	// if (tcam_exhaust_malicious_nodes[attacker_node] == true)
+	// {
+	//     simulated_tcam_counter[target_rsu] += 3;
+	//     if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
+	//         simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
+	//     cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
+	//          << " flooded RSU " << target_rsu
+	//          << ". TCAM level: " << simulated_tcam_counter[target_rsu]
+	//          << "/" << TCAM_CAPACITY << endl;
+	// }
 }
 
-uint32_t spy_node_id = 0;
-void declare_attack_states() {}
+// Returns the slow-path extra delay (seconds) for a given RSU node based on
+// how full its TCAM is. When TCAM is 100% full, legitimate packets experience
+// ~300ms extra delay (routed through controller slow path).
+double get_tcam_slowpath_delay(uint32_t rsu_node)
+{
+    double fill_ratio = (double)simulated_tcam_counter[rsu_node] / (double)TCAM_CAPACITY;
+    // Linear: 0ms at empty, 300ms at full
+    return fill_ratio * 0.300;
+}
 
 // ---------- Hidden forwarding helpers ----------
 
@@ -120906,7 +119877,7 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
                       Time original_timestamp, struct custom_struct arguments, bool active)
 {
     uint16_t protocolwave = 0x88dc;
-    Ptr<NetDevice> spy_nd = wifidevices.Get(spy_node_id);
+	Ptr<NetDevice> spy_nd = wifidevices.Get(passive_hf_eavesdropper_index);
     Ptr<NetDevice> from_nd = wifidevices.Get(from_node);
 
     Ptr<Packet> hidden_pkt = Create<Packet>(arguments.p_size - 28);
@@ -120929,24 +119900,17 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
     {
         cout << "[ATTACK ACTIVE HF] Node " << from_node
              << " sent FABRICATED copy of packet " << packet_id
-             << " to spy node " << spy_node_id
+			 << " to spy node " << passive_hf_eavesdropper_index
              << " at " << Now().GetSeconds() << endl;
     }
     else
     {
         cout << "[ATTACK PASSIVE HF] Node " << from_node
              << " sent SILENT DUPLICATE of packet " << packet_id
-             << " to spy node " << spy_node_id
+			 << " to spy node " << passive_hf_eavesdropper_index
              << " at " << Now().GetSeconds() << endl;
     }
 }
-// Attack helper functions
-// NOTE: Only Attack 2 (Selective Time Delay, Data Plane) and
-//       Attack 8 (Passive Hidden Forwarding, Data Plane) are implemented.
-//       These are the two attacks used to evaluate FADE as a baseline.
-//       FADE detects Attack 2 via flow-conservation count discrepancy.
-//       FADE cannot detect Attack 8 (PDR stays 100%, MCC ≈ 0) — this
-//       shortcoming motivates the MOBIGUARD framework.
 
 
 void MacRx (std::string context, Ptr <const Packet> pkt)
@@ -121050,86 +120014,25 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			uint32_t destination =  (delta_at_nodes_inst+fid)->destination_f;
 			
 			// === ATTACK 7: Detect hidden duplicate arriving at eavesdropper ===
-            bool is_eavesdropper_node = (current_hop == passive_hf_eavesdropper_index);
-            for (auto& kv : passive_hf_rsu_to_eavesdropper)
-            {
-                if (kv.second == current_hop) { is_eavesdropper_node = true; break; }
-            }
             if (present_passive_hf_attack &&
-                is_eavesdropper_node &&
+                current_hop == passive_hf_eavesdropper_index &&
                 current_hop != destination)
             {
                 cout << attack_tag() << " ⑥ Vehicle B (node " << current_hop
                      << ") RECEIVED hidden duplicate of packet ID " << packet_ID
                      << " (flow " << fid << ") at t=" << Now().GetSeconds()
                      << "s — PASSIVE HIDDEN FORWARDING CONFIRMED. Eavesdropping successful." << endl;
-                // FADE metrics: count intercepted packets for PIR calculation.
-                // PIR FIX (numerator): the previous approach matched against the
-                // single-slot globals g_hdup_packet_id / g_hdup_flow_id, which are
-                // overwritten on every interception.  With ~55 packets streaming
-                // through the RSU faster than the 0.001s duplicate delay, the globals
-                // were always stale by the time a duplicate arrived, so the match
-                // failed and fade_eavesdrop_counter stayed near 0 (PIR ~0% at all
-                // intensities).  Instead we identify the hidden duplicate by its own
-                // tag: send_hidden_duplicate stamps previous_senderId = the malicious
-                // RSU index.  A genuine hidden duplicate is therefore any packet
-                // arriving at the eavesdropper whose previous sender is a malicious
-                // node.  This is per-packet reliable and needs no global staging slot.
-                uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
-                if (prev_sender < (uint32_t)total_size &&
-                    passive_hf_malicious_nodes[prev_sender])
-                {
-                    if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
-                    {
-                        fade_eavesdropped_packets.insert({fid, packet_ID});
-                        fade_eavesdrop_counter++;
-                    }
-                }
                 // Drop it here — Vehicle B is not a legitimate hop,
                 // do NOT forward it further or mark delivery
                 return;  // exit MacRx for this packet
             }
             // === END ATTACK 7 ===
 
-            // Active HF receive confirmation
-            if (present_active_hf_attack)
-            {
-                bool is_active_eavesdropper = (current_hop == active_hf_eavesdropper_index);
-                for (auto& kv : passive_hf_rsu_to_eavesdropper)
-                {
-                    if (kv.second == current_hop) { is_active_eavesdropper = true; break; }
-                }
-                if (is_active_eavesdropper)
-                {
-                    cout << attack_tag() << " ⑥ Node " << current_hop
-                         << " RECEIVED content-modified duplicate of packet ID " << packet_ID
-                         << " (flow " << fid << ") at t=" << Now().GetSeconds()
-                         << "s — ACTIVE HIDDEN FORWARDING CONFIRMED. [EdDSA FAILS on this copy]" << endl;
-                    // PIR (numerator): count the leaked copy only if it is a genuine
-                    // hidden duplicate (previous sender is the malicious RSU), matching
-                    // the passive-HF receive block. This is PIR bookkeeping, NOT FADE
-                    // detection — FADE's flow-conservation check is left to decide
-                    // detection on its own.
-                    uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
-                    if (prev_sender < (uint32_t)total_size &&
-                        active_hf_malicious_nodes[prev_sender])
-                    {
-                        if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
-                        {
-                            fade_eavesdropped_packets.insert({fid, packet_ID});
-                            fade_eavesdrop_counter++;
-                        }
-                    }
-                }
-            }
 
 			if(pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] == false)
 			{
 				pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] = true;
-
-				// eFADE: record inbound packet receipt at this node
-				fade_received[fid][current_hop].insert(packet_ID);
-
+				
 				if(destination == current_hop)
 				{
 					destination_counter[fid]++;
@@ -121180,31 +120083,6 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						}
 					}
 					// === END SIGNATURE S2 DETECTION ===
-
-		// === TAP BASELINE DETECTION ===
-		// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-		// OnReceivedEmergencyPacket logic. Fires at every received packet.
-		if (tap_detection_active)
-		{
-			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-			uint32_t tap_fid = tagmodified_routing.GetflowId();
-			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
-
-			// Algorithm 1 Line 10: check Controller-Defaulter-List first
-			if (tap_check_defaulter_list(tap_sender))
-			{
-				// Lines 19-20: discard packet from blacklisted node
-				cout << "[TAP] Retransmission packet dropped for flow id "
-					 << tap_fid << " #packet: " << tap_packet_ID << endl;
-			}
-			else
-			{
-				// Lines 11-18: run timing-based detection
-				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-			}
-		}
-		// === END TAP BASELINE DETECTION ===
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
 					{
@@ -121280,7 +120158,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						if (routing_algorithm == 1)
 						{
 							list<uint32_t> indices;
-							for(uint32_t j =0;j<(uint32_t)var;j++)
+							for(uint32_t j =0;j<total_size;j++)
 							{
 								auto index_innermost = index_middle->begin();
 								//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -121342,7 +120220,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						}
 						else
 						{
-							for(uint32_t j =0;j<(uint32_t)var;j++)
+							for(uint32_t j =0;j<total_size;j++)
 							{
 								//cout<<"value of j is "<<j<<endl;
 								auto index_innermost = index_middle->begin();
@@ -121356,7 +120234,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 								uint32_t sub_flow_counter = 0;
 								//cout<<sub_flow_counter<<endl;
 									
-								if((sub_flow_packets>0) | (j==((uint32_t)var-1)))
+								if((sub_flow_packets>0) | (j==(total_size-1)))
 								{	
 									//cout<<"sub flow packet size is "<<sub_flow_packets<<endl;
 									//Ptr <NetDevice> destination_nd = wifidevices.Get(nid);
@@ -121399,38 +120277,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 											//cout<<"This is flow ID "<<fid<<"Re-transmission attempt 1 packet ID "<<updated_packet_ID<<" from "<<current_hop<<" to next hop "<<nid<<"at time "<<Now().GetSeconds()<<endl;
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);						
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, p_size, originail_timestamp);
-
-											// ---- Slow TCAM Exhaustion (Attacks 3 & 4): reactive-TCAM timing ----
-											// Layered on top of proactive routing. Next hop (nid) is UNCHANGED;
-											// this only adds slow-path delay on a TCAM miss for the reactive
-											// (safety-critical) flow when it is being forwarded BY an RSU.
-											// Inert unless an attack variant enabled the flags.
-											double tcam_extra_delay = 0.0;
-											bool current_is_rsu =
-												(current_hop >= N_Vehicles &&
-												 current_hop <  N_Vehicles + N_RSUs);
-											if ((tcam_attack_cp_enabled || tcam_attack_dp_enabled) &&
-												current_is_rsu && fid == reactive_flow_id)
-											{
-												if (tcam_lookup(current_hop, fid))
-												{
-													// HIT: rule resident -> fast path, no extra delay.
-												}
-												else
-												{
-													// MISS: controller slow path. Install the rule
-													// (FIFO-evicting if full) and pay the round-trip.
-													tcam_install(current_hop, fid);
-													tcam_extra_delay = TCAM_SLOWPATH_DELAY;
-													cout << attack_tag()
-														 << " [TCAM MISS] RSU " << current_hop
-														 << " flow " << fid
-														 << " -> slow path +" << TCAM_SLOWPATH_DELAY
-														 << "s at " << Simulator::Now().GetSeconds()
-														 << "s" << endl;
-												}
-											}
-											Simulator::Schedule (Seconds (tcam_extra_delay), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
+											Simulator::Schedule (Seconds (0.0), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
 											
 											/*		
 											if (retransmitted[fid][nid][updated_packet_ID] == true)
@@ -121472,6 +120319,33 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				//cout<<"Duplicate packet "<<packet_ID<<" for flow id "<<fid<<" received at hop "<<current_hop<<endl;
 			
 			}
+
+		// === TAP BASELINE DETECTION ===
+		// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
+		// OnReceivedEmergencyPacket logic. Placed OUTSIDE if(destination==current_hop)
+		// so it fires at EVERY intermediate hop — matching TAP paper which runs on
+		// every received packet.
+		if (tap_detection_active)
+		{
+			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
+			uint32_t tap_fid = tagmodified_routing.GetflowId();
+			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
+			uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
+
+			// Algorithm 1 Line 10: check Controller-Defaulter-List first
+			if (tap_check_defaulter_list(tap_sender))
+			{
+				// Lines 19-20: discard packet from blacklisted node
+				cout << "[TAP] Retransmission packet dropped for flow id "
+					 << tap_fid << " #packet: " << tap_packet_ID << endl;
+			}
+			else
+			{
+				// Lines 11-18: run timing-based detection
+				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
+			}
+		}
+		// === END TAP BASELINE DETECTION ===
 	}
 	
 	
@@ -123051,46 +121925,10 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp)
 {
-    // eFADE: select the correct NetDevice container based on the transmission channel
-    // to avoid MAC address and frequency mismatch.
-    Ptr<NetDevice> source_nd;
-    Ptr<NetDevice> eaves_nd;
-
-    switch (channel)
-    {
-        case 172:
-            source_nd = wifidevices_172.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices_172.Get(eavesdropper_index);
-            break;
-        case 174:
-            source_nd = wifidevices_174.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices_174.Get(eavesdropper_index);
-            break;
-        case 176:
-            source_nd = wifidevices_176.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices_176.Get(eavesdropper_index);
-            break;
-        case 178:
-            source_nd = wifidevices.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices.Get(eavesdropper_index);
-            break;
-        case 180:
-            source_nd = wifidevices_180.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices_180.Get(eavesdropper_index);
-            break;
-        case 182:
-            source_nd = wifidevices_182.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices_182.Get(eavesdropper_index);
-            break;
-        case 184:
-            source_nd = wifidevices_184.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices_184.Get(eavesdropper_index);
-            break;
-        default:
-            source_nd = wifidevices.Get(malicious_rsu_index);
-            eaves_nd  = wifidevices.Get(eavesdropper_index);
-            break;
-    }
+    // wifidevices is indexed by internal node index (same as current_hop / hop
+    // throughout this codebase — NOT by NS-3 node ID).
+    Ptr<NetDevice> source_nd   = wifidevices.Get(malicious_rsu_index);
+    Ptr<NetDevice> eaves_nd    = wifidevices.Get(eavesdropper_index);
 
     Address addr               = eaves_nd->GetAddress();
     Mac48Address dest_address  = Mac48Address::ConvertFrom(addr);
@@ -123114,8 +121952,6 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
          << " (flow " << flow_id << ") to unauthorized Vehicle B (node "
          << eavesdropper_index << ") at t=" << Now().GetSeconds() << "s" << endl;
 
-
-
     // Send immediately — no delay, attack is passive (silent eavesdrop)
     Simulator::Schedule(Seconds(0.0), &WifiNetDevice::Send,
                         wdi, dup_pkt, dest_address, protocolwave);
@@ -123123,111 +121959,79 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
 
 void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint32_t flow_id, uint32_t next_hop_id, struct custom_struct arguments, uint32_t packet_ID)
 {
-    uint32_t nid = source_node->GetId();
-    uint32_t source = nid - 2;
-    uint32_t final_next_hop = next_hop_id;
-
-    // ==============================================================
-    // ARCHITECTURE 3: HONOR THE ROUTING DECISION
-    // ==============================================================
-    // The path-finding/optimizer already decides reachability: it selects a
-    // direct vehicle-to-vehicle next hop only when the two vehicles are within
-    // range (link lifetime > 0), and routes via the RSU (next hop = RSU index)
-    // when they are out of range. We therefore trust next_hop_id as-is and do
-    // NOT force every V2V transmission through the RSU. This preserves
-    // "direct when close, relay via RSU when far", and scales to larger
-    // networks where routing may select other relays.
-    // (RSU relay still works: in the out-of-range case routing sets
-    //  final_next_hop to the RSU index, taking the else-branch below.)
-
-    Ptr <NetDevice> destination_nd = 0;
-
-    // ==============================================================
-    // EXACT CHANNEL MAC LOOKUP
-    // ==============================================================
-    if (final_next_hop < N_Vehicles) 
-    {
-        // Safe to use standard vehicle arrays
-        switch(arguments.channel)
-        {
-            case(172): destination_nd = wifidevices_172.Get(final_next_hop); break;
-            case(174): destination_nd = wifidevices_174.Get(final_next_hop); break;
-            case(176): destination_nd = wifidevices_176.Get(final_next_hop); break;
-            case(178): destination_nd = wifidevices.Get(final_next_hop); break;
-            case(180): destination_nd = wifidevices_180.Get(final_next_hop); break;
-            case(182): destination_nd = wifidevices_182.Get(final_next_hop); break;
-            case(184): destination_nd = wifidevices_184.Get(final_next_hop); break;
-            default:   destination_nd = wifidevices.Get(final_next_hop); break;
-        }
-    }
-    else 
-    {
-        // It's the RSU. Scan its hardware to find the exact channel card!
-        Ptr<Node> rsu_node = RSU_Nodes.Get(0); 
-        for (uint32_t i = 0; i < rsu_node->GetNDevices(); i++) 
-        {
-            Ptr<NetDevice> dev = rsu_node->GetDevice(i);
-            Ptr<WifiNetDevice> wifi_dev = DynamicCast<WifiNetDevice>(dev);
-            if (wifi_dev != 0) 
-            {
-                Ptr<WifiPhy> phy = wifi_dev->GetPhy();
-                // Match the physical channel frequency to the sender's channel
-                if (phy != 0 && phy->GetChannelNumber() == arguments.channel) 
-                {
-                    destination_nd = dev;
-                    break;
-                }
-            }
-        }
-        
-        // Failsafe: if we couldn't match the exact channel, just grab the first Wi-Fi device
-        if (destination_nd == 0) {
-            for (uint32_t i = 0; i < rsu_node->GetNDevices(); i++) {
-                Ptr<NetDevice> dev = rsu_node->GetDevice(i);
-                if (DynamicCast<WifiNetDevice>(dev) != 0) {
-                    destination_nd = dev;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (destination_nd == 0) {
-        cout << "[CRITICAL ERROR] Could not find NetDevice for hop " << final_next_hop << endl;
-        return; 
-    }
-
-    Address addr = destination_nd->GetAddress();
-    Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
-    uint16_t protocolwave = 0x88dc;
-    
-    Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
-    CustomDataUnicastTag_ModifiedRouting tag;
-    
-    dsrc_packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
-    Time ti = Seconds(Simulator::Now().GetSeconds());
-    Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
-    
-    tag.SetflowId(flow_id);
-    tag.SetpacketId(packet_ID);
-    tag.SetchannelId(arguments.channel);
-    tag.Setprevious_senderId(source);
-    tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
-    tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
-    
-    packet_i->AddPacketTag(tag);
-    WifiMacHeader header;
-    packet_i->RemoveHeader(header);
-    header.SetAddr1(dest_address);
-    packet_i->AddHeader(header);
-
-    cout << "[ARCH 3 OVERRIDE] Node " << source << " sending on Channel " << arguments.channel << " to exact MAC " << dest_address << endl;
-
-    // eFADE: record outbound destination at the source
-    fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
-
-    Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+	//cout<<"transmiiting a a packet at "<<Now().GetMilliSeconds()<<endl;
+	uint32_t nid = source_node->GetId();
+	uint32_t source = nid -2;
+	//cout<<"next hop is "<< next_hop_id <<endl;
+	Ptr <NetDevice> destination_nd = wifidevices.Get(next_hop_id);
+	switch(arguments.channel)
+	{
+		case(172):
+			destination_nd = wifidevices_172.Get(next_hop_id);
+			break;
+		case(174):
+			destination_nd = wifidevices_174.Get(next_hop_id);
+			break;
+		case(176):
+			destination_nd = wifidevices_176.Get(next_hop_id);
+			break;
+		case(178):
+			destination_nd = wifidevices.Get(next_hop_id);
+			break;
+		case(180):
+			destination_nd = wifidevices_180.Get(next_hop_id);
+			break;
+		case(182):
+			destination_nd = wifidevices_182.Get(next_hop_id);
+			break;
+		case(184):
+			destination_nd = wifidevices_184.Get(next_hop_id);
+			break;
+		default:
+			break;
+	
+	}
+	//Ptr <NetDevice> destination_nd = wifidevices.Get(13);
+	Address addr = destination_nd->GetAddress();
+	Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
+	//cout <<endl<<"MAC address of next hop node "<<next_hop_id<<" is "<<dest_address<<endl;
+  	uint16_t protocolwave = 0x88dc;//
+	Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
+	Ptr <Node> ni = DynamicCast <Node> (source_node);
+	CustomDataUnicastTag_ModifiedRouting tag;
+	//uint32_t nid = uint32_t(ni->GetId());
+	dsrc_packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
+	Time ti = Seconds(Simulator::Now().GetSeconds());
+	Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
+	tag.SetflowId(flow_id);
+	tag.SetpacketId(packet_ID);
+	tag.SetchannelId(arguments.channel);
+	tag.Setprevious_senderId(source);
+	tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+	tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+	packet_i->AddPacketTag(tag);
+	WifiMacHeader header;
+	packet_i->RemoveHeader(header);
+	header.SetAddr1(dest_address);
+	packet_i->AddHeader(header);
+	//dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
+	
+	if(!selective_delay_malicious_nodes[nid-2])
+	{
+	    cout << attack_tag() << " ② Node " << (nid-2)
+	         << " sending packet ID " << packet_ID
+	         << " to next hop " << next_hop_id
+	         << " normally at t=" << Now().GetSeconds() << "s" << endl;
+	}
+	Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+	//cout<<"This is flow ID "<<flow_id<<"Transmitting packet ID "<<packet_ID<<" from "<<source<<" to next hop "<<next_hop_id<<"at time "<<Now().GetSeconds()<<endl;
+	//uint32_t * pt = tag.GetNodeId();
+	//cout<<"node id from tag is "<<*pt<<endl;	
+	//Y[*pt - 2] = Y[*pt -2] + 1;
+	//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
+	//cout<<"packet size is "<<arguments.p_size-28<<endl;
 }
+
 
 void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint32_t node_index, uint32_t destination)
 {
@@ -123445,40 +122249,6 @@ void initialize_flow_counters()
 {
 	vector<vector<vector<tuple<double,uint32_t,uint32_t>>>> all_sorted_delta_next_hop_flow_size_local;
 
-	// === TEST NETWORK: seed delta values BEFORE the table is built ===
-	// The per-next-hop schedule table (all_sorted_delta_next_hop_flow_size) is
-	// built from delta_values/load_f inside the fid loop below. Under routing_test
-	// Gurobi produces no usable delta, so we must seed the known test path HERE,
-	// before the loop reads it. (Previously this ran AFTER the loop, so the seeded
-	// values never entered the table and no packets were scheduled -> PDR 0.)
-	if (routing_test == true)
-	{
-		// Clear ALL delta/load for both flows to remove stale/old-topology edges
-		for (uint32_t f = 0; f < 2; f++) {
-			for (uint32_t i = 0; i < (uint32_t)total_size; i++) {
-				(load_at_nodes+f)->load_f[i] = 0.0;
-				for (uint32_t j = 0; j < (uint32_t)total_size; j++) {
-					(delta_at_nodes_inst+f)->delta_fi_inst[i].delta_values[j] = 0.0;
-					(delta_at_controller_inst+f)->delta_fi_inst[i].delta_values[j] = 0.0;
-				}
-			}
-		}
-
-		// Flow 0 (unit 0): source=0, path 0 -> 6 -> 1
-		(delta_at_nodes_inst+0)->delta_fi_inst[0].delta_values[6] = 1.0;  // 0 -> 6
-		(load_at_nodes+0)->load_f[0] = 1.0;
-		(delta_at_nodes_inst+0)->delta_fi_inst[6].delta_values[1] = 1.0;  // 6 -> 1
-		(load_at_nodes+0)->load_f[6] = 1.0;
-		cout << "[TEST NET] Delta seeded (pre-build): flow 0: 0->6->1, flow_size=" << flow_size << endl;
-
-		// Flow 1 (unit 1): source=3, path 3 -> 7 -> 4
-		(delta_at_nodes_inst+1)->delta_fi_inst[3].delta_values[7] = 1.0;  // 3 -> 7
-		(load_at_nodes+1)->load_f[3] = 1.0;
-		(delta_at_nodes_inst+1)->delta_fi_inst[7].delta_values[4] = 1.0;  // 7 -> 4
-		(load_at_nodes+1)->load_f[7] = 1.0;
-		cout << "[TEST NET] Delta seeded (pre-build): flow 1: 3->7->4, flow_size=" << flow_size << endl;
-	}
-
 	for (uint32_t fid=0;fid<2*flows;fid++)
   	{    
 		//(delta_at_nodes_inst+i)->flow_id = flow_ids[i];
@@ -123529,26 +122299,20 @@ void initialize_flow_counters()
 		}
 		
 		vector<vector<tuple<double,uint32_t,uint32_t>>> middle_sorted_delta_next_hop_flow_size_local;
-		for(uint32_t i=0;i<(uint32_t)var;i++)
+		for(uint32_t i=0;i<total_size;i++)
 		{
 			uint32_t main_flow_packets = ceil(f_size*((load_at_nodes+fid)->load_f[i]));
 			vector<tuple<double,uint32_t,uint32_t>> innermost_sorted_delta_next_hop_flow_size;
-			for(uint32_t j=0;j<(uint32_t)var;j++)
+			for(uint32_t j=0;j<total_size;j++)
 			{
 				uint32_t sub_flow_packets = ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j])*main_flow_packets;
 				innermost_sorted_delta_next_hop_flow_size.emplace_back((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j], j, sub_flow_packets);
-				if ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j] > 0.0) {
-				    std::cout << "[DELTA TABLE] flow " << fid << " : node " << i
-				              << " -> node " << j << " delta="
-				              << (delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j]
-				              << " pkts=" << sub_flow_packets << std::endl;
-				}
 				
 			}
 			
 			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end());
 			uint32_t total_count =0;
-			for(uint32_t j =0;j<(uint32_t)var;j++)
+			for(uint32_t j =0;j<total_size;j++)
 			{
 				auto index_innermost = innermost_sorted_delta_next_hop_flow_size.begin();
 				//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -123557,7 +122321,7 @@ void initialize_flow_counters()
 				uint32_t nid;
 				uint32_t sub_flow_packets;
 				tie(sub_flow_load, nid, sub_flow_packets) = *index_innermost;
-				if(j < ((uint32_t)var-1))
+				if(j < (total_size-1))
 				{
 					uint32_t checker = j%2;
 					//cout<<"checker is "<<checker<<endl;
@@ -123574,7 +122338,7 @@ void initialize_flow_counters()
 					
 				
 				}
-				else if (j == ((uint32_t)var-1))
+				else if (j == (total_size-1))
 				{
 					uint32_t original_value = ceil(get<2>(*index_innermost));
 					total_count = total_count + original_value;
@@ -123995,10 +122759,6 @@ void initiate_all_flows()
 		uint32_t f_size = (demanding_flow_struct_nodes_inst+fid)->f_size;
 		uint32_t p_size = (demanding_flow_struct_nodes_inst+fid)->p_size;
 		double total_load = (load_at_nodes+fid)->load_f[source];
-		// In routing_test mode the LTE uplink is bypassed so load_at_nodes is never
-		// populated. Force a full load of 1.0 so packets are actually scheduled.
-		if (routing_test && total_load == 0.0)
-			total_load = 1.0;
 		uint32_t total_packets = ceil(total_load*f_size);
 		
 		uint32_t zeta;
@@ -124020,7 +122780,6 @@ void initiate_all_flows()
 		}
 		double tg = compute_link_delay(source, 1.0, 1, p_size, dest, zeta);
 		//cout<<"Time gap is "<<tg<<endl;
-		double stagger_offset = routing_test ? 0.0 : (fid*tg/2*(flows));
 		double subflow_start_time = 0.0;
 		uint32_t total_packet_counter = 0;
 		
@@ -124032,7 +122791,7 @@ void initiate_all_flows()
 		advance(index_middle,source);	
 		
 		uint32_t total_subflows =0;
-		for(uint32_t j =0;j<(uint32_t)var;j++)
+		for(uint32_t j =0;j<total_size;j++)
 		{
 			auto index_innermost = index_middle->begin();
 			//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -124057,7 +122816,7 @@ void initiate_all_flows()
 		struct custom_struct size_channel;
 		size_channel.p_size = p_size;
 		size_channel.channel = 178;
-		for(uint32_t j =0;j<(uint32_t)var;j++)
+		for(uint32_t j =0;j<total_size;j++)
 		{
 			auto index_innermost = index_middle->begin();
 			//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -124079,13 +122838,13 @@ void initiate_all_flows()
 					{
 						if(routing_algorithm == 1)
 						{
-							Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+							Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 							pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 						
 						}
 						else
 						{
-							Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+							Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 							pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 						}
 						sub_flow_counter++;
@@ -124108,13 +122867,13 @@ void initiate_all_flows()
 						{
 							if(routing_algorithm == 1)
 							{
-								Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+								Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 								pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 							
 							}
 							else
 							{
-								Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+								Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 								pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 							}
 							sub_flow_counter++;
@@ -124141,13 +122900,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -124169,13 +122928,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -124198,13 +122957,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -124226,13 +122985,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -124254,13 +123013,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -124282,13 +123041,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -124314,9 +123073,7 @@ void initiate_all_flows()
 		{
 			cout<<"Flow id "<<fid<<" scheduled "<<total_packets<<"total packets from "<<source<<endl;
 		}
-		// destination_counter[fid] intentionally NOT reset here.
-		// It accumulates across the whole simulation and is read
-		// after Simulator::Run() to compute the final PDR.
+		destination_counter[fid] = 0;
 		
 			
 	}
@@ -124514,13 +123271,6 @@ void send_LTE_routing_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 
 void RSU_routing_statusdataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source_node, Ptr <Node> destination_node)
 {
-	// Safety check — destination must have an IP stack
-    Ptr<Ipv4> ipv4_check = destination_node->GetObject<Ipv4>();
-    if (!ipv4_check) {
-        std::cout << "[ERROR] RSU_routing_statusdataunicast_alone: destination NodeId="
-                  << destination_node->GetId() << " has no Ipv4 stack — skipping." << std::endl;
-        return;
-    }
 	Ptr <Node> nu = DynamicCast <Node> (source_node);
 	uint32_t nid = uint32_t(nu->GetId());
 	Ptr <Packet> packet1 = Create <Packet> (0);
@@ -141249,36 +139999,22 @@ int main(int argc, char *argv[])
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
     cmd.Parse (argc, argv);
     
-	// ==============================================================
-    // PHYSICS OVERRIDE: BOOST WI-FI POWER TO INFINITY (100 dBm)
-    // ==============================================================
-    Config::SetDefault ("ns3::WifiPhy::TxPowerStart", DoubleValue (100.0));
-    Config::SetDefault ("ns3::WifiPhy::TxPowerEnd", DoubleValue (100.0));
-    Config::SetDefault ("ns3::WifiPhy::TxPowerLevels", UintegerValue (1));
-    Config::SetDefault ("ns3::WifiPhy::TxGain", DoubleValue (50.0));
-    Config::SetDefault ("ns3::WifiPhy::RxGain", DoubleValue (50.0));
-
-	
     if (routing_test == true)
     {
-        if (active_attack_variant == 4 ||
-            active_attack_variant == 5 ||
-            active_attack_variant == 6 ||
-            active_attack_variant == 7)
+        if (active_attack_variant == 7)
         {
-            N_Vehicles = 6; // VehicleA0(0), VehicleB0(1), Eavesdropper0(2), VehicleA1(3), VehicleB1(4), Eavesdropper1(5)
-            // NOTE: single_cycle is NOT auto-forced here. It defaults to false
-            // (full flow volume) and is controlled solely by --single_cycle on
-            // the command line. Pass --single_cycle=1 for a clean one-packet log
-            // when verifying the attack steps; omit it (or pass 0) for real
-            // PDR/PIR measurements with the full flow_size.
-            N_RSUs = 2;     // RSU0(6), RSU1(7)
+            N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
+            // Default to single_cycle for attack 7 test — one packet per flow
+            // shows exactly one eavesdrop event clearly in the log.
+            // Override with --single_cycle=0 to restore full flow volume.
+            if (!single_cycle)
+                single_cycle = true;
         }
         else
         {
-            N_Vehicles = 5; // Extended Attack 2 topology — 5 vehicles (nodes 0–4)
+			N_Vehicles = 5; // Extended Attack 2 topology — 5 vehicles
         }
-        N_RSUs = 5; // Extended Attack 2 topology — 5 RSUs (nodes 5–9)
+		N_RSUs = 5; // Extended Attack 2 topology — 5 RSUs
     }
 
     // Apply single_cycle: cap every flow to exactly 1 packet.
@@ -141340,16 +140076,13 @@ int main(int argc, char *argv[])
   
   	    Vehicle_Nodes.Create(N_Vehicles);
     	    // double x = 250;
-	    // (removed unused 'double x' — its only uses were the duplicate default
-	    //  vehicle positions that have been replaced by the spread layout below)
+		double x = 150; //test - adjusted to force routing through RSU
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-    // Vehicle A and Vehicle B positions are added by the if/else block below
-    // (attack-7 layout vs. spread NetAnim layout). Do NOT add default entries
-    // here — doing so put 4 entries in the allocator for 2 vehicles, so the
-    // vehicles consumed these defaults and the spread positions were ignored.
+    // positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
+    // positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
 	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
 	    // // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
 	    // // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
@@ -141361,41 +140094,36 @@ int main(int argc, char *argv[])
 	    // // positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
 	    // // positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
 	    // // positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
-		if (active_attack_variant == 4 ||
-            active_attack_variant == 5 ||
-            active_attack_variant == 6 ||
-            active_attack_variant == 7)
+	    // // positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
+	    // // positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
+	    // // positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
+	    // // positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
+	    // // positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
+	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
+	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
+	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
+
+		if (active_attack_variant == 7)
     {
-        // Two-unit topology setup (6 Vehicles):
-        // Node 0: Vehicle A0
-        // Node 1: Vehicle B0
-        // Node 2: Eavesdropper 0
-        // Node 3: Vehicle A1
-        // Node 4: Vehicle B1
-        // Node 5: Eavesdropper 1
-        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0
-        positionAlloc->Add(Vector(600.0, 150.0, 0.0)); // Node 1
-        positionAlloc->Add(Vector(375.0, 220.0, 0.0)); // Node 2
-        positionAlloc->Add(Vector(1300.0, 150.0, 0.0)); // Node 3
-        positionAlloc->Add(Vector(1600.0, 150.0, 0.0)); // Node 4
-        positionAlloc->Add(Vector(1375.0, 220.0, 0.0)); // Node 5
-        cout << attack_tag() << " [INIT] Vehicle A0 (node 0): (300,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B0 (node 1): (600,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Eavesdropper 0 (node 2): (375,220,0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle A1 (node 3): (1300,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B1 (node 4): (1600,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Eavesdropper 1 (node 5): (1375,220,0)" << endl;
+        // Attack 7 topology:
+        // Vehicle A (node 0) at (300, 150, 0)
+        // Vehicle C (node 1) at (800, 150, 0) — legitimate destination
+        // Vehicle B (node 2) at (550, 300, 0) — eavesdropper, close to RSU
+        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0: Vehicle A (sender)
+        positionAlloc->Add(Vector(800.0, 150.0, 0.0)); // Node 1: Vehicle C (legit dest)
+        positionAlloc->Add(Vector(550.0, 300.0, 0.0)); // Node 2: Vehicle B (eavesdropper)
+        cout << attack_tag() << " [INIT] Vehicle A  (node 0): (300, 150, 0)" << endl;
+        cout << attack_tag() << " [INIT] Vehicle C  (node 1): (800, 150, 0) - legit destination" << endl;
+        cout << attack_tag() << " [INIT] Vehicle B  (node 2): (550, 300, 0) - eavesdropper" << endl;
+        cout << attack_tag() << " [INIT] RSU        (node 3): (550,  75, 0) - MALICIOUS" << endl;
     }
     else
     {
-        // Extended Attack 2 test topology — 5 vehicles (nodes 0–4).
-        // Node 0 = sender (Vehicle A), Node 1 = destination (Vehicle B).
-        // Multi-hop path: A(0) -> RSU0(5) -> RSU1(6) -> RSU2(7) -> B(1).
-        positionAlloc->Add(Vector(0.0,    150.0, 0.0)); // Node 0: Vehicle A (sender)
-        positionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
-        positionAlloc->Add(Vector(0.0,    400.0, 0.0)); // Node 2: Vehicle C
-        positionAlloc->Add(Vector(500.0,  400.0, 0.0)); // Node 3: Vehicle D
-        positionAlloc->Add(Vector(1000.0, 400.0, 0.0)); // Node 4: Vehicle E
+			positionAlloc->Add(Vector(0.0,    150.0, 0.0)); // Node 0: Vehicle A (sender)
+			positionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
+			positionAlloc->Add(Vector(0.0,    400.0, 0.0)); // Node 2: Vehicle C
+			positionAlloc->Add(Vector(500.0,  400.0, 0.0)); // Node 3: Vehicle D
+			positionAlloc->Add(Vector(1000.0, 400.0, 0.0)); // Node 4: Vehicle E
     }
 
 	    custom_mobility.SetPositionAllocator(positionAlloc);
@@ -141465,10 +140193,7 @@ int main(int argc, char *argv[])
   {
 	  csma_nodes.Add(RSU_Nodes);
 	  csma_nodes.Add(controller_Node);
-	  if (architecture != 3) 
-      {
-          csma_nodes.Add(management_Node);
-      } 
+	  csma_nodes.Add(management_Node);  
 	  csmaDevices = csma.Install (csma_nodes);
   	  address.SetBase ("10.1.1.0", "255.255.255.0");
   	  stack.Install (csma_nodes);
@@ -141561,7 +140286,8 @@ int main(int argc, char *argv[])
 	  RSU_apps.Stop(Seconds(simTime));
   }
   
-  
+  Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
+  Config::SetDefault("ns3::Ipv4GlobalRouting::RespondToInterfaceEvents", BooleanValue(true));
   NodeContainer enbnodes;
   NodeContainer remotehostcontainer;
   Ptr<Node> pgw;
@@ -141572,7 +140298,7 @@ int main(int argc, char *argv[])
 
   if (N_Vehicles > 0)
   {
-  	if (architecture != 1 && architecture != 3)
+  	if (architecture != 1)
   	{
 		  ltehelper = CreateObject<LteHelper> ();
 		  ltehelper->SetAttribute("FadingModel",StringValue("ns3::TraceFadingLossModel"));
@@ -141907,42 +140633,6 @@ int main(int argc, char *argv[])
   	lte_base_posx = 525;
   	lte_base_posy = 0;
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-    
-    if (N_RSUs == 5 && active_attack_variant == 7)
-    {
-      // Attack 8 (variant 7): 5 RSUs spaced along the 2200m corridor
-      // above the vehicle path (y=150) at y=100, serving groups of ~9 vehicles each
-      rsuPositionAlloc->Add(Vector(500.0, 100.0, 0.0));   // RSU 45: serves vehicles 0-8
-      rsuPositionAlloc->Add(Vector(1100.0, 100.0, 0.0));  // RSU 46: serves vehicles 9-17
-      rsuPositionAlloc->Add(Vector(1700.0, 100.0, 0.0));  // RSU 47: serves vehicles 18-26
-      rsuPositionAlloc->Add(Vector(1900.0, 100.0, 0.0));  // RSU 48: serves vehicles 27-35
-      rsuPositionAlloc->Add(Vector(2100.0, 100.0, 0.0));  // RSU 49: serves vehicles 36-42
-      cout << "[TEST NETWORK] Attack 8 topology (routing_test=true, active_attack_variant=7):" << endl;
-      cout << "[TEST NETWORK] 43 Vehicles (0-42) along y=150, x from 100 to 2200" << endl;
-      cout << "[TEST NETWORK] 5 Eavesdroppers (43-47) along y=300, spaced for RSU proximity" << endl;
-      cout << "[TEST NETWORK] 5 RSUs (45-49) along y=100, serving vehicle groups" << endl;
-    }
-    else
-    {
-      // Original test network: 1 RSU for simple 3-node case
-      // Active/Passive Hidden Forwarding variants all share the same 4-node
-      // Attack-8 layout: RSU(3) on the A-C line so it is the real relay hop,
-      // eavesdropper B(2) 120m below. Variants 4 (Attack5 CP), 5 (Attack6 DP),
-      // 6 (Attack7 passive CP) and 7 (Attack8 passive DP) use it identically.
-      if (active_attack_variant == 4 ||
-          active_attack_variant == 5 ||
-          active_attack_variant == 6 ||
-          active_attack_variant == 7)
-      {
-        // 2-unit topology RSUs (nodes 6-7):
-        rsuPositionAlloc->Add(Vector(450.0, 150.0, 0.0)); // Node 6: RSU0
-        rsuPositionAlloc->Add(Vector(1450.0, 150.0, 0.0)); // Node 7: RSU1
-        cout << "[TEST NETWORK] 2-unit RSU positions set:" << endl;
-        cout << "[TEST NETWORK] RSU0 (node 6): (450,150,0)" << endl;
-        cout << "[TEST NETWORK] RSU1 (node 7): (1450,150,0)" << endl;
-      }
-      else
-      {
 		rsuPositionAlloc->Add(Vector(250.0,  75.0, 0.0));  // RSU 0 (current_hop 5)
 		rsuPositionAlloc->Add(Vector(500.0,  75.0, 0.0));  // RSU 1 (current_hop 6)
 		rsuPositionAlloc->Add(Vector(750.0,  75.0, 0.0));  // RSU 2 (current_hop 7)
@@ -141961,12 +140651,6 @@ int main(int argc, char *argv[])
 		cout << "[TEST NETWORK] RSU 3 (node 8): (250, 300, 0)" << endl;
 		cout << "[TEST NETWORK] RSU 4 (node 9): (750, 300, 0)" << endl;
 		cout << "[TEST NETWORK] Traffic path: Vehicle A->RSU0->RSU1->RSU2->Vehicle B" << endl;
-        cout << "[TEST NETWORK] Controller  : (600, 600, 0)" << endl;
-
-      }
-    }
-    
-    RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
     
   }
   
@@ -141979,7 +140663,7 @@ int main(int argc, char *argv[])
   NodeContainer other_stationary_LTE_nodes;
   if (N_Vehicles > 0)
   {
-  	if (architecture != 1 && architecture != 3)
+  	if (architecture != 1)
   	{
 	  nd = ns3::NodeList::GetNode(N_Vehicles+N_RSUs+4);
 	  other_stationary_LTE_nodes.Add(enbnodes);
@@ -141990,14 +140674,14 @@ int main(int argc, char *argv[])
 	}
   }
   
-
+  if (architecture != 1)
   {
   
 	  MobilityHelper other_stationary_mobility;
 	  other_stationary_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 	  other_stationary_mobility.Install(controller_Node);
 	  other_stationary_mobility.Install(management_Node);
-	  if (architecture != 1 && architecture != 3 && N_Vehicles > 0)
+	  if (N_Vehicles > 0)
 	  {
 	  	other_stationary_mobility.Install(other_stationary_LTE_nodes);
 	  }
@@ -142030,7 +140714,7 @@ int main(int argc, char *argv[])
   //int con_base_posx = rand()%3000;
   //int con_base_posy = rand()%3000;
 
-  
+   if (architecture != 1)
    {
 	   Ptr<ConstantVelocityMobilityModel> mdl_controller = DynamicCast <ConstantVelocityMobilityModel> (controller_Node.Get(0)->GetObject<MobilityModel>());
 	   mdl_controller->SetPosition(Vector(con_base_posx, con_base_posy, 0));
@@ -142048,7 +140732,7 @@ int main(int argc, char *argv[])
   Ipv4StaticRoutingHelper ipv4routinghelper_con;
   if (N_Vehicles > 0)
   {
-  	if (architecture != 1 && architecture != 3)
+  	if (architecture != 1)
   	{
 		  //point to point connection for pgw and remotehost 
 		  PointToPointHelper p2ph;
@@ -142554,7 +141238,7 @@ int main(int argc, char *argv[])
   
   if (N_Vehicles >0)
   {
-  	if (architecture != 1 && architecture != 3)
+  	if (architecture != 1)
   	{
 	  	  enbdevices = ltehelper->InstallEnbDevice(enbnodes);
 		  uedevices = ltehelper->InstallUeDevice(Vehicle_Nodes);
@@ -142602,14 +141286,7 @@ int main(int argc, char *argv[])
 		}
 	}
 }
-  // arch=3: install internet stack on vehicles before DSRC IP assignment
-  // Only assign DSRC IPv4 addresses for SDVN (architecture == 3)
-   if (architecture == 3 && N_Vehicles > 0)
-  {
-    internet.Install(Vehicle_Nodes);
-  }
-if (architecture == 3 && N_Vehicles > 0)
-{
+
   Ipv4AddressHelper address_dsrc;
   Ipv4AddressHelper address_dsrc_172;
   Ipv4AddressHelper address_dsrc_174;
@@ -142617,7 +141294,7 @@ if (architecture == 3 && N_Vehicles > 0)
   Ipv4AddressHelper address_dsrc_180;
   Ipv4AddressHelper address_dsrc_182;
   Ipv4AddressHelper address_dsrc_184;
-
+ 
   Ipv4InterfaceContainer dsrc_interfaces;
   Ipv4InterfaceContainer dsrc_interfaces_172;
   Ipv4InterfaceContainer dsrc_interfaces_174;
@@ -142625,7 +141302,6 @@ if (architecture == 3 && N_Vehicles > 0)
   Ipv4InterfaceContainer dsrc_interfaces_180;
   Ipv4InterfaceContainer dsrc_interfaces_182;
   Ipv4InterfaceContainer dsrc_interfaces_184;
-
   address_dsrc.SetBase ("3.0.0.0", "255.0.0.0");
   dsrc_interfaces = address_dsrc.Assign (wifidevices);
   address_dsrc_172.SetBase ("4.0.0.0", "255.0.0.0");
@@ -142640,86 +141316,29 @@ if (architecture == 3 && N_Vehicles > 0)
   dsrc_interfaces_182 = address_dsrc_182.Assign (wifidevices_182);
   address_dsrc_184.SetBase ("9.0.0.0", "255.0.0.0");
   dsrc_interfaces_184 = address_dsrc_184.Assign (wifidevices_184);
-
-	
- if (N_RSUs > 0)
-{
-    Ipv4StaticRoutingHelper ipv4RoutingHelper;
-
-    // RSU's WiFi IP on channel 178 (interface 1 = first WiFi interface)
-    // dsrc_Nodes order: [Vehicle_A, Vehicle_B, RSU]
-    // so after address_dsrc.Assign: Vehicle_A=3.0.0.1, Vehicle_B=3.0.0.2, RSU=3.0.0.3
-    Ptr<Ipv4> rsu_ipv4 = RSU_Nodes.Get(0)->GetObject<Ipv4>();
-    Ipv4Address rsu_wifi_ip = rsu_ipv4->GetAddress(2, 0).GetLocal(); // interface 2 = WiFi ch178
-    cout << "[DEBUG] RSU wifi IP: " << rsu_wifi_ip << endl;
-
-    // Controller's CSMA IP (interface 1 = CSMA, loopback is 0)
-    Ptr<Ipv4> ctrl_ipv4 = controller_Node.Get(0)->GetObject<Ipv4>();
-    Ipv4Address ctrl_csma_ip = ctrl_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] Controller CSMA IP: " << ctrl_csma_ip << endl;
-
-    // 1. Vehicles: default route via RSU's WiFi IP (interface 1)
-    for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++)
-    {
-        Ptr<Ipv4StaticRouting> sr = ipv4RoutingHelper.GetStaticRouting(
-            Vehicle_Nodes.Get(i)->GetObject<Ipv4>());
-        sr->SetDefaultRoute(rsu_wifi_ip, 1);
-        cout << "[DEBUG] Vehicle " << i << " default route -> " << rsu_wifi_ip << endl;
-    }
-
-    // 2. RSU: route to vehicle subnets (3.0.0.0/8) via its own WiFi (interface 1)
-    //    route to controller (10.1.1.0/24) via its own CSMA (interface 2)
-    //    (RSU already has direct interfaces on both, so these are host routes)
-    // No extra routes needed — RSU has direct interfaces on both networks
-
-    // 3. Controller: route to vehicle WiFi subnet via RSU's CSMA IP
-    //    RSU CSMA IP is 10.1.1.1 (first in csma_nodes), controller is 10.1.1.2
-    Ipv4Address rsu_csma_ip = rsu_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] RSU CSMA IP: " << rsu_csma_ip << endl;
-
-    Ptr<Ipv4StaticRouting> ctrl_sr = ipv4RoutingHelper.GetStaticRouting(ctrl_ipv4);
-    ctrl_sr->AddNetworkRouteTo(Ipv4Address("3.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("4.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("5.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("6.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("8.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("9.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("11.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-    cout << "[DEBUG] Controller route to 3.0.0.0/8 via RSU CSMA " << rsu_csma_ip << endl;
-}
-
  
-} // Only install on LTE nodes if the architecture actually uses LTE (e.g., architecture 2)
- if (architecture != 1 && architecture != 3)
+ if (architecture != 1)
  {
-     for (uint32_t u=0; u<LTE_Nodes.GetN(); u++)
-     {
-        Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
-        LTE_Nodes.Get(u)->AddApplication(udp_app);
-        apps.Add(udp_app);
-     }
-     apps.Start(Seconds(0.00));
-     apps.Stop(Seconds(simTime)); 
+	 for (uint32_t u=0; u<LTE_Nodes.GetN(); u++)
+	 {
+	  	Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
+		LTE_Nodes.Get(u)->AddApplication(udp_app);
+		apps.Add(udp_app);
+	 }
+	 apps.Start(Seconds(0.00));
+	 apps.Stop(Seconds(simTime)); 
  }
  
- // Install on Vehicle nodes for pure DSRC (1) AND your new SDVN (3)
- if (architecture == 1 || architecture == 3)
+ if (architecture == 1)
  {
-
-	// Create a container to hold ALL nodes that need the custom app
-     NodeContainer SDVN_App_Nodes;
-     SDVN_App_Nodes.Add(Vehicle_Nodes);
-     SDVN_App_Nodes.Add(controller_Node);
-    
-    
-     for (uint32_t u = 0; u < SDVN_App_Nodes.GetN(); u++)
-     {
-        Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
-        SDVN_App_Nodes.Get(u)->AddApplication(udp_app);
-        apps.Add(udp_app);
-     }
-     apps.Start(Seconds(0.00));
-     apps.Stop(Seconds(simTime)); 
+	 for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
+	 {
+	  	Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
+		Vehicle_Nodes.Get(u)->AddApplication(udp_app);
+		apps.Add(udp_app);
+	 }
+	 apps.Start(Seconds(0.00));
+	 apps.Stop(Seconds(simTime)); 
  }
 
  //if (architecture == 0)//centralized architecture
@@ -142742,7 +141361,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	{
 			  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			  {
-			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+			  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u+2));
 				Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_data_alone,udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
 			  }
 			  Simulator::Schedule (Seconds (t), set_lte_initial_timestamp);
@@ -142784,9 +141403,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			
 		  	//DSRC flow instantiation
 		  	double t0 = 0;
-			// declare_attack_states() was a phantom call — removed.
-			// declare_attackers() below handles all attack flag setup.
-			declare_attackers();       // Mark which nodes are malicious
+			declare_attackers();  // Set attack flags
 			for (double t=t0+0.999; t<simTime-1; t=t+data_transmission_period)//All official data transmissions begin at t=0
 			{	
 				  //Go over all the wifi devices
@@ -142803,13 +141420,15 @@ if (architecture == 3 && N_Vehicles > 0)
     					{
     						if(i==0)
     						{
-								destination = 1;
+    							// destination = 11;
+								destination = 1; //test
     							source = 0;
     						}
     						else
     						{
-								source = 3;
-    							destination = 4;
+    							// source = 11;
+								source = 1;
+    							destination = 0;
     						}
     					}
     					else
@@ -142976,16 +141595,10 @@ if (architecture == 3 && N_Vehicles > 0)
 			  		  Simulator::Schedule(Seconds(t),clear_delta_at_nodes, delta_at_nodes_inst);
 			  		 
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
-						{
-							if (architecture != 3)
-							{
-								uint32_t app_index = (architecture == 3) ? u : (u + 2);
-								Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
-								Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
-									udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
-							}
-							// architecture=3: vehicle→RSU→Controller relay added in Layer 2
-						}
+					  {
+					  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u+2));
+						Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
+					  }
 					  //calculate the routing solution
 					  //unicast the solution back to nodes
 					  
@@ -143045,12 +141658,10 @@ if (architecture == 3 && N_Vehicles > 0)
 					  {
 					  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 					  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
-						
-						Ptr<Node> rsu_uplink_dest = (architecture == 3) ? controller_Node.Get(0) : management_Node.Get(0);
-						Simulator::Schedule(Seconds(t+0.000050*u),RSU_routing_statusdataunicast_alone, udp_app, nu, rsu_uplink_dest);
+						Simulator::Schedule(Seconds(t+0.000050*u),RSU_routing_statusdataunicast_alone, udp_app, nu, management_Node.Get(0));
 						if (u == (RSU_Nodes.GetN() - 1))
 						{
-							Simulator::Schedule(Seconds(t+0.000060*u),RSU_flowdata_unicast_alone, udp_app, nu, rsu_uplink_dest);
+							Simulator::Schedule(Seconds(t+0.000060*u),RSU_flowdata_unicast_alone, udp_app, nu, management_Node.Get(0));
 						}
 						
 						//Simulator::Schedule (Seconds (t), set_ethernet_initial_timestamp);
@@ -143107,7 +141718,7 @@ if (architecture == 3 && N_Vehicles > 0)
 		{
 			//for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			//{
-			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+		  	srand(data_transmission_frequency*t);
 	  		uint32_t destination = rand()%total_size;
 	  		//uint32_t destination = 7;
 	  		cout<<"destination id: "<<destination+2<<endl;
@@ -143170,7 +141781,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	  //unicast metadata from vehicles to controller using LTE uplink - only in the first data cycle
 		  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 		  {
-		  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+		  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u+2));
 			Simulator::Schedule(Seconds(0.4300+0.000025*u),send_LTE_metadata_uplink_alone,udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
 
 		  } 
@@ -143302,11 +141913,6 @@ if (architecture == 3 && N_Vehicles > 0)
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
   AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
-  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
-  // builds custom raw packets (manual WifiMacHeader + custom tags in the
-  // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
-  // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
-  // NetAnim still animates packet movement fine without metadata.
 
   if (N_RSUs > 0)
   {
@@ -143361,110 +141967,42 @@ if (architecture == 3 && N_Vehicles > 0)
   */
   
   Simulator::Stop(Seconds(simTime));
-  
-    // Position override: only apply the 4-node test layout when NOT running Attacks 5, 6, 7, 8
-    // (active_attack_variant==4/5/6/7 with routing_test=true uses its own positionAlloc above)
-    if (routing_test &&
-        active_attack_variant != 4 &&
-        active_attack_variant != 5 &&
-        active_attack_variant != 6 &&
-        active_attack_variant != 7)
-    {
-        Ptr<MobilityModel> mob0 = NodeList::GetNode(2)->GetObject<MobilityModel>(); // Vehicle 0 (Node ID 2)
-        Ptr<MobilityModel> mob1 = NodeList::GetNode(3)->GetObject<MobilityModel>(); // Vehicle 1 (Node ID 3)
-        Ptr<MobilityModel> mobRSU = RSU_Nodes.Get(0)->GetObject<MobilityModel>();   // The RSU
-        
-        mobRSU->SetPosition(Vector(500.0, 150.0, 0.0));
-		mob0->SetPosition(Vector(400.0, 100.0, 0.0)); 
-		mob1->SetPosition(Vector(600.0, 100.0, 0.0));
-    }
-
-
-  
-
-// =====================================================
-// FADE CSV INITIALIZATION
-// =====================================================
-fade_csv.open("fade_results.csv");
-fade_csv << "FlowID,"
-         << "AnomalyType,"
-         << "Detected,"
-         << "DetectionTime,"
-         << "LocalisedFrom,"
-         << "LocalisedTo,"
-         << "DuplicatingNode"
-         << std::endl;
-
-// =====================================================
-// START FADE
-// Pre-configure all flows once routing tables are stable
-// For routing_algorithm=4 + routing_test=true, proposed_routing_tables is never
-// written by the normal dijkstra path, so we seed it explicitly at t=1.060
-// (after run_proposed_RL at t=1.035, before fade_configure at t=1.080).
-// =====================================================
-// Seed function: writes the known routing_test path into proposed_routing_tables
-// so fade_configure_flow can find path_len=3 (nodes 0->RSU->1).
-auto seed_routing_test_tables = []()
-{
-    if (!routing_test) return;
-    uint32_t seed_path_0[total_size];
-    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path_0[_p] = large;
-    seed_path_0[0] = 0;        // VehicleA0
-    seed_path_0[1] = 6;        // RSU0
-    seed_path_0[2] = 1;        // VehicleB0
-    update_proposed_route(0, 1, seed_path_0);
-    std::cout << "[FADE SEED] proposed_routing_tables seeded: 0->6->1 at t="
-              << Simulator::Now().GetSeconds() << "s" << std::endl;
-
-    uint32_t seed_path_1[total_size];
-    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path_1[_p] = large;
-    seed_path_1[0] = 3;        // VehicleA1
-    seed_path_1[1] = 7;        // RSU1
-    seed_path_1[2] = 4;        // VehicleB1
-    update_proposed_route(3, 4, seed_path_1);
-    std::cout << "[FADE SEED] proposed_routing_tables seeded: 3->7->4 at t="
-              << Simulator::Now().GetSeconds() << "s" << std::endl;
-};
-Simulator::Schedule(Seconds(1.060), seed_routing_test_tables);
-Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
-
-// Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
-Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
-
-
-Simulator::Run();
-  
-
-// =====================================================
-// SAVE FADE RESULTS
-// =====================================================
-for (auto &entry : fade_flow_config)
-{
-    uint32_t            flow_id = entry.first;
-    FadeDetectionResult &res    = fade_results[flow_id];
-
-    fade_csv << flow_id                << ","
-             << res.anomaly_type       << ","
-             << res.detected           << ","
-             << res.detection_time     << ","
-             << res.loc_from           << ","
-             << res.loc_to             << ","
-             << res.duplicating_node
-             << std::endl;
-}
-
-fade_csv.close();
-
-
-// ── FADE: write final metrics row for this run ───────────────────────────────
-fade_save_metrics();
-
-// write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
-// and is called once per data-gathering cycle — no post-simulation call needed.
-
-Simulator::Destroy();
+  Simulator::Run();
+  Simulator::Destroy();
   
  
   //apb.SetFinish();
   return 0;  
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
