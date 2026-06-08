@@ -106794,13 +106794,13 @@ double previous_cumulative_load_imbalance = 0.0;
 // ============================================================
 
 // Number of attack variants defined in proposal
-#define NUM_ATTACK_VARIANTS 10
+#define NUM_ATTACK_VARIANTS 8
 
 // Per-variant confusion matrix counters
-// Index 0-3: Selective Time Delay variants (S1-S4)
+// Index 0-1: Selective Time Delay variants (S1-S2)
+// Index 2-3: Selective Time Delay variants (S3-S4)
 // Index 4-7: Hidden Forwarding variants    (S5-S8)
-// Index 8:   Slow TCAM Exhaustion - control plane (Attack 3)
-// Index 9:   Slow TCAM Exhaustion - data plane    (Attack 4)
+
 uint32_t sec_TP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_FP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_TN[NUM_ATTACK_VARIANTS] = {0};
@@ -106833,19 +106833,19 @@ double current_mitigation_latency = 0.0;
 double average_mitigation_latency = 0.0;
 
 // === ATTACK 2: Selective Time Delay — Data Plane ===
-// Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
+
 bool selective_delay_malicious_nodes[total_size];
 bool present_selective_delay_attack_nodes = false;
 double attack2_delay_seconds = 0.080; // 80ms injected delay
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
-double t_fwd_packet[total_size][Flow_size + 2];
-// records when each node forwarded each packet
-double delta_max_s2 = 0.050;
-// 50ms threshold per Equation 3.6 — half of 100ms safety bound
-bool s2_detection_active = true;
-// enable/disable S2 detection
+
+double t_fwd_packet[total_size][Flow_size + 2];     // records when each node forwarded each packet
+double delta_max_s2 = 0.050;                        // 50ms threshold per Equation 3.6 — half of 100ms safety bound
+bool s2_detection_active = true;                    // enable/disable S2 detection
+
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
 uint32_t passive_hf_eavesdropper_index = 2;
@@ -106872,25 +106872,21 @@ inline std::string attack_tag()
 	switch (active_attack_variant)
 	{
 	case 0:
-		return "[ATTACK1]";
+		return "[ATTACK1-STD-CP]";
 	case 1:
-		return "[ATTACK2]";
+		return "[ATTACK2-STD-DP]";
 	case 2:
-		return "[ATTACK3]";
-	case 3:
-		return "[ATTACK4]";
-	case 4:
-		return "[ATTACK5]";
-	case 5:
-		return "[ATTACK6]";
-	case 6:
-		return "[ATTACK7]";
-	case 7:
-		return "[ATTACK8]";
-	case 8:
 		return "[ATTACK3-TCAM-CP]";
-	case 9:
+	case 3:
 		return "[ATTACK4-TCAM-DP]";
+	case 4:
+		return "[ATTACK5-AHF-CP]";
+	case 5:
+		return "[ATTACK6-AHF-DP]";
+	case 6:
+		return "[ATTACK7-PHF-CP]";
+	case 7:
+		return "[ATTACK8-PHF-DP]";
 	default:
 		return "[ATTACK?]";
 	}
