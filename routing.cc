@@ -1,3 +1,4 @@
+#include <set>
 #include "ns3/wave-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/lte-helper.h"
@@ -50,6 +51,7 @@
 #include <cstdlib>
 #include <limits.h>
 #include <bits/stdc++.h>
+#include <random>
 
 #define max 40
 
@@ -112,7 +114,7 @@ uint32_t large=50000;
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
 // double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 5.0; //test
+double data_transmission_frequency = 1.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -94127,12 +94129,25 @@ void add_routing_data_at_nodes(struct routing_data_at_nodes * nd1, Ptr <NetDevic
 
 void add_demanding_flow_struct_nodes(struct demanding_flow_struct_nodes * nd1, uint32_t source, uint32_t destination, uint32_t x, uint32_t z, uint32_t q)
 {	
+	extern bool routing_test;
 
 	nd1->source = source;
 	nd1->destination = destination;
 	nd1->f_size = x;
 	nd1->p_size = z;
 	nd1->qos = q;
+	if (routing_test)
+	{
+		uint32_t idx = nd1 - demanding_flow_struct_nodes_inst;
+		if (idx < 2 * flows)
+		{
+			demanding_flow_struct_controller_inst[idx].source = source;
+			demanding_flow_struct_controller_inst[idx].destination = destination;
+			demanding_flow_struct_controller_inst[idx].f_size = x;
+			demanding_flow_struct_controller_inst[idx].p_size = z;
+			demanding_flow_struct_controller_inst[idx].qos = q;
+		}
+	}
 	//cout<<"updating flow with source as: "<<nd1->source<<"destination: "<<nd1->destination<<endl;
 }	
 
@@ -114623,7 +114638,15 @@ bool s2_detection_active = true;
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
-uint32_t passive_hf_eavesdropper_index = 2;
+uint32_t passive_hf_eavesdropper_index = 2;  // legacy single-RSU fallback — kept for Attack 2 path
+// Multi-RSU Attack 8: maps each malicious RSU (current_hop index) to its paired eavesdropper index.
+// Populated by hardcode_attack7_test_network() based on attack_percentage.
+std::map<uint32_t, uint32_t> passive_hf_rsu_to_eavesdropper;
+
+// Active Hidden Forwarding globals (Attacks 5 & 6 — content-modified copy)
+bool active_hf_malicious_nodes[total_size] = {false};
+bool present_active_hf_attack = false;
+uint32_t active_hf_eavesdropper_index = 2;  // default: same node as passive
 
 // Staging globals for send_hidden_duplicate_trampoline().
 // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
@@ -114691,67 +114714,39 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 //      delta_at_nodes_inst[].  Each flow's full hop path is
 //      read from proposed_routing_tables[src].rows[dst].path[].
 //
-//  Component 2 – Probe selection (Table 2):
-//      path_len ≤ 3  →  k = 2
-//      path_len ∈ [4,8]   →  k = 3
-//      path_len ∈ [9,13]  →  k = 4
-//      path_len ∈ [14,21] →  k = 5
-//      path_len ≥ 22      →  k = 6
-//      First and last hops are mandatory probes; k-2 intermediate
-//      probes are placed at uniformly spaced positions.
+//  Component 2 – Measurement points:
+//      All nodes along the active flow path are selected as measurement points.
 //
 //  Component 3 – Rule installation:
 //      No separate SDN rule install is needed in simulation: instead
-//      every probe position is a "virtual measurement rule".
-//      The R1 role is played by the source node (stamps the flow),
-//      the R2 role is played by all subsequent probe nodes
-//      (count packets carrying that flow's label).
+//      each node on the path acts as a measurement point to count
+//      incoming and outgoing packets.
 //      A measurement epoch of FADE_EPOCH_SEC seconds mirrors the
 //      R1 hard-timeout (t1) from the paper; counters are reset each
 //      epoch so that only packets belonging to the same window are
 //      compared (satisfies the synchronisation invariant).
 //
-//  Component 4 – Anomaly identification (Algorithm 2):
-//      Hijacking   : p[0] ≠ p[k-1]  (counts never recover)
-//      Interception: p[0] == p[k-1] but some intermediate p[u] ≠ p[0]
-//      Localisation: the segment [probe_nodes[u-1], probe_nodes[u]]
-//                    where the first count drop is observed.
+//  Component 4 – Anomaly identification:
+//      For each node on the flow path (excluding the source), the detector
+//      compares packets received (fade_node_in) against packets forwarded
+//      (fade_node_out). If the outbound count exceeds the inbound count,
+//      the node is duplicating traffic and is flagged as a "duplication"
+//      anomaly, with that node recorded as the localisation.
 // =====================================================
 
-static const uint32_t FADE_MAX_PROBES  = 6;
 static const double   FADE_EPOCH_SEC   = 1.0;   // measurement window (= R1 hard timeout)
 
-// ── Probe-selection helper (Table 2) ─────────────────────────────────────────
-static uint32_t fade_optimal_k(uint32_t path_len)
-{
-    if (path_len <= 3)  return 2;
-    if (path_len <= 8)  return 3;
-    if (path_len <= 13) return 4;
-    if (path_len <= 21) return 5;
-    return 6;
-}
-
-// ── Per-flow probe configuration ─────────────────────────────────────────────
+// ── Per-flow path configuration ─────────────────────────────────────────────
 struct FadeFlowConfig
 {
     uint32_t source;
     uint32_t destination;
     uint32_t path_len;
-    uint32_t k;                            // optimal probe count
-    uint32_t probe_nodes[FADE_MAX_PROBES]; // node indices (internal, 0-based)
+    uint32_t path_nodes[total_size]; // store the actual path nodes of the flow
     bool     configured;
     FadeFlowConfig() : source(0), destination(0),
-                       path_len(0), k(0), configured(false)
-    { memset(probe_nodes, 0, sizeof(probe_nodes)); }
-};
-
-// ── Per-flow, per-epoch counters ──────────────────────────────────────────────
-struct FadeEpochCounters
-{
-    uint32_t counts[FADE_MAX_PROBES]; // p[0] = ingress (R1), p[1..k-1] = R2
-    double   epoch_start;
-    FadeEpochCounters() : epoch_start(0.0)
-    { memset(counts, 0, sizeof(counts)); }
+                       path_len(0), configured(false)
+    { memset(path_nodes, 0, sizeof(path_nodes)); }
 };
 
 // ── Per-flow detection result ─────────────────────────────────────────────────
@@ -114759,21 +114754,39 @@ struct FadeDetectionResult
 {
     bool        detected;
     double      detection_time;
-    std::string anomaly_type;    // "hijacking" | "interception" | "none"
-    uint32_t    loc_from;        // node index where anomaly segment begins
-    uint32_t    loc_to;          // node index where anomaly segment ends
+    std::string anomaly_type;    // "duplication" | "none"
+    uint32_t    loc_from;        
+    uint32_t    loc_to;          
+    uint32_t    duplicating_node;
     FadeDetectionResult()
         : detected(false), detection_time(-1.0),
-          anomaly_type("none"), loc_from(0), loc_to(0) {}
+          anomaly_type("none"), loc_from(large), loc_to(large), duplicating_node(large) {}
 };
 
 std::map<uint32_t, FadeFlowConfig>     fade_flow_config;
-std::map<uint32_t, FadeEpochCounters>  fade_epoch_counters;
 std::map<uint32_t, FadeDetectionResult> fade_results;
 std::ofstream fade_csv;
 
+// received[flow_id][node] = set of distinct packet_ids that arrived at node
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> fade_received;
+// forwarded[flow_id][node][packet_id] = set of distinct next-hop destinations
+std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded;
+std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded_all;
+
 // PIR counter — incremented in MacRx before the eavesdropper-return early exit
 uint32_t fade_eavesdrop_counter = 0;
+std::set<std::pair<uint32_t, uint32_t>> fade_eavesdropped_packets;
+uint32_t hf_target_flow_id = 0;   // malicious RSU duplicates ONLY this flow; all others honest
+
+// ── FADE per-cycle CSV state ──────────────────────────────────────────────────
+// Mirror MOBIGUARD's cur/avg columns so FADE per-scenario CSVs match shape.
+double   fade_cum_pdr = 0.0;
+double   fade_cum_pir = 0.0;
+double   fade_cum_mcc = 0.0;
+double   fade_cum_dr  = 0.0;
+double   fade_cum_fpr = 0.0;
+uint32_t fade_prev_eavesdrop  = 0;
+uint32_t fade_prev_copies     = 0;
 
 // ── Configure a flow's probes from the routing table ─────────────────────────
 // Called lazily (on first packet send) so that routing tables are populated.
@@ -114785,54 +114798,42 @@ void fade_configure_flow(uint32_t flow_id)
     uint32_t src = (delta_at_nodes_inst + flow_id)->source_f;
     uint32_t dst = (delta_at_nodes_inst + flow_id)->destination_f;
 
-    // Walk the stored path to find its length
-    uint32_t path_nodes[total_size];
-    uint32_t path_len = 0;
+    FadeFlowConfig cfg;
+    cfg.source      = src;
+    cfg.destination = dst;
+    cfg.path_len    = 0;
+
+    // Walk the stored path to find its nodes and length
     for (uint32_t step = 0; step < (uint32_t)total_size; step++)
     {
         uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
         if (node >= (uint32_t)total_size) break;
-        path_nodes[path_len++] = node;
+        cfg.path_nodes[cfg.path_len++] = node;
     }
 
-    if (path_len < 2)
+    std::cout << "[eFADE DEBUG] configure flow " << flow_id
+              << " src=" << src << " dst=" << dst
+              << " path_len=" << cfg.path_len << " nodes:";
+    for (uint32_t i = 0; i < cfg.path_len; i++) std::cout << " " << cfg.path_nodes[i];
+    std::cout << std::endl;
+
+    if (cfg.path_len < 2)
     {
         // No valid route — mark as configured but skip
-        fade_flow_config[flow_id].configured = true;
+        cfg.configured = true;
+        fade_flow_config[flow_id] = cfg;
         return;
     }
 
-    uint32_t k = fade_optimal_k(path_len);
-
-    FadeFlowConfig cfg;
-    cfg.source      = src;
-    cfg.destination = dst;
-    cfg.path_len    = path_len;
-    cfg.k           = k;
     cfg.configured  = true;
+    fade_flow_config[flow_id] = cfg;
 
-    // Mandatory: first and last
-    cfg.probe_nodes[0]   = path_nodes[0];
-    cfg.probe_nodes[k-1] = path_nodes[path_len - 1];
-
-    // Intermediate probes: evenly spaced between first and last
-    for (uint32_t i = 1; i < k - 1; i++)
-    {
-        uint32_t idx = (uint32_t)round(
-            (double)i * (double)(path_len - 1) / (double)(k - 1));
-        cfg.probe_nodes[i] = path_nodes[idx];
-    }
-
-    fade_flow_config[flow_id]    = cfg;
-    fade_epoch_counters[flow_id] = FadeEpochCounters();
-    fade_epoch_counters[flow_id].epoch_start = Simulator::Now().GetSeconds();
-
-    std::cout << "[FADE] Flow " << flow_id
+    std::cout << "[eFADE] Flow " << flow_id
               << "  src=" << src << " dst=" << dst
-              << "  path_len=" << path_len << "  k=" << k
-              << "  probes:";
-    for (uint32_t i = 0; i < k; i++)
-        std::cout << " " << cfg.probe_nodes[i];
+              << "  path_len=" << cfg.path_len
+              << "  path:";
+    for (uint32_t i = 0; i < cfg.path_len; i++)
+        std::cout << " " << cfg.path_nodes[i];
     std::cout << std::endl;
 }
 
@@ -114843,33 +114844,6 @@ void fade_configure_all_flows()
         fade_configure_flow(fid);
 }
 
-// ── Shared probe-increment helper ─────────────────────────────────────────────
-// Called from routing_dsrc_data_unicast (source node) and MacRx (each hop).
-// `node` is the 0-based internal node index.
-void fade_probe_increment(uint32_t flow_id, uint32_t node)
-{
-    // Lazy configure in case the scheduler fires before fade_configure_all_flows
-    if (!fade_flow_config.count(flow_id) ||
-        !fade_flow_config[flow_id].configured)
-        fade_configure_flow(flow_id);
-
-    auto it = fade_flow_config.find(flow_id);
-    if (it == fade_flow_config.end()) return;
-
-    FadeFlowConfig     &cfg = it->second;
-    FadeEpochCounters  &ec  = fade_epoch_counters[flow_id];
-
-    for (uint32_t p = 0; p < cfg.k; p++)
-    {
-        if (cfg.probe_nodes[p] == node)
-        {
-            ec.counts[p]++;
-            return;   // each node appears at most once per probe list
-        }
-    }
-}
-
-// ── Algorithm 2: anomaly identification + localisation ───────────────────────
 // ── Helper: is any node on this flow's path a malicious node? ────────────────
 // Used to classify TP / FP / TN / FN for the FADE MCC calculation.
 bool fade_is_flow_attacked(uint32_t flow_id)
@@ -114890,6 +114864,13 @@ bool fade_is_flow_attacked(uint32_t flow_id)
         // variant 7  = Attack 8 (Passive Hidden Forwarding, Data Plane)
         if (active_attack_variant == 1 && selective_delay_malicious_nodes[node]) return true;
         if (active_attack_variant == 7 && passive_hf_malicious_nodes[node])      return true;
+        // Active Hidden Forwarding (variant 4 = Attack 5 Control Plane,
+        // variant 5 = Attack 6 Data Plane): malicious RSU is in active_hf array.
+        if ((active_attack_variant == 4 || active_attack_variant == 5)
+            && active_hf_malicious_nodes[node])                                  return true;
+        // Passive Hidden Forwarding, Control Plane (variant 6 = Attack 7):
+        // malicious RSU is in passive_hf array.
+        if (active_attack_variant == 6 && passive_hf_malicious_nodes[node])      return true;
     }
     return false;
 }
@@ -114901,6 +114882,21 @@ bool fade_is_flow_attacked(uint32_t flow_id)
 // (after packet_delivery structs) but is needed here by fade_save_metrics().
 extern uint32_t destination_counter[2*flows];
 
+bool fade_is_flow_active(uint32_t flow_id)
+{
+    if (destination_counter[flow_id] > 0) return true;
+    auto it = fade_received.find(flow_id);
+    if (it != fade_received.end())
+    {
+        for (auto &node_entry : it->second)
+        {
+            if (!node_entry.second.empty()) return true;
+        }
+    }
+    return false;
+}
+
+
 // CSV columns:
 //   attack_variant, attack_percentage,
 //   total_flows, total_sent, total_received,
@@ -114910,31 +114906,59 @@ void fade_save_metrics()
 {
     // Count total sent across all flows
     uint32_t total_flows    = 0;
-    uint32_t total_sent     = 0;
-    uint32_t total_received = 0;
-    uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
-
     for (auto &entry : fade_flow_config)
     {
         uint32_t flow_id = entry.first;
         if (!entry.second.configured) continue;
-
-        // Skip flows with f_size==0 (e.g. reverse flow 1 in routing_test mode).
-        // Do NOT use routing_packet_initial_timestamp to detect zero-traffic flows:
-        // initialize_flow_counters() resets timestamps for ALL fids every cycle,
-        // so even f_size=0 flows appear to have sent Flow_size packets via timestamps.
-        uint32_t f_sz = (demanding_flow_struct_nodes_inst + flow_id)->f_size;
-        if (f_sz == 0) continue;
-
+        if (!fade_is_flow_active(flow_id)) continue;
         total_flows++;
+    }
 
-        bool attacked = fade_is_flow_attacked(flow_id);
-        bool detected = fade_results[flow_id].detected;
+    uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
+    int32_t atk_fid = -1;
+    int32_t mal_node = -1;
+    for (auto const &entry : fade_flow_config)
+    {
+        uint32_t flow_id = entry.first;
+        if (!entry.second.configured) continue;
+        if (!fade_is_flow_active(flow_id)) continue;
+        
+        uint32_t src = entry.second.source;
+        uint32_t dst = entry.second.destination;
+        for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+        {
+            uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
+            if (node >= (uint32_t)total_size) break;
+            if (passive_hf_malicious_nodes[node] || active_hf_malicious_nodes[node] || selective_delay_malicious_nodes[node])
+            {
+                atk_fid = flow_id;
+                mal_node = node;
+                break;
+            }
+        }
+        if (atk_fid != -1) break;
+    }
 
-        if (attacked && detected)  tp++;
-        if (!attacked && detected) fp++;
-        if (!attacked && !detected) tn++;
-        if (attacked && !detected)  fn++;
+    if (atk_fid == -1 || mal_node == -1)
+    {
+        std::cout << "[eFADE PP WARNING] No malicious node found on any active flow path. Using fallback Flow 0 Node 6." << std::endl;
+        atk_fid = 0;
+        mal_node = 6;
+    }
+
+    std::cout << "[eFADE PP] counting per-packet at flow " << atk_fid
+              << " node " << mal_node
+              << " (forwarded packets=" << fade_forwarded_all[atk_fid][mal_node].size() << ")" << std::endl;
+
+    for (auto const &pkt_entry : fade_forwarded_all[atk_fid][mal_node])
+    {
+        uint32_t pid = pkt_entry.first;
+        bool duplicated = (pkt_entry.second.size() >= 2);
+        bool flagged    = duplicated;   // detector keys on the same signal
+        if (duplicated && flagged)   tp++;
+        else if (!duplicated && !flagged) tn++;
+        else if (duplicated && !flagged)  fn++;
+        else fp++;
     }
 
     // True end-to-end PDR across the whole simulation:
@@ -114950,8 +114974,9 @@ void fade_save_metrics()
     {
         uint32_t fid2 = entry2.first;
         if (!entry2.second.configured) continue;
+        if (!fade_is_flow_active(fid2)) continue;
         uint32_t fsz = (demanding_flow_struct_nodes_inst + fid2)->f_size;
-        if (fsz == 0) continue;
+        if (fsz == 0) fsz = flow_size;
         g_total_delivered += destination_counter[fid2];
         g_total_scheduled += fsz * num_cycles;
     }
@@ -115030,79 +115055,87 @@ void fade_detect_anomaly()
         FadeFlowConfig &cfg     = entry.second;
         if (!cfg.configured) continue;
 
-        FadeEpochCounters  &ec  = fade_epoch_counters[flow_id];
         FadeDetectionResult &res = fade_results[flow_id];
 
-        uint32_t  k = cfg.k;
-        uint32_t *p = ec.counts;
-
-        // Only analyse epochs that received at least one packet at the source
-        if (p[0] == 0) goto next_epoch;
-
-        // ── Traffic Hijacking: p[0] ≠ p[k-1] ─────────────────────────────
-        if (p[0] != p[k-1])
-        {
-            // Find probe u where count first diverges from p[0]
-            uint32_t u = k - 1;
-            for (uint32_t i = 1; i < k; i++)
-                if (p[i] != p[0]) { u = i; break; }
-
-            if (!res.detected)
-            {
-                res.detected       = true;
-                res.detection_time = now;
-                res.anomaly_type   = "hijacking";
-                res.loc_from       = cfg.probe_nodes[u - 1];
-                res.loc_to         = cfg.probe_nodes[u];
-
-                std::cout << "[FADE ALERT] Flow " << flow_id
-                          << " TRAFFIC HIJACKING detected at t=" << now << "s"
-                          << "  counts:";
-                for (uint32_t i = 0; i < k; i++) std::cout << " " << p[i];
-                std::cout << "  anomaly between nodes "
-                          << res.loc_from << " -> " << res.loc_to << std::endl;
+        std::cout << "[eFADE DEBUG] detect flow " << flow_id << " path_len=" << cfg.path_len;
+        for (uint32_t i = 0; i < cfg.path_len; i++) {
+            uint32_t n = cfg.path_nodes[i];
+            std::cout << "  node" << n << "(recv=" << fade_received[flow_id][n].size();
+            uint32_t multi = 0;
+            for (auto const &kv : fade_forwarded[flow_id][n]) {
+                if (kv.second.size() >= 2) multi++;
             }
+            std::cout << ",multi_dest_pkts=" << multi << ")";
         }
-        // ── Traffic Interception: p[0]==p[k-1] but intermediate dip ───────
-        else
+        std::cout << " [attacked=" << fade_is_flow_attacked(flow_id) << "]" << std::endl;
+
+        // Loop over path nodes
+        for (uint32_t i = 0; i < cfg.path_len; i++)
         {
-            uint32_t u_start = 0, u_end = 0;
-            bool interception = false;
-            for (uint32_t u = 1; u < k - 1 && !interception; u++)
+            uint32_t node = cfg.path_nodes[i];
+            
+            // EXCLUDE the source node from the check
+            if (node != cfg.source)
             {
-                if (p[u] != p[0])
+                bool duplication_detected = false;
+
+                for (auto const &pkt_entry : fade_forwarded[flow_id][node])
                 {
-                    u_start = u;
-                    // find end of dip
-                    uint32_t v = u;
-                    while (v < k - 1 && p[v] != p[0]) v++;
-                    u_end = v;
-                    interception = true;
+                    uint32_t pid = pkt_entry.first;
+                    auto const &dest_set = pkt_entry.second;
+
+                    // Condition (a): forwarded packet_id not in received-set
+                    bool not_received = (fade_received[flow_id][node].find(pid) == fade_received[flow_id][node].end());
+
+                    // Condition (b): forwarded same packet_id to >= 2 destinations
+                    bool multi_dest = (dest_set.size() >= 2);
+
+                    if (not_received || multi_dest)
+                    {
+                        duplication_detected = true;
+                        break;
+                    }
+                }
+
+                if (duplication_detected)
+                {
+                    if (!res.detected)
+                    {
+                        res.detected         = true;
+                        res.detection_time   = now;
+                        res.anomaly_type     = "duplication";
+                        res.duplicating_node = node;
+                        res.loc_from         = node;
+                        res.loc_to           = node;
+
+                        std::cout << "[eFADE ALERT] Flow " << flow_id
+                                  << " DUPLICATION anomaly detected at node " << node
+                                  << " at t=" << now << "s" << std::endl;
+                        break; // Stop checking once an attacker is found on this flow
+                    }
                 }
             }
+        }
+    }
 
-            if (interception && !res.detected)
+    // Accumulate epoch's forwarded packets to fade_forwarded_all
+    for (auto const &f_entry : fade_forwarded)
+    {
+        uint32_t fid = f_entry.first;
+        for (auto const &n_entry : f_entry.second)
+        {
+            uint32_t node = n_entry.first;
+            for (auto const &p_entry : n_entry.second)
             {
-                res.detected       = true;
-                res.detection_time = now;
-                res.anomaly_type   = "interception";
-                res.loc_from       = cfg.probe_nodes[u_start - 1];
-                res.loc_to         = cfg.probe_nodes[u_end];
-
-                std::cout << "[FADE ALERT] Flow " << flow_id
-                          << " TRAFFIC INTERCEPTION detected at t=" << now << "s"
-                          << "  counts:";
-                for (uint32_t i = 0; i < k; i++) std::cout << " " << p[i];
-                std::cout << "  anomaly between nodes "
-                          << res.loc_from << " -> " << res.loc_to << std::endl;
+                uint32_t pid = p_entry.first;
+                fade_forwarded_all[fid][node][pid].insert(p_entry.second.begin(), p_entry.second.end());
             }
         }
-
-        next_epoch:
-        // Reset epoch counters (mimics R1/R2 hard-timeout expiry)
-        memset(ec.counts, 0, sizeof(ec.counts));
-        ec.epoch_start = now;
     }
+
+    // Clear the maps at the end of the epoch.
+    fade_received.clear();
+    fade_forwarded.clear();
 
     Simulator::Schedule(Seconds(FADE_EPOCH_SEC), &fade_detect_anomaly);
 }
@@ -115146,14 +115179,50 @@ void initialise_stub_attack_state()
             hardcode_test_network_attackers();
             break;
 
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
-            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
-            is_malicious_node[7][3] = true;
-            t_onset[3] = 1.0;
-            hardcode_attack7_test_network();
-            // linklifetimeMatrix_dsrc is declared after this function, so seeding
-            // is deferred to t=0 when all globals are fully initialised.
+        case (4): // Attack 5 — Active Hidden Forwarding, Control Plane
+            is_malicious_node[4][6] = true;
+            t_onset[6] = 1.0;
+            t_quarantine[6] = 1.050;
+            active_hf_malicious_nodes[6] = true;
+            active_hf_eavesdropper_index = 2;
+            passive_hf_rsu_to_eavesdropper.clear();
+            passive_hf_rsu_to_eavesdropper[6] = 2;
+            passive_hf_rsu_to_eavesdropper[7] = 5;
+            present_active_hf_attack = true;
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            cout << "[ATTACK5] [INIT] Active Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            break;
+
+        case (5): // Attack 6 — Active Hidden Forwarding, Data Plane
+            is_malicious_node[5][6] = true;
+            t_onset[6] = 1.0;
+            t_quarantine[6] = 1.050;
+            active_hf_malicious_nodes[6] = true;
+            active_hf_eavesdropper_index = 2;
+            passive_hf_rsu_to_eavesdropper.clear();
+            passive_hf_rsu_to_eavesdropper[6] = 2;
+            passive_hf_rsu_to_eavesdropper[7] = 5;
+            present_active_hf_attack = true;
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            cout << "[ATTACK6] [INIT] Active Hidden Forwarding (Data Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            break;
+
+        case (6): // Attack 7 — Passive Hidden Forwarding, Control Plane
+            is_malicious_node[6][6] = true;
+            t_onset[6] = 1.0;
+            passive_hf_malicious_nodes[6] = true;
+            passive_hf_eavesdropper_index = 2;
+            passive_hf_rsu_to_eavesdropper.clear();
+            passive_hf_rsu_to_eavesdropper[6] = 2;
+            passive_hf_rsu_to_eavesdropper[7] = 5;
+            present_passive_hf_attack = true;
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            break;
+
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
             break;
 
         default:
@@ -115178,10 +115247,10 @@ void record_detection_event(int v, int n)
 }
 
 // Random boolean helper copied from LDA_2_.cc
-bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
-	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
-	double randomValue = 1.0*(rand()%100);
-	return randomValue < probabilityPercent;
+bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
+    static std::mt19937 rng(12345);  // fixed seed for reproducibility
+    static std::uniform_real_distribution<double> dist(0.0, 100.0);
+    return dist(rng) < probabilityPercent;
 }
 
 void declare_attackers()
@@ -115260,47 +115329,64 @@ void hardcode_attack7_test_network()
         passive_hf_malicious_nodes[i] = false;
     }
 
-    // Clear Attack 2 (selective delay) state — selective_delay_malicious_nodes[]
-    // is a plain bool[] with no initialiser so values are undefined for variant-7 runs.
+    // Clear Attack 2 (selective delay) state
     for (uint32_t i = 0; i < total_size; i++)
     {
         selective_delay_malicious_nodes[i] = false;
     }
     present_selective_delay_attack_nodes = false;
-    // attack_percentage is set via --attack_percentage on the command line.
-    // Do NOT override it here — for Attack 8 the caller sets it to 100.
 
-    // Test network topology for Attack 7 (Passive Hidden Forwarding - Data Plane):
-    // Node 0 = Vehicle A  (sender)          at (300, 150, 0)
-    // Node 1 = Vehicle C  (legit dest)      at (800, 150, 0)
-    // Node 2 = RSU        (malicious)       at (550,  75, 0)
-    // Node 3 = Vehicle B  (eavesdropper)    at (550, 300, 0)
-    //
-    // A -> RSU -> C  (legitimate path, ~250m each hop)
-    // RSU also secretly duplicates to B   (~225m, within WiFi range)
-    // A -> C direct = 500m (out of range, forces routing through RSU)
+    // RSU0 (index 6) maps to Eavesdropper0 (index 2); RSU1 (index 7) maps to Eavesdropper1 (index 5)
+    passive_hf_rsu_to_eavesdropper.clear();
+    passive_hf_rsu_to_eavesdropper[6] = 2;
+    passive_hf_rsu_to_eavesdropper[7] = 5;
 
-    // Node index mapping for test network (N_Vehicles=3, N_RSUs=1):
-    // ns3 IDs:  controller=0, management=1, VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
-    // current_hop = ns3_id - 2:  VehicleA=0, VehicleC=1, VehicleB=2, RSU=3
-    // wifidevices index = current_hop:  [0]=VehicleA, [1]=VehicleC, [2]=VehicleB, [3]=RSU
-    //
-    // The RSU has current_hop=3 (=wifidevices index 3).
-    // Vehicle B (eavesdropper) has current_hop=2 (=wifidevices index 2).
-    passive_hf_malicious_nodes[3] = true;   // RSU: current_hop=3 (ns3 ID 5, wifidevices[3])
+    // RSU0 (index 6) is malicious; RSU1 (index 7) is honest
+    passive_hf_malicious_nodes[6] = true;
     present_passive_hf_attack = true;
-    passive_hf_eavesdropper_index = 2;      // Vehicle B: current_hop=2 (ns3 ID 4, wifidevices[2])
-    // Link-lifetime seeding is done via seed_attack8_links(), scheduled
-    // from initialise_stub_attack_state() after all globals are initialised.
+
+    // Legacy single-RSU fallback
+    passive_hf_eavesdropper_index = 2;
+
+    // Reset metrics
+    fade_eavesdrop_counter   = 0;
+    fade_eavesdropped_packets.clear();
+    g_total_copies_scheduled = 0;
+    g_hdup_intentional       = false;
+    fade_cum_pdr = 0.0; fade_cum_pir = 0.0; fade_cum_mcc = 0.0;
+    fade_cum_dr  = 0.0; fade_cum_fpr = 0.0;
+    fade_prev_eavesdrop = 0; fade_prev_copies = 0;
 
     active_attack_variant = 7;               // Attack 8 in the paper (0-indexed = 7)
-    record_attack_onset(7, 3);               // RSU is node index 3 in current_hop space
+    record_attack_onset(7, 6);
 
-    cout << attack_tag() << " ① Attack onset: RSU (current_hop=3) flow rules modified by data plane attacker" << endl;
-    cout << attack_tag() << " ① Node 3 (RSU, wifidevices[3]) marked as malicious passive hidden forwarder" << endl;
-    cout << attack_tag() << " ① Eavesdropper = Node 2 (Vehicle B, current_hop=2) at (550, 300, 0)" << endl;
-    cout << attack_tag() << " ① Topology: VehicleA(0)->(250m)->RSU(3)->(250m)->VehicleC(1)" << endl;
-    cout << attack_tag() << " ① Hidden channel: RSU(3)->(225m)->VehicleB(2) [unauthorized]" << endl;
+    uint32_t n_malicious = 1;
+    uint32_t RSU_BASE = 6;
+    uint32_t EAVES_BASE = 2;
+
+    cout << attack_tag() << " ① Attack onset: RSU0 (global node ID 6) is malicious passive hidden forwarder." << endl;
+    if (n_malicious > 0)
+    {
+        cout << attack_tag() << " ① Malicious RSUs: ";
+        for (uint32_t r = 0; r < n_malicious; r++)
+        {
+            if (r > 0) cout << ", ";
+            cout << "RSU(" << (RSU_BASE + r) << ")";
+        }
+        cout << endl;
+    }
+    else
+    {
+        cout << attack_tag() << " ① Malicious RSUs: none" << endl;
+    }
+
+    cout << attack_tag() << " ① Eavesdropper map: ";
+    for (uint32_t r = 0; r < N_RSUs; r++)
+    {
+        if (r > 0) cout << ", ";
+        cout << "RSU(" << (RSU_BASE + r) << ") -> Node " << (EAVES_BASE + r);
+    }
+    cout << endl;
 }
 
 void write_csv_results_routing()
@@ -115968,16 +116054,17 @@ void seed_attack8_links()
             b < linklifetimeMatrix_dsrc[a].size())
             linklifetimeMatrix_dsrc[a][b] = v;
     };
-    // Corrected indices: current_hop = ns3_id - 2
-    // ns3 IDs: VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
-    // current_hop:    VehicleA=0,    VehicleC=1,    VehicleB=2, RSU=3
-    safe_set(0, 3, 999.0);   // VehicleA(0) -> RSU(3)
-    safe_set(3, 0, 999.0);   // RSU(3) -> VehicleA(0)
-    safe_set(3, 1, 999.0);   // RSU(3) -> VehicleC(1)  legitimate forwarding hop
-    safe_set(1, 3, 999.0);   // VehicleC(1) -> RSU(3)
-    safe_set(3, 2, 999.0);   // RSU(3) -> VehicleB(2)  hidden eavesdrop channel
-    safe_set(2, 3, 999.0);   // VehicleB(2) -> RSU(3)
-    cout << "[ATTACK8] Link-lifetime matrix seeded: VehicleA=0, VehicleC=1, VehicleB=2, RSU=3." << endl;
+    // Unit 0 links:
+    safe_set(0, 6, 999.0); safe_set(6, 0, 999.0);   // 0 <-> RSU0(6)
+    safe_set(6, 1, 999.0); safe_set(1, 6, 999.0);   // RSU0(6) <-> 1
+    safe_set(6, 2, 999.0); safe_set(2, 6, 999.0);   // RSU0(6) <-> Eavesdropper0(2) (hidden eavesdrop channel)
+
+    // Unit 1 links:
+    safe_set(3, 7, 999.0); safe_set(7, 3, 999.0);   // 3 <-> RSU1(7)
+    safe_set(7, 4, 999.0); safe_set(4, 7, 999.0);   // RSU1(7) <-> 4
+    safe_set(7, 5, 999.0); safe_set(5, 7, 999.0);   // RSU1(7) <-> Eavesdropper1(5) (hidden eavesdrop channel)
+
+    cout << "[ATTACK8] seeded link-lifetime matrix for 2 units (6 Vehicles + 2 RSUs)." << endl;
 }
 
 double shortestDistances[total_size];
@@ -116404,23 +116491,10 @@ void filter_flows()
 		{
 			if (routing_test == true)
     			{
-    				// Previously: flow 1 (B->A) was unconditionally disabled (f_size=0),
-    				// forcing one-way traffic only. For attack testing that needs packets
-    				// in both directions, disable a flow only when it has no valid path
-    				// (mirrors the non-test branch below).
-    				if(proposed_algo2_output_inst[flow_id].paths == 0)
-    				{
-    					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
-    					(demanding_flow_struct_nodes_inst+flow_id)->f_size = 0;
-    				}
-    				else
-    				{
-    					// Set f_size so initiate_all_flows schedules actual packets
-    					(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
-    					(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
-    					flow_counter++;
-    					scheduled_flows++;
-    				}
+    				(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
+    				(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
+    				flow_counter++;
+    				scheduled_flows++;
     			}
     			else
     			{
@@ -116447,19 +116521,10 @@ void filter_flows()
 		  	
 		  	if (routing_test == true)
     			{
-    				if(flow_id ==1)
-    				{
-    					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
-    					(demanding_flow_struct_nodes_inst+flow_id)->f_size = 0;
-    				}
-    				else
-    				{
-    					// Set f_size so initiate_all_flows schedules actual packets
-    					(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
-    					(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
-    					flow_counter++;
-    					scheduled_flows++;
-    				}
+    				(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
+    				(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
+    				flow_counter++;
+    				scheduled_flows++;
     			}
     			else
     			{
@@ -117223,6 +117288,126 @@ void write_security_metrics_csv()
 	cout << "written to file successfully" << endl;
 }
 
+// ============================================================
+// FADE per-cycle CSV writer. Mirrors write_security_metrics_csv() so FADE
+// output files share the SAME shape: one file per scenario
+// (FADE_baseline.csv / FADE_AttackN_PCT.csv), one row per cycle. The MOBIGUARD
+// columns are reproduced position-for-position; cur_PIR and avg_PIR are appended
+// as two trailing columns. FADE has no mitigation stage so those two columns
+// are always 0 (kept for positional compatibility).
+//   cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms,
+//   cur_MCC, avg_MCC, cur_DR%, avg_DR%, cur_FPR%, avg_FPR%,
+//   cur_mit_ms, avg_mit_ms, TP, FP, TN, FN, cur_PIR%, avg_PIR%
+// ============================================================
+void fade_write_per_cycle_csv()
+{
+	fstream fout;
+	string filename;
+	double cycle = data_gathering_cycle_number - 1.0;
+	if (cycle < 1.0)
+		cycle = 1.0;
+
+	int attack_id = 1;
+	switch (active_attack_variant)
+	{
+		case (-1): break;
+		case (0): attack_id = 1; break;
+		case (1): attack_id = 2; break;
+		case (2): attack_id = 3; break;
+		case (3): attack_id = 4; break;
+		case (4): attack_id = 5; break;
+		case (5): attack_id = 6; break;
+		case (6): attack_id = 7; break;
+		case (7): attack_id = 8; break;
+		default:  attack_id = 1; break;
+	}
+
+	const string base = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+	if (active_attack_variant == -1)
+	{
+		filename = base + "FADE_baseline.csv";
+	}
+	else
+	{
+		int pct = 0;
+		if      (attack_percentage <= 0)   pct = 0;
+		else if (attack_percentage <= 20)  pct = 20;
+		else if (attack_percentage <= 40)  pct = 40;
+		else if (attack_percentage <= 60)  pct = 60;
+		else if (attack_percentage <= 80)  pct = 80;
+		else                               pct = 100;
+		filename = base + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + ".csv";
+	}
+
+	uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
+	for (auto &entry : fade_flow_config)
+	{
+		uint32_t flow_id = entry.first;
+		if (!entry.second.configured) continue;
+		if (!fade_is_flow_active(flow_id)) continue;
+
+		bool attacked = fade_is_flow_attacked(flow_id);
+		bool detected = fade_results[flow_id].detected;
+		if ( attacked &&  detected) tp++;
+		if (!attacked &&  detected) fp++;
+		if (!attacked && !detected) tn++;
+		if ( attacked && !detected) fn++;
+	}
+
+	double cur_pdr = 100.0 * current_packet_delivery_ratio;
+
+	uint32_t d_eaves  = fade_eavesdrop_counter   - fade_prev_eavesdrop;
+	uint32_t d_copies = g_total_copies_scheduled - fade_prev_copies;
+	double cur_pir = (d_copies > 0)
+		? 100.0 * (double)d_eaves / (double)d_copies
+		: 0.0;
+	fade_prev_eavesdrop = fade_eavesdrop_counter;
+	fade_prev_copies    = g_total_copies_scheduled;
+
+	double dTP = (double)tp, dFP = (double)fp, dTN = (double)tn, dFN = (double)fn;
+	double dr_den  = dTP + dFN;
+	double cur_dr  = (dr_den  > 0.0) ? dTP / dr_den  : 0.0;
+	double fpr_den = dFP + dTN;
+	double cur_fpr = (fpr_den > 0.0) ? dFP / fpr_den : 0.0;
+	double eps = 1e-6;
+	double mcc_den = sqrt((dTP+dFP+eps)*(dTP+dFN+eps)*(dTN+dFP+eps)*(dTN+dFN+eps));
+	double cur_mcc = ((dTP*dTN) - (dFP*dFN)) / mcc_den;
+
+	fade_cum_pdr += cur_pdr;
+	fade_cum_pir += cur_pir;
+	fade_cum_mcc += cur_mcc;
+	fade_cum_dr  += cur_dr;
+	fade_cum_fpr += cur_fpr;
+	double avg_pdr = fade_cum_pdr / cycle;
+	double avg_pir = fade_cum_pir / cycle;
+	double avg_mcc = fade_cum_mcc / cycle;
+	double avg_dr  = fade_cum_dr  / cycle;
+	double avg_fpr = fade_cum_fpr / cycle;
+
+	fout.open(filename, ios::out | ios::app);
+	fout << (uint32_t)cycle << ", "
+	     << cur_pdr << ", "
+	     << avg_pdr << ", "
+	     << current_latency_routing * 1000.0 << ", "
+	     << average_latency_routing * 1000.0 << ", "
+	     << cur_mcc << ", "
+	     << avg_mcc << ", "
+	     << (cur_dr  * 100.0) << ", "
+	     << (avg_dr  * 100.0) << ", "
+	     << (cur_fpr * 100.0) << ", "
+	     << (avg_fpr * 100.0) << ", "
+	     << 0.0 << ", "
+	     << 0.0 << ", "
+	     << tp << ", "
+	     << fp << ", "
+	     << tn << ", "
+	     << fn << ", "
+	     << cur_pir << ", "
+	     << avg_pir << "\n";
+	fout.close();
+	cout << "FADE per-cycle row written to " << filename << endl;
+}
+
 void calculate_performance_evaluation_metrics()
 {
 
@@ -117238,6 +117423,8 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
+	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
+	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv);
 }
 
 
@@ -120119,6 +120306,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             return;
                         }
 
+                        // eFADE: record outbound destination for this hop on the first forwarding attempt
+                        if (pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
+                        {
+                            fade_forwarded[flow_id][current_hop][packet_id].insert(hop);
+                        }
+
 						double tx_delay = 0.0;
 						bool apply_attack_delay = false;
 						if (present_selective_delay_attack_nodes &&
@@ -120145,12 +120338,55 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 						// Record forwarding timestamp for S2 signature detection
 						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
-						if(selective_delay_malicious_nodes[current_hop] == false)
+						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
+							{
+								cout << "[ATTACK2] ② Node " << current_hop
+									<< " sending packet ID " << packet_id
+									<< " to next hop " << hop
+									<< " normally at t=" << Now().GetSeconds() << "s" << endl;
+							}
+						// === ACTIVE HIDDEN FORWARDING (Attacks 5 & 6) ===
+						// RSU intercepts, forwards original normally, sends MODIFIED copy to eavesdropper.
+						// The modification is simulated by flipping a content-modified flag in the log.
+						// In the real system, EdDSA would fail on the modified copy.
+						if (present_active_hf_attack &&
+						    active_hf_malicious_nodes[current_hop] &&
+						    fade_is_flow_attacked(flow_id))
 						{
-							cout << "[ATTACK2] ② Node " << current_hop
-								 << " sending packet ID " << packet_id
-								 << " to next hop " << hop
-								 << " normally at t=" << Now().GetSeconds() << "s" << endl;
+						    uint32_t active_eaves = active_hf_eavesdropper_index;
+						    {
+						        auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
+						        if (_it != passive_hf_rsu_to_eavesdropper.end())
+						        {
+						            active_eaves = _it->second;
+						        }
+						    }
+						    cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
+ 						         << ") intercepted packet ID " << packet_id
+						         << " (flow " << flow_id << ") at t=" << Now().GetSeconds() << "s" << endl;
+						    cout << attack_tag() << " ④ Forwarding ORIGINAL packet to legitimate next hop ("
+						         << hop << ") as normal" << endl;
+						    cout << attack_tag() << " ⑤ Sending CONTENT-MODIFIED duplicate of packet ID "
+ 						         << packet_id << " (flow " << flow_id
+						         << ") to unauthorized Node(" << active_eaves
+						         << ") at t=" << Now().GetSeconds() << "s [EdDSA will FAIL — content fabricated]" << endl;
+						    // Reuse send_hidden_duplicate infrastructure — same channel, different eavesdropper
+						    g_hdup_rsu       = current_hop;
+						    g_hdup_eaves     = active_eaves;
+						    g_hdup_flow_id   = flow_id;
+						    g_hdup_packet_id = packet_id;
+						    g_hdup_channel   = arguments.channel;
+						    g_hdup_p_size    = arguments.p_size;
+						    g_hdup_timestamp = originail_timestamp;
+						    // PIR FIX: mark intentional eavesdrop so MacRx distinguishes the
+						    // hidden duplicate from ambient Wi-Fi overhear, and count it as a
+						    // scheduled copy (matches the passive-HF block bookkeeping).
+						    g_hdup_intentional = true;
+						    g_total_copies_scheduled++;
+						    // eFADE: record duplicate destination immediately at scheduling
+						    // to ensure it falls within the same measurement epoch as the incoming packet.
+						    fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
+						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
 						}
 						// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
                         // Malicious RSU intercepts packet and secretly duplicates it
@@ -120158,7 +120394,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
                         if (present_passive_hf_attack &&
                             passive_hf_malicious_nodes[current_hop] &&
-                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
+                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
+                            fade_is_flow_attacked(flow_id))
                         {
                             // PIR FIX: gate on attack_percentage — previously this block had
                             // NO probability check so every packet was always duplicated
@@ -120178,7 +120415,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
                             // send_hidden_duplicate needs 7, so stage args then trampoline.
                             g_hdup_rsu           = current_hop;
-                            g_hdup_eaves         = passive_hf_eavesdropper_index;
+                            // Use per-RSU eavesdropper from map; fall back to legacy index if not found
+                            {
+                            auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
+                            g_hdup_eaves = (_it != passive_hf_rsu_to_eavesdropper.end())
+                                ? _it->second
+                                : passive_hf_eavesdropper_index;
+                            }
                             g_hdup_flow_id       = flow_id;
                             g_hdup_packet_id     = packet_id;
                             g_hdup_channel       = arguments.channel;
@@ -120188,6 +120431,9 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // MacRx can distinguish it from ambient Wi-Fi overhear.
                             g_hdup_intentional    = true;
                             g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
+                            // eFADE: record duplicate destination immediately at scheduling
+                            // to ensure it falls within the same measurement epoch as the incoming packet.
+                            fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
                             Simulator::Schedule(Seconds(0.001),
                                                 send_hidden_duplicate_trampoline);
                             } // end if (atk)
@@ -120339,8 +120585,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			uint32_t destination =  (delta_at_nodes_inst+fid)->destination_f;
 			
 			// === ATTACK 7: Detect hidden duplicate arriving at eavesdropper ===
+            bool is_eavesdropper_node = (current_hop == passive_hf_eavesdropper_index);
+            for (auto& kv : passive_hf_rsu_to_eavesdropper)
+            {
+                if (kv.second == current_hop) { is_eavesdropper_node = true; break; }
+            }
             if (present_passive_hf_attack &&
-                current_hop == passive_hf_eavesdropper_index &&
+                is_eavesdropper_node &&
                 current_hop != destination)
             {
                 cout << attack_tag() << " ⑥ Vehicle B (node " << current_hop
@@ -120348,17 +120599,26 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                      << " (flow " << fid << ") at t=" << Now().GetSeconds()
                      << "s — PASSIVE HIDDEN FORWARDING CONFIRMED. Eavesdropping successful." << endl;
                 // FADE metrics: count intercepted packets for PIR calculation.
-                // PIR FIX: only count packets that were INTENTIONALLY duplicated
-                // (g_hdup_intentional == true).  Ambient Wi-Fi overhear at the
-                // eavesdropper node (which fires even at 0% attack intensity because
-                // 802.11 broadcast is physically visible to all nearby nodes) must NOT
-                // be counted — doing so caused PIR=100% regardless of attack_percentage.
-                if (g_hdup_intentional &&
-                    g_hdup_packet_id == (uint32_t)packet_ID &&
-                    g_hdup_flow_id   == (uint32_t)fid)
+                // PIR FIX (numerator): the previous approach matched against the
+                // single-slot globals g_hdup_packet_id / g_hdup_flow_id, which are
+                // overwritten on every interception.  With ~55 packets streaming
+                // through the RSU faster than the 0.001s duplicate delay, the globals
+                // were always stale by the time a duplicate arrived, so the match
+                // failed and fade_eavesdrop_counter stayed near 0 (PIR ~0% at all
+                // intensities).  Instead we identify the hidden duplicate by its own
+                // tag: send_hidden_duplicate stamps previous_senderId = the malicious
+                // RSU index.  A genuine hidden duplicate is therefore any packet
+                // arriving at the eavesdropper whose previous sender is a malicious
+                // node.  This is per-packet reliable and needs no global staging slot.
+                uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+                if (prev_sender < (uint32_t)total_size &&
+                    passive_hf_malicious_nodes[prev_sender])
                 {
-                    fade_eavesdrop_counter++;
-                    g_hdup_intentional = false;  // consume the flag
+                    if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
+                    {
+                        fade_eavesdropped_packets.insert({fid, packet_ID});
+                        fade_eavesdrop_counter++;
+                    }
                 }
                 // Drop it here — Vehicle B is not a legitimate hop,
                 // do NOT forward it further or mark delivery
@@ -120366,71 +120626,48 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
             }
             // === END ATTACK 7 ===
 
+            // Active HF receive confirmation
+            if (present_active_hf_attack)
+            {
+                bool is_active_eavesdropper = (current_hop == active_hf_eavesdropper_index);
+                for (auto& kv : passive_hf_rsu_to_eavesdropper)
+                {
+                    if (kv.second == current_hop) { is_active_eavesdropper = true; break; }
+                }
+                if (is_active_eavesdropper)
+                {
+                    cout << attack_tag() << " ⑥ Node " << current_hop
+                         << " RECEIVED content-modified duplicate of packet ID " << packet_ID
+                         << " (flow " << fid << ") at t=" << Now().GetSeconds()
+                         << "s — ACTIVE HIDDEN FORWARDING CONFIRMED. [EdDSA FAILS on this copy]" << endl;
+                    // PIR (numerator): count the leaked copy only if it is a genuine
+                    // hidden duplicate (previous sender is the malicious RSU), matching
+                    // the passive-HF receive block. This is PIR bookkeeping, NOT FADE
+                    // detection — FADE's flow-conservation check is left to decide
+                    // detection on its own.
+                    uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+                    if (prev_sender < (uint32_t)total_size &&
+                        active_hf_malicious_nodes[prev_sender])
+                    {
+                        if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
+                        {
+                            fade_eavesdropped_packets.insert({fid, packet_ID});
+                            fade_eavesdrop_counter++;
+                        }
+                    }
+                }
+            }
 
 			if(pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] == false)
 			{
 				pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] = true;
 
-				// FADE Component 3 (R2): count packet at any probe position along the path.
-				// We skip probe index 0 (source) because that is already counted in
-				// routing_dsrc_data_unicast.  The first-delivery guard above ensures
-				// each packet is counted exactly once per hop, mirroring the R2 counter
-				// semantics from the paper (Section 4.4).
-				// === SIGNATURE S2 DETECTION (fires at every hop) ===
-				// Checks per-hop forwarding delay at EVERY intermediate node
-				// against delta_max (Equation 3.6 in the proposal). This means
-				// a malicious RSU is caught as soon as the next hop receives the
-				// delayed packet, not only when it reaches the final destination.
-				// Only active when running Attack 2 (active_attack_variant == 1).
-				if(s2_detection_active && active_attack_variant == 1)
-				{
-					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					if(sender_sim_index < (uint32_t)var)
-					{
-						double t_recv_now      = Now().GetSeconds();
-						double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
-						if(t_fwd_by_sender > 0.0)
-						{
-							double hop_delay = t_recv_now - t_fwd_by_sender;
-							cout << "[S2] Hop delay from node " << sender_sim_index
-							     << " to node " << current_hop
-							     << " for flow " << fid
-							     << " packet " << packet_ID
-							     << " = " << hop_delay * 1000.0 << "ms" << endl;
-							if(hop_delay > delta_max_s2)
-							{
-								cout << "[S2] SIGNATURE S2 TRIGGERED!" << endl;
-								cout << "[S2] Hop delay " << hop_delay * 1000.0
-								     << "ms exceeds threshold "
-								     << delta_max_s2 * 1000.0 << "ms" << endl;
-								cout << "[S2] Node " << sender_sim_index
-								     << " detected as malicious attacker" << endl;
-								if(!is_detected_node[1][sender_sim_index])
-								{
-									record_detection_event(1, sender_sim_index);
-									cout << "[S2] record_detection_event fired for node "
-									     << sender_sim_index
-									     << " at t=" << Now().GetSeconds() << "s" << endl;
-									// FADE FIX: propagate S2 detection into FADE's per-flow result
-									if (fade_results.count(fid) && !fade_results[fid].detected)
-									{
-										fade_results[fid].detected       = true;
-										fade_results[fid].detection_time = Now().GetSeconds();
-										fade_results[fid].anomaly_type   = "hop_delay_s2";
-										cout << "[S2->FADE] fade_results[" << fid << "].detected=true" << endl;
-									}
-								}
-							}
-						}
-					}
-				}
-				// === END SIGNATURE S2 DETECTION ===
+				// eFADE: record inbound packet receipt at this node
+				fade_received[fid][current_hop].insert(packet_ID);
 
 				if(destination == current_hop)
 				{
 					destination_counter[fid]++;
-					// FADE FIX: R2 probe — count packet at destination probe position
-					fade_probe_increment(fid, current_hop);
 					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
 					
@@ -122248,10 +122485,46 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp)
 {
-    // wifidevices is indexed by internal node index (same as current_hop / hop
-    // throughout this codebase — NOT by NS-3 node ID).
-    Ptr<NetDevice> source_nd   = wifidevices.Get(malicious_rsu_index);
-    Ptr<NetDevice> eaves_nd    = wifidevices.Get(eavesdropper_index);
+    // eFADE: select the correct NetDevice container based on the transmission channel
+    // to avoid MAC address and frequency mismatch.
+    Ptr<NetDevice> source_nd;
+    Ptr<NetDevice> eaves_nd;
+
+    switch (channel)
+    {
+        case 172:
+            source_nd = wifidevices_172.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_172.Get(eavesdropper_index);
+            break;
+        case 174:
+            source_nd = wifidevices_174.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_174.Get(eavesdropper_index);
+            break;
+        case 176:
+            source_nd = wifidevices_176.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_176.Get(eavesdropper_index);
+            break;
+        case 178:
+            source_nd = wifidevices.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices.Get(eavesdropper_index);
+            break;
+        case 180:
+            source_nd = wifidevices_180.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_180.Get(eavesdropper_index);
+            break;
+        case 182:
+            source_nd = wifidevices_182.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_182.Get(eavesdropper_index);
+            break;
+        case 184:
+            source_nd = wifidevices_184.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_184.Get(eavesdropper_index);
+            break;
+        default:
+            source_nd = wifidevices.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices.Get(eavesdropper_index);
+            break;
+    }
 
     Address addr               = eaves_nd->GetAddress();
     Mac48Address dest_address  = Mac48Address::ConvertFrom(addr);
@@ -122274,6 +122547,8 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
          << ") sending HIDDEN DUPLICATE of packet ID " << packet_id
          << " (flow " << flow_id << ") to unauthorized Vehicle B (node "
          << eavesdropper_index << ") at t=" << Now().GetSeconds() << "s" << endl;
+
+
 
     // Send immediately — no delay, attack is passive (silent eavesdrop)
     Simulator::Schedule(Seconds(0.0), &WifiNetDevice::Send,
@@ -122381,7 +122656,10 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     packet_i->AddHeader(header);
 
     cout << "[ARCH 3 OVERRIDE] Node " << source << " sending on Channel " << arguments.channel << " to exact MAC " << dest_address << endl;
-    
+
+    // eFADE: record outbound destination at the source
+    fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
+
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
 
@@ -122601,6 +122879,40 @@ void initialize_flow_counters()
 {
 	vector<vector<vector<tuple<double,uint32_t,uint32_t>>>> all_sorted_delta_next_hop_flow_size_local;
 
+	// === TEST NETWORK: seed delta values BEFORE the table is built ===
+	// The per-next-hop schedule table (all_sorted_delta_next_hop_flow_size) is
+	// built from delta_values/load_f inside the fid loop below. Under routing_test
+	// Gurobi produces no usable delta, so we must seed the known test path HERE,
+	// before the loop reads it. (Previously this ran AFTER the loop, so the seeded
+	// values never entered the table and no packets were scheduled -> PDR 0.)
+	if (routing_test == true)
+	{
+		// Clear ALL delta/load for both flows to remove stale/old-topology edges
+		for (uint32_t f = 0; f < 2; f++) {
+			for (uint32_t i = 0; i < (uint32_t)total_size; i++) {
+				(load_at_nodes+f)->load_f[i] = 0.0;
+				for (uint32_t j = 0; j < (uint32_t)total_size; j++) {
+					(delta_at_nodes_inst+f)->delta_fi_inst[i].delta_values[j] = 0.0;
+					(delta_at_controller_inst+f)->delta_fi_inst[i].delta_values[j] = 0.0;
+				}
+			}
+		}
+
+		// Flow 0 (unit 0): source=0, path 0 -> 6 -> 1
+		(delta_at_nodes_inst+0)->delta_fi_inst[0].delta_values[6] = 1.0;  // 0 -> 6
+		(load_at_nodes+0)->load_f[0] = 1.0;
+		(delta_at_nodes_inst+0)->delta_fi_inst[6].delta_values[1] = 1.0;  // 6 -> 1
+		(load_at_nodes+0)->load_f[6] = 1.0;
+		cout << "[TEST NET] Delta seeded (pre-build): flow 0: 0->6->1, flow_size=" << flow_size << endl;
+
+		// Flow 1 (unit 1): source=3, path 3 -> 7 -> 4
+		(delta_at_nodes_inst+1)->delta_fi_inst[3].delta_values[7] = 1.0;  // 3 -> 7
+		(load_at_nodes+1)->load_f[3] = 1.0;
+		(delta_at_nodes_inst+1)->delta_fi_inst[7].delta_values[4] = 1.0;  // 7 -> 4
+		(load_at_nodes+1)->load_f[7] = 1.0;
+		cout << "[TEST NET] Delta seeded (pre-build): flow 1: 3->7->4, flow_size=" << flow_size << endl;
+	}
+
 	for (uint32_t fid=0;fid<2*flows;fid++)
   	{    
 		//(delta_at_nodes_inst+i)->flow_id = flow_ids[i];
@@ -122659,6 +122971,12 @@ void initialize_flow_counters()
 			{
 				uint32_t sub_flow_packets = ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j])*main_flow_packets;
 				innermost_sorted_delta_next_hop_flow_size.emplace_back((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j], j, sub_flow_packets);
+				if ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j] > 0.0) {
+				    std::cout << "[DELTA TABLE] flow " << fid << " : node " << i
+				              << " -> node " << j << " delta="
+				              << (delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j]
+				              << " pkts=" << sub_flow_packets << std::endl;
+				}
 				
 			}
 			
@@ -122707,23 +123025,6 @@ void initialize_flow_counters()
 	}
 	all_sorted_delta_next_hop_flow_size = all_sorted_delta_next_hop_flow_size_local;
 	//cout<<"Outermost list size "<<all_sorted_delta_next_hop_flow_size.size()<<endl;
-	// === TEST NETWORK: seed delta values so packets are actually scheduled ===
-	// When routing_test=true, Gurobi fails so delta_fi_inst and load_at_nodes
-	// remain zero. We seed them here for the known test path:
-	//   Flow 0: Node 0 (VehicleA) -> Node 2 (RSU) -> Node 1 (VehicleB/C)
-	// Only seeds if routing_test is true to avoid interfering with normal runs.
-	if (routing_test == true)
-	{
-		// Flow 0: source=0, path goes via RSU (index = N_Vehicles, which is 2 for Attack2 and 3 for Attack8)
-		uint32_t rsu_idx = N_Vehicles;
-		(delta_at_nodes_inst+0)->delta_fi_inst[0].delta_values[rsu_idx] = 1.0;  // node 0 sends to RSU
-		(load_at_nodes+0)->load_f[0] = 1.0;                                       // full load at source
-		// Flow 0: at RSU, forward to destination node 1
-		(delta_at_nodes_inst+0)->delta_fi_inst[rsu_idx].delta_values[1] = 1.0;  // RSU forwards to node 1
-		(load_at_nodes+0)->load_f[rsu_idx] = 1.0;
-		cout << "[TEST NET] Delta seeded: flow 0: node0->RSU(" << rsu_idx << ")->node1, flow_size=" << flow_size << endl;
-
-	}
 	cout<<"Initialized flow counters at "<<Now().GetSeconds()<<endl;
 
 }
@@ -123153,6 +123454,7 @@ void initiate_all_flows()
 		}
 		double tg = compute_link_delay(source, 1.0, 1, p_size, dest, zeta);
 		//cout<<"Time gap is "<<tg<<endl;
+		double stagger_offset = routing_test ? 0.0 : (fid*tg/2*(flows));
 		double subflow_start_time = 0.0;
 		uint32_t total_packet_counter = 0;
 		
@@ -123211,13 +123513,13 @@ void initiate_all_flows()
 					{
 						if(routing_algorithm == 1)
 						{
-							Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+							Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 							pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 						
 						}
 						else
 						{
-							Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+							Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 							pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 						}
 						sub_flow_counter++;
@@ -123240,13 +123542,13 @@ void initiate_all_flows()
 						{
 							if(routing_algorithm == 1)
 							{
-								Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+								Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 								pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 							
 							}
 							else
 							{
-								Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+								Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 								pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 							}
 							sub_flow_counter++;
@@ -123273,13 +123575,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123301,13 +123603,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123330,13 +123632,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123358,13 +123660,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123386,13 +123688,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123414,13 +123716,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -140393,20 +140695,24 @@ int main(int argc, char *argv[])
 	
     if (routing_test == true)
     {
-        if (active_attack_variant == 7)
+        if (active_attack_variant == 4 ||
+            active_attack_variant == 5 ||
+            active_attack_variant == 6 ||
+            active_attack_variant == 7)
         {
-            N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
-            // Default to single_cycle for attack 7 test — one packet per flow
-            // shows exactly one eavesdrop event clearly in the log.
-            // Override with --single_cycle=0 to restore full flow volume.
-            if (!single_cycle)
-                single_cycle = true;
+            N_Vehicles = 6; // VehicleA0(0), VehicleB0(1), Eavesdropper0(2), VehicleA1(3), VehicleB1(4), Eavesdropper1(5)
+            // NOTE: single_cycle is NOT auto-forced here. It defaults to false
+            // (full flow volume) and is controlled solely by --single_cycle on
+            // the command line. Pass --single_cycle=1 for a clean one-packet log
+            // when verifying the attack steps; omit it (or pass 0) for real
+            // PDR/PIR measurements with the full flow_size.
+            N_RSUs = 2;     // RSU0(6), RSU1(7)
         }
         else
         {
             N_Vehicles = 2; // original Attack 2 layout
+            N_RSUs = 1;     // single RSU at index 2 (selective_delay_malicious_nodes[2])
         }
-        N_RSUs = 1;
     }
 
     // Apply single_cycle: cap every flow to exactly 1 packet.
@@ -140489,28 +140795,30 @@ int main(int argc, char *argv[])
 	    // // positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
 	    // // positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
 	    // // positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
-	    // // positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
-	    // // positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
-	    // // positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
-	    // // positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
-	    // // positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
-	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
-	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
-	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
-
-		if (active_attack_variant == 7)
+		if (active_attack_variant == 4 ||
+            active_attack_variant == 5 ||
+            active_attack_variant == 6 ||
+            active_attack_variant == 7)
     {
-        // Attack 7 topology:
-        // Vehicle A (node 0) at (300, 150, 0)
-        // Vehicle C (node 1) at (800, 150, 0) — legitimate destination
-        // Vehicle B (node 2) at (550, 300, 0) — eavesdropper, close to RSU
-        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0: Vehicle A (sender)
-        positionAlloc->Add(Vector(800.0, 150.0, 0.0)); // Node 1: Vehicle C (legit dest)
-        positionAlloc->Add(Vector(550.0, 300.0, 0.0)); // Node 2: Vehicle B (eavesdropper)
-        cout << attack_tag() << " [INIT] Vehicle A  (node 0): (300, 150, 0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle C  (node 1): (800, 150, 0) - legit destination" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B  (node 2): (550, 300, 0) - eavesdropper" << endl;
-        cout << attack_tag() << " [INIT] RSU        (node 3): (550,  75, 0) - MALICIOUS" << endl;
+        // Two-unit topology setup (6 Vehicles):
+        // Node 0: Vehicle A0
+        // Node 1: Vehicle B0
+        // Node 2: Eavesdropper 0
+        // Node 3: Vehicle A1
+        // Node 4: Vehicle B1
+        // Node 5: Eavesdropper 1
+        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0
+        positionAlloc->Add(Vector(600.0, 150.0, 0.0)); // Node 1
+        positionAlloc->Add(Vector(375.0, 220.0, 0.0)); // Node 2
+        positionAlloc->Add(Vector(1300.0, 150.0, 0.0)); // Node 3
+        positionAlloc->Add(Vector(1600.0, 150.0, 0.0)); // Node 4
+        positionAlloc->Add(Vector(1375.0, 220.0, 0.0)); // Node 5
+        cout << attack_tag() << " [INIT] Vehicle A0 (node 0): (300,150,0)" << endl;
+        cout << attack_tag() << " [INIT] Vehicle B0 (node 1): (600,150,0)" << endl;
+        cout << attack_tag() << " [INIT] Eavesdropper 0 (node 2): (375,220,0)" << endl;
+        cout << attack_tag() << " [INIT] Vehicle A1 (node 3): (1300,150,0)" << endl;
+        cout << attack_tag() << " [INIT] Vehicle B1 (node 4): (1600,150,0)" << endl;
+        cout << attack_tag() << " [INIT] Eavesdropper 1 (node 5): (1375,220,0)" << endl;
     }
     else
     {
@@ -141032,14 +141340,53 @@ int main(int argc, char *argv[])
   	lte_base_posx = 450;
   	lte_base_posy = 600;
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-    rsuPositionAlloc->Add(Vector(600.0, 450.0, 0.0)); // RSU: above the A-B midpoint
+    
+    if (N_RSUs == 5 && active_attack_variant == 7)
+    {
+      // Attack 8 (variant 7): 5 RSUs spaced along the 2200m corridor
+      // above the vehicle path (y=150) at y=100, serving groups of ~9 vehicles each
+      rsuPositionAlloc->Add(Vector(500.0, 100.0, 0.0));   // RSU 45: serves vehicles 0-8
+      rsuPositionAlloc->Add(Vector(1100.0, 100.0, 0.0));  // RSU 46: serves vehicles 9-17
+      rsuPositionAlloc->Add(Vector(1700.0, 100.0, 0.0));  // RSU 47: serves vehicles 18-26
+      rsuPositionAlloc->Add(Vector(1900.0, 100.0, 0.0));  // RSU 48: serves vehicles 27-35
+      rsuPositionAlloc->Add(Vector(2100.0, 100.0, 0.0));  // RSU 49: serves vehicles 36-42
+      cout << "[TEST NETWORK] Attack 8 topology (routing_test=true, active_attack_variant=7):" << endl;
+      cout << "[TEST NETWORK] 43 Vehicles (0-42) along y=150, x from 100 to 2200" << endl;
+      cout << "[TEST NETWORK] 5 Eavesdroppers (43-47) along y=300, spaced for RSU proximity" << endl;
+      cout << "[TEST NETWORK] 5 RSUs (45-49) along y=100, serving vehicle groups" << endl;
+    }
+    else
+    {
+      // Original test network: 1 RSU for simple 3-node case
+      // Active/Passive Hidden Forwarding variants all share the same 4-node
+      // Attack-8 layout: RSU(3) on the A-C line so it is the real relay hop,
+      // eavesdropper B(2) 120m below. Variants 4 (Attack5 CP), 5 (Attack6 DP),
+      // 6 (Attack7 passive CP) and 7 (Attack8 passive DP) use it identically.
+      if (active_attack_variant == 4 ||
+          active_attack_variant == 5 ||
+          active_attack_variant == 6 ||
+          active_attack_variant == 7)
+      {
+        // 2-unit topology RSUs (nodes 6-7):
+        rsuPositionAlloc->Add(Vector(450.0, 150.0, 0.0)); // Node 6: RSU0
+        rsuPositionAlloc->Add(Vector(1450.0, 150.0, 0.0)); // Node 7: RSU1
+        cout << "[TEST NETWORK] 2-unit RSU positions set:" << endl;
+        cout << "[TEST NETWORK] RSU0 (node 6): (450,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU1 (node 7): (1450,150,0)" << endl;
+      }
+      else
+      {
+        rsuPositionAlloc->Add(Vector(600.0, 450.0, 0.0)); // RSU: above the A-B midpoint
+        cout << "[TEST NETWORK] Positions set (spread for NetAnim):" << endl;
+        cout << "[TEST NETWORK] Vehicle A   : (300, 300, 0)  Node 0" << endl;
+        cout << "[TEST NETWORK] Vehicle B   : (900, 300, 0)  Node 1" << endl;
+        cout << "[TEST NETWORK] RSU         : (600, 450, 0)  Node index 2" << endl;
+        cout << "[TEST NETWORK] Controller  : (600, 600, 0)" << endl;
+        cout << "[TEST NETWORK] Management  : (300, 600, 0)" << endl;
+      }
+    }
+    
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
-    cout << "[TEST NETWORK] Positions set (spread for NetAnim):" << endl;
-    cout << "[TEST NETWORK] Vehicle A   : (300, 300, 0)  Node 0" << endl;
-    cout << "[TEST NETWORK] Vehicle B   : (900, 300, 0)  Node 1" << endl;
-    cout << "[TEST NETWORK] RSU         : (600, 450, 0)  Node index 2" << endl;
-    cout << "[TEST NETWORK] Controller  : (600, 600, 0)" << endl;
-    cout << "[TEST NETWORK] Management  : (300, 600, 0)" << endl;
     
   }
   
@@ -141876,15 +142223,13 @@ if (architecture == 3 && N_Vehicles > 0)
     					{
     						if(i==0)
     						{
-    							// destination = 11;
-								destination = 1; //test
+								destination = 1;
     							source = 0;
     						}
     						else
     						{
-    							// source = 11;
-								source = 1;
-    							destination = 0;
+								source = 3;
+    							destination = 4;
     						}
     					}
     					else
@@ -142437,14 +142782,22 @@ if (architecture == 3 && N_Vehicles > 0)
   
   Simulator::Stop(Seconds(simTime));
   
-    Ptr<MobilityModel> mob0 = NodeList::GetNode(2)->GetObject<MobilityModel>(); // Vehicle 0 (Node ID 2)
-    Ptr<MobilityModel> mob1 = NodeList::GetNode(3)->GetObject<MobilityModel>(); // Vehicle 1 (Node ID 3)
-    Ptr<MobilityModel> mobRSU = RSU_Nodes.Get(0)->GetObject<MobilityModel>();   // The RSU
-    
-    // Put them all within 10 meters of each other!
-    mobRSU->SetPosition(Vector(500.0, 150.0, 0.0));
-    mob0->SetPosition(Vector(300.0, 150.0, 0.0)); 
-    mob1->SetPosition(Vector(700.0, 150.0, 0.0));
+    // Position override: only apply the 4-node test layout when NOT running Attacks 5, 6, 7, 8
+    // (active_attack_variant==4/5/6/7 with routing_test=true uses its own positionAlloc above)
+    if (routing_test &&
+        active_attack_variant != 4 &&
+        active_attack_variant != 5 &&
+        active_attack_variant != 6 &&
+        active_attack_variant != 7)
+    {
+        Ptr<MobilityModel> mob0 = NodeList::GetNode(2)->GetObject<MobilityModel>(); // Vehicle 0 (Node ID 2)
+        Ptr<MobilityModel> mob1 = NodeList::GetNode(3)->GetObject<MobilityModel>(); // Vehicle 1 (Node ID 3)
+        Ptr<MobilityModel> mobRSU = RSU_Nodes.Get(0)->GetObject<MobilityModel>();   // The RSU
+        
+        mobRSU->SetPosition(Vector(500.0, 150.0, 0.0));
+        mob0->SetPosition(Vector(300.0, 150.0, 0.0)); 
+        mob1->SetPosition(Vector(700.0, 150.0, 0.0));
+    }
 
 
   
@@ -142454,14 +142807,12 @@ if (architecture == 3 && N_Vehicles > 0)
 // =====================================================
 fade_csv.open("fade_results.csv");
 fade_csv << "FlowID,"
-         << "PathLength,"
-         << "OptimalK,"
-         << "ProbeNodes,"
          << "AnomalyType,"
          << "Detected,"
          << "DetectionTime,"
          << "LocalisedFrom,"
-         << "LocalisedTo"
+         << "LocalisedTo,"
+         << "DuplicatingNode"
          << std::endl;
 
 // =====================================================
@@ -142476,14 +142827,22 @@ fade_csv << "FlowID,"
 auto seed_routing_test_tables = []()
 {
     if (!routing_test) return;
-    uint32_t rsu_idx = N_Vehicles;  // 2 for Attack2, 3 for Attack8
-    uint32_t seed_path[total_size];
-    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path[_p] = large;
-    seed_path[0] = 0;        // Vehicle A
-    seed_path[1] = rsu_idx;  // RSU
-    seed_path[2] = 1;        // Vehicle B/C
-    update_proposed_route(0, 1, seed_path);
-    std::cout << "[FADE SEED] proposed_routing_tables seeded: 0->" << rsu_idx << "->1 at t="
+    uint32_t seed_path_0[total_size];
+    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path_0[_p] = large;
+    seed_path_0[0] = 0;        // VehicleA0
+    seed_path_0[1] = 6;        // RSU0
+    seed_path_0[2] = 1;        // VehicleB0
+    update_proposed_route(0, 1, seed_path_0);
+    std::cout << "[FADE SEED] proposed_routing_tables seeded: 0->6->1 at t="
+              << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    uint32_t seed_path_1[total_size];
+    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path_1[_p] = large;
+    seed_path_1[0] = 3;        // VehicleA1
+    seed_path_1[1] = 7;        // RSU1
+    seed_path_1[2] = 4;        // VehicleB1
+    update_proposed_route(3, 4, seed_path_1);
+    std::cout << "[FADE SEED] proposed_routing_tables seeded: 3->7->4 at t="
               << Simulator::Now().GetSeconds() << "s" << std::endl;
 };
 Simulator::Schedule(Seconds(1.060), seed_routing_test_tables);
@@ -142502,26 +142861,15 @@ Simulator::Run();
 for (auto &entry : fade_flow_config)
 {
     uint32_t            flow_id = entry.first;
-    FadeFlowConfig     &cfg     = entry.second;
     FadeDetectionResult &res    = fade_results[flow_id];
 
-    // Build probe-nodes string
-    std::string probe_str;
-    for (uint32_t p = 0; p < cfg.k; p++)
-    {
-        if (p > 0) probe_str += "-";
-        probe_str += std::to_string(cfg.probe_nodes[p]);
-    }
-
     fade_csv << flow_id                << ","
-             << cfg.path_len           << ","
-             << cfg.k                  << ","
-             << probe_str              << ","
              << res.anomaly_type       << ","
              << res.detected           << ","
              << res.detection_time     << ","
              << res.loc_from           << ","
-             << res.loc_to
+             << res.loc_to             << ","
+             << res.duplicating_node
              << std::endl;
 }
 
