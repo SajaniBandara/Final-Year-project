@@ -114771,7 +114771,10 @@ std::ofstream fade_csv;
 std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> fade_received;
 // forwarded[flow_id][node][packet_id] = set of distinct next-hop destinations
 std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded;
-std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded_all;
+uint32_t pp_tp_global = 0;
+uint32_t pp_tn_global = 0;
+uint32_t pp_fp_global = 0;
+uint32_t pp_fn_global = 0;
 
 // PIR counter — incremented in MacRx before the eavesdropper-return early exit
 uint32_t fade_eavesdrop_counter = 0;
@@ -114897,26 +114900,10 @@ bool fade_is_flow_active(uint32_t flow_id)
 }
 
 
-// CSV columns:
-//   attack_variant, attack_percentage,
-//   total_flows, total_sent, total_received,
-//   pdr, pir,
-//   tp, fp, tn, fn, mcc
-void fade_save_metrics()
+static void fade_find_active_attack_flow_and_node(int32_t &atk_fid, int32_t &mal_node)
 {
-    // Count total sent across all flows
-    uint32_t total_flows    = 0;
-    for (auto &entry : fade_flow_config)
-    {
-        uint32_t flow_id = entry.first;
-        if (!entry.second.configured) continue;
-        if (!fade_is_flow_active(flow_id)) continue;
-        total_flows++;
-    }
-
-    uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
-    int32_t atk_fid = -1;
-    int32_t mal_node = -1;
+    atk_fid = -1;
+    mal_node = -1;
     for (auto const &entry : fade_flow_config)
     {
         uint32_t flow_id = entry.first;
@@ -114941,25 +114928,41 @@ void fade_save_metrics()
 
     if (atk_fid == -1 || mal_node == -1)
     {
-        std::cout << "[eFADE PP WARNING] No malicious node found on any active flow path. Using fallback Flow 0 Node 6." << std::endl;
         atk_fid = 0;
         mal_node = 6;
     }
+}
+
+
+// CSV columns:
+//   attack_variant, attack_percentage,
+//   total_flows, total_sent, total_received,
+//   pdr, pir,
+//   tp, fp, tn, fn, mcc
+void fade_save_metrics()
+{
+    // Count total sent across all flows
+    uint32_t total_flows    = 0;
+    for (auto &entry : fade_flow_config)
+    {
+        uint32_t flow_id = entry.first;
+        if (!entry.second.configured) continue;
+        if (!fade_is_flow_active(flow_id)) continue;
+        total_flows++;
+    }
+
+    int32_t atk_fid = -1;
+    int32_t mal_node = -1;
+    fade_find_active_attack_flow_and_node(atk_fid, mal_node);
 
     std::cout << "[eFADE PP] counting per-packet at flow " << atk_fid
               << " node " << mal_node
-              << " (forwarded packets=" << fade_forwarded_all[atk_fid][mal_node].size() << ")" << std::endl;
+              << " (forwarded packets=" << (pp_tp_global + pp_tn_global + pp_fp_global + pp_fn_global) << ")" << std::endl;
 
-    for (auto const &pkt_entry : fade_forwarded_all[atk_fid][mal_node])
-    {
-        uint32_t pid = pkt_entry.first;
-        bool duplicated = (pkt_entry.second.size() >= 2);
-        bool flagged    = duplicated;   // detector keys on the same signal
-        if (duplicated && flagged)   tp++;
-        else if (!duplicated && !flagged) tn++;
-        else if (duplicated && !flagged)  fn++;
-        else fp++;
-    }
+    uint32_t tp = pp_tp_global;
+    uint32_t fp = pp_fp_global;
+    uint32_t tn = pp_tn_global;
+    uint32_t fn = pp_fn_global;
 
     // True end-to-end PDR across the whole simulation:
     //   total delivered = sum of destination_counter[fid] over active flows
@@ -115036,9 +115039,15 @@ void fade_save_metrics()
 
     mfile.close();
 
+    double dr = (tp + fn > 0) ? (double)tp / (double)(tp + fn) : 0.0;
+    double fpr = (fp + tn > 0) ? (double)fp / (double)(fp + tn) : 0.0;
+
     std::cout << "[FADE METRICS] variant=" << active_attack_variant
               << " atk%=" << attack_percentage
               << " PDR=" << pdr << "% PIR=" << pir << "%"
+              << std::fixed << std::setprecision(2)
+              << " DR=" << dr
+              << " FPR=" << fpr
               << " MCC=" << mcc
               << " (TP=" << tp << " FP=" << fp
               << " TN=" << tn << " FN=" << fn << ")"
@@ -115118,17 +115127,25 @@ void fade_detect_anomaly()
         }
     }
 
-    // Accumulate epoch's forwarded packets to fade_forwarded_all
-    for (auto const &f_entry : fade_forwarded)
+    // Accumulate epoch's forwarded packets to global counters (instead of unioning into fade_forwarded_all)
+    int32_t epoch_atk_fid = -1;
+    int32_t epoch_mal_node = -1;
+    fade_find_active_attack_flow_and_node(epoch_atk_fid, epoch_mal_node);
+
+    if (epoch_atk_fid != -1 && epoch_mal_node != -1)
     {
-        uint32_t fid = f_entry.first;
-        for (auto const &n_entry : f_entry.second)
+        auto it_fid = fade_forwarded.find(epoch_atk_fid);
+        if (it_fid != fade_forwarded.end())
         {
-            uint32_t node = n_entry.first;
-            for (auto const &p_entry : n_entry.second)
+            auto it_node = it_fid->second.find(epoch_mal_node);
+            if (it_node != it_fid->second.end())
             {
-                uint32_t pid = p_entry.first;
-                fade_forwarded_all[fid][node][pid].insert(p_entry.second.begin(), p_entry.second.end());
+                for (auto const &p_entry : it_node->second)
+                {
+                    bool dup = (p_entry.second.size() >= 2);
+                    if (dup) pp_tp_global++;   // duplicated and detected
+                    else     pp_tn_global++;   // not duplicated, correctly clean
+                }
             }
         }
     }
@@ -117299,113 +117316,173 @@ void write_security_metrics_csv()
 //   cur_MCC, avg_MCC, cur_DR%, avg_DR%, cur_FPR%, avg_FPR%,
 //   cur_mit_ms, avg_mit_ms, TP, FP, TN, FN, cur_PIR%, avg_PIR%
 // ============================================================
-void fade_write_per_cycle_csv()
+void fade_write_per_cycle_csv(std::string dir)
 {
-	fstream fout;
-	string filename;
-	double cycle = data_gathering_cycle_number - 1.0;
-	if (cycle < 1.0)
-		cycle = 1.0;
-
-	int attack_id = 1;
-	switch (active_attack_variant)
+	if (!dir.empty() && dir.back() != '/' && dir.back() != '\\')
 	{
-		case (-1): break;
-		case (0): attack_id = 1; break;
-		case (1): attack_id = 2; break;
-		case (2): attack_id = 3; break;
-		case (3): attack_id = 4; break;
-		case (4): attack_id = 5; break;
-		case (5): attack_id = 6; break;
-		case (6): attack_id = 7; break;
-		case (7): attack_id = 8; break;
-		default:  attack_id = 1; break;
+		dir += "/";
 	}
 
-	const string base = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
-	if (active_attack_variant == -1)
+	// 1. Original scenario-specific FADE file writing (using dynamic dir)
 	{
-		filename = base + "FADE_baseline.csv";
+		fstream fout;
+		string filename;
+		double cycle = data_gathering_cycle_number - 1.0;
+		if (cycle < 1.0)
+			cycle = 1.0;
+
+		int attack_id = 1;
+		switch (active_attack_variant)
+		{
+			case (-1): break;
+			case (0): attack_id = 1; break;
+			case (1): attack_id = 2; break;
+			case (2): attack_id = 3; break;
+			case (3): attack_id = 4; break;
+			case (4): attack_id = 5; break;
+			case (5): attack_id = 6; break;
+			case (6): attack_id = 7; break;
+			case (7): attack_id = 8; break;
+			default:  attack_id = 1; break;
+		}
+
+		if (active_attack_variant == -1)
+		{
+			filename = dir + "FADE_baseline.csv";
+		}
+		else
+		{
+			int pct = 0;
+			if      (attack_percentage <= 0)   pct = 0;
+			else if (attack_percentage <= 20)  pct = 20;
+			else if (attack_percentage <= 40)  pct = 40;
+			else if (attack_percentage <= 60)  pct = 60;
+			else if (attack_percentage <= 80)  pct = 80;
+			else                               pct = 100;
+			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + ".csv";
+		}
+
+		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
+		for (auto &entry : fade_flow_config)
+		{
+			uint32_t flow_id = entry.first;
+			if (!entry.second.configured) continue;
+			if (!fade_is_flow_active(flow_id)) continue;
+
+			bool attacked = fade_is_flow_attacked(flow_id);
+			bool detected = fade_results[flow_id].detected;
+			if ( attacked &&  detected) tp++;
+			if (!attacked &&  detected) fp++;
+			if (!attacked && !detected) tn++;
+			if ( attacked && !detected) fn++;
+		}
+
+		double cur_pdr = 100.0 * current_packet_delivery_ratio;
+
+		uint32_t d_eaves  = fade_eavesdrop_counter   - fade_prev_eavesdrop;
+		uint32_t d_copies = g_total_copies_scheduled - fade_prev_copies;
+		double cur_pir = (d_copies > 0)
+			? 100.0 * (double)d_eaves / (double)d_copies
+			: 0.0;
+		fade_prev_eavesdrop = fade_eavesdrop_counter;
+		fade_prev_copies    = g_total_copies_scheduled;
+
+		double dTP = (double)tp, dFP = (double)fp, dTN = (double)tn, dFN = (double)fn;
+		double dr_den  = dTP + dFN;
+		double cur_dr  = (dr_den  > 0.0) ? dTP / dr_den  : 0.0;
+		double fpr_den = dFP + dTN;
+		double cur_fpr = (fpr_den > 0.0) ? dFP / fpr_den : 0.0;
+		double eps = 1e-6;
+		double mcc_den = sqrt((dTP+dFP+eps)*(dTP+dFN+eps)*(dTN+dFP+eps)*(dTN+dFN+eps));
+		double cur_mcc = ((dTP*dTN) - (dFP*dFN)) / mcc_den;
+
+		fade_cum_pdr += cur_pdr;
+		fade_cum_pir += cur_pir;
+		fade_cum_mcc += cur_mcc;
+		fade_cum_dr  += cur_dr;
+		fade_cum_fpr += cur_fpr;
+		double avg_pdr = fade_cum_pdr / cycle;
+		double avg_pir = fade_cum_pir / cycle;
+		double avg_mcc = fade_cum_mcc / cycle;
+		double avg_dr  = fade_cum_dr  / cycle;
+		double avg_fpr = fade_cum_fpr / cycle;
+
+		fout.open(filename, ios::out | ios::app);
+		fout << (uint32_t)cycle << ", "
+		     << cur_pdr << ", "
+		     << avg_pdr << ", "
+		     << current_latency_routing * 1000.0 << ", "
+		     << average_latency_routing * 1000.0 << ", "
+		     << cur_mcc << ", "
+		     << avg_mcc << ", "
+		     << (cur_dr  * 100.0) << ", "
+		     << (avg_dr  * 100.0) << ", "
+		     << (cur_fpr * 100.0) << ", "
+		     << (avg_fpr * 100.0) << ", "
+		     << 0.0 << ", "
+		     << 0.0 << ", "
+		     << tp << ", "
+		     << fp << ", "
+		     << tn << ", "
+		     << fn << ", "
+		     << cur_pir << ", "
+		     << avg_pir << "\n";
+		fout.close();
 	}
-	else
+
+	// 2. New unified/per-cycle CSV file writing (routing_fade_per_cycle.csv)
 	{
-		int pct = 0;
-		if      (attack_percentage <= 0)   pct = 0;
-		else if (attack_percentage <= 20)  pct = 20;
-		else if (attack_percentage <= 40)  pct = 40;
-		else if (attack_percentage <= 60)  pct = 60;
-		else if (attack_percentage <= 80)  pct = 80;
-		else                               pct = 100;
-		filename = base + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + ".csv";
+		double cycle = data_gathering_cycle_number - 1.0;
+		if (cycle < 1.0) cycle = 1.0;
+		
+		uint32_t cycle_id = (uint32_t)cycle;
+		uint32_t flow_level_tp = 0;
+		uint32_t flow_level_fp = 0;
+		uint32_t flow_level_tn = 0;
+		uint32_t flow_level_fn = 0;
+		uint32_t pp_level_tp = 0;
+		uint32_t pp_level_fp = 0;
+		uint32_t pp_level_tn = 0;
+		uint32_t pp_level_fn = 0;
+
+		if (routing_algorithm == 4 && active_attack_variant != -1)
+		{
+			for (auto &entry : fade_flow_config)
+			{
+				uint32_t flow_id = entry.first;
+				if (!entry.second.configured) continue;
+				if (!fade_is_flow_active(flow_id)) continue;
+
+				bool attacked = fade_is_flow_attacked(flow_id);
+				bool detected = fade_results[flow_id].detected;
+				if ( attacked &&  detected) flow_level_tp++;
+				if (!attacked &&  detected) flow_level_fp++;
+				if (!attacked && !detected) flow_level_tn++;
+				if ( attacked && !detected) flow_level_fn++;
+			}
+			
+			pp_level_tp = pp_tp_global;
+			pp_level_fp = pp_fp_global;
+			pp_level_tn = pp_tn_global;
+			pp_level_fn = pp_fn_global;
+		}
+
+		std::string filename = dir + "routing_fade_per_cycle.csv";
+		std::fstream fout;
+		fout.open(filename, std::ios::out | std::ios::app);
+		fout << cycle_id << ", "
+		     << flow_level_tp << ", "
+		     << flow_level_fp << ", "
+		     << flow_level_tn << ", "
+		     << flow_level_fn << ", "
+		     << pp_level_tp << ", "
+		     << pp_level_fp << ", "
+		     << pp_level_tn << ", "
+		     << pp_level_fn << "\n";
+		fout.close();
+
+		std::cout << "FADE per-cycle row written to " << filename << std::endl;
 	}
-
-	uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
-	for (auto &entry : fade_flow_config)
-	{
-		uint32_t flow_id = entry.first;
-		if (!entry.second.configured) continue;
-		if (!fade_is_flow_active(flow_id)) continue;
-
-		bool attacked = fade_is_flow_attacked(flow_id);
-		bool detected = fade_results[flow_id].detected;
-		if ( attacked &&  detected) tp++;
-		if (!attacked &&  detected) fp++;
-		if (!attacked && !detected) tn++;
-		if ( attacked && !detected) fn++;
-	}
-
-	double cur_pdr = 100.0 * current_packet_delivery_ratio;
-
-	uint32_t d_eaves  = fade_eavesdrop_counter   - fade_prev_eavesdrop;
-	uint32_t d_copies = g_total_copies_scheduled - fade_prev_copies;
-	double cur_pir = (d_copies > 0)
-		? 100.0 * (double)d_eaves / (double)d_copies
-		: 0.0;
-	fade_prev_eavesdrop = fade_eavesdrop_counter;
-	fade_prev_copies    = g_total_copies_scheduled;
-
-	double dTP = (double)tp, dFP = (double)fp, dTN = (double)tn, dFN = (double)fn;
-	double dr_den  = dTP + dFN;
-	double cur_dr  = (dr_den  > 0.0) ? dTP / dr_den  : 0.0;
-	double fpr_den = dFP + dTN;
-	double cur_fpr = (fpr_den > 0.0) ? dFP / fpr_den : 0.0;
-	double eps = 1e-6;
-	double mcc_den = sqrt((dTP+dFP+eps)*(dTP+dFN+eps)*(dTN+dFP+eps)*(dTN+dFN+eps));
-	double cur_mcc = ((dTP*dTN) - (dFP*dFN)) / mcc_den;
-
-	fade_cum_pdr += cur_pdr;
-	fade_cum_pir += cur_pir;
-	fade_cum_mcc += cur_mcc;
-	fade_cum_dr  += cur_dr;
-	fade_cum_fpr += cur_fpr;
-	double avg_pdr = fade_cum_pdr / cycle;
-	double avg_pir = fade_cum_pir / cycle;
-	double avg_mcc = fade_cum_mcc / cycle;
-	double avg_dr  = fade_cum_dr  / cycle;
-	double avg_fpr = fade_cum_fpr / cycle;
-
-	fout.open(filename, ios::out | ios::app);
-	fout << (uint32_t)cycle << ", "
-	     << cur_pdr << ", "
-	     << avg_pdr << ", "
-	     << current_latency_routing * 1000.0 << ", "
-	     << average_latency_routing * 1000.0 << ", "
-	     << cur_mcc << ", "
-	     << avg_mcc << ", "
-	     << (cur_dr  * 100.0) << ", "
-	     << (avg_dr  * 100.0) << ", "
-	     << (cur_fpr * 100.0) << ", "
-	     << (avg_fpr * 100.0) << ", "
-	     << 0.0 << ", "
-	     << 0.0 << ", "
-	     << tp << ", "
-	     << fp << ", "
-	     << tn << ", "
-	     << fn << ", "
-	     << cur_pir << ", "
-	     << avg_pir << "\n";
-	fout.close();
-	cout << "FADE per-cycle row written to " << filename << endl;
 }
 
 void calculate_performance_evaluation_metrics()
@@ -117423,8 +117500,17 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
+
+	// Resolve the results directory dynamically using the USER or HOME environment variable
+	std::string results_dir = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+	char* home_env = getenv("HOME");
+	if (home_env != nullptr)
+	{
+		results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+	}
+
 	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
-	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv);
+	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv, results_dir);
 }
 
 
@@ -120351,7 +120437,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// In the real system, EdDSA would fail on the modified copy.
 						if (present_active_hf_attack &&
 						    active_hf_malicious_nodes[current_hop] &&
-						    fade_is_flow_attacked(flow_id))
+						    flow_id == hf_target_flow_id &&
+						    GetBooleanWithProbability(attack_percentage, current_hop))
 						{
 						    uint32_t active_eaves = active_hf_eavesdropper_index;
 						    {
@@ -120395,14 +120482,9 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         if (present_passive_hf_attack &&
                             passive_hf_malicious_nodes[current_hop] &&
                             pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
-                            fade_is_flow_attacked(flow_id))
+                            flow_id == hf_target_flow_id &&
+                            GetBooleanWithProbability(attack_percentage, current_hop))
                         {
-                            // PIR FIX: gate on attack_percentage — previously this block had
-                            // NO probability check so every packet was always duplicated
-                            // regardless of attack_percentage, causing PIR=100% at all intensities.
-                            bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
-                            if (atk)
-                            {
                             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
                                  << ") intercepted packet ID " << packet_id
                                  << " (flow " << flow_id << ") at t="
@@ -120436,7 +120518,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
                             Simulator::Schedule(Seconds(0.001),
                                                 send_hidden_duplicate_trampoline);
-                            } // end if (atk)
                         }
                         // === END ATTACK 7 ===
 
@@ -142715,13 +142796,13 @@ if (architecture == 3 && N_Vehicles > 0)
   	Simulator::Schedule (Seconds (t), print_time);
   }
  
+  AnimationInterface anim("routing.xml");
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Phy/MonitorSnifferRx", MakeCallback (&Rx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/MacRx", MakeCallback (&MacRx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/MacTx", MakeCallback (&MacTx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Enqueue",MakeCallback (&Enqueue));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/nipuni/ns-allinone-3.35/ns-3.35/routing.xml");  
   // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
