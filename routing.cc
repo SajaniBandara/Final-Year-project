@@ -114585,13 +114585,11 @@ double previous_cumulative_load_imbalance = 0.0;
 // ============================================================
 
 // Number of attack variants defined in proposal
-#define NUM_ATTACK_VARIANTS 10
+#define NUM_ATTACK_VARIANTS 8
 
 // Per-variant confusion matrix counters
 // Index 0-3: Selective Time Delay variants (S1-S4)
 // Index 4-7: Hidden Forwarding variants    (S5-S8)
-// Index 8:   Slow TCAM Exhaustion - control plane (Attack 3)
-// Index 9:   Slow TCAM Exhaustion - data plane    (Attack 4)
 uint32_t sec_TP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_FP[NUM_ATTACK_VARIANTS] = {0};
 uint32_t sec_TN[NUM_ATTACK_VARIANTS] = {0};
@@ -114682,14 +114680,12 @@ inline std::string attack_tag()
     {
         case 0:  return "[ATTACK1]";
         case 1:  return "[ATTACK2]";
-        case 2:  return "[ATTACK3]";
-        case 3:  return "[ATTACK4]";
+        case 2:  return "[ATTACK3-TCAM-CP]";
+        case 3:  return "[ATTACK4-TCAM-DP]";
         case 4:  return "[ATTACK5]";
         case 5:  return "[ATTACK6]";
         case 6:  return "[ATTACK7]";
         case 7:  return "[ATTACK8]";
-        case 8:  return "[ATTACK3-TCAM-CP]";
-        case 9:  return "[ATTACK4-TCAM-DP]";
         default: return "[ATTACK?]";
     }
 }
@@ -115085,6 +115081,14 @@ void fade_save_metrics()
 void fade_detect_anomaly()
 {
     double now = Simulator::Now().GetSeconds();
+	
+	 if (active_attack_variant < 4 || active_attack_variant > 7)
+    {
+        fade_received.clear();
+        fade_forwarded.clear();
+        Simulator::Schedule(Seconds(FADE_EPOCH_SEC), &fade_detect_anomaly);
+        return;
+    }
 
     for (auto &entry : fade_flow_config)
     {
@@ -115207,9 +115211,9 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
 // TAP function prototypes
-bool tap_check_defaulter_list(uint32_t sender_current_hop);
+//bool tap_check_defaulter_list(uint32_t sender_current_hop);
 void tap_report_to_controller(uint32_t attacker_current_hop);
-void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
+//void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
 void calculate_tap_security_metrics();
 void write_tap_csv();
 void initialise_stub_attack_state()
@@ -115299,7 +115303,7 @@ void initialise_stub_attack_state()
             cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
             break;
 
-        case (8): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
+        case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
             // Malicious controller floods every RSU's reactive TCAM with junk
             // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
             // (current_hop = ns3_id - 2) is marked malicious for ground truth.
@@ -115315,7 +115319,7 @@ void initialise_stub_attack_state()
                  << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
             break;
 
-        case (9): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
+        case (3): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
             // Attacker vehicle sends unique low-rate flows to its RSU, filling
             // the same reactive TCAM. Victim = reactive flow 0.
             tcam_init_all();
@@ -117595,7 +117599,7 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
 	// Resolve the results directory dynamically using the USER or HOME environment variable
-	std::string results_dir = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
 	if (home_env != nullptr)
 	{
@@ -121086,23 +121090,23 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 		// OnReceivedEmergencyPacket logic. Fires at every received packet.
 		if (tap_detection_active)
 		{
-			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-			uint32_t tap_fid = tagmodified_routing.GetflowId();
-			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
+			//uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
+			//uint32_t tap_fid = tagmodified_routing.GetflowId();
+			//uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
+			//uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
 
-			// Algorithm 1 Line 10: check Controller-Defaulter-List first
-			if (tap_check_defaulter_list(tap_sender))
-			{
-				// Lines 19-20: discard packet from blacklisted node
-				cout << "[TAP] Retransmission packet dropped for flow id "
-					 << tap_fid << " #packet: " << tap_packet_ID << endl;
-			}
-			else
-			{
-				// Lines 11-18: run timing-based detection
-				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-			}
+			// // Algorithm 1 Line 10: check Controller-Defaulter-List first
+			// if (tap_check_defaulter_list(tap_sender))
+			// {
+			// 	// Lines 19-20: discard packet from blacklisted node
+			// 	cout << "[TAP] Retransmission packet dropped for flow id "
+			// 		 << tap_fid << " #packet: " << tap_packet_ID << endl;
+			// }
+			// else
+			// {
+			// 	// Lines 11-18: run timing-based detection
+			// 	tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
+			// }
 		}
 		// === END TAP BASELINE DETECTION ===
 					
