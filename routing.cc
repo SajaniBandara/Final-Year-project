@@ -115198,6 +115198,8 @@ void controller_flood_tcam_all_rsus();
 void data_plane_flood_tcam();
 extern const int TCAM_CAPACITY;
 extern const double TCAM_SLOWPATH_DELAY;
+extern const double TCAM_IDLE_TIMEOUT;
+extern bool tcam_enabled;
 extern bool tcam_attack_cp_enabled;
 extern bool tcam_attack_dp_enabled;
 extern uint32_t tcam_dp_attacker_node;
@@ -120686,6 +120688,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 const int TCAM_CAPACITY        = 256;     // reactive flow-table slots per RSU
 const double TCAM_SLOWPATH_DELAY = 0.100; // 100 ms controller round-trip per miss
 
+// Always-on TCAM model flag (Change 3). Default true so benign runs
+// also populate the reactive flow table for SFTO-Guard training data.
+// Set to false only if you want to disable the model entirely.
+bool tcam_enabled = true;
+
+// Idle-timeout eviction (Change 4). Entries not matched for this many
+// simulated seconds are invalidated by tcam_sweep().
+const double TCAM_IDLE_TIMEOUT = 10.0;  // seconds
+
 // Attack toggles (set by initialise_stub_attack_state() for variants 8/9 only).
 bool tcam_attack_cp_enabled = false;  // Attack 3 (control plane)
 bool tcam_attack_dp_enabled = false;  // Attack 4 (data plane)
@@ -120739,12 +120750,48 @@ static const TcamEntry TCAM_ENTRY_ZERO = {
     /* is_malicious */ false
 };
 
+// Forward-declare tcam_sweep so tcam_init_all can schedule it.
+void tcam_sweep();
+
 void tcam_init_all()
 {
     // (Re-)allocate the heap table. Safe to call multiple times (e.g. between
     // attack variants) — assign replaces any previous allocation.
     reactive_tcam.assign(total_size, std::vector<TcamEntry>(TCAM_CAPACITY, TCAM_ENTRY_ZERO));
     tcam_seq_counter = 0;
+    // Kick off the idle-timeout sweep loop (Change 4). Fires every 1 s.
+    Simulator::Schedule(Seconds(1.0), &tcam_sweep);
+}
+
+// Change 4 — Idle-timeout eviction sweep.
+// Runs every 1 s (self-rescheduling). Walks every RSU slot and invalidates
+// entries where (now - last_seen_time) > TCAM_IDLE_TIMEOUT.
+// FIFO eviction inside tcam_install() is the full-table fallback and remains
+// unchanged; this sweep handles the natural expiry case.
+void tcam_sweep()
+{
+    if (!tcam_enabled) {
+        Simulator::Schedule(Seconds(1.0), &tcam_sweep);
+        return;
+    }
+    double now = Simulator::Now().GetSeconds();
+    uint32_t evicted = 0;
+    for (uint32_t n = N_Vehicles; n < N_Vehicles + N_RSUs && n < (uint32_t)total_size; n++)
+    {
+        for (int s = 0; s < TCAM_CAPACITY; s++)
+        {
+            TcamEntry &e = reactive_tcam[n][s];
+            if (e.valid && (now - e.last_seen_time) > TCAM_IDLE_TIMEOUT)
+            {
+                e = TCAM_ENTRY_ZERO;   // full reset, valid=false
+                evicted++;
+            }
+        }
+    }
+    if (evicted > 0)
+        cout << "[TCAM SWEEP] t=" << now << "s evicted " << evicted
+             << " idle entries (idle_timeout=" << TCAM_IDLE_TIMEOUT << "s)" << endl;
+    Simulator::Schedule(Seconds(1.0), &tcam_sweep);
 }
 
 // Returns true if flow `key` is currently resident in rsu_node's reactive TCAM.
@@ -121346,34 +121393,68 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);						
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, p_size, originail_timestamp);
 
-											// ---- Slow TCAM Exhaustion (Attacks 3 & 4): reactive-TCAM timing ----
-											// Layered on top of proactive routing. Next hop (nid) is UNCHANGED;
-											// this only adds slow-path delay on a TCAM miss for the reactive
-											// (safety-critical) flow when it is being forwarded BY an RSU.
-											// Inert unless an attack variant enabled the flags.
+											// ---- Reactive TCAM model: per-flow, per-RSU, per-packet (Changes 3 & 4) ----
+											// Change 3: guards widened — all flows, always-on tcam_enabled flag.
+											// Change 4: idle-timeout handled by tcam_sweep(); FIFO is full-table fallback.
 											double tcam_extra_delay = 0.0;
 											bool current_is_rsu =
 												(current_hop >= N_Vehicles &&
 												 current_hop <  N_Vehicles + N_RSUs);
-											if ((tcam_attack_cp_enabled || tcam_attack_dp_enabled) &&
-												current_is_rsu && fid == reactive_flow_id)
+											if (tcam_enabled && current_is_rsu)
 											{
 												if (tcam_lookup(current_hop, fid))
 												{
-													// HIT: rule resident -> fast path, no extra delay.
+													// HIT: refresh activity counters on the matching entry.
+													for (int _s = 0; _s < TCAM_CAPACITY; _s++)
+													{
+														TcamEntry &_e = reactive_tcam[current_hop][_s];
+														if (_e.valid && _e.key == fid)
+														{
+															_e.last_seen_time = Simulator::Now().GetSeconds();
+															_e.packet_count++;
+															_e.byte_count += (uint64_t)arguments.p_size;
+															break;
+														}
+													}
+													// Fast path — no extra delay.
 												}
 												else
 												{
-													// MISS: controller slow path. Install the rule
-													// (FIFO-evicting if full) and pay the round-trip.
+													// MISS: install entry (FIFO-evicts if full), stamp 5-tuple,
+													// mark malicious if the forwarding node is an attacker,
+													// then pay the controller round-trip only for attack flows.
 													tcam_install(current_hop, fid);
-													tcam_extra_delay = TCAM_SLOWPATH_DELAY;
-													cout << attack_tag()
-														 << " [TCAM MISS] RSU " << current_hop
-														 << " flow " << fid
-														 << " -> slow path +" << TCAM_SLOWPATH_DELAY
-														 << "s at " << Simulator::Now().GetSeconds()
-														 << "s" << endl;
+													// Find the slot just installed and fill per-entry metadata.
+													for (int _s = 0; _s < TCAM_CAPACITY; _s++)
+													{
+														TcamEntry &_e = reactive_tcam[current_hop][_s];
+														if (_e.valid && _e.key == fid)
+														{
+															_e.packet_count  = 1;
+															_e.byte_count    = (uint64_t)arguments.p_size;
+															_e.proto         = 17;  // UDP (DSRC uses UDP/WAVE)
+															// is_malicious: true when the *forwarding RSU* is an
+															// attacker-controlled node (any variant).
+															_e.is_malicious  =
+																(current_hop < (uint32_t)total_size &&
+																 active_attack_variant >= 0 &&
+																 is_malicious_node[active_attack_variant][current_hop]);
+															break;
+														}
+													}
+													// Slow-path penalty only applies to the designated victim
+													// flow during an active attack (original SFTO behaviour).
+													if ((tcam_attack_cp_enabled || tcam_attack_dp_enabled) &&
+														 fid == reactive_flow_id)
+													{
+														tcam_extra_delay = TCAM_SLOWPATH_DELAY;
+														cout << attack_tag()
+															 << " [TCAM MISS] RSU " << current_hop
+															 << " flow " << fid
+															 << " -> slow path +" << TCAM_SLOWPATH_DELAY
+															 << "s at " << Simulator::Now().GetSeconds()
+															 << "s" << endl;
+													}
 												}
 											}
 											Simulator::Schedule (Seconds (tcam_extra_delay), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
