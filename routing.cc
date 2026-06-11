@@ -120673,14 +120673,17 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 // Both attacks fill the SAME per-RSU reactive TCAM:
 //   - Attack 3 (control plane): a malicious controller spams junk FlowMods.
 //   - Attack 4 (data plane):    an attacker vehicle sends unique low-rate flows.
-// Either way the 8 slots fill with junk, evicting the victim flow's entry, so
-// the victim keeps missing -> repeated 100ms penalties on safety packets.
+// Either way the 256 slots fill with junk, evicting the victim flow's entry,
+// so the victim keeps missing -> repeated 100ms penalties on safety packets.
 //
 // Keyed on flow id (fid), read from the modified-routing tag at the RSU
 // forwarding step. Junk attacker flows use synthetic ids >= total_size so they
 // never collide with the single real flow (id 0).
 
-const int TCAM_CAPACITY        = 8;       // small reactive table per RSU (sim)
+// Change 1: raised from 8 to 256 to model a realistic reactive flow table.
+// The backing array is heap-allocated (see reactive_tcam below) to avoid a
+// ~6 MB stack frame at 100x256x~240 B per entry.
+const int TCAM_CAPACITY        = 256;     // reactive flow-table slots per RSU
 const double TCAM_SLOWPATH_DELAY = 0.100; // 100 ms controller round-trip per miss
 
 // Attack toggles (set by initialise_stub_attack_state() for variants 8/9 only).
@@ -120689,29 +120692,58 @@ bool tcam_attack_dp_enabled = false;  // Attack 4 (data plane)
 uint32_t tcam_dp_attacker_node = 0;   // attacker vehicle (current_hop index) for Attack 4
 uint32_t reactive_flow_id = 0;        // victim flow: served reactively (no proactive rule)
 
-// A single reactive TCAM entry: a flow-id key, valid flag, and an insertion
-// sequence number used for FIFO eviction.
+// Change 2: extended TcamEntry with SFTO-Guard per-entry observability fields.
+// Existing key/seq/valid fields are UNCHANGED so all existing lookup/eviction
+// logic compiles without modification.
 struct TcamEntry {
+    // ── original fields (do not reorder — existing code references by name) ──
     bool     valid;
     uint32_t key;   // flow id
     uint64_t seq;   // monotonically increasing; lowest seq = oldest = evicted first
+
+    // ── SFTO-Guard training-data fields (Change 2) ──
+    double   install_time;   // sim time (s) when entry was first installed
+    double   last_seen_time; // sim time (s) of most recent packet hit on this entry
+    uint64_t packet_count;   // packets that matched this entry since install
+    uint64_t byte_count;     // bytes  that matched this entry since install
+    uint32_t src_ip;         // source IPv4 (host-byte-order u32; 0 if not set)
+    uint32_t dst_ip;         // destination IPv4 (host-byte-order u32; 0 if not set)
+    uint16_t src_port;       // source UDP/TCP port (0 if not set)
+    uint16_t dst_port;       // destination UDP/TCP port (0 if not set)
+    uint8_t  proto;          // IP protocol number (17=UDP, 6=TCP; 0 if not set)
+    bool     is_malicious;   // true when this entry was injected by an attacker
 };
 
 // One table per node index (indexed by current_hop = ns3_id - 2); only RSU
-// indices are ever used. Sized by total_size (compile-time const) because
-// N_Vehicles/N_RSUs are reassigned at runtime by the test-network setups.
-TcamEntry reactive_tcam[total_size][TCAM_CAPACITY];
+// indices are ever used.  Heap-allocated as a vector-of-vectors so that
+// raising TCAM_CAPACITY to 256 does not blow the 8 MB default stack limit
+// (~100 nodes x 256 slots x ~56 B/entry ≈ 1.4 MB — safe on heap, not stack).
+// Populated by tcam_init_all() which must be called before any lookup.
+std::vector<std::vector<TcamEntry>> reactive_tcam;
 uint64_t  tcam_seq_counter = 0;  // global monotonic sequence for FIFO ordering
+
+// Zero-value sentinel used to reset an entry in one assignment.
+static const TcamEntry TCAM_ENTRY_ZERO = {
+    /* valid        */ false,
+    /* key          */ 0,
+    /* seq          */ 0,
+    /* install_time */ 0.0,
+    /* last_seen    */ 0.0,
+    /* packet_count */ 0,
+    /* byte_count   */ 0,
+    /* src_ip       */ 0,
+    /* dst_ip       */ 0,
+    /* src_port     */ 0,
+    /* dst_port     */ 0,
+    /* proto        */ 0,
+    /* is_malicious */ false
+};
 
 void tcam_init_all()
 {
-    for (int n = 0; n < total_size; n++)
-        for (int s = 0; s < TCAM_CAPACITY; s++)
-        {
-            reactive_tcam[n][s].valid = false;
-            reactive_tcam[n][s].key   = 0;
-            reactive_tcam[n][s].seq   = 0;
-        }
+    // (Re-)allocate the heap table. Safe to call multiple times (e.g. between
+    // attack variants) — assign replaces any previous allocation.
+    reactive_tcam.assign(total_size, std::vector<TcamEntry>(TCAM_CAPACITY, TCAM_ENTRY_ZERO));
     tcam_seq_counter = 0;
 }
 
@@ -120751,9 +120783,15 @@ void tcam_install(uint32_t rsu_node, uint32_t key)
         }
     }
     int slot = (free_slot >= 0) ? free_slot : oldest_slot;
-    reactive_tcam[rsu_node][slot].valid = true;
-    reactive_tcam[rsu_node][slot].key   = key;
-    reactive_tcam[rsu_node][slot].seq   = ++tcam_seq_counter;
+    // Reset all fields to zero, then fill the known values.
+    reactive_tcam[rsu_node][slot]              = TCAM_ENTRY_ZERO;
+    reactive_tcam[rsu_node][slot].valid        = true;
+    reactive_tcam[rsu_node][slot].key          = key;
+    reactive_tcam[rsu_node][slot].seq          = ++tcam_seq_counter;
+    reactive_tcam[rsu_node][slot].install_time = Simulator::Now().GetSeconds();
+    reactive_tcam[rsu_node][slot].last_seen_time = Simulator::Now().GetSeconds();
+    // packet_count, byte_count, 5-tuple, is_malicious left as 0/false;
+    // callers that know the 5-tuple should fill them after tcam_install().
 }
 
 // Fills EVERY slot of rsu_node's reactive TCAM with fresh unique junk keys,
@@ -120765,9 +120803,13 @@ void tcam_saturate(uint32_t rsu_node)
     for (int s = 0; s < TCAM_CAPACITY; s++)
     {
         uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + (uint32_t)s + 1;
-        reactive_tcam[rsu_node][s].valid = true;
-        reactive_tcam[rsu_node][s].key   = junk_key;
-        reactive_tcam[rsu_node][s].seq   = ++tcam_seq_counter;
+        reactive_tcam[rsu_node][s]              = TCAM_ENTRY_ZERO;
+        reactive_tcam[rsu_node][s].valid        = true;
+        reactive_tcam[rsu_node][s].key          = junk_key;
+        reactive_tcam[rsu_node][s].seq          = ++tcam_seq_counter;
+        reactive_tcam[rsu_node][s].install_time = Simulator::Now().GetSeconds();
+        reactive_tcam[rsu_node][s].last_seen_time = Simulator::Now().GetSeconds();
+        reactive_tcam[rsu_node][s].is_malicious = true;  // junk entries are always attacker-injected
     }
 }
 
