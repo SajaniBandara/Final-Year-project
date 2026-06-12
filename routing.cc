@@ -114613,6 +114613,13 @@ bool selective_delay_malicious_nodes[total_size];
 bool present_selective_delay_attack_nodes = false;
 double attack2_delay_seconds = 0.080; // 80ms injected delay
 
+// === ATTACK 4 (variant 3): Slow-flow TCAM exhaustion — Data Plane ===
+// Attacker (node index 0) injects unique-5-tuple synthetic flows at
+// attack_rate_pps packets/second.  Each new fake_fid → new TCAM rule
+// (is_malicious=1) so the table fills slowly, matching paper Mechanism 3.
+double   attack_rate_pps         = 10.0;    // CLI: --attack_rate_pps (3.2–40 pps band)
+uint32_t g_dp_attack_fid_counter = 1000000; // fake fids start far above real fids (≤55)
+
 // === SIGNATURE S2 DETECTION GLOBALS ===
 double t_fwd_packet[total_size][Flow_size+2];
 // records when each node forwarded each packet
@@ -114680,6 +114687,8 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
+void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
+void dp_attack_tick();                                             // Change 5
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -114706,6 +114715,17 @@ void initialise_stub_attack_state()
             t_onset[2] = 1.0;
             t_quarantine[2] = 1.050;
             hardcode_test_network_attackers();
+            break;
+
+        case (3): // Attack 4 — Slow-flow TCAM exhaustion, Data Plane (Change 5)
+            // Attacker = node 0 (Vehicle A). Attack begins at t=10s so the first
+            // 10 seconds of the trace are clean benign baseline for SFTO-Guard.
+            is_malicious_node[3][0] = true;
+            t_onset[0] = 10.0;
+            cout << "[ATTACK4] [INIT] Slow-flow DP attacker = node 0, "
+                 << "rate = " << attack_rate_pps << " pps, "
+                 << "onset t=10s" << endl;
+            Simulator::Schedule(Seconds(10.0), &dp_attack_tick);
             break;
 
         case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
@@ -119984,6 +120004,68 @@ void export_tcam_snapshot_baseline()
 
 // ---------- TCAM exhaustion helpers ----------
 
+// ── Change 5: malicious-flow installer ────────────────────────────────────
+// Like tcam_install() but:
+//   • skips g_tcam_installed dedup (each fake_fid is intentionally unique)
+//   • sets is_malicious = true
+//   • derives 5-tuple from fake_fid alone (no delta_at_nodes_inst needed)
+void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
+{
+    // Build a synthetic 5-tuple unique to this fake_fid.
+    // src IP = attacker node's real IP; dst IP = a synthetic remote address.
+    uint32_t src_ip  = get_node_ipv4(node_id);
+    // Encode fake_fid into the last two octets of a routable-looking address
+    // (192.168.x.y where x.y encode fake_fid mod 65535).
+    uint32_t encoded = fake_fid & 0xFFFF;
+    uint32_t dst_ip  = Ipv4Address("192.168.0.0").Get() | encoded;
+
+    uint16_t src_port = derive_port(fake_fid, node_id, 0xDEAD, 0x1111u);
+    uint16_t dst_port = derive_port(fake_fid, 0xDEAD, node_id, 0x2222u);
+
+    TcamEntry e;
+    e.flow_id        = fake_fid;
+    e.node_id        = node_id;
+    e.src_ip         = src_ip;
+    e.dst_ip         = dst_ip;
+    e.src_port       = src_port;
+    e.dst_port       = dst_port;
+    e.proto          = 17;   // UDP
+    e.install_time   = Simulator::Now().GetSeconds();
+    e.last_seen_time = e.install_time;
+    e.packet_count   = 1;    // counts as one "packet miss" that triggered install
+    e.byte_count     = 750;  // nominal packet size consistent with benign traffic
+    e.is_malicious   = true;
+    g_tcam_table.push_back(e);
+    // NOTE: intentionally NOT inserted into g_tcam_installed so repeated calls
+    // with the same fake_fid could be used for refresh; but dp_attack_tick always
+    // increments g_dp_attack_fid_counter so each call is truly unique.
+
+    Ipv4Address sip, dip;
+    sip.Set(src_ip);
+    dip.Set(dst_ip);
+    std::cout << "[TCAM INSTALL MAL] fake_fid=" << fake_fid
+              << " node=" << node_id
+              << " " << sip << ":" << src_port
+              << " -> " << dip << ":" << dst_port
+              << " t=" << e.install_time << "s" << std::endl;
+}
+
+// ── Change 5: self-rescheduling attacker tick ──────────────────────────────
+// Fires every (1/attack_rate_pps) seconds while active_attack_variant==3
+// and sim time < simTime.  Each call installs one new malicious TCAM rule.
+void dp_attack_tick()
+{
+    if (active_attack_variant != 3) return;
+    double now = Simulator::Now().GetSeconds();
+    if (now >= simTime) return;
+
+    uint32_t attacker = 0;  // node index 0 per Change 5 spec
+    uint32_t fake_fid = g_dp_attack_fid_counter++;
+    tcam_install_malicious(attacker, fake_fid);
+
+    double interval = 1.0 / attack_rate_pps;
+    Simulator::Schedule(Seconds(interval), &dp_attack_tick);
+}
 
 int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
@@ -140179,6 +140261,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("routing_algorithm", "routing_algorithm", routing_algorithm);
     cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
+    cmd.AddValue ("attack_rate_pps", "Attack 4 slow-flow injection rate in packets/sec (default 10.0, paper range 3.2-40)", attack_rate_pps);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
