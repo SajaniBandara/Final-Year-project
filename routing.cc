@@ -114621,12 +114621,13 @@ double attack2_delay_seconds = 0.080; // 80ms injected delay
 uint32_t g_cp_attack_fid_counter = 2000000; // CP FID space: 2M+ (distinct from DP 1M+)
 
 // === ATTACK 4 (variant 3): Slow-flow TCAM exhaustion — Data Plane ===
-// Attacker (node index 0) injects unique-5-tuple synthetic flows at
+// Nodes 0 … num_attackers-1 each inject unique-5-tuple synthetic flows at
 // attack_rate_pps packets/second.  Each new fake_fid → new TCAM rule
 // (is_malicious=1) so the table fills slowly, matching paper Mechanism 3.
 double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 pps band, default 20)
 double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
+int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
 double t_fwd_packet[total_size][Flow_size+2];
@@ -114696,7 +114697,8 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
 void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
-void dp_attack_tick();                                             // Change 5
+void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
+void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
 void initialise_stub_attack_state()
 {
@@ -114738,13 +114740,22 @@ void initialise_stub_attack_state()
             break;
 
         case (3): // Attack 4 — Slow-flow TCAM exhaustion, Data Plane (Change 5+7)
-            // Attacker = node 0 (Vehicle A). Attack begins at attack_start_time.
-            is_malicious_node[3][0] = true;
-            t_onset[0] = attack_start_time;
-            cout << "[ATTACK4] [INIT] Slow-flow DP attacker = node 0, "
-                 << "rate = " << attack_rate_pps << " pps, "
-                 << "onset t=" << attack_start_time << "s" << endl;
-            Simulator::Schedule(Seconds(attack_start_time), &dp_attack_tick);
+            // Nodes 0..num_attackers-1 each act as independent DP attackers.
+            if (num_attackers < 1) num_attackers = 1;  // guard against bad CLI input
+            cout << "[ATTACK4] [INIT] Slow-flow DP, " << num_attackers
+                 << " attacker(s), nodes 0.." << (num_attackers - 1)
+                 << ", rate=" << attack_rate_pps << " pps"
+                 << ", onset t=" << attack_start_time << "s" << endl;
+            for (int _a = 0; _a < num_attackers; ++_a)
+            {
+                is_malicious_node[3][_a] = true;
+                t_onset[_a] = attack_start_time;
+                // Each attacker needs its own self-rescheduling tick chain.
+                // NS-3 Schedule accepts function pointers and arguments directly
+                uint32_t _attacker = static_cast<uint32_t>(_a);
+                Simulator::Schedule(Seconds(attack_start_time),
+                                    &dp_attack_tick_for, _attacker);
+            }
             break;
 
         case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
@@ -120062,6 +120073,10 @@ void tcam_snapshot_dump()
         mode = (it != variant_to_label.end())
                ? it->second
                : ("attack" + std::to_string(active_attack_variant));
+        // For Attack 4 multi-attacker sweeps append _nN so each run
+        // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
+        if (active_attack_variant == 3 && num_attackers > 1)
+            mode += "_n" + std::to_string(num_attackers);
     }
 
     const std::string base_dir =
@@ -120137,6 +120152,9 @@ void export_tcam_snapshot_baseline()
         mode = (it != variant_to_label.end())
                ? it->second
                : ("attack" + std::to_string(active_attack_variant));
+        // Mirror the _nN suffix logic from tcam_snapshot_dump().
+        if (active_attack_variant == 3 && num_attackers > 1)
+            mode += "_n" + std::to_string(num_attackers);
     }
     std::string path =
         "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
@@ -120211,21 +120229,28 @@ void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
               << " t=" << e.install_time << "s" << std::endl;
 }
 
-// ── Change 5+7: self-rescheduling DP attacker tick ────────────────────────
-// Fires every (1/attack_rate_pps) seconds while active_attack_variant==3
-// and sim time < simTime.  Each call installs one new malicious TCAM rule.
-void dp_attack_tick()
+// ── Change 5+7: self-rescheduling DP attacker tick (per-node) ─────────────
+// dp_attack_tick_for(node): fires every (1/attack_rate_pps) seconds for the
+// given attacker node while active_attack_variant==3 and sim time < simTime.
+// Each call installs one new unique malicious TCAM rule on behalf of `node`.
+void dp_attack_tick_for(uint32_t attacker_node)
 {
     if (active_attack_variant != 3) return;
     double now = Simulator::Now().GetSeconds();
     if (now >= simTime) return;
 
-    uint32_t attacker = 0;  // node index 0 per Change 5 spec
     uint32_t fake_fid = g_dp_attack_fid_counter++;
-    tcam_install_malicious(attacker, fake_fid);
+    tcam_install_malicious(attacker_node, fake_fid);
 
     double interval = 1.0 / attack_rate_pps;
-    Simulator::Schedule(Seconds(interval), &dp_attack_tick);
+    Simulator::Schedule(Seconds(interval),
+                        &dp_attack_tick_for, attacker_node);
+}
+
+// Legacy single-attacker entry point (node 0) — kept for backward compat.
+void dp_attack_tick()
+{
+    dp_attack_tick_for(0);
 }
 
 // ── Change 6: self-rescheduling CP (controller) attacker tick ─────────────
@@ -140445,6 +140470,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
+    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): number of attacker nodes; nodes 0..N-1 each run independently (default 1)", num_attackers);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
