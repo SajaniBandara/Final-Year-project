@@ -41,6 +41,8 @@
 #include "ns3/arp-header.h"
 #include "ns3/ipv4-header.h"
 #include "ns3/udp-header.h"
+#include "ns3/tcp-header.h"
+#include "ns3/llc-snap-header.h"
 #include "ns3/ns2-mobility-helper.h"
 #include "string.h"
 #include "cstdlib"
@@ -51,7 +53,6 @@
 #include <cstdlib>
 #include <limits.h>
 #include <bits/stdc++.h>
-#include <random>
 
 #define max 40
 
@@ -104,7 +105,8 @@ int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
-double simTime = 20; //test
+// double simTime = 240;
+double simTime = 60; // Change 9: default 60 s (≈10 s benign baseline + 50 s attack evolution)
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -113,7 +115,7 @@ uint32_t large=50000;
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
 // double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 1.0; //test
+double data_transmission_frequency = 5.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -114627,12 +114629,27 @@ bool selective_delay_malicious_nodes[total_size];
 bool present_selective_delay_attack_nodes = false;
 double attack2_delay_seconds = 0.080; // 80ms injected delay
 
+// === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
+// Malicious controller installs junk FlowMod rules into every RSU's TCAM at
+// attack_rate_pps rules/second. Entries flagged is_malicious=1.
+uint32_t g_cp_attack_fid_counter = 2000000; // CP FID space: 2M+ (distinct from DP 1M+)
+
+// === ATTACK 4 (variant 3): Slow-flow TCAM exhaustion — Data Plane ===
+// Nodes 0 … num_attackers-1 each inject unique-5-tuple synthetic flows at
+// attack_rate_pps packets/second.  Each new fake_fid → new TCAM rule
+// (is_malicious=1) so the table fills slowly, matching paper Mechanism 3.
+double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 pps band, default 20)
+double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
+uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
+int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
+
 // === SIGNATURE S2 DETECTION GLOBALS ===
 double t_fwd_packet[total_size][Flow_size+2];
 // records when each node forwarded each packet
 double delta_max_s2 = 0.050;
 // 50ms threshold per Equation 3.6 — half of 100ms safety bound
 bool s2_detection_active = true;
+bool tap_detection_active = true; // enable/disable TAP detection
 // enable/disable S2 detection
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -114662,11 +114679,6 @@ Time     g_hdup_timestamp     = Seconds(0.0);
 // MacRx increments fade_eavesdrop_counter only when this flag is true,
 // preventing ambient Wi-Fi overhear from inflating PIR at low intensities.
 bool     g_hdup_intentional      = false;
-// Count of packets for which a hidden duplicate was SCHEDULED (approved by
-// GetBooleanWithProbability).  Used as the PIR denominator so PIR expresses
-// "fraction of scheduled copies actually received by eavesdropper" and
-// scales linearly with attack_percentage.
-uint32_t g_total_copies_scheduled = 0;
 
 // ---------------------------------------------------------------------------
 // attack_tag() — returns the correct "[ATTACKx]" prefix for the currently
@@ -114697,7 +114709,7 @@ double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
 // === TAP BASELINE GLOBALS ===
-bool tap_detection_active = true;
+// tap_detection_active already declared earlier alongside s2_detection_active.
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
@@ -114802,6 +114814,7 @@ uint32_t pp_fn_global = 0;
 
 // PIR counter — incremented in MacRx before the eavesdropper-return early exit
 uint32_t fade_eavesdrop_counter = 0;
+uint64_t g_total_copies_scheduled = 0;
 std::set<std::pair<uint32_t, uint32_t>> fade_eavesdropped_packets;
 uint32_t hf_target_flow_id = 0;   // malicious RSU duplicates ONLY this flow; all others honest
 
@@ -115192,16 +115205,6 @@ void fade_detect_anomaly()
 void hardcode_test_network_attackers();
 void hardcode_attack7_test_network();
 void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
-// Slow TCAM Exhaustion (Attacks 3 & 4) — defined later, near the attack helpers.
-void tcam_init_all();
-void controller_flood_tcam_all_rsus();
-void data_plane_flood_tcam();
-extern const int TCAM_CAPACITY;
-extern const double TCAM_SLOWPATH_DELAY;
-extern bool tcam_attack_cp_enabled;
-extern bool tcam_attack_dp_enabled;
-extern uint32_t tcam_dp_attacker_node;
-extern uint32_t reactive_flow_id;
 void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t eavesdropper_index,
                            uint32_t flow_id,
@@ -115216,6 +115219,10 @@ void tap_report_to_controller(uint32_t attacker_current_hop);
 //void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
 void calculate_tap_security_metrics();
 void write_tap_csv();
+void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
+void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
+void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
+void cp_attack_tick();                                             // Change 6
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -115238,23 +115245,53 @@ void initialise_stub_attack_state()
 	switch (active_attack_variant)
     {
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            // Ground truth (is_malicious_node[1][*], t_onset[*]) is set inside
-            // hardcode_test_network_attackers() and scales with attack_percentage.
-            // Do NOT hardcode a single attacker here.
+            is_malicious_node[1][2] = true;
+            t_onset[2] = 1.0;
+            t_quarantine[2] = 1.050;
             hardcode_test_network_attackers();
-			// Reset all TAP state before each Attack 2 simulation run
-			for (int _n = 0; _n < total_size; _n++)
-			{
-				tap_defaulter_list[_n] = false;
-				tap_detected_node[_n]  = false;
-				tap_t_quarantine[_n]   = 0.0;
-			}
-			tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
-			tap_current_MCC=0.0; tap_current_DR=0.0;
-			tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
-			tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
-			tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
-			cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+            // Reset all TAP state before each Attack 2 simulation run
+            for (int _n = 0; _n < total_size; _n++)
+            {
+                tap_defaulter_list[_n] = false;
+                tap_detected_node[_n]  = false;
+                tap_t_quarantine[_n]   = 0.0;
+            }
+            tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
+            tap_current_MCC=0.0; tap_current_DR=0.0;
+            tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
+            tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
+            tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
+            cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+            break;
+
+        case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
+            // Malicious controller floods ALL RSUs with junk FlowMod broadcasts.
+            // First RSU (N_Vehicles) acts as representative malicious-node marker.
+            is_malicious_node[2][N_Vehicles] = true;
+            t_onset[N_Vehicles] = attack_start_time;
+            cout << "[ATTACK3] [INIT] Slow-flow CP controller attack, "
+                 << N_RSUs << " RSU(s), rate=" << attack_rate_pps << " pps, "
+                 << "onset t=" << attack_start_time << "s" << endl;
+            Simulator::Schedule(Seconds(attack_start_time), &cp_attack_tick);
+            break;
+
+        case (3): // Attack 4 — Slow-flow TCAM exhaustion, Data Plane (Change 5+7)
+            // Nodes 0..num_attackers-1 each act as independent DP attackers.
+            if (num_attackers < 1) num_attackers = 1;  // guard against bad CLI input
+            cout << "[ATTACK4] [INIT] Slow-flow DP, " << num_attackers
+                 << " attacker(s), nodes 0.." << (num_attackers - 1)
+                 << ", rate=" << attack_rate_pps << " pps"
+                 << ", onset t=" << attack_start_time << "s" << endl;
+            for (int _a = 0; _a < num_attackers; ++_a)
+            {
+                is_malicious_node[3][_a] = true;
+                t_onset[_a] = attack_start_time;
+                // Each attacker needs its own self-rescheduling tick chain.
+                // NS-3 Schedule accepts function pointers and arguments directly
+                uint32_t _attacker = static_cast<uint32_t>(_a);
+                Simulator::Schedule(Seconds(attack_start_time),
+                                    &dp_attack_tick_for, _attacker);
+            }
             break;
 
         case (4): // Attack 5 — Active Hidden Forwarding, Control Plane
@@ -115298,43 +115335,26 @@ void initialise_stub_attack_state()
             cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
             break;
 
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
+        // --- Alternate case(7) topology from routing_2_.cc (2-unit / 6-vehicle
+        // layout: RSU0=6, RSU1=7, Eavesdropper0=2, Eavesdropper1=5). Kept here
+        // commented out since routing.cc's active case(7) below uses the newer
+        // 3-node A/C/B+RSU topology via hardcode_attack7_test_network().
+        // case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
+        //     Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+        //     cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
+        //     break;
+
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
+            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
+            is_malicious_node[7][3] = true;
+            t_onset[3] = 1.0;
+            hardcode_attack7_test_network();
+            // linklifetimeMatrix_dsrc is declared after this function, so seeding
+            // is deferred to t=0 when all globals are fully initialised.
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
+            cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
             break;
 
-        case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
-            // Malicious controller floods every RSU's reactive TCAM with junk
-            // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
-            // (current_hop = ns3_id - 2) is marked malicious for ground truth.
-            tcam_init_all();
-            tcam_attack_cp_enabled = true;
-            reactive_flow_id = 0;
-            is_malicious_node[8][N_Vehicles] = true;   // controller-driven, attributed to serving RSU
-            t_onset[N_Vehicles] = 1.0;
-            Simulator::Schedule(Seconds(1.0), &controller_flood_tcam_all_rsus);
-            cout << attack_tag() << " ① Attack 3 (Slow TCAM Exhaustion - Control Plane) enabled. "
-                 << "Victim flow " << reactive_flow_id
-                 << ", TCAM capacity " << TCAM_CAPACITY
-                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
-            break;
-
-        case (3): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
-            // Attacker vehicle sends unique low-rate flows to its RSU, filling
-            // the same reactive TCAM. Victim = reactive flow 0.
-            tcam_init_all();
-            tcam_attack_dp_enabled = true;
-            reactive_flow_id = 0;
-            tcam_dp_attacker_node = 0;                 // attacker vehicle (current_hop index)
-            is_malicious_node[9][tcam_dp_attacker_node] = true;
-            t_onset[tcam_dp_attacker_node] = 1.0;
-            Simulator::Schedule(Seconds(1.0), &data_plane_flood_tcam);
-            cout << attack_tag() << " ① Attack 4 (Slow TCAM Exhaustion - Data Plane) enabled. "
-                 << "Attacker node " << tcam_dp_attacker_node
-                 << ", victim flow " << reactive_flow_id
-                 << ", TCAM capacity " << TCAM_CAPACITY
-                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
-            break;
 
         default:
             cout << "[INIT] No specific attack init for variant "
@@ -115358,10 +115378,10 @@ void record_detection_event(int v, int n)
 }
 
 // Random boolean helper copied from LDA_2_.cc
-bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
-    static std::mt19937 rng(12345);  // fixed seed for reproducibility
-    static std::uniform_real_distribution<double> dist(0.0, 100.0);
-    return dist(rng) < probabilityPercent;
+bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
+	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
+	double randomValue = 1.0*(rand()%100);
+	return randomValue < probabilityPercent;
 }
 
 void declare_attackers()
@@ -115388,51 +115408,102 @@ void declare_attackers()
 	}
 }
 
+// --- Alternate hardcode_test_network_attackers() from routing_2_.cc:
+// extended 10-node test network for Attack 2 (5 vehicles + 5 RSUs), where the
+// number/identity of malicious nodes scales with attack_percentage. Kept here
+// commented out since it declares a local `num_attackers` that would shadow
+// the global `num_attackers` used by Attack 4 (DP TCAM), and routing.cc's
+// simpler 2-vehicle/1-RSU version below is the active implementation.
+//
+// void hardcode_test_network_attackers()
+// {
+// 	// Extended 10-node test network for Attack 2
+// 	// Node mapping: current_hop 0-4 = Vehicles, current_hop 5-9 = RSUs
+// 	// Node 0 = sender, Node 1 = destination — never malicious
+// 	// attack_percentage controls how many intermediate nodes are malicious
+//
+// 	// Clear all malicious flags first
+// 	for (uint32_t i = 0; i < total_size; i++)
+// 	{
+// 		selective_delay_malicious_nodes[i] = false;
+// 	}
+//
+// 	// Mark malicious nodes based on attack_percentage
+// 	// Malicious node sets (intermediate nodes only, never node 0 or node 1):
+// 	//   20% → 2 nodes: RSU0(5), RSU1(6)
+// 	//   40% → 4 nodes: RSU0(5), RSU1(6), VehicleC(2), VehicleD(3)
+// 	//   60% → 6 nodes: RSU0(5), RSU1(6), RSU2(7), VehicleC(2), VehicleD(3), VehicleE(4)
+// 	//   80% → 8 nodes: RSU0(5), RSU1(6), RSU2(7), RSU3(8), VehicleC(2), VehicleD(3), VehicleE(4), RSU4(9)
+// 	//  100% → all 8 intermediate candidate nodes
+//
+// 	// List of intermediate nodes in order of increasing attack percentage
+// 	uint32_t attacker_candidates[] = {5, 6, 7, 8, 9, 2, 3, 4};
+// 	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
+// 	// 80% = first 8, 100% = all candidates
+// 	uint32_t num_attackers_local = (uint32_t)(8 * attack_percentage / 100.0);
+// 	if (num_attackers_local > 8) num_attackers_local = 8;
+//
+// 	for (uint32_t i = 0; i < num_attackers_local; i++)
+// 	{
+// 		uint32_t node = attacker_candidates[i];
+// 		selective_delay_malicious_nodes[node] = true;
+// 		is_malicious_node[1][node] = true;
+// 		record_attack_onset(1, node);
+// 		cout << attack_tag() << " Node " << node
+// 		     << " marked as malicious selective delay attacker" << endl;
+// 	}
+//
+// 	present_selective_delay_attack_nodes = (num_attackers_local > 0);
+//
+// 	cout << attack_tag() << " Attack 2 extended test network: "
+// 	     << num_attackers_local << " malicious nodes out of 10 ("
+// 	     << attack_percentage << "%)" << endl;
+// 	cout << attack_tag() << " Traffic path: Vehicle A(0) -> RSU0(5) -> "
+// 	     << "RSU1(6) -> RSU2(7) -> Vehicle B(1)" << endl;
+// }
+
 void hardcode_test_network_attackers()
 {
-	// Extended 10-node test network for Attack 2
-	// Node mapping: current_hop 0-4 = Vehicles, current_hop 5-9 = RSUs
-	// Node 0 = sender, Node 1 = destination — never malicious
-	// attack_percentage controls how many intermediate nodes are malicious
+	// Force 100% attack rate for test network verification
+	attack_percentage = 100;  //2.With attack 
+	// attack_percentage =0; //1. without the attack
 
-	// Clear all malicious flags first
-	for (uint32_t i = 0; i < total_size; i++)
+	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
+	// Attack 2 scenario from Figure 3.2(b):
+	// Malicious RSU (node 2) intercepts and delays packets
+	for(uint32_t i=0; i<total_size; i++)
 	{
 		selective_delay_malicious_nodes[i] = false;
 	}
+	selective_delay_malicious_nodes[2] = true; // RSU is the attacker
 
-	// Mark malicious nodes based on attack_percentage
-	// Malicious node sets (intermediate nodes only, never node 0 or node 1):
-	//   20% → 2 nodes: RSU0(5), RSU1(6)
-	//   40% → 4 nodes: RSU0(5), RSU1(6), VehicleC(2), VehicleD(3)
-	//   60% → 6 nodes: RSU0(5), RSU1(6), RSU2(7), VehicleC(2), VehicleD(3), VehicleE(4)
-	//   80% → 8 nodes: RSU0(5), RSU1(6), RSU2(7), RSU3(8), VehicleC(2), VehicleD(3), VehicleE(4), RSU4(9)
-	//  100% → all 8 intermediate candidate nodes
 
-	// List of intermediate nodes in order of increasing attack percentage
-	uint32_t attacker_candidates[] = {5, 6, 7, 8, 9, 2, 3, 4};
-	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
-	// 80% = first 8, 100% = all candidates
-	uint32_t num_attackers = (uint32_t)(8 * attack_percentage / 100.0);
-	if (num_attackers > 8) num_attackers = 8;
+	/*--------------------------------------------------------
+// Change 1: attack never fires
+//attack_percentage = 0;
 
-	for (uint32_t i = 0; i < num_attackers; i++)
-	{
-		uint32_t node = attacker_candidates[i];
-		selective_delay_malicious_nodes[node] = true;
-		is_malicious_node[1][node] = true;
-		record_attack_onset(1, node);
-		cout << attack_tag() << " Node " << node
-		     << " marked as malicious selective delay attacker" << endl;
-	}
+// Change 2: do not mark node 2 as malicious in ground truth
+// Comment out these two lines:
+// selective_delay_malicious_nodes[2] = true;
+// record_attack_onset(1, 2);
 
-	present_selective_delay_attack_nodes = (num_attackers > 0);
+// Keep this line (master switch stays false effect)
+//present_selective_delay_attack_nodes = false;
 
-	cout << attack_tag() << " Attack 2 extended test network: "
-	     << num_attackers << " malicious nodes out of 10 ("
-	     << attack_percentage << "%)" << endl;
-	cout << attack_tag() << " Traffic path: Vehicle A(0) -> RSU0(5) -> "
-	     << "RSU1(6) -> RSU2(7) -> Vehicle B(1)" << endl;
+//s2_detection_active=false;
+--------------------------------------------------------------*/
+
+	present_selective_delay_attack_nodes = true; //2. With attack scenario
+    
+	cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
+	cout << attack_tag() << " ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
+	cout << attack_tag() << " ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
+	cout << attack_tag() << " ① Routing forced through RSU (Node 2) for attack verification" << endl;
+	cout << attack_tag() << " ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
+	cout << attack_tag() << " ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
+    
+	// Record attack onset for metric M4
+record_attack_onset(1, 2);   
 }
 
 void hardcode_attack7_test_network()
@@ -115443,26 +115514,17 @@ void hardcode_attack7_test_network()
         passive_hf_malicious_nodes[i] = false;
     }
 
-    // Clear Attack 2 (selective delay) state
+    // Clear Attack 2 (selective delay) state — selective_delay_malicious_nodes[]
+    // is a plain bool[] with no initialiser so values are undefined for variant-7 runs.
     for (uint32_t i = 0; i < total_size; i++)
     {
         selective_delay_malicious_nodes[i] = false;
     }
     present_selective_delay_attack_nodes = false;
+    attack_percentage = 0;
 
-    // RSU0 (index 6) maps to Eavesdropper0 (index 2); RSU1 (index 7) maps to Eavesdropper1 (index 5)
-    passive_hf_rsu_to_eavesdropper.clear();
-    passive_hf_rsu_to_eavesdropper[6] = 2;
-    passive_hf_rsu_to_eavesdropper[7] = 5;
-
-    // RSU0 (index 6) is malicious; RSU1 (index 7) is honest
-    passive_hf_malicious_nodes[6] = true;
-    present_passive_hf_attack = true;
-
-    // Legacy single-RSU fallback
-    passive_hf_eavesdropper_index = 2;
-
-    // Reset metrics
+    // Reset eFADE/PIR metric accumulators for this run (ported from
+    // routing_2_.cc, applies to all Hidden Forwarding variants 4-7)
     fade_eavesdrop_counter   = 0;
     fade_eavesdropped_packets.clear();
     g_total_copies_scheduled = 0;
@@ -115471,36 +115533,37 @@ void hardcode_attack7_test_network()
     fade_cum_dr  = 0.0; fade_cum_fpr = 0.0;
     fade_prev_eavesdrop = 0; fade_prev_copies = 0;
 
+    // Test network topology for Attack 7 (Passive Hidden Forwarding - Data Plane):
+    // Node 0 = Vehicle A  (sender)          at (300, 150, 0)
+    // Node 1 = Vehicle C  (legit dest)      at (800, 150, 0)
+    // Node 2 = RSU        (malicious)       at (550,  75, 0)
+    // Node 3 = Vehicle B  (eavesdropper)    at (550, 300, 0)
+    //
+    // A -> RSU -> C  (legitimate path, ~250m each hop)
+    // RSU also secretly duplicates to B   (~225m, within WiFi range)
+    // A -> C direct = 500m (out of range, forces routing through RSU)
+
+    // Node index mapping for test network (N_Vehicles=3, N_RSUs=1):
+    // ns3 IDs:  controller=0, management=1, VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop = ns3_id - 2:  VehicleA=0, VehicleC=1, VehicleB=2, RSU=3
+    // wifidevices index = current_hop:  [0]=VehicleA, [1]=VehicleC, [2]=VehicleB, [3]=RSU
+    //
+    // The RSU has current_hop=3 (=wifidevices index 3).
+    // Vehicle B (eavesdropper) has current_hop=2 (=wifidevices index 2).
+    passive_hf_malicious_nodes[3] = true;   // RSU: current_hop=3 (ns3 ID 5, wifidevices[3])
+    present_passive_hf_attack = true;
+    passive_hf_eavesdropper_index = 2;      // Vehicle B: current_hop=2 (ns3 ID 4, wifidevices[2])
+    // Link-lifetime seeding is done via seed_attack8_links(), scheduled
+    // from initialise_stub_attack_state() after all globals are initialised.
+
     active_attack_variant = 7;               // Attack 8 in the paper (0-indexed = 7)
-    record_attack_onset(7, 6);
+    record_attack_onset(7, 3);               // RSU is node index 3 in current_hop space
 
-    uint32_t n_malicious = 1;
-    uint32_t RSU_BASE = 6;
-    uint32_t EAVES_BASE = 2;
-
-    cout << attack_tag() << " ① Attack onset: RSU0 (global node ID 6) is malicious passive hidden forwarder." << endl;
-    if (n_malicious > 0)
-    {
-        cout << attack_tag() << " ① Malicious RSUs: ";
-        for (uint32_t r = 0; r < n_malicious; r++)
-        {
-            if (r > 0) cout << ", ";
-            cout << "RSU(" << (RSU_BASE + r) << ")";
-        }
-        cout << endl;
-    }
-    else
-    {
-        cout << attack_tag() << " ① Malicious RSUs: none" << endl;
-    }
-
-    cout << attack_tag() << " ① Eavesdropper map: ";
-    for (uint32_t r = 0; r < N_RSUs; r++)
-    {
-        if (r > 0) cout << ", ";
-        cout << "RSU(" << (RSU_BASE + r) << ") -> Node " << (EAVES_BASE + r);
-    }
-    cout << endl;
+    cout << attack_tag() << " ① Attack onset: RSU (current_hop=3) flow rules modified by data plane attacker" << endl;
+    cout << attack_tag() << " ① Node 3 (RSU, wifidevices[3]) marked as malicious passive hidden forwarder" << endl;
+    cout << attack_tag() << " ① Eavesdropper = Node 2 (Vehicle B, current_hop=2) at (550, 300, 0)" << endl;
+    cout << attack_tag() << " ① Topology: VehicleA(0)->(250m)->RSU(3)->(250m)->VehicleC(1)" << endl;
+    cout << attack_tag() << " ① Hidden channel: RSU(3)->(225m)->VehicleB(2) [unauthorized]" << endl;
 }
 
 void write_csv_results_routing()
@@ -116168,17 +116231,39 @@ void seed_attack8_links()
             b < linklifetimeMatrix_dsrc[a].size())
             linklifetimeMatrix_dsrc[a][b] = v;
     };
-    // Unit 0 links:
-    safe_set(0, 6, 999.0); safe_set(6, 0, 999.0);   // 0 <-> RSU0(6)
-    safe_set(6, 1, 999.0); safe_set(1, 6, 999.0);   // RSU0(6) <-> 1
-    safe_set(6, 2, 999.0); safe_set(2, 6, 999.0);   // RSU0(6) <-> Eavesdropper0(2) (hidden eavesdrop channel)
 
-    // Unit 1 links:
-    safe_set(3, 7, 999.0); safe_set(7, 3, 999.0);   // 3 <-> RSU1(7)
-    safe_set(7, 4, 999.0); safe_set(4, 7, 999.0);   // RSU1(7) <-> 4
-    safe_set(7, 5, 999.0); safe_set(5, 7, 999.0);   // RSU1(7) <-> Eavesdropper1(5) (hidden eavesdrop channel)
+    // Variants 4 (Attack5 CP), 5 (Attack6 DP), 6 (Attack7 passive CP) use the
+    // 2-unit / 6-vehicle topology (RSU0=6, RSU1=7, Eavesdropper0=2, Eavesdropper1=5),
+    // ported from routing_2_.cc. Variant 7 (Attack8 DP) uses the newer 3-node
+    // A/C/B+RSU topology below.
+    if (active_attack_variant == 4 ||
+        active_attack_variant == 5 ||
+        active_attack_variant == 6)
+    {
+        // Unit 0 links:
+        safe_set(0, 6, 999.0); safe_set(6, 0, 999.0);   // 0 <-> RSU0(6)
+        safe_set(6, 1, 999.0); safe_set(1, 6, 999.0);   // RSU0(6) <-> 1
+        safe_set(6, 2, 999.0); safe_set(2, 6, 999.0);   // RSU0(6) <-> Eavesdropper0(2) (hidden eavesdrop channel)
 
-    cout << "[ATTACK8] seeded link-lifetime matrix for 2 units (6 Vehicles + 2 RSUs)." << endl;
+        // Unit 1 links:
+        safe_set(3, 7, 999.0); safe_set(7, 3, 999.0);   // 3 <-> RSU1(7)
+        safe_set(7, 4, 999.0); safe_set(4, 7, 999.0);   // RSU1(7) <-> 4
+        safe_set(7, 5, 999.0); safe_set(5, 7, 999.0);   // RSU1(7) <-> Eavesdropper1(5) (hidden eavesdrop channel)
+
+        cout << "[ATTACK8] seeded link-lifetime matrix for 2 units (6 Vehicles + 2 RSUs)." << endl;
+        return;
+    }
+
+    // Corrected indices: current_hop = ns3_id - 2
+    // ns3 IDs: VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
+    // current_hop:    VehicleA=0,    VehicleC=1,    VehicleB=2, RSU=3
+    safe_set(0, 3, 999.0);   // VehicleA(0) -> RSU(3)
+    safe_set(3, 0, 999.0);   // RSU(3) -> VehicleA(0)
+    safe_set(3, 1, 999.0);   // RSU(3) -> VehicleC(1)  legitimate forwarding hop
+    safe_set(1, 3, 999.0);   // VehicleC(1) -> RSU(3)
+    safe_set(3, 2, 999.0);   // RSU(3) -> VehicleB(2)  hidden eavesdrop channel
+    safe_set(2, 3, 999.0);   // VehicleB(2) -> RSU(3)
+    cout << "[ATTACK8] Link-lifetime matrix seeded: VehicleA=0, VehicleC=1, VehicleB=2, RSU=3." << endl;
 }
 
 double shortestDistances[total_size];
@@ -116605,10 +116690,19 @@ void filter_flows()
 		{
 			if (routing_test == true)
     			{
-    				(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
-    				(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
-    				flow_counter++;
-    				scheduled_flows++;
+    				// Previously: flow 1 (B->A) was unconditionally disabled (f_size=0),
+    				// forcing one-way traffic only. For attack testing that needs packets
+    				// in both directions, disable a flow only when it has no valid path
+    				// (mirrors the non-test branch below).
+    				if(proposed_algo2_output_inst[flow_id].paths == 0)
+    				{
+    					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
+    				}
+    				else
+    				{
+    					flow_counter++;
+    					scheduled_flows++;
+    				}
     			}
     			else
     			{
@@ -116635,10 +116729,15 @@ void filter_flows()
 		  	
 		  	if (routing_test == true)
     			{
-    				(demanding_flow_struct_nodes_inst+flow_id)->f_size = flow_size;
-    				(demanding_flow_struct_controller_inst+flow_id)->f_size = flow_size;
-    				flow_counter++;
-    				scheduled_flows++;
+    				if(flow_id ==1)
+    				{
+    					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
+    				}
+    				else
+    				{
+    					flow_counter++;
+    					scheduled_flows++;
+    				}
     			}
     			else
     			{
@@ -117373,16 +117472,9 @@ void write_security_metrics_csv()
 
 	fout.open(filename, ios::out|ios::app);
 
-	// PDR: use supervisor's per-cycle timestamp-based variables.
-	// current_packet_delivery_ratio is recomputed fresh each cycle by
-	// calculate_average_packet_delivery_ratio_routing() using final_timestamp
-	// > initial_timestamp, so it is correct at every cycle, not just the last.
-	double pdr_curr = 100.0 * current_packet_delivery_ratio;
-	double pdr_avg  = 100.0 * average_packet_delivery_ratio_dsrc;
-
 	fout << (uint32_t)cycle << ", "
-		 << pdr_curr << ", "
-		 << pdr_avg  << ", "
+		 << current_packet_delivery_ratio * 100.0 << ", "
+		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
 		 << current_latency_routing * 1000.0 << ", "
 		 << average_latency_routing * 1000.0 << ", "
 		 << current_MCC[selected_variant] << ", "
@@ -117581,6 +117673,7 @@ void fade_write_per_cycle_csv(std::string dir)
 		std::cout << "FADE per-cycle row written to " << filename << std::endl;
 	}
 }
+
 
 void calculate_performance_evaluation_metrics()
 {
@@ -120076,9 +120169,53 @@ void Dequeue (std::string context, Ptr <const Packet> pkt)
 	cout<<"A packet dequed"<<endl;
 }
 
+void tcam_hit_ip(uint32_t node_id, uint32_t src_ip, uint32_t dst_ip, uint16_t src_port, uint16_t dst_port, uint8_t proto, uint32_t pkt_bytes);
+
 void MacTx (std::string context, Ptr <const Packet> pkt)
 {
 	//cout<<"This is MacTx"<<endl;
+}
+
+void Ipv4Tx(std::string context, Ptr<const Packet> pkt, Ptr<Ipv4> ipv4, uint32_t interface)
+{
+    // Extract node ID from context string: e.g., "/NodeList/80/$ns3::Ipv4L3Protocol/Tx"
+    size_t pos1 = context.find("/NodeList/");
+    if (pos1 == std::string::npos) return;
+    size_t pos2 = context.find("/", pos1 + 10);
+    if (pos2 == std::string::npos) return;
+    std::string node_str = context.substr(pos1 + 10, pos2 - (pos1 + 10));
+    uint32_t node_id = std::stoi(node_str);
+
+    // Only process RSU nodes
+    if (node_id < (uint32_t)N_Vehicles) return;
+
+    ns3::Ipv4Header iph;
+    if (!pkt->PeekHeader(iph)) return;
+    
+    uint32_t src_ip = iph.GetSource().Get();
+    uint32_t dst_ip = iph.GetDestination().Get();
+    uint8_t proto = iph.GetProtocol();
+    
+    uint16_t src_port = 0, dst_port = 0;
+    
+    Ptr<Packet> p = pkt->Copy();
+    p->RemoveHeader(iph);
+    
+    if (proto == 17) { // UDP
+        ns3::UdpHeader udph;
+        if (p->RemoveHeader(udph) != 0) {
+            src_port = udph.GetSourcePort();
+            dst_port = udph.GetDestinationPort();
+        }
+    } else if (proto == 6) { // TCP
+        ns3::TcpHeader tcph;
+        if (p->RemoveHeader(tcph) != 0) {
+            src_port = tcph.GetSourcePort();
+            dst_port = tcph.GetDestinationPort();
+        }
+    }
+    
+    tcam_hit_ip(node_id, src_ip, dst_ip, src_port, dst_port, proto, pkt->GetSize());
 }
 
 void RSU_routing_dataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source_node, Ptr <Node> destination_node, Ptr <Packet> packet1)
@@ -120304,6 +120441,10 @@ uint32_t s_flow_counter[2*flows][total_size][Flow_size+2];
 
 
 
+
+// Forward declarations so check_delivery_and_retransmit can call both.
+void tcam_install(uint32_t node_id, uint32_t fid);
+void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 
 void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_t hop, uint32_t current_hop, Time originail_timestamp, struct custom_struct arguments)
 {
@@ -120572,7 +120713,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
 						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
 						}
-						// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+                        // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
                         // Malicious RSU intercepts packet and secretly duplicates it
                         // to the eavesdropper, while forwarding the original normally.
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
@@ -120623,6 +120764,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    <<" arguments.channel="<<arguments.channel
 						    <<" txCardChannel="<<(wdi!=0 && wdi->GetPhy()!=0 ? (int)wdi->GetPhy()->GetChannelNumber() : -1)
 						    <<" at t="<<Now().GetSeconds()<<endl;
+						// Record hit: install on first forward, then increment counters.
+						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
 						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
 						double retry_delay = tg + 0.000100 + rand_delay;
@@ -120656,148 +120799,473 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 //Attack helper functions
 
 
+// ---------- Change 8: TCAM snapshot exporter — 5-tuple stamped at install ----------
 
-// ---------- Slow TCAM Exhaustion Attack (Attacks 3 & 4) ----------
-//
-// Reactive TCAM model layered on top of the existing proactive (delta-value)
-// routing. The proactive routing in architecture 3 is UNCHANGED: find_next_hop
-// still decides the next hop. This layer only governs *timing* at the RSU
-// forwarding step:
-//   - The designated reactive (safety-critical) flow has NO proactive rule, so
-//     at the RSU it must be served from the reactive TCAM.
-//   - TCAM HIT  -> fast path (0 extra delay).
-//   - TCAM MISS -> packet goes to the controller "slow path": the RSU installs
-//     the rule (FIFO-evicting if the small table is full) and the packet eats
-//     TCAM_SLOWPATH_DELAY (controller round-trip, ~100ms on a wired backhaul).
-//
-// Both attacks fill the SAME per-RSU reactive TCAM:
-//   - Attack 3 (control plane): a malicious controller spams junk FlowMods.
-//   - Attack 4 (data plane):    an attacker vehicle sends unique low-rate flows.
-// Either way the 8 slots fill with junk, evicting the victim flow's entry, so
-// the victim keeps missing -> repeated 100ms penalties on safety packets.
-//
-// Keyed on flow id (fid), read from the modified-routing tag at the RSU
-// forwarding step. Junk attacker flows use synthetic ids >= total_size so they
-// never collide with the single real flow (id 0).
-
-const int TCAM_CAPACITY        = 8;       // small reactive table per RSU (sim)
-const double TCAM_SLOWPATH_DELAY = 0.100; // 100 ms controller round-trip per miss
-
-// Attack toggles (set by initialise_stub_attack_state() for variants 8/9 only).
-bool tcam_attack_cp_enabled = false;  // Attack 3 (control plane)
-bool tcam_attack_dp_enabled = false;  // Attack 4 (data plane)
-uint32_t tcam_dp_attacker_node = 0;   // attacker vehicle (current_hop index) for Attack 4
-uint32_t reactive_flow_id = 0;        // victim flow: served reactively (no proactive rule)
-
-// A single reactive TCAM entry: a flow-id key, valid flag, and an insertion
-// sequence number used for FIFO eviction.
 struct TcamEntry {
-    bool     valid;
-    uint32_t key;   // flow id
-    uint64_t seq;   // monotonically increasing; lowest seq = oldest = evicted first
+    uint32_t flow_id;
+    uint32_t node_id;
+    uint32_t src_ip;
+    uint32_t dst_ip;
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint8_t  proto;
+    double   install_time;
+    double   last_seen_time; // sim time of most recent packet hit
+    uint64_t packet_count;   // packets forwarded through this entry
+    uint64_t byte_count;     // bytes  forwarded through this entry
+    bool     is_malicious;   // true when injected by attacker (Change 5–7)
 };
 
-// One table per node index (indexed by current_hop = ns3_id - 2); only RSU
-// indices are ever used. Sized by total_size (compile-time const) because
-// N_Vehicles/N_RSUs are reassigned at runtime by the test-network setups.
-TcamEntry reactive_tcam[total_size][TCAM_CAPACITY];
-uint64_t  tcam_seq_counter = 0;  // global monotonic sequence for FIFO ordering
+std::vector<TcamEntry> g_tcam_table;
+std::set<std::pair<uint32_t,uint32_t>> g_tcam_installed; // (flow_id, node_id) dedup
 
-void tcam_init_all()
+// Returns the first non-loopback IPv4 address of a node given its sim index (0-based).
+// NodeList IDs in this simulation are offset by 2 (management + controller nodes occupy 0,1).
+static uint32_t get_node_ipv4(uint32_t sim_node_index)
 {
-    for (int n = 0; n < total_size; n++)
-        for (int s = 0; s < TCAM_CAPACITY; s++)
+    Ptr<Node> nd = NodeList::GetNode(sim_node_index + 2);
+    if (!nd) return 0;
+    Ptr<Ipv4> ipv4 = nd->GetObject<Ipv4>();
+    if (!ipv4) return 0;
+    for (uint32_t i = 0; i < ipv4->GetNInterfaces(); i++)
+    {
+        Ipv4Address addr = ipv4->GetAddress(i, 0).GetLocal();
+        if (addr != Ipv4Address::GetLoopback() && addr.Get() != 0)
+            return addr.Get();
+    }
+    return 0;
+}
+
+// Deterministic port derivation from flow identity (Option B).
+// Different (fid, src, dst, salt) combinations produce scattered 16-bit ports.
+static uint16_t derive_port(uint32_t fid, uint32_t src, uint32_t dst, uint32_t salt)
+{
+    std::size_t h = std::hash<uint64_t>{}(
+        (uint64_t(fid) << 32) ^ (uint64_t(src) << 16) ^ (uint64_t(dst) << 8) ^ salt);
+    return static_cast<uint16_t>(1024 + (h % 60000));
+}
+
+// Forward-declare so tcam_hit() can call tcam_install() before it is defined.
+void tcam_install(uint32_t node_id, uint32_t fid);
+// Forward-declare the per-second dump so tcam_install can schedule it.
+void tcam_snapshot_dump();
+
+// Helper to generate a unique flow ID because the simulator reuses fid=0/1.
+static uint32_t get_actual_flow_id(uint32_t fid) {
+    if (fid >= 1000000) return fid; // malicious fake_fid
+    
+    uint32_t src_node = (delta_at_nodes_inst + fid)->source_f;
+    uint32_t dst_node = (delta_at_nodes_inst + fid)->destination_f;
+    auto key = std::make_pair(src_node, dst_node);
+    
+    static std::map<std::pair<uint32_t, uint32_t>, uint32_t> g_benign_flow_map;
+    static uint32_t g_next_benign_flow_id = 1;
+    
+    if (g_benign_flow_map.find(key) == g_benign_flow_map.end()) {
+        g_benign_flow_map[key] = g_next_benign_flow_id++;
+    }
+    return g_benign_flow_map[key];
+}
+
+// Helper to generate deterministic flow_id for an IP 5-tuple
+static uint32_t get_or_create_ip_flow_id(uint32_t src_ip, uint32_t dst_ip, uint16_t src_port, uint16_t dst_port, uint8_t proto) {
+    std::string key = std::to_string(src_ip) + "-" + std::to_string(dst_ip) + "-" + std::to_string(src_port) + "-" + std::to_string(dst_port) + "-" + std::to_string(proto);
+    static std::map<std::string, uint32_t> g_ip_flow_map;
+    static uint32_t g_next_ip_flow_id = 1000; // Start at 1000 to avoid conflicts
+    if (g_ip_flow_map.find(key) == g_ip_flow_map.end()) {
+        g_ip_flow_map[key] = g_next_ip_flow_id++;
+    }
+    return g_ip_flow_map[key];
+}
+
+// ── IP-based Per-packet hit updater ────────────────────────────────────────
+// Called by MacTx for standard NS-3 routed packets (e.g., background UDP traffic)
+void tcam_hit_ip(uint32_t node_id, uint32_t src_ip, uint32_t dst_ip, uint16_t src_port, uint16_t dst_port, uint8_t proto, uint32_t pkt_bytes)
+{
+    uint32_t actual_fid = get_or_create_ip_flow_id(src_ip, dst_ip, src_port, dst_port, proto);
+
+    for (auto& e : g_tcam_table)
+    {
+        if (e.flow_id == actual_fid && e.node_id == node_id)
         {
-            reactive_tcam[n][s].valid = false;
-            reactive_tcam[n][s].key   = 0;
-            reactive_tcam[n][s].seq   = 0;
+            e.packet_count++;
+            e.byte_count   += pkt_bytes;
+            e.last_seen_time = Simulator::Now().GetSeconds();
+            return;
         }
-    tcam_seq_counter = 0;
-}
-
-// Returns true if flow `key` is currently resident in rsu_node's reactive TCAM.
-bool tcam_lookup(uint32_t rsu_node, uint32_t key)
-{
-    if (rsu_node >= (uint32_t)total_size) return false;
-    for (int s = 0; s < TCAM_CAPACITY; s++)
-    {
-        if (reactive_tcam[rsu_node][s].valid &&
-            reactive_tcam[rsu_node][s].key == key)
-            return true;
     }
-    return false;
+
+    bool first_ever = (g_tcam_table.empty());
+
+    TcamEntry e;
+    e.flow_id        = actual_fid;
+    e.node_id        = node_id;
+    e.src_ip         = src_ip;
+    e.dst_ip         = dst_ip;
+    e.src_port       = src_port;
+    e.dst_port       = dst_port;
+    e.proto          = proto;
+    e.install_time   = Simulator::Now().GetSeconds();
+    e.last_seen_time = e.install_time;
+    e.packet_count   = 1;
+    e.byte_count     = pkt_bytes;
+    e.is_malicious   = false;
+    g_tcam_table.push_back(e);
+
+    if (first_ever)
+        Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
 }
 
-// Installs flow `key` into rsu_node's reactive TCAM. Uses a free slot if one
-// exists; otherwise FIFO-evicts the oldest (lowest seq) entry. No-op if the
-// flow is already resident (FIFO, not LRU — does not refresh).
-void tcam_install(uint32_t rsu_node, uint32_t key)
+// ── Per-packet hit updater ─────────────────────────────────────────────────
+// Called at every relay/source forward for (node_id, fid). Increments the
+// matching entry's packet and byte counters; updates last_seen_time.
+void tcam_hit(uint32_t node_id, uint32_t original_fid, uint32_t pkt_bytes)
 {
-    if (rsu_node >= (uint32_t)total_size) return;
-    if (tcam_lookup(rsu_node, key)) return;  // already present
+    uint32_t actual_fid = get_actual_flow_id(original_fid);
 
-    int free_slot = -1;
-    int oldest_slot = 0;
-    uint64_t oldest_seq = 0;
-    bool oldest_set = false;
-    for (int s = 0; s < TCAM_CAPACITY; s++)
+    for (auto& e : g_tcam_table)
     {
-        if (!reactive_tcam[rsu_node][s].valid) { free_slot = s; break; }
-        if (!oldest_set || reactive_tcam[rsu_node][s].seq < oldest_seq)
+        if (e.flow_id == actual_fid && e.node_id == node_id)
         {
-            oldest_seq  = reactive_tcam[rsu_node][s].seq;
-            oldest_slot = s;
-            oldest_set  = true;
+            e.packet_count++;
+            e.byte_count   += pkt_bytes;
+            e.last_seen_time = Simulator::Now().GetSeconds();
+            return;
         }
     }
-    int slot = (free_slot >= 0) ? free_slot : oldest_slot;
-    reactive_tcam[rsu_node][slot].valid = true;
-    reactive_tcam[rsu_node][slot].key   = key;
-    reactive_tcam[rsu_node][slot].seq   = ++tcam_seq_counter;
+    // Entry not yet installed — install first, then record the hit.
+    tcam_install(node_id, original_fid);
+    tcam_hit(node_id, original_fid, pkt_bytes);
 }
 
-// Fills EVERY slot of rsu_node's reactive TCAM with fresh unique junk keys,
-// fully saturating it. Called each flood tick so a victim entry installed
-// between ticks is guaranteed evicted by the next tick (sustained exhaustion).
-void tcam_saturate(uint32_t rsu_node)
+// Install a TCAM rule for (flow_id, node_id) once.  Subsequent calls for the
+// same pair are silently ignored — dedup via g_tcam_installed.
+// On the very first install ever, also kicks off the per-second snapshot loop.
+void tcam_install(uint32_t node_id, uint32_t original_fid)
 {
-    if (rsu_node >= (uint32_t)total_size) return;
-    for (int s = 0; s < TCAM_CAPACITY; s++)
-    {
-        uint32_t junk_key = (uint32_t)total_size + (uint32_t)tcam_seq_counter + (uint32_t)s + 1;
-        reactive_tcam[rsu_node][s].valid = true;
-        reactive_tcam[rsu_node][s].key   = junk_key;
-        reactive_tcam[rsu_node][s].seq   = ++tcam_seq_counter;
+    uint32_t actual_fid = get_actual_flow_id(original_fid);
+    auto key = std::make_pair(actual_fid, node_id);
+    if (g_tcam_installed.count(key)) return;
+    g_tcam_installed.insert(key);
+
+    bool first_ever = (g_tcam_table.empty());  // schedule timer only once
+
+    uint32_t src_node = (delta_at_nodes_inst + original_fid)->source_f;
+    uint32_t dst_node = (delta_at_nodes_inst + original_fid)->destination_f;
+
+    uint32_t src_ip = get_node_ipv4(src_node);
+    uint32_t dst_ip = get_node_ipv4(dst_node);
+
+    // Per-flow deterministic ports — vary across flows so PSE is meaningful
+    uint16_t src_port = derive_port(actual_fid, src_node, dst_node, 0x1234u);
+    uint16_t dst_port = derive_port(actual_fid, dst_node, src_node, 0x5678u);
+
+    TcamEntry e;
+    e.flow_id        = actual_fid;
+    e.node_id        = node_id;
+    e.src_ip         = src_ip;
+    e.dst_ip         = dst_ip;
+    e.src_port       = src_port;
+    e.dst_port       = dst_port;
+    e.proto          = 17;   // UDP
+    e.install_time   = Simulator::Now().GetSeconds();
+    e.last_seen_time = e.install_time;
+    e.packet_count   = 0;
+    e.byte_count     = 0;
+    e.is_malicious   = false;
+    g_tcam_table.push_back(e);
+
+    Ipv4Address sip, dip;
+    sip.Set(src_ip);
+    dip.Set(dst_ip);
+    std::cout << "[TCAM INSTALL] flow=" << actual_fid
+              << " node=" << node_id
+              << " " << sip << ":" << src_port
+              << " -> " << dip << ":" << dst_port
+              << " t=" << e.install_time << "s" << std::endl;
+
+    // Kick off the per-second snapshot loop the very first time any entry is installed.
+    if (first_ever)
+        Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
+}
+
+// ── Per-second snapshot exporter (Change 8) ────────────────────────────────
+// Fires at t=first_install+1s then every 1s until simTime.
+// Writes two CSVs into results_routing/:
+//   tcam_snapshots_<mode>.csv  — one row per (node, flow) per second
+//   tcam_occupancy_<mode>.csv  — one row per node per second (rule count)
+void tcam_snapshot_dump()
+{
+    double now = Simulator::Now().GetSeconds();
+    int    t   = static_cast<int>(std::round(now));
+
+    // Derive mode tag — maps internal enum values to the paper's attack numbers.
+    // active_attack_variant:  -1 = baseline,  2 = Attack 3 (CP),  3 = Attack 4 (DP)
+    std::string mode;
+    if (active_attack_variant == -1) {
+        mode = "baseline";
+    } else {
+        // Paper numbering: internal variant 2 → "attack3", internal variant 3 → "attack4"
+        static const std::map<int, std::string> variant_to_label = {
+            {0, "attack0"},
+            {1, "attack1"},
+            {2, "attack3"},   // Control-Plane TCAM flooding  → Attack 3
+            {3, "attack4"},   // Data-Plane TCAM exhaustion   → Attack 4
+        };
+        auto it = variant_to_label.find(active_attack_variant);
+        mode = (it != variant_to_label.end())
+               ? it->second
+               : ("attack" + std::to_string(active_attack_variant));
+        // For Attack 4 multi-attacker sweeps append _nN so each run
+        // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
+        if (active_attack_variant == 3 && num_attackers > 1)
+            mode += "_n" + std::to_string(num_attackers);
     }
+
+    const std::string base_dir =
+        "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
+    std::string snap_path = base_dir + "tcam_snapshots_" + mode + ".csv";
+    std::string occ_path  = base_dir + "tcam_occupancy_"  + mode + ".csv";
+
+    // Open in append mode; write header only when file is new/empty.
+    std::ofstream snap_f(snap_path, std::ios::app);
+    if (snap_f.is_open() && snap_f.tellp() == 0)
+        snap_f << "t,rsu_id,flow_id,src_ip,dst_ip,src_port,dst_port,proto,"
+               << "install_time,duration,packets,bytes,is_malicious\n";
+
+    std::ofstream occ_f(occ_path, std::ios::app);
+    if (occ_f.is_open() && occ_f.tellp() == 0)
+        occ_f << "t,rsu_id,total_rule_count\n";
+
+    // Walk every installed entry; build per-node rule count as we go.
+    std::map<uint32_t,int> rule_count;
+    for (const auto& e : g_tcam_table)
+    {
+        rule_count[e.node_id]++;
+        if (snap_f.is_open())
+        {
+            double duration = now - e.install_time;
+            Ipv4Address sip, dip;
+            sip.Set(e.src_ip);
+            dip.Set(e.dst_ip);
+            snap_f << t
+                   << ',' << e.node_id
+                   << ',' << e.flow_id
+                   << ',' << sip
+                   << ',' << dip
+                   << ',' << e.src_port
+                   << ',' << e.dst_port
+                   << ',' << (int)e.proto
+                   << ',' << std::fixed << std::setprecision(6)
+                   << e.install_time
+                   << ',' << duration
+                   << ',' << e.packet_count
+                   << ',' << e.byte_count
+                   << ',' << (e.is_malicious ? 1 : 0)
+                   << '\n';
+        }
+    }
+    if (occ_f.is_open())
+    {
+        for (const auto& kv : rule_count)
+            occ_f << t << ',' << kv.first << ',' << kv.second << '\n';
+    }
+    snap_f.close();
+    occ_f.close();
+
+    if (now + 1.0 <= simTime)
+        Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
 }
 
-// Attack 3 (control plane): malicious controller floods every RSU's reactive
-// TCAM with junk FlowMods, fully saturating each one. Reschedules every 50ms.
-void controller_flood_tcam_all_rsus()
+// ── End-of-sim backup export ────────────────────────────────────────────────
+// Writes a final static snapshot with total lifetime counters per entry.
+void export_tcam_snapshot_baseline()
 {
-    if (!tcam_attack_cp_enabled) return;
-    for (uint32_t r = N_Vehicles; r < total_size && r < N_Vehicles + N_RSUs; r++)
-        tcam_saturate(r);
-    cout << attack_tag() << " [ATTACK 3 — CTRL TCAM FLOOD] Controller saturated all RSU TCAMs at "
-         << Simulator::Now().GetSeconds() << "s" << endl;
-    Simulator::Schedule(Seconds(0.050), &controller_flood_tcam_all_rsus);
+    // Same paper-numbering map as tcam_snapshot_dump():
+    //   internal variant 2 → "attack3" (CP),  3 → "attack4" (DP)
+    std::string mode;
+    if (active_attack_variant == -1) {
+        mode = "baseline";
+    } else {
+        static const std::map<int, std::string> variant_to_label = {
+            {0, "attack0"}, {1, "attack1"},
+            {2, "attack3"}, {3, "attack4"},
+        };
+        auto it = variant_to_label.find(active_attack_variant);
+        mode = (it != variant_to_label.end())
+               ? it->second
+               : ("attack" + std::to_string(active_attack_variant));
+        // Mirror the _nN suffix logic from tcam_snapshot_dump().
+        if (active_attack_variant == 3 && num_attackers > 1)
+            mode += "_n" + std::to_string(num_attackers);
+    }
+    std::string path =
+        "/home/user/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
+    std::ofstream fout(path, std::ios::trunc);
+    fout << "flow_id,node_id,src_ip,dst_ip,src_port,dst_port,proto,install_time,packets,bytes\n";
+    for (const auto& e : g_tcam_table)
+    {
+        Ipv4Address sip, dip;
+        sip.Set(e.src_ip);
+        dip.Set(e.dst_ip);
+        fout << e.flow_id      << ","
+             << e.node_id      << ","
+             << sip            << ","
+             << dip            << ","
+             << e.src_port     << ","
+             << e.dst_port     << ","
+             << (int)e.proto   << ","
+             << e.install_time << ","
+             << e.packet_count << ","
+             << e.byte_count   << "\n";
+    }
+    fout.close();
+    std::cout << "[TCAM SNAPSHOT] Final export: " << g_tcam_table.size()
+              << " entries -> " << path << std::endl;
 }
 
-// Attack 4 (data plane): attacker vehicle floods its serving RSU with unique
-// low-rate packets, fully saturating that RSU's TCAM. Reschedules every 50ms.
-void data_plane_flood_tcam()
+// ---------- TCAM exhaustion helpers ----------
+
+// ── Change 5: malicious-flow installer ────────────────────────────────────
+// Like tcam_install() but:
+//   • skips g_tcam_installed dedup (each fake_fid is intentionally unique)
+//   • sets is_malicious = true
+//   • derives 5-tuple from fake_fid alone (no delta_at_nodes_inst needed)
+void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
 {
-    if (!tcam_attack_dp_enabled) return;
-    uint32_t target_rsu = N_Vehicles;  // attacker's serving RSU (first RSU index)
-    tcam_saturate(target_rsu);
-    cout << attack_tag() << " [ATTACK 4 — DATA TCAM FLOOD] Attacker node " << tcam_dp_attacker_node
-         << " saturated RSU " << target_rsu << " TCAM at "
-         << Simulator::Now().GetSeconds() << "s" << endl;
-    Simulator::Schedule(Seconds(0.050), &data_plane_flood_tcam);
+    // Build a synthetic 5-tuple unique to this fake_fid.
+    // src IP = attacker node's real IP; dst IP = a synthetic remote address.
+    uint32_t src_ip  = get_node_ipv4(node_id);
+    // Encode fake_fid into the last two octets of a routable-looking address
+    // (192.168.x.y where x.y encode fake_fid mod 65535).
+    uint32_t encoded = fake_fid & 0xFFFF;
+    uint32_t dst_ip  = Ipv4Address("192.168.0.0").Get() | encoded;
+
+    uint16_t src_port = derive_port(fake_fid, node_id, 0xDEAD, 0x1111u);
+    uint16_t dst_port = derive_port(fake_fid, 0xDEAD, node_id, 0x2222u);
+
+    TcamEntry e;
+    e.flow_id        = fake_fid;
+    e.node_id        = node_id;
+    e.src_ip         = src_ip;
+    e.dst_ip         = dst_ip;
+    e.src_port       = src_port;
+    e.dst_port       = dst_port;
+    e.proto          = 17;   // UDP
+    e.install_time   = Simulator::Now().GetSeconds();
+    e.last_seen_time = e.install_time;
+    e.packet_count   = 1;    // counts as one "packet miss" that triggered install
+    e.byte_count     = 750;  // nominal packet size consistent with benign traffic
+    e.is_malicious   = true;
+    g_tcam_table.push_back(e);
+    // NOTE: intentionally NOT inserted into g_tcam_installed so repeated calls
+    // with the same fake_fid could be used for refresh; but dp_attack_tick always
+    // increments g_dp_attack_fid_counter so each call is truly unique.
+
+    Ipv4Address sip, dip;
+    sip.Set(src_ip);
+    dip.Set(dst_ip);
+    std::cout << "[TCAM INSTALL MAL] fake_fid=" << fake_fid
+              << " node=" << node_id
+              << " " << sip << ":" << src_port
+              << " -> " << dip << ":" << dst_port
+              << " t=" << e.install_time << "s" << std::endl;
 }
 
+// ── Change 5+7: self-rescheduling DP attacker tick (per-node) ─────────────
+// dp_attack_tick_for(node): fires every (1/attack_rate_pps) seconds for the
+// given attacker node while active_attack_variant==3 and sim time < simTime.
+// Each call installs one new unique malicious TCAM rule on behalf of `node`.
+void dp_attack_tick_for(uint32_t attacker_node)
+{
+    if (active_attack_variant != 3) return;
+    double now = Simulator::Now().GetSeconds();
+    if (now >= simTime) return;
+
+    uint32_t fake_fid = g_dp_attack_fid_counter++;
+    tcam_install_malicious(attacker_node, fake_fid);
+
+    double interval = 1.0 / attack_rate_pps;
+    Simulator::Schedule(Seconds(interval),
+                        &dp_attack_tick_for, attacker_node);
+}
+
+// Legacy single-attacker entry point (node 0) — kept for backward compat.
+void dp_attack_tick()
+{
+    dp_attack_tick_for(0);
+}
+
+// ── Change 6: self-rescheduling CP (controller) attacker tick ─────────────
+// Fires every (1/attack_rate_pps) seconds while active_attack_variant==2.
+// Each call installs one new malicious rule on EVERY RSU, simulating a
+// compromised controller broadcasting a junk FlowMod to the entire network.
+void cp_attack_tick()
+{
+    if (active_attack_variant != 2) return;
+    double now = Simulator::Now().GetSeconds();
+    if (now >= simTime) return;
+
+    for (uint32_t r = 0; r < N_RSUs; r++)
+    {
+        uint32_t rsu_idx  = N_Vehicles + r;        // sim node index of RSU r
+        uint32_t fake_fid = g_cp_attack_fid_counter++;
+        tcam_install_malicious(rsu_idx, fake_fid);
+    }
+
+    double interval = 1.0 / attack_rate_pps;
+    Simulator::Schedule(Seconds(interval), &cp_attack_tick);
+}
+
+int simulated_tcam_counter[200] = {0};
+int TCAM_CAPACITY = 1000;
+bool tcam_exhaust_malicious_nodes[200] = {false};
 uint32_t spy_node_id = 0;
 void declare_attack_states() {}
+
+// Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
+// Simulates the malicious controller spamming junk FlowMods to every RSU,
+// filling their TCAM so legitimate packets miss the table and go slow-path.
+void controller_flood_tcam_all_rsus()
+{
+    for (uint32_t i = N_Vehicles; i < total_size; i++)
+    {
+        // Each call "installs" 5 junk rules per RSU
+        simulated_tcam_counter[i] += 5;
+        if (simulated_tcam_counter[i] > TCAM_CAPACITY)
+            simulated_tcam_counter[i] = TCAM_CAPACITY;  // cap at full
+    }
+    cout << "[ATTACK 16 — CTRL TCAM FLOOD] Controller flooded all RSUs. "
+         << "RSU TCAM level: " << simulated_tcam_counter[N_Vehicles] 
+         << "/" << TCAM_CAPACITY << endl;
+}
+
+// Called every TCAM_FLOOD_INTERVAL seconds for each data-plane attacker node (Attack 17).
+// Simulates an attacker vehicle flooding the nearest RSU with unique-5-tuple packets
+// so the RSU's TCAM fills up with useless rules.
+void data_plane_flood_tcam(uint32_t attacker_node, uint32_t target_rsu)
+{
+    if (tcam_exhaust_malicious_nodes[attacker_node] == true)
+    {
+        simulated_tcam_counter[target_rsu] += 3;
+        if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
+            simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
+        cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
+             << " flooded RSU " << target_rsu
+             << ". TCAM level: " << simulated_tcam_counter[target_rsu]
+             << "/" << TCAM_CAPACITY << endl;
+    }
+}
+
+// Returns the slow-path extra delay (seconds) for a given RSU node based on
+// how full its TCAM is. When TCAM is 100% full, legitimate packets experience
+// ~300ms extra delay (routed through controller slow path).
+double get_tcam_slowpath_delay(uint32_t rsu_node)
+{
+    double fill_ratio = (double)simulated_tcam_counter[rsu_node] / (double)TCAM_CAPACITY;
+    // Linear: 0ms at empty, 300ms at full
+    return fill_ratio * 0.300;
+}
 
 // ---------- Hidden forwarding helpers ----------
 
@@ -120844,13 +121312,6 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
              << " at " << Now().GetSeconds() << endl;
     }
 }
-// Attack helper functions
-// NOTE: Only Attack 2 (Selective Time Delay, Data Plane) and
-//       Attack 8 (Passive Hidden Forwarding, Data Plane) are implemented.
-//       These are the two attacks used to evaluate FADE as a baseline.
-//       FADE detects Attack 2 via flow-conservation count discrepancy.
-//       FADE cannot detect Attack 8 (PDR stays 100%, MCC ≈ 0) — this
-//       shortcoming motivates the MOBIGUARD framework.
 
 
 void MacRx (std::string context, Ptr <const Packet> pkt)
@@ -121303,38 +121764,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 											//cout<<"This is flow ID "<<fid<<"Re-transmission attempt 1 packet ID "<<updated_packet_ID<<" from "<<current_hop<<" to next hop "<<nid<<"at time "<<Now().GetSeconds()<<endl;
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);						
 											//Simulator::Schedule (Seconds ((tg/1.0)*(sub_flow_counter)), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, p_size, originail_timestamp);
-
-											// ---- Slow TCAM Exhaustion (Attacks 3 & 4): reactive-TCAM timing ----
-											// Layered on top of proactive routing. Next hop (nid) is UNCHANGED;
-											// this only adds slow-path delay on a TCAM miss for the reactive
-											// (safety-critical) flow when it is being forwarded BY an RSU.
-											// Inert unless an attack variant enabled the flags.
-											double tcam_extra_delay = 0.0;
-											bool current_is_rsu =
-												(current_hop >= N_Vehicles &&
-												 current_hop <  N_Vehicles + N_RSUs);
-											if ((tcam_attack_cp_enabled || tcam_attack_dp_enabled) &&
-												current_is_rsu && fid == reactive_flow_id)
-											{
-												if (tcam_lookup(current_hop, fid))
-												{
-													// HIT: rule resident -> fast path, no extra delay.
-												}
-												else
-												{
-													// MISS: controller slow path. Install the rule
-													// (FIFO-evicting if full) and pay the round-trip.
-													tcam_install(current_hop, fid);
-													tcam_extra_delay = TCAM_SLOWPATH_DELAY;
-													cout << attack_tag()
-														 << " [TCAM MISS] RSU " << current_hop
-														 << " flow " << fid
-														 << " -> slow path +" << TCAM_SLOWPATH_DELAY
-														 << "s at " << Simulator::Now().GetSeconds()
-														 << "s" << endl;
-												}
-											}
-											Simulator::Schedule (Seconds (tcam_extra_delay), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
+											Simulator::Schedule (Seconds (0.0), check_delivery_and_retransmit, fid, updated_packet_ID, nid, current_hop, originail_timestamp, arguments);
 											
 											/*		
 											if (retransmitted[fid][nid][updated_packet_ID] == true)
@@ -123575,6 +124005,9 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						uint32_t zeta = 1;
 						double tg = 1.01*compute_individual_link_delay(source, pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] + 2, 1, arguments.p_size, nid, zeta);
 						Simulator::Schedule (Seconds (0.0), updateTxop, fid, nid, source, total_packets - total_packet_counter, true, arguments);
+						// Record hit: install on first send from source, then increment counters.
+						tcam_hit(source, fid, (uint32_t)arguments.p_size);
+
 						switch(arguments.channel)
 						{
 							case(172):
@@ -141148,6 +141581,9 @@ int main(int argc, char *argv[])
     cmd.AddValue ("routing_algorithm", "routing_algorithm", routing_algorithm);
     cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
+    cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
+    cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
+    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): number of attacker nodes; nodes 0..N-1 each run independently (default 1)", num_attackers);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
@@ -141167,8 +141603,7 @@ int main(int argc, char *argv[])
     {
         if (active_attack_variant == 4 ||
             active_attack_variant == 5 ||
-            active_attack_variant == 6 ||
-            active_attack_variant == 7)
+            active_attack_variant == 6)
         {
             N_Vehicles = 6; // VehicleA0(0), VehicleB0(1), Eavesdropper0(2), VehicleA1(3), VehicleB1(4), Eavesdropper1(5)
             // NOTE: single_cycle is NOT auto-forced here. It defaults to false
@@ -141178,11 +141613,21 @@ int main(int argc, char *argv[])
             // PDR/PIR measurements with the full flow_size.
             N_RSUs = 2;     // RSU0(6), RSU1(7)
         }
+        else if (active_attack_variant == 7)
+        {
+            N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
+            // Default to single_cycle for attack 7 test — one packet per flow
+            // shows exactly one eavesdrop event clearly in the log.
+            // Override with --single_cycle=0 to restore full flow volume.
+            if (!single_cycle)
+                single_cycle = true;
+            N_RSUs = 1;
+        }
         else
         {
-            N_Vehicles = 5; // Extended Attack 2 topology — 5 vehicles (nodes 0–4)
+            N_Vehicles = 2; // original Attack 2 layout
+            N_RSUs = 1;
         }
-        N_RSUs = 5; // Extended Attack 2 topology — 5 RSUs (nodes 5–9)
     }
 
     // Apply single_cycle: cap every flow to exactly 1 packet.
@@ -141265,10 +141710,18 @@ int main(int argc, char *argv[])
 	    // // positionAlloc->Add(Vector(3*x, 0.0, 0.0)); // Custom position for Node 11
 	    // // positionAlloc->Add(Vector(x, 0.0, 0.0)); // Custom position for Node 12
 	    // // positionAlloc->Add(Vector(2*x, 0.0, 0.0)); // Custom position for Node 13
+	    // // positionAlloc->Add(Vector(0.0, x, 0.0)); // Custom position for Node 14
+	    // // positionAlloc->Add(Vector(0.0, x*2, 0.0)); // Custom position for Node 15
+	    // // positionAlloc->Add(Vector(x, x*2, 0.0)); // Custom position for Node 16
+	    // // positionAlloc->Add(Vector(x*2, x*2, 0.0)); // Custom position for Node 17
+	    // // positionAlloc->Add(Vector(x*3, x*2, 0.0)); // Custom position for Node 18
+	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
+	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
+	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
+
 		if (active_attack_variant == 4 ||
             active_attack_variant == 5 ||
-            active_attack_variant == 6 ||
-            active_attack_variant == 7)
+            active_attack_variant == 6)
     {
         // Two-unit topology setup (6 Vehicles):
         // Node 0: Vehicle A0
@@ -141290,16 +141743,29 @@ int main(int argc, char *argv[])
         cout << attack_tag() << " [INIT] Vehicle B1 (node 4): (1600,150,0)" << endl;
         cout << attack_tag() << " [INIT] Eavesdropper 1 (node 5): (1375,220,0)" << endl;
     }
+    else if (active_attack_variant == 7)
+    {
+        // Attack 7 topology:
+        // Vehicle A (node 0) at (300, 150, 0)
+        // Vehicle C (node 1) at (800, 150, 0) — legitimate destination
+        // Vehicle B (node 2) at (550, 300, 0) — eavesdropper, close to RSU
+        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0: Vehicle A (sender)
+        positionAlloc->Add(Vector(800.0, 150.0, 0.0)); // Node 1: Vehicle C (legit dest)
+        positionAlloc->Add(Vector(550.0, 300.0, 0.0)); // Node 2: Vehicle B (eavesdropper)
+        cout << attack_tag() << " [INIT] Vehicle A  (node 0): (300, 150, 0)" << endl;
+        cout << attack_tag() << " [INIT] Vehicle C  (node 1): (800, 150, 0) - legit destination" << endl;
+        cout << attack_tag() << " [INIT] Vehicle B  (node 2): (550, 300, 0) - eavesdropper" << endl;
+        cout << attack_tag() << " [INIT] RSU        (node 3): (550,  75, 0) - MALICIOUS" << endl;
+    }
     else
     {
-        // Extended Attack 2 test topology — 5 vehicles (nodes 0–4).
-        // Node 0 = sender (Vehicle A), Node 1 = destination (Vehicle B).
-        // Multi-hop path: A(0) -> RSU0(5) -> RSU1(6) -> RSU2(7) -> B(1).
-        positionAlloc->Add(Vector(0.0,    150.0, 0.0)); // Node 0: Vehicle A (sender)
-        positionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
-        positionAlloc->Add(Vector(0.0,    400.0, 0.0)); // Node 2: Vehicle C
-        positionAlloc->Add(Vector(500.0,  400.0, 0.0)); // Node 3: Vehicle D
-        positionAlloc->Add(Vector(1000.0, 400.0, 0.0)); // Node 4: Vehicle E
+        // Spread positions for clear NetAnim visualization.
+        // Vehicle A (left) and Vehicle B (right) are 600m apart on the same
+        // horizontal line; the RSU sits above their midpoint and the controller
+        // above the RSU, so the V2V link and the V->RSU->Controller relay path
+        // are all geometrically distinct on screen.
+        positionAlloc->Add(Vector(300.0, 300.0, 0.0)); // Node 0: Vehicle A (left)
+        positionAlloc->Add(Vector(900.0, 300.0, 0.0)); // Node 1: Vehicle B (right)
     }
 
 	    custom_mobility.SetPositionAllocator(positionAlloc);
@@ -141804,73 +142270,44 @@ int main(int argc, char *argv[])
   
   if (routing_test == true)//routing_test
   {
-  	man_base_posx = 500;
-  	man_base_posy = 0;
-  	con_base_posx = 550;
-  	con_base_posy = 0;
-  	lte_base_posx = 525;
-  	lte_base_posy = 0;
+  	man_base_posx = 300;
+  	man_base_posy = 600;
+  	con_base_posx = 600;
+  	con_base_posy = 600;
+  	lte_base_posx = 450;
+  	lte_base_posy = 600;
+    // TODO: man_base_posx/posy, con_base_posx/posy, lte_base_posx/posy above are
+    // tuned for the variant-7 (3-node) layout. Attacks 5/6/7 (variants 4/5/6,
+    // 2-unit/6-vehicle topology spanning x=300..1600) likely need their own
+    // base positions — to be addressed separately. Left unchanged for now.
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-    
-    if (N_RSUs == 5 && active_attack_variant == 7)
+    if (active_attack_variant == 4 ||
+        active_attack_variant == 5 ||
+        active_attack_variant == 6)
     {
-      // Attack 8 (variant 7): 5 RSUs spaced along the 2200m corridor
-      // above the vehicle path (y=150) at y=100, serving groups of ~9 vehicles each
-      rsuPositionAlloc->Add(Vector(500.0, 100.0, 0.0));   // RSU 45: serves vehicles 0-8
-      rsuPositionAlloc->Add(Vector(1100.0, 100.0, 0.0));  // RSU 46: serves vehicles 9-17
-      rsuPositionAlloc->Add(Vector(1700.0, 100.0, 0.0));  // RSU 47: serves vehicles 18-26
-      rsuPositionAlloc->Add(Vector(1900.0, 100.0, 0.0));  // RSU 48: serves vehicles 27-35
-      rsuPositionAlloc->Add(Vector(2100.0, 100.0, 0.0));  // RSU 49: serves vehicles 36-42
-      cout << "[TEST NETWORK] Attack 8 topology (routing_test=true, active_attack_variant=7):" << endl;
-      cout << "[TEST NETWORK] 43 Vehicles (0-42) along y=150, x from 100 to 2200" << endl;
-      cout << "[TEST NETWORK] 5 Eavesdroppers (43-47) along y=300, spaced for RSU proximity" << endl;
-      cout << "[TEST NETWORK] 5 RSUs (45-49) along y=100, serving vehicle groups" << endl;
-    }
-    else
-    {
-      // Original test network: 1 RSU for simple 3-node case
-      // Active/Passive Hidden Forwarding variants all share the same 4-node
-      // Attack-8 layout: RSU(3) on the A-C line so it is the real relay hop,
-      // eavesdropper B(2) 120m below. Variants 4 (Attack5 CP), 5 (Attack6 DP),
-      // 6 (Attack7 passive CP) and 7 (Attack8 passive DP) use it identically.
-      if (active_attack_variant == 4 ||
-          active_attack_variant == 5 ||
-          active_attack_variant == 6 ||
-          active_attack_variant == 7)
-      {
         // 2-unit topology RSUs (nodes 6-7):
         rsuPositionAlloc->Add(Vector(450.0, 150.0, 0.0)); // Node 6: RSU0
         rsuPositionAlloc->Add(Vector(1450.0, 150.0, 0.0)); // Node 7: RSU1
         cout << "[TEST NETWORK] 2-unit RSU positions set:" << endl;
         cout << "[TEST NETWORK] RSU0 (node 6): (450,150,0)" << endl;
         cout << "[TEST NETWORK] RSU1 (node 7): (1450,150,0)" << endl;
-      }
-      else
-      {
-		rsuPositionAlloc->Add(Vector(250.0,  75.0, 0.0));  // RSU 0 (current_hop 5)
-		rsuPositionAlloc->Add(Vector(500.0,  75.0, 0.0));  // RSU 1 (current_hop 6)
-		rsuPositionAlloc->Add(Vector(750.0,  75.0, 0.0));  // RSU 2 (current_hop 7)
-		rsuPositionAlloc->Add(Vector(250.0,  300.0, 0.0)); // RSU 3 (current_hop 8)
-		rsuPositionAlloc->Add(Vector(750.0,  300.0, 0.0)); // RSU 4 (current_hop 9)
-    RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
-		cout << "[TEST NETWORK] 10-node topology: 5 Vehicles + 5 RSUs" << endl;
-		cout << "[TEST NETWORK] Vehicle A (node 0): (0, 150, 0) — SENDER" << endl;
-		cout << "[TEST NETWORK] Vehicle B (node 1): (1000, 150, 0) — DESTINATION" << endl;
-		cout << "[TEST NETWORK] Vehicle C (node 2): (0, 400, 0)" << endl;
-		cout << "[TEST NETWORK] Vehicle D (node 3): (500, 400, 0)" << endl;
-		cout << "[TEST NETWORK] Vehicle E (node 4): (1000, 400, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 0 (node 5): (250, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 1 (node 6): (500, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 2 (node 7): (750, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 3 (node 8): (250, 300, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 4 (node 9): (750, 300, 0)" << endl;
-		cout << "[TEST NETWORK] Traffic path: Vehicle A->RSU0->RSU1->RSU2->Vehicle B" << endl;
-        cout << "[TEST NETWORK] Controller  : (600, 600, 0)" << endl;
-
-      }
     }
-    
+    else
+    {
+        rsuPositionAlloc->Add(Vector(600.0, 450.0, 0.0)); // RSU: above the A-B midpoint
+    }
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
+    if (active_attack_variant != 4 &&
+        active_attack_variant != 5 &&
+        active_attack_variant != 6)
+    {
+        cout << "[TEST NETWORK] Positions set (spread for NetAnim):" << endl;
+        cout << "[TEST NETWORK] Vehicle A   : (300, 300, 0)  Node 0" << endl;
+        cout << "[TEST NETWORK] Vehicle B   : (900, 300, 0)  Node 1" << endl;
+        cout << "[TEST NETWORK] RSU         : (600, 450, 0)  Node index 2" << endl;
+        cout << "[TEST NETWORK] Controller  : (600, 600, 0)" << endl;
+        cout << "[TEST NETWORK] Management  : (300, 600, 0)" << endl;
+    }
     
   }
   
@@ -142688,9 +143125,8 @@ if (architecture == 3 && N_Vehicles > 0)
 			
 		  	//DSRC flow instantiation
 		  	double t0 = 0;
-			// declare_attack_states() was a phantom call — removed.
-			// declare_attackers() below handles all attack flag setup.
-			declare_attackers();       // Mark which nodes are malicious
+			declare_attack_states();  // Set attack flags
+  			declare_attackers();       // Mark which nodes are malicious
 			for (double t=t0+0.999; t<simTime-1; t=t+data_transmission_period)//All official data transmissions begin at t=0
 			{	
 				  //Go over all the wifi devices
@@ -142707,13 +143143,26 @@ if (architecture == 3 && N_Vehicles > 0)
     					{
     						if(i==0)
     						{
-								destination = 1;
+    							// destination = 11;
+								destination = 1; //test
     							source = 0;
     						}
     						else
     						{
-								source = 3;
-    							destination = 4;
+    							if (active_attack_variant == 4 ||
+    							    active_attack_variant == 5 ||
+    							    active_attack_variant == 6)
+    							{
+    								// 2-unit topology (Attacks 5/6/7): flow 1 = unit 1, path 3->7->4
+									source = 3;
+    								destination = 4;
+    							}
+    							else
+    							{
+    								// source = 11;
+								source = 1;
+    							destination = 0;
+    							}
     						}
     					}
     					else
@@ -143199,13 +143648,14 @@ if (architecture == 3 && N_Vehicles > 0)
   	Simulator::Schedule (Seconds (t), print_time);
   }
  
-  AnimationInterface anim("routing.xml");
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Phy/MonitorSnifferRx", MakeCallback (&Rx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/MacRx", MakeCallback (&MacRx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/MacTx", MakeCallback (&MacTx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Enqueue",MakeCallback (&Enqueue));
+  Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
+  AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
   // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
@@ -143336,8 +143786,8 @@ Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after s
 Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 
 
-Simulator::Run();
-  
+  Simulator::Run();
+  export_tcam_snapshot_baseline();
 
 // =====================================================
 // SAVE FADE RESULTS
@@ -143366,7 +143816,7 @@ fade_save_metrics();
 // write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
 // and is called once per data-gathering cycle — no post-simulation call needed.
 
-Simulator::Destroy();
+  Simulator::Destroy();
   
  
   //apb.SetFinish();
