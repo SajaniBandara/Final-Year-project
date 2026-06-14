@@ -115241,6 +115241,44 @@ void initialise_stub_attack_state()
             cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
             break;
 
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
+            break;
+
+        case (2): // Attack 3 — Slow TCAM Exhaustion, Control Plane (new)
+            // Malicious controller floods every RSU's reactive TCAM with junk
+            // FlowMods. Victim = reactive flow 0 (no proactive rule). The RSU
+            // (current_hop = ns3_id - 2) is marked malicious for ground truth.
+            tcam_init_all();
+            tcam_attack_cp_enabled = true;
+            reactive_flow_id = 0;
+            is_malicious_node[8][N_Vehicles] = true;   // controller-driven, attributed to serving RSU
+            t_onset[N_Vehicles] = 1.0;
+            Simulator::Schedule(Seconds(1.0), &controller_flood_tcam_all_rsus);
+            cout << attack_tag() << " ① Attack 3 (Slow TCAM Exhaustion - Control Plane) enabled. "
+                 << "Victim flow " << reactive_flow_id
+                 << ", TCAM capacity " << TCAM_CAPACITY
+                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
+            break;
+
+        case (3): // Attack 4 — Slow TCAM Exhaustion, Data Plane (new)
+            // Attacker vehicle sends unique low-rate flows to its RSU, filling
+            // the same reactive TCAM. Victim = reactive flow 0.
+            tcam_init_all();
+            tcam_attack_dp_enabled = true;
+            reactive_flow_id = 0;
+            tcam_dp_attacker_node = 0;                 // attacker vehicle (current_hop index)
+            is_malicious_node[9][tcam_dp_attacker_node] = true;
+            t_onset[tcam_dp_attacker_node] = 1.0;
+            Simulator::Schedule(Seconds(1.0), &data_plane_flood_tcam);
+            cout << attack_tag() << " ① Attack 4 (Slow TCAM Exhaustion - Data Plane) enabled. "
+                 << "Attacker node " << tcam_dp_attacker_node
+                 << ", victim flow " << reactive_flow_id
+                 << ", TCAM capacity " << TCAM_CAPACITY
+                 << ", slow-path delay " << TCAM_SLOWPATH_DELAY << "s" << endl;
+            break;
+
         default:
             cout << "[INIT] No specific attack init for variant "
                  << active_attack_variant << ", running baseline." << endl;
