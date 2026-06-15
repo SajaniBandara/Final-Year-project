@@ -13,30 +13,30 @@
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <vType id="truck" vClass="truck"/>
-    <trip id="0" depart="0.00" from="772537515#3" to="-772193115#0" type="truck"/>
-    <trip id="1" depart="1.20" from="-28271271#2" to="-1211154930#17" type="truck"/>
-    <trip id="2" depart="2.40" from="503669866#1" to="1253841093#0" type="truck"/>
-    <trip id="3" depart="3.60" from="1218447623#1" to="-24399796#5" type="truck"/>
-    <trip id="4" depart="4.80" from="436198226#1" to="24399798#0" type="truck"/>
-    <trip id="5" depart="6.00" from="772269534#1" to="-28271273#1" type="truck"/>
-    <trip id="6" depart="7.20" from="-5074898#2" to="1188814177" type="truck"/>
-    <trip id="7" depart="8.40" from="-5074898#1" to="863227713#5" type="truck"/>
-    <trip id="8" depart="9.60" from="5074897#6" to="1218708936#2" type="truck"/>
-    <trip id="9" depart="10.80" from="436198227#1" to="-778101134" type="truck"/>
-    <trip id="10" depart="12.00" from="503669868#0" to="303422885#0" type="truck"/>
-    <trip id="11" depart="13.20" from="625563911#3" to="436434058#4" type="truck"/>
-    <trip id="12" depart="14.40" from="1223668964#0" to="1014333228" type="truck"/>
-    <trip id="13" depart="15.60" from="1251710446#3" to="303422885#0" type="truck"/>
-    <trip id="14" depart="16.80" from="-28271278#1" to="160196671#0" type="truck"/>
-    <trip id="15" depart="18.00" from="39914067#7" to="1230751739#1" type="truck"/>
-    <trip id="16" depart="19.20" from="160196671#0" to="170293871#1" type="truck"/>
-    <trip id="17" depart="20.40" from="770424564#1" to="772537514#2" type="truck"/>
-    <trip id="18" depart="21.60" from="-1211154930#7" to="-1211154930#4" type="truck"/>
-    <trip id="19" depart="22.80" from="977460120" to="503669859#7" type="truck"/>
-    <trip id="20" depart="24.00" from="771999788#1" to="-1372395553" type="truck"/>
-    <trip id="21" depart="25.20" from="-1211154930#11" to="503669868#0" type="truck"/>
-    <trip id="22" depart="26.40" from="198263643#0" to="-772193117#5" type="truck"/>
-    <trip id="23" depart="27.60" from="436198227#3" to="605458573#0" type="truck"/>
-    <trip id="24" depart="28.80" from="198263655#3" to="772457002#1" type="truck"/>
+    <vType id="lorry" vClass="truck"/>
+    <trip id="0" depart="0.00" from="772537515#3" to="-772193115#0" type="lorry"/>
+    <trip id="1" depart="1.20" from="-28271271#2" to="-1211154930#17" type="lorry"/>
+    <trip id="2" depart="2.40" from="503669866#1" to="1253841093#0" type="lorry"/>
+    <trip id="3" depart="3.60" from="1218447623#1" to="-24399796#5" type="lorry"/>
+    <trip id="4" depart="4.80" from="436198226#1" to="24399798#0" type="lorry"/>
+    <trip id="5" depart="6.00" from="772269534#1" to="-28271273#1" type="lorry"/>
+    <trip id="6" depart="7.20" from="-5074898#2" to="1188814177" type="lorry"/>
+    <trip id="7" depart="8.40" from="-5074898#1" to="863227713#5" type="lorry"/>
+    <trip id="8" depart="9.60" from="5074897#6" to="1218708936#2" type="lorry"/>
+    <trip id="9" depart="10.80" from="436198227#1" to="-778101134" type="lorry"/>
+    <trip id="10" depart="12.00" from="503669868#0" to="303422885#0" type="lorry"/>
+    <trip id="11" depart="13.20" from="625563911#3" to="436434058#4" type="lorry"/>
+    <trip id="12" depart="14.40" from="1223668964#0" to="1014333228" type="lorry"/>
+    <trip id="13" depart="15.60" from="1251710446#3" to="303422885#0" type="lorry"/>
+    <trip id="14" depart="16.80" from="-28271278#1" to="160196671#0" type="lorry"/>
+    <trip id="15" depart="18.00" from="39914067#7" to="1230751739#1" type="lorry"/>
+    <trip id="16" depart="19.20" from="160196671#0" to="170293871#1" type="lorry"/>
+    <trip id="17" depart="20.40" from="770424564#1" to="772537514#2" type="lorry"/>
+    <trip id="18" depart="21.60" from="-1211154930#7" to="-1211154930#4" type="lorry"/>
+    <trip id="19" depart="22.80" from="977460120" to="503669859#7" type="lorry"/>
+    <trip id="20" depart="24.00" from="771999788#1" to="-1372395553" type="lorry"/>
+    <trip id="21" depart="25.20" from="-1211154930#11" to="503669868#0" type="lorry"/>
+    <trip id="22" depart="26.40" from="198263643#0" to="-772193117#5" type="lorry"/>
+    <trip id="23" depart="27.60" from="436198227#3" to="605458573#0" type="lorry"/>
+    <trip id="24" depart="28.80" from="198263655#3" to="772457002#1" type="lorry"/>
 </routes>
