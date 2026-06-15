@@ -1,46 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-06-15 11:53:20.971372 by Eclipse SUMO randomTrips.py v1.27.0
+<!-- generated on 2026-06-15 12:21:00.188557 by Eclipse SUMO randomTrips.py v1.27.0
 <configuration>
     <net-file value="osm.net.xml"/>
     <output-trip-file value="trips_van.trips.xml"/>
-    <vtype-output value="van"/>
     <vehicle-class value="delivery"/>
+    <seed value="45"/>
     <random value="True"/>
     <end value="30.0"/>
+    <period value="1.2"/>
 </configuration>
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <vType id="delivery" vClass="delivery" maxSpeed="41.67"/>
-    <trip id="0" depart="0.00" from="771985337#0" to="770405992#2" type="delivery"/>
-    <trip id="1" depart="1.00" from="24399791#3" to="606231001#1" type="delivery"/>
-    <trip id="2" depart="2.00" from="-1166322300#0" to="503669869#0" type="delivery"/>
-    <trip id="3" depart="3.00" from="868422002#3" to="-170293861#2" type="delivery"/>
-    <trip id="4" depart="4.00" from="-606276595" to="1346302472#3" type="delivery"/>
-    <trip id="5" depart="5.00" from="915022007#3" to="585587979#2" type="delivery"/>
-    <trip id="6" depart="6.00" from="-1366155924#0" to="1346302472#2" type="delivery"/>
-    <trip id="7" depart="7.00" from="1523964031#1" to="760247734#2" type="delivery"/>
-    <trip id="8" depart="8.00" from="-606231044#1" to="-868422008" type="delivery"/>
-    <trip id="9" depart="9.00" from="-778101135#1" to="760247734#0" type="delivery"/>
-    <trip id="10" depart="10.00" from="-606224718#0" to="1218708938#1" type="delivery"/>
-    <trip id="11" depart="11.00" from="772005038#1" to="605458572" type="delivery"/>
-    <trip id="12" depart="12.00" from="-149518995#0" to="28271278#3" type="delivery"/>
-    <trip id="13" depart="13.00" from="-606224722" to="771714668#2" type="delivery"/>
-    <trip id="14" depart="14.00" from="849806506#1" to="771728989" type="delivery"/>
-    <trip id="15" depart="15.00" from="-778101135#2" to="381408318" type="delivery"/>
-    <trip id="16" depart="16.00" from="436312122#3" to="-912302012" type="delivery"/>
-    <trip id="17" depart="17.00" from="324188615#1" to="1512911984" type="delivery"/>
-    <trip id="18" depart="18.00" from="24399791#7" to="1308626814#1" type="delivery"/>
-    <trip id="19" depart="19.00" from="-606243644#0" to="1218689280#0" type="delivery"/>
-    <trip id="20" depart="20.00" from="5116003#4" to="182296979#2" type="delivery"/>
-    <trip id="21" depart="21.00" from="1168181460#0" to="863227713#4" type="delivery"/>
-    <trip id="22" depart="22.00" from="198263643#1" to="1042088509" type="delivery"/>
-    <trip id="23" depart="23.00" from="1003492318" to="170293856#0" type="delivery"/>
-    <trip id="24" depart="24.00" from="1513925898#0" to="1333160481#1" type="delivery"/>
-    <trip id="25" depart="25.00" from="772185888#0" to="252085683#5" type="delivery"/>
-    <trip id="26" depart="26.00" from="772005038#1" to="1211154930#17" type="delivery"/>
-    <trip id="27" depart="27.00" from="-606231038#1" to="1202800529" type="delivery"/>
-    <trip id="28" depart="28.00" from="471963814" to="771989746#2" type="delivery"/>
-    <trip id="29" depart="29.00" from="436198227#0" to="-1211154930#9" type="delivery"/>
+    <vType id="delivery" vClass="delivery"/>
+    <trip id="0" depart="0.00" from="919590942#1" to="-1373280119#5" type="delivery"/>
+    <trip id="1" depart="1.20" from="-784410639#1" to="1138582709#0" type="delivery"/>
+    <trip id="2" depart="2.40" from="-606243665#0" to="287515087#1" type="delivery"/>
+    <trip id="3" depart="3.60" from="780974349" to="-1373280119#3" type="delivery"/>
+    <trip id="4" depart="4.80" from="-868422002#0" to="1037045479" type="delivery"/>
+    <trip id="5" depart="6.00" from="-324066191#2" to="-1041024443#1" type="delivery"/>
+    <trip id="6" depart="7.20" from="868422005" to="-1480575550" type="delivery"/>
+    <trip id="7" depart="8.40" from="-24399796#2" to="-606231044#2" type="delivery"/>
+    <trip id="8" depart="9.60" from="868422002#2" to="915022933" type="delivery"/>
+    <trip id="9" depart="10.80" from="863096326" to="-771985338#0" type="delivery"/>
+    <trip id="10" depart="12.00" from="894432393#0" to="606243690#1" type="delivery"/>
+    <trip id="11" depart="13.20" from="-1480586034#0" to="1481038522#2" type="delivery"/>
+    <trip id="12" depart="14.40" from="772003164" to="-606224741#1" type="delivery"/>
+    <trip id="13" depart="15.60" from="-1166322300#1" to="170293852#2" type="delivery"/>
+    <trip id="14" depart="16.80" from="1108917993#0" to="149518995#6" type="delivery"/>
+    <trip id="15" depart="18.00" from="170293861#1" to="910512583" type="delivery"/>
+    <trip id="16" depart="19.20" from="472078973" to="782671136#0" type="delivery"/>
+    <trip id="17" depart="20.40" from="324188614#3" to="1461273758#2" type="delivery"/>
+    <trip id="18" depart="21.60" from="-436434056#4" to="-772457001#1" type="delivery"/>
+    <trip id="19" depart="22.80" from="1203073859" to="-910512583" type="delivery"/>
+    <trip id="20" depart="24.00" from="-170293885#0" to="744824771#1" type="delivery"/>
+    <trip id="21" depart="25.20" from="1211154930#10" to="-1211154930#10" type="delivery"/>
+    <trip id="22" depart="26.40" from="-606243646#1" to="1308383451#2" type="delivery"/>
+    <trip id="23" depart="27.60" from="198263663#1" to="471973985#3" type="delivery"/>
+    <trip id="24" depart="28.80" from="1138582710#0" to="1218708938#1" type="delivery"/>
+    <trip id="25" depart="30.00" from="-1333670072#0" to="39914067#2" type="delivery"/>
 </routes>
