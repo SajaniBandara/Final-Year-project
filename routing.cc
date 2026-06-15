@@ -127,6 +127,8 @@ double link_lifetime_threshold = 0.400;
 // which makes routing rule out the direct link and select a relay (e.g. via the
 // RSU) instead of sending direct and dropping. Tune to match your radio range.
 double d_max_dsrc = 270.0;
+bool use_sumo_mobility = true; // when true + routing_test==false, load Ns2MobilityHelper
+                                // SUMO trace instead of synthetic grid/random mobility
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
 int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
 int maxspeed = 80;	
@@ -141169,18 +141171,9 @@ int main(int argc, char *argv[])
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
+    cmd.AddValue ("use_sumo_mobility", "use_sumo_mobility", use_sumo_mobility);
     cmd.Parse (argc, argv);
     
-	// ==============================================================
-    // PHYSICS OVERRIDE: BOOST WI-FI POWER TO INFINITY (100 dBm)
-    // ==============================================================
-    Config::SetDefault ("ns3::WifiPhy::TxPowerStart", DoubleValue (100.0));
-    Config::SetDefault ("ns3::WifiPhy::TxPowerEnd", DoubleValue (100.0));
-    Config::SetDefault ("ns3::WifiPhy::TxPowerLevels", UintegerValue (1));
-    Config::SetDefault ("ns3::WifiPhy::TxGain", DoubleValue (50.0));
-    Config::SetDefault ("ns3::WifiPhy::RxGain", DoubleValue (50.0));
-
-	
     if (routing_test == true)
     {
         if (active_attack_variant == 4 ||
@@ -141644,6 +141637,9 @@ int main(int argc, char *argv[])
 	  	case (60):
 	  		trace_file = "/home/user/mobility/mobility_urban_60.tcl";
 	  		break;
+	  	case (150):
+	  		trace_file = "/home/user/mobility/mobility_urban_150.tcl";
+	  		break;
 	  	default:
 	  		break;
 	 }
@@ -141745,6 +141741,7 @@ int main(int argc, char *argv[])
 
   
   //Ns2MobilityHelper vehicle_mobility  = Ns2MobilityHelper (trace_file);
+  Ns2MobilityHelper sumo_mobility = Ns2MobilityHelper (trace_file);
   
  
   
@@ -141753,7 +141750,11 @@ int main(int argc, char *argv[])
   if (N_Vehicles > 0)
   {
   	
-  	if (experiment_number != 5)
+  	if (use_sumo_mobility && !trace_file.empty())
+  	{
+  		sumo_mobility.Install(Vehicle_Nodes.Begin(), Vehicle_Nodes.End());
+  	}
+  	else if (experiment_number != 5)
   	{
   		//vehicle_mobility.Install(Vehicle_Nodes.Begin(),Vehicle_Nodes.End());
   	}
@@ -141801,7 +141802,14 @@ int main(int argc, char *argv[])
   	delta_y = 280;
   	//delta_x = 1600/5;
   	delta_x = 280;
-	  	if (N_RSUs < 13)
+	  	if (use_sumo_mobility)
+	  	{
+	  		// 64 (8x8) RSUs, 250m spacing, grid-aligned with the SUMO
+	  		// network's coordinate origin (0,0) so the 1750m x 1750m
+	  		// RSU grid overlays the ~2km x 2km SUMO mobility trace area.
+	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (0.0),"MinY", DoubleValue (0.0),"DeltaX", DoubleValue (250.0),"DeltaY", DoubleValue (250.0),"GridWidth", UintegerValue (8),"LayoutType", StringValue ("RowFirst"));
+	  	}
+	  	else if (N_RSUs < 13)
 	  	{		
 	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (750.0),"MinY", DoubleValue (1200.0),"DeltaX", DoubleValue (delta_x),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (7),"LayoutType", StringValue ("RowFirst"));
 	  		vehicle_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (650.0),"MinY", DoubleValue (1000.0), "DeltaX", DoubleValue (delta_x/2),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (14),"LayoutType", StringValue ("RowFirst"));
@@ -141813,11 +141821,11 @@ int main(int argc, char *argv[])
 	  		vehicle_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (650.0),"MinY", DoubleValue (1000.0), "DeltaX", DoubleValue (delta_x/2),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (14),"LayoutType", StringValue ("RowFirst"));
 	  	}
   }
-  if(routing_test == false)
+  if(routing_test == false && !use_sumo_mobility)
   {
   	vehicle_mobility.Install(Vehicle_Nodes);
   }
-  if(routing_test == false)
+  if(routing_test == false && !use_sumo_mobility)
   {
   	update_mobility();
   }
@@ -142885,7 +142893,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			  		uint32_t z = flow_packet_size;
 			  		uint32_t q = qf;
 			  		Simulator::Schedule (Seconds (t+0.000002*i), add_demanding_flow_struct_nodes, demanding_flow_struct_nodes_inst+i, source, destination, x, z, q);
-			  		if(routing_test == false)
+			  		if(routing_test == false && !use_sumo_mobility)
 			  		{
 			  			Simulator::Schedule(Seconds(t-0.002), update_mobility);
 			  		}
