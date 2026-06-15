@@ -39,5 +39,4 @@
     <trip id="22" depart="26.40" from="198263643#0" to="-772193117#5" type="truck"/>
     <trip id="23" depart="27.60" from="436198227#3" to="605458573#0" type="truck"/>
     <trip id="24" depart="28.80" from="198263655#3" to="772457002#1" type="truck"/>
-    <trip id="25" depart="30.00" from="-24399790#2" to="1218447623#2" type="truck"/>
 </routes>
