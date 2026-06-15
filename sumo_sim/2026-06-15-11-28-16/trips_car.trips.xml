@@ -1,3 +1,4 @@
+
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!-- generated on 2026-06-15 11:53:13.925344 by Eclipse SUMO randomTrips.py v1.27.0
@@ -12,6 +13,7 @@
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="passenger" vClass="passenger" maxSpeed="41.67"/>
     <trip id="0" depart="0.00" from="977460120" to="1346302472#0" type="passenger"/>
     <trip id="1" depart="1.00" from="436312122#2" to="759495995#1" type="passenger"/>
     <trip id="2" depart="2.00" from="1232130282" to="-778101132" type="passenger"/>

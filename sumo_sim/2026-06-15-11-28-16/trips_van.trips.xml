@@ -12,6 +12,7 @@
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="delivery" vClass="delivery" maxSpeed="41.67"/>
     <trip id="0" depart="0.00" from="771985337#0" to="770405992#2" type="delivery"/>
     <trip id="1" depart="1.00" from="24399791#3" to="606231001#1" type="delivery"/>
     <trip id="2" depart="2.00" from="-1166322300#0" to="503669869#0" type="delivery"/>
