@@ -209,3 +209,8 @@ cd ~/ns-allinone-3.35/ns-3.35
 - If you want to compare attack and no-attack behavior, run the same simulation once with `active_attack_variant=1` and once with `active_attack_variant=-1`.
 - The simulation code also contains support for other attack variants, so the README can be extended later with those scenarios if needed.
 - For TAP Attack 2 evaluation, always clear old `TAP_Attack2_*.csv` and `MOBIGUARD_Attack2_*.csv` files before a fresh sweep.
+
+
+python3 $SUMO_HOME/tools/osmWebWizard.py
+gunzip -k osm.net.xml.gz
+grep -o '<location[^>]*>' osm.net.xml
