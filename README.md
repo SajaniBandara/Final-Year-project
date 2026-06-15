@@ -214,3 +214,4 @@ cd ~/ns-allinone-3.35/ns-3.35
 python3 $SUMO_HOME/tools/osmWebWizard.py
 gunzip -k osm.net.xml.gz
 grep -o '<location[^>]*>' osm.net.xml
+user@ubuntu:~/Final Year Project/1. Attacks/Final-Year-project/sumo_sim/2026-06-15-11-28-16$ sumo-gui -c osm_final.sumocfg
