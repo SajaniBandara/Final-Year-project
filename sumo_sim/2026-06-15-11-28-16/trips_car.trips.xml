@@ -12,7 +12,7 @@
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <vType id="passenger" vClass="passenger"/>
+    <vType id="passenger" vClass="passenger" maxSpeed="41.67"/>
     <trip id="0" depart="0.00" from="1218708938#1" to="747081234#1" type="passenger"/>
     <trip id="1" depart="0.30" from="1223668964#0" to="740876360#1" type="passenger"/>
     <trip id="2" depart="0.60" from="919140526#1" to="28271271#2" type="passenger"/>
