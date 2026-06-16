@@ -143309,12 +143309,13 @@ if (architecture == 3 && N_Vehicles > 0)
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
   AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
-  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
+  anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
+  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
   // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
   // NetAnim still animates packet movement fine without metadata.
-
+          
   if (N_RSUs > 0)
   {
 	  for (uint32_t i=0; i<RSU_Nodes.GetN() ; i++)
