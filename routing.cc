@@ -94,7 +94,10 @@ uint32_t flow_size = 55;
 // routing_test=true and active_attack_variant=7.
 bool single_cycle = false;
 
-const int total_size = 100;
+const int total_size = 300; // must be >= N_Vehicles + N_RSUs + 2 (controller + management).
+                             // 100 was sufficient for the original defaults (N_Vehicles=80,
+                             // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
+                             // needs 200+64+2=266; 300 gives headroom.
 uint32_t N_RSUs = 20;
 uint32_t N_Vehicles = 80;
 
@@ -115,7 +118,7 @@ uint32_t large=50000;
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
 // double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 5.0; //test
+double data_transmission_frequency = 1.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -116568,7 +116571,7 @@ void update_stable(uint32_t flow_id, uint32_t current_hop)
 			
 			else
 			{
-				if((proposed_algo2_output_inst[flow_id].met[i] = false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
+				if((proposed_algo2_output_inst[flow_id].met[i] == false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
 				{
 					proposed_algo2_output_inst[flow_id].Y[i] = proposed_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					proposed_algo2_output_inst[flow_id].conn[i] = 1;
@@ -116623,7 +116626,7 @@ void update_unstable(uint32_t flow_id, uint32_t current_hop)
 			else
 			{
 				double value = distance_algo2_output_inst[flow_id].D[current_hop] + adjacencyMatrix[current_hop][i];
-				if((distance_algo2_output_inst[flow_id].met[i] = false)||(distance_algo2_output_inst[flow_id].D[i] > value))
+				if((distance_algo2_output_inst[flow_id].met[i] == false)||(distance_algo2_output_inst[flow_id].D[i] > value))
 				{
 					distance_algo2_output_inst[flow_id].Y[i] = distance_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					distance_algo2_output_inst[flow_id].D[i] = value;
@@ -118170,20 +118173,15 @@ void convert_link_lifetimes_dsrc()
 			if(i==j) continue;
 			double dist = get_length((routing_data_at_nodes_inst+i)->position,
 			                         (routing_data_at_nodes_inst+j)->position);
-			cout<<"[RANGE GATE] link "<<i<<"->"<<j<<" dist="<<dist
-			    <<" lifetime(before)="<<linklifetimeMatrix_dsrc[i][j];
 			if(dist > d_max_dsrc)
 			{
 				linklifetimeMatrix_dsrc[i][j] = 0.0;
-				cout<<" -> ZEROED (over "<<d_max_dsrc<<"m)";
 			}
 			else if(linklifetimeMatrix_dsrc[i][j] <= link_lifetime_threshold)
 			{
 				// in range but optimizer reported it unusable: floor it
 				linklifetimeMatrix_dsrc[i][j] = in_range_floor;
-				cout<<" -> FLOORED to "<<in_range_floor<<" (in range)";
 			}
-			cout<<endl;
 		}
 	}
 	
@@ -142759,9 +142757,9 @@ if (architecture == 3 && N_Vehicles > 0)
     					{
     					
 						srand(t*i);
-				  		destination = rand()%total_size;
+				  		destination = rand()%(var+2);
 				  		srand(1.15*t*i);
-				  		source = rand()%total_size;
+				  		source = rand()%(var+2);
 				  		bool found_both = false;
 				  		bool found_source = false;
 				  		bool found_destination = false;
@@ -143051,7 +143049,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			//for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			//{
 			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
-	  		uint32_t destination = rand()%total_size;
+	  		uint32_t destination = rand()%(var+2);
 	  		//uint32_t destination = 7;
 	  		cout<<"destination id: "<<destination+2<<endl;
 	  		Simulator::Schedule (Seconds (t+0.10), send_distributed_packets, destination);
@@ -143220,7 +143218,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	for (double t=1.100; t<simTime-1; t=t+data_transmission_period)
 		{
 		  	srand(data_transmission_frequency*t);
-	  		uint32_t destination = rand()%total_size;
+	  		uint32_t destination = rand()%(var+2);
 	  		//uint32_t destination = 5;
 	  		cout<<"destination id: "<<destination+2<<endl;
 	  		Simulator::Schedule (Seconds (t), send_hybrid_packets, destination);
