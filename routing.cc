@@ -123141,10 +123141,12 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
     
     packet_i->AddPacketTag(tag);
-    WifiMacHeader header;
-    packet_i->RemoveHeader(header);
-    header.SetAddr1(dest_address);
-    packet_i->AddHeader(header);
+    // NOTE: Do NOT call RemoveHeader/AddHeader here. packet_i was created with
+    // Create<Packet>(p_size-28) — it contains only payload bytes, no real WiFi
+    // header. Calling RemoveHeader() would deserialise raw payload bytes as a
+    // WifiMacHeader, producing garbage fields that trigger NS_ASSERT inside the
+    // MAC layer on the first real transmission. WifiNetDevice::Send() already
+    // uses dest_address (the Addr1) passed as its second argument.
 
     cout << "[ARCH 3 OVERRIDE] Node " << source << " sending on Channel " << arguments.channel << " to exact MAC " << dest_address << endl;
 
