@@ -123473,7 +123473,15 @@ void initialize_flow_counters()
 				
 			}
 			
-			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end());
+			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end(), [](const tuple<double,uint32_t,uint32_t>& a, const tuple<double,uint32_t,uint32_t>& b) {
+				double valA = get<0>(a);
+				double valB = get<0>(b);
+				if (std::isnan(valA)) valA = 0.0;
+				if (std::isnan(valB)) valB = 0.0;
+				if (valA != valB) return valA < valB;
+				if (get<1>(a) != get<1>(b)) return get<1>(a) < get<1>(b);
+				return get<2>(a) < get<2>(b);
+			});
 			uint32_t total_count =0;
 			for(uint32_t j =0;j<(uint32_t)var;j++)
 			{
@@ -123955,10 +123963,18 @@ void initiate_all_flows()
 		uint32_t total_packet_counter = 0;
 		
 		auto index_top = all_sorted_delta_next_hop_flow_size.begin();
+		if (fid >= all_sorted_delta_next_hop_flow_size.size()) {
+			cout << "[ERROR] fid " << fid << " out of bounds for all_sorted_... size " << all_sorted_delta_next_hop_flow_size.size() << endl;
+			continue;
+		}
 		advance(index_top,fid);
 		//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
 
 		auto index_middle = index_top->begin();
+		if (source >= index_top->size()) {
+			cout << "[ERROR] source " << source << " out of bounds for index_top size " << index_top->size() << " (fid=" << fid << ")" << endl;
+			continue;
+		}
 		advance(index_middle,source);	
 		
 		uint32_t total_subflows =0;
