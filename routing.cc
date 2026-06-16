@@ -143257,6 +143257,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeColor(RSU_Nodes.Get(i),255,255,0);//RSUs in yellow color
 	  	Ptr <Node> ni = DynamicCast <Node> (RSU_Nodes.Get(i));
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
+	  	anim.UpdateNodeDescription(RSU_Nodes.Get(i), "RSU-" + std::to_string(i+1));
 	  }
   }
   
@@ -143267,6 +143268,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeColor(Vehicle_Nodes.Get(i),0,255,0);//vehicle nodes are green color
 	  	Ptr <Node> ni = DynamicCast <Node> (Vehicle_Nodes.Get(i));
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
+	  	anim.UpdateNodeDescription(Vehicle_Nodes.Get(i), "V-" + std::to_string(i+1));
 	  }
 	   
 	  if (architecture !=1)
@@ -143285,10 +143287,12 @@ if (architecture == 3 && N_Vehicles > 0)
 	    anim.UpdateNodeColor(controller_Node.Get(0),255,0,255);//controller node is purple color.
 	    Ptr <Node> node_controller = DynamicCast <Node> (controller_Node.Get(0));
 	    anim.UpdateNodeSize(node_controller->GetId(),20.0,20.0);
+	    anim.UpdateNodeDescription(controller_Node.Get(0), "CTRL");
 	    
 	    anim.UpdateNodeColor(management_Node.Get(0),255,0,0);//management node is red color.
 	    Ptr <Node> node_management = DynamicCast <Node> (management_Node.Get(0));
 	    anim.UpdateNodeSize(node_management->GetId(),20.0,20.0);
+	    anim.UpdateNodeDescription(management_Node.Get(0), "MGMT");
     }
  
   //AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml"); 
