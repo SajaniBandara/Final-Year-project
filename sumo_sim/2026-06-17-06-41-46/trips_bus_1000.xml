@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-17 08:40:50.142078 by Eclipse SUMO randomTrips.py v1.27.0
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="trips_bus_1000.xml"/>
+    <vehicle-class value="bus"/>
+    <random-factor value="5.0"/>
+    <seed value="889"/>
+    <random value="True"/>
+    <min-distance value="1000.0"/>
+    <random-routing-factor value="5.0"/>
+    <end value="28.9"/>
+    <period value="1.2"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="bus" vClass="bus" maxSpeed="41.67" speedFactor="0.6" lcSpeedGain="10.0" lcKeepRight="0"/>
+    <trip id="bus_100" depart="0.00" from="167700743#2" to="-399313002#1" type="bus"/>
+    <trip id="bus_101" depart="1.20" from="603568537#1" to="-399313016#1" type="bus"/>
+    <trip id="bus_102" depart="2.40" from="45536815#3" to="-405168266#2" type="bus"/>
+    <trip id="bus_103" depart="3.60" from="405164502#0" to="404983742" type="bus"/>
+    <trip id="bus_104" depart="4.80" from="-381459561#2" to="356674388#1" type="bus"/>
+    <trip id="bus_105" depart="6.00" from="-47805886#3" to="185948956#1" type="bus"/>
+    <trip id="bus_106" depart="7.20" from="382492648#1" to="161808942#2" type="bus"/>
+    <trip id="bus_107" depart="8.40" from="1123281736#1" to="399313004#0" type="bus"/>
+    <trip id="bus_108" depart="9.60" from="-382210034#0" to="1463043665#3" type="bus"/>
+    <trip id="bus_109" depart="10.80" from="-185948954#1" to="274749927#2" type="bus"/>
+    <trip id="bus_110" depart="12.00" from="399243265#1" to="608204516#1" type="bus"/>
+    <trip id="bus_111" depart="13.20" from="-1499979792#1" to="161687304#6" type="bus"/>
+    <trip id="bus_112" depart="14.40" from="161689787#1" to="405162751#1" type="bus"/>
+    <trip id="bus_113" depart="15.60" from="-608741620#0" to="382492647#1" type="bus"/>
+    <trip id="bus_114" depart="16.80" from="-603568537#1" to="-1435789972#0" type="bus"/>
+    <trip id="bus_115" depart="18.00" from="-398737425#2" to="-399243265#2" type="bus"/>
+    <trip id="bus_116" depart="19.20" from="-438274649#3" to="399313016#1" type="bus"/>
+    <trip id="bus_117" depart="20.40" from="-1418606989" to="-438274650#2" type="bus"/>
+    <trip id="bus_118" depart="21.60" from="-405162751#1" to="-1394546775#0" type="bus"/>
+    <trip id="bus_119" depart="22.80" from="438255394#3" to="404995540#3" type="bus"/>
+    <trip id="bus_120" depart="24.00" from="185948939#1" to="404995540#4" type="bus"/>
+    <trip id="bus_121" depart="25.20" from="382237280#0" to="-438255394#3" type="bus"/>
+    <trip id="bus_122" depart="26.40" from="-518201967" to="603531506#2" type="bus"/>
+    <trip id="bus_123" depart="27.60" from="-326489606#6" to="45536813#0" type="bus"/>
+    <trip id="bus_124" depart="28.80" from="-382209442" to="-438274649#6" type="bus"/>
+</routes>

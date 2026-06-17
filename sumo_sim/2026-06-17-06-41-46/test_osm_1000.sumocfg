@@ -1,0 +1,9 @@
+<sumoConfiguration>
+    <input>
+        <net-file value="osm.net.xml"/>
+        <route-files value="trips_car_1000.xml,trips_bus_1000.xml,trips_lorry_1000.xml,trips_van_1000.xml,trips_truck_1000.xml"/>
+    </input>
+    <time><begin value="0"/><end value="600"/></time>
+    <processing><ignore-route-errors value="true"/></processing>
+    <routing><device.rerouting.probability value="1"/></routing>
+</sumoConfiguration>
