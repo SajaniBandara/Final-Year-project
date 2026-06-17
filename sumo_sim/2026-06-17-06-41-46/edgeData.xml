@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-06-17T07:32:27.266888+00:00 by Eclipse SUMO GUI 1.27.0
+<!-- generated on 2026-06-17T07:45:59.085546+00:00 by Eclipse SUMO GUI 1.27.0
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
@@ -25,6 +25,7 @@
     </processing>
 
     <routing>
+        <device.rerouting.probability value="1"/>
         <device.rerouting.adaptation-steps value="18"/>
         <device.rerouting.adaptation-interval value="10"/>
     </routing>

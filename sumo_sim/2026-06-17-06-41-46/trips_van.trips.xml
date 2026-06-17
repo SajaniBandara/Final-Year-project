@@ -1,44 +1,45 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-06-17 07:28:06.871175 by Eclipse SUMO randomTrips.py v1.27.0
+<!-- generated on 2026-06-17 07:44:59.167223 by Eclipse SUMO randomTrips.py v1.27.0
 <configuration>
     <net-file value="osm.net.xml"/>
     <output-trip-file value="trips_van.trips.xml"/>
     <vehicle-class value="delivery"/>
-    <random-factor value="3.0"/>
-    <seed value="45"/>
+    <random-factor value="5.0"/>
+    <seed value="445"/>
     <random value="True"/>
     <min-distance value="1500.0"/>
+    <random-routing-factor value="5.0"/>
     <end value="28.9"/>
     <period value="1.2"/>
 </configuration>
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <vType id="delivery" vClass="delivery" maxSpeed="41.67"/>
-    <trip id="delivery_300" depart="0.00" from="901727169#0" to="161689804#13" type="delivery"/>
-    <trip id="delivery_301" depart="1.20" from="715783632#1" to="405180169#0" type="delivery"/>
-    <trip id="delivery_302" depart="2.40" from="1499979792#0" to="45536815#4" type="delivery"/>
-    <trip id="delivery_303" depart="3.60" from="399241939#1" to="812632075#2" type="delivery"/>
-    <trip id="delivery_304" depart="4.80" from="-524499802#1" to="-399313021#1" type="delivery"/>
-    <trip id="delivery_305" depart="6.00" from="-906908594#1" to="-382210638#0" type="delivery"/>
-    <trip id="delivery_306" depart="7.20" from="725854429#1" to="-689797054#0" type="delivery"/>
-    <trip id="delivery_307" depart="8.40" from="399243269#1" to="-1499979792#1" type="delivery"/>
-    <trip id="delivery_308" depart="9.60" from="901271827#1" to="-715814698#0" type="delivery"/>
-    <trip id="delivery_309" depart="10.80" from="-45536227#1" to="-382248461#0" type="delivery"/>
-    <trip id="delivery_310" depart="12.00" from="382248461#6" to="45536227#5" type="delivery"/>
-    <trip id="delivery_311" depart="13.20" from="185948956#3" to="161688464#14" type="delivery"/>
-    <trip id="delivery_312" depart="14.40" from="712249423#1" to="-689797054#0" type="delivery"/>
-    <trip id="delivery_313" depart="15.60" from="399238814#1" to="1307779220#1" type="delivery"/>
-    <trip id="delivery_314" depart="16.80" from="723376748#2" to="715759015#1" type="delivery"/>
-    <trip id="delivery_315" depart="18.00" from="-382210638#0" to="-399243265#2" type="delivery"/>
-    <trip id="delivery_316" depart="19.20" from="-1174020165#0" to="725854428#2" type="delivery"/>
-    <trip id="delivery_317" depart="20.40" from="399238814#1" to="-1254830071#1" type="delivery"/>
-    <trip id="delivery_318" depart="21.60" from="45536815#2" to="-399312997" type="delivery"/>
-    <trip id="delivery_319" depart="22.80" from="523623581#2" to="-1435789970" type="delivery"/>
-    <trip id="delivery_320" depart="24.00" from="-161689804#6" to="901271826#1" type="delivery"/>
-    <trip id="delivery_321" depart="25.20" from="-437906536#3" to="405170525#0" type="delivery"/>
-    <trip id="delivery_322" depart="26.40" from="-1210475916#1" to="45536227#6" type="delivery"/>
-    <trip id="delivery_323" depart="27.60" from="-723326349#1" to="405170518#2" type="delivery"/>
-    <trip id="delivery_324" depart="28.80" from="399243265#2" to="382210638#0" type="delivery"/>
+    <vType id="delivery" vClass="delivery" maxSpeed="41.67" speedFactor="0.6" lcSpeedGain="10.0" lcKeepRight="0"/>
+    <trip id="delivery_300" depart="0.00" from="382212884#0" to="-161716057#3" type="delivery"/>
+    <trip id="delivery_301" depart="1.20" from="712249423#0" to="-404983743#3" type="delivery"/>
+    <trip id="delivery_302" depart="2.40" from="382248461#5" to="172996350#0" type="delivery"/>
+    <trip id="delivery_303" depart="3.60" from="161689804#3" to="607576340#1" type="delivery"/>
+    <trip id="delivery_304" depart="4.80" from="161689804#3" to="-1384180799#0" type="delivery"/>
+    <trip id="delivery_305" depart="6.00" from="723326350#3" to="279667493#1" type="delivery"/>
+    <trip id="delivery_306" depart="7.20" from="-437906536#3" to="-161808942#1" type="delivery"/>
+    <trip id="delivery_307" depart="8.40" from="-1224047897#0" to="399313016#1" type="delivery"/>
+    <trip id="delivery_308" depart="9.60" from="814058072#2" to="161687304#3" type="delivery"/>
+    <trip id="delivery_309" depart="10.80" from="382248461#5" to="886540950#2" type="delivery"/>
+    <trip id="delivery_310" depart="12.00" from="-524499802#1" to="-901271827#0" type="delivery"/>
+    <trip id="delivery_311" depart="13.20" from="-161808942#2" to="161689804#7" type="delivery"/>
+    <trip id="delivery_312" depart="14.40" from="45536815#3" to="1436824637" type="delivery"/>
+    <trip id="delivery_313" depart="15.60" from="-438274649#7" to="45536811#1" type="delivery"/>
+    <trip id="delivery_314" depart="16.80" from="45536815#2" to="-405168267" type="delivery"/>
+    <trip id="delivery_315" depart="18.00" from="723807265#0" to="207978278#0" type="delivery"/>
+    <trip id="delivery_316" depart="19.20" from="161808570#1" to="725854428#0" type="delivery"/>
+    <trip id="delivery_317" depart="20.40" from="901271827#0" to="605478042#1" type="delivery"/>
+    <trip id="delivery_318" depart="21.60" from="-901727166#1" to="-161716057#3" type="delivery"/>
+    <trip id="delivery_319" depart="22.80" from="185948955#1" to="-167700743#0" type="delivery"/>
+    <trip id="delivery_320" depart="24.00" from="382210638#1" to="-382492647#6" type="delivery"/>
+    <trip id="delivery_321" depart="25.20" from="-1499979792#1" to="399241939#3" type="delivery"/>
+    <trip id="delivery_322" depart="26.40" from="161713778#0" to="438274649#8" type="delivery"/>
+    <trip id="delivery_323" depart="27.60" from="206376286#1" to="-185948944#1" type="delivery"/>
+    <trip id="delivery_324" depart="28.80" from="-190478684" to="-725854428#3" type="delivery"/>
 </routes>
