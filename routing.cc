@@ -141986,10 +141986,10 @@ int main(int argc, char *argv[])
       // Offset from RSU grid (which is at multiples of 250m) to avoid overlap.
       // RSU grid: (0,0),(250,0),...,(1750,1750). Controllers sit at quadrant
       // centres shifted by +125m so they fall between RSU positions.
-      ctrl_positions.push_back(Vector(375,  375,  0)); // c1: SW quadrant
-      ctrl_positions.push_back(Vector(1125, 375,  0)); // c2: SE quadrant
-      ctrl_positions.push_back(Vector(375,  1125, 0)); // c3: NW quadrant
-      ctrl_positions.push_back(Vector(1125, 1125, 0)); // c4: NE quadrant
+      ctrl_positions.push_back(Vector(515,  534,  0)); // c1: SW quadrant (Center of 0-1030, 0-1068)
+      ctrl_positions.push_back(Vector(1545, 534,  0)); // c2: SE quadrant
+      ctrl_positions.push_back(Vector(515,  1602, 0)); // c3: NW quadrant
+      ctrl_positions.push_back(Vector(1545, 1602, 0)); // c4: NE quadrant
     }
     else
     {
