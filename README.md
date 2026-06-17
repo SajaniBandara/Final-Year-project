@@ -1,6 +1,6 @@
 # MOBIGUARD — Final Year Project
 
-MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Network) defense framework simulated in NS-3.35 with realistic SUMO-generated vehicular mobility traces. The simulation models 200 vehicles, 64 RSUs (8×8 grid, 250 m spacing), and 4 distributed SDVN controllers over a 2 km × 2 km urban area, and supports 8 attack variants including Selective Time Delay and Hidden Forwarding attacks.
+MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Network) defense framework simulated in NS-3.35 with realistic SUMO-generated vehicular mobility traces. The simulation models 200 vehicles, 64 RSUs (8×8 grid, 260m x 270m spacing), and 4 distributed SDVN controllers over a ~2061 m × 2137 m urban area (Los Angeles), and supports 8 attack variants including Selective Time Delay and Hidden Forwarding attacks.
 
 ---
 
@@ -43,7 +43,7 @@ python3 $SUMO_HOME/tools/osmWebWizard.py
 
 In the browser UI that opens:
 - Navigate to a dense urban area with broad multi-lane roads (e.g. Kuala Lumpur city centre — avoid narrow residential streets which cause congestion)
-- Draw a rectangle covering approximately 2 km × 2 km
+- Draw a rectangle covering approximately 2061 m × 2137 m (e.g. Los Angeles)
 - Enable vehicle types: **Passenger** and **Truck** (Bus optional)
 - Set **Duration** to `600` seconds
 - Leave **Add polygons** and **Import public transport** unchecked
@@ -59,7 +59,7 @@ gunzip -k osm.net.xml.gz
 grep -o '<location[^>]*>' osm.net.xml
 ```
 
-Check the `convBoundary` field in the output. The width and height (maxX − minX, maxY − minY) should both be approximately 2000 m. If the area is too large, re-generate with a tighter bounding box.
+Check the `convBoundary` field in the output. The width and height (maxX − minX, maxY − minY) should both be approximately 2061 m and 2137 m respectively. If the area is too large, re-generate with a tighter bounding box.
 
 ### Step 1.3 — Generate trip files (100 cars + 25 each of bus/lorry/van/truck)
 
@@ -68,28 +68,28 @@ Run `randomTrips.py` separately for each vehicle type:
 ```bash
 # 100 cars — departures spread over 0–30 s (warm-up window)
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_car.trips.xml \
-  --vehicle-class passenger -b 0 -e 30 --period $(python3 -c "print(30/100)") \
-  --validate --random --seed 42
+  --vehicle-class passenger -b 0 -e 30 --period 0.3 \
+  --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 11111
 
 # 25 buses
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_bus.trips.xml \
-  --vehicle-class bus -b 0 -e 30 --period $(python3 -c "print(30/25)") \
-  --validate --random --seed 43
+  --vehicle-class bus -b 0 -e 28.9 --period 1.2 \
+  --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 22222
 
 # 25 lorries
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_lorry.trips.xml \
-  --vehicle-class truck -b 0 -e 30 --period $(python3 -c "print(30/25)") \
-  --validate --random --seed 44
+  --vehicle-class truck -b 0 -e 28.9 --period 1.2 \
+  --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 33333
 
 # 25 vans
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_van.trips.xml \
-  --vehicle-class delivery -b 0 -e 30 --period $(python3 -c "print(30/25)") \
-  --validate --random --seed 45
+  --vehicle-class delivery -b 0 -e 28.9 --period 1.2 \
+  --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 44444
 
 # 25 trucks
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_truck.trips.xml \
-  --vehicle-class trailer -b 0 -e 30 --period $(python3 -c "print(30/25)") \
-  --validate --random --seed 46
+  --vehicle-class trailer -b 0 -e 28.9 --period 1.2 \
+  --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 55555
 ```
 
 Verify the trip counts:
@@ -282,8 +282,8 @@ cd ~/ns-allinone-3.35/ns-3.35
 |---|---|---|
 | `routing_test` | `false` | Real network run (not small test topology) |
 | `N_Vehicles` | `200` | 200 vehicles from SUMO trace |
-| `N_RSUs` | `64` | 8×8 RSU grid, 250 m spacing |
-| `N_Controllers` | `4` | 4 distributed SDVN controllers (2×2 grid) |
+| `N_RSUs` | `64` | 8×8 RSU grid, 260m x 270m spacing, min offset 100m |
+| `N_Controllers` | `4` | 4 distributed SDVN controllers (2×2 grid, center of quadrants) |
 | `mobility_scenario` | `0` | Urban mobility |
 | `maxspeed` | `150` | Selects the mobility_urban_150.tcl trace |
 | `use_sumo_mobility` | `1` | Load SUMO `.tcl` trace via Ns2MobilityHelper |
@@ -341,13 +341,13 @@ Go to **File → Open** and load:
 | RSUs | Yellow | RSU-1 to RSU-64 | 64 |
 | Controllers | Purple (larger) | CTRL-1 to CTRL-4 | 4 |
 
-**Controller placement** (in network coordinate space, 2 km × 2 km area):
-- CTRL-1: (375, 375) — SW quadrant
-- CTRL-2: (1125, 375) — SE quadrant
-- CTRL-3: (375, 1125) — NW quadrant
-- CTRL-4: (1125, 1125) — NE quadrant
+**Controller placement** (in network coordinate space, ~2061 m × 2137 m LA area):
+- CTRL-1: (515, 534) — SW quadrant
+- CTRL-2: (1545, 534) — SE quadrant
+- CTRL-3: (515, 1602) — NW quadrant
+- CTRL-4: (1545, 1602) — NE quadrant
 
-Controllers are positioned between RSU grid points (which are at multiples of 250 m) to avoid visual overlap. They are rendered at 2× size (40×40) compared to RSUs and vehicles (20×20).
+Controllers are positioned at the exact centers of the four map quadrants to avoid visual overlap with the RSU grid points. They are rendered at 2× size (40×40) compared to RSUs and vehicles (20×20).
 
 ### Step 4.4 — Recording the 10-second clip
 
@@ -510,7 +510,7 @@ Common cause: a node-ID offset arithmetic error. The code uses `nid = GetId() - 
 
 ### Controllers not visible in NetAnim
 
-Controllers at positions that coincide exactly with RSU grid points (multiples of 250 m) are hidden behind yellow RSU nodes. Current controller positions (375, 1125) are offset from the grid by 125 m to avoid this. If you change `N_Controllers` or RSU spacing, update controller positions accordingly in the `ctrl_positions` vector in `main()`.
+Controllers at positions that coincide exactly with RSU grid points are hidden behind yellow RSU nodes. Current controller positions (515, 534, etc.) are offset from the RSU grid to avoid this. If you change `N_Controllers` or RSU spacing, update controller positions accordingly in the `ctrl_positions` vector in `main()`.
 
 ### SUMO trace not loading / `mobility.tcl` not found
 
