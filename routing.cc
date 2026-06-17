@@ -141824,10 +141824,9 @@ int main(int argc, char *argv[])
   	delta_x = 280;
 	  	if (use_sumo_mobility)
 	  	{
-	  		// 64 (8x8) RSUs, 250m spacing, grid-aligned with the SUMO
-	  		// network's coordinate origin (0,0) so the 1750m x 1750m
-	  		// RSU grid overlays the ~2km x 2km SUMO mobility trace area.
-	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (0.0),"MinY", DoubleValue (0.0),"DeltaX", DoubleValue (250.0),"DeltaY", DoubleValue (250.0),"GridWidth", UintegerValue (8),"LayoutType", StringValue ("RowFirst"));
+	  		// 64 (8x8) RSUs, perfectly centered on the new 2061m x 2137m LA map.
+	  		// Using MinX=100, MinY=100, and Delta=260/270 to span X: 100->1920 and Y: 100->1990.
+	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (100.0),"MinY", DoubleValue (100.0),"DeltaX", DoubleValue (260.0),"DeltaY", DoubleValue (270.0),"GridWidth", UintegerValue (8),"LayoutType", StringValue ("RowFirst"));
 	  	}
 	  	else if (N_RSUs < 13)
 	  	{		
