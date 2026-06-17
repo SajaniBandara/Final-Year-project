@@ -142819,9 +142819,9 @@ if (architecture == 3 && N_Vehicles > 0)
     					{
     					
 						srand(t*i);
-				  		destination = rand()%(var+N_Controllers);
+				  		destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 				  		srand(1.15*t*i);
-				  		source = rand()%(var+N_Controllers);
+				  		source = N_Controllers + rand()%var;      // excludes controller IDs 0..N_Controllers-1
 				  		bool found_both = false;
 				  		bool found_source = false;
 				  		bool found_destination = false;
@@ -143113,7 +143113,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			//for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			//{
 			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
-	  		uint32_t destination = rand()%(var+N_Controllers);
+	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 7;
 	  		cout<<"destination id: "<<destination+2<<endl;
 	  		Simulator::Schedule (Seconds (t+0.10), send_distributed_packets, destination);
@@ -143282,7 +143282,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	for (double t=1.100; t<simTime-1; t=t+data_transmission_period)
 		{
 		  	srand(data_transmission_frequency*t);
-	  		uint32_t destination = rand()%(var+N_Controllers);
+	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 5;
 	  		cout<<"destination id: "<<destination+2<<endl;
 	  		Simulator::Schedule (Seconds (t), send_hybrid_packets, destination);
