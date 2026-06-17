@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-06-17T07:09:31.108438+00:00 by Eclipse SUMO sumo 1.27.0
+<!-- generated on 2026-06-17T07:11:18.960954+00:00 by Eclipse SUMO sumo 1.27.0
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
@@ -10,6 +10,7 @@
     </input>
 
     <output>
+        <fcd-output value="fcd.xml"/>
         <tripinfo-output value="tripinfos.xml"/>
         <statistic-output value="stats.xml"/>
     </output>

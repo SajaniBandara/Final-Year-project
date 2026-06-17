@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-06-17T07:09:30.961200+00:00 by Eclipse SUMO sumo 1.27.0
+<!-- generated on 2026-06-17T07:11:18.866648+00:00 by Eclipse SUMO sumo 1.27.0
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
@@ -10,6 +10,7 @@
     </input>
 
     <output>
+        <fcd-output value="fcd.xml"/>
         <tripinfo-output value="tripinfos.xml"/>
         <statistic-output value="stats.xml"/>
     </output>
@@ -43,7 +44,7 @@
 -->
 
 <statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
-    <performance clockBegin="1781680171.08" clockEnd="1781680172.95" clockDuration="1.87" traciDuration="0.56" realTimeFactor="320.34" vehicleUpdatesPerSecond="23218.37" personUpdatesPerSecond="0.00" begin="0.00" end="600.00" duration="600.00"/>
+    <performance clockBegin="1781680278.93" clockEnd="1781680281.59" clockDuration="2.66" traciDuration="0.46" realTimeFactor="225.39" vehicleUpdatesPerSecond="16336.59" personUpdatesPerSecond="0.00" begin="0.00" end="600.00" duration="600.00"/>
     <vehicles loaded="200" inserted="200" running="3" waiting="0"/>
     <teleports total="0" jam="0" yield="0" wrongLane="0"/>
     <safety collisions="0" emergencyStops="0" emergencyBraking="0"/>
