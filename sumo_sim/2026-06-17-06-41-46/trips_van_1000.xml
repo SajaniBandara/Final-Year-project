@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-17 08:40:55.747476 by Eclipse SUMO randomTrips.py v1.27.0
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="trips_van_1000.xml"/>
+    <vehicle-class value="delivery"/>
+    <random-factor value="5.0"/>
+    <seed value="891"/>
+    <random value="True"/>
+    <min-distance value="1000.0"/>
+    <random-routing-factor value="5.0"/>
+    <end value="28.9"/>
+    <period value="1.2"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="delivery" vClass="delivery" maxSpeed="41.67" speedFactor="0.6" lcSpeedGain="10.0" lcKeepRight="0"/>
+    <trip id="delivery_300" depart="0.00" from="-723486184#0" to="399247033#0" type="delivery"/>
+    <trip id="delivery_301" depart="1.20" from="723326352#1" to="814058073#1" type="delivery"/>
+    <trip id="delivery_302" depart="2.40" from="405170521#0" to="382248461#6" type="delivery"/>
+    <trip id="delivery_303" depart="3.60" from="-792057610#1" to="603942760#1" type="delivery"/>
+    <trip id="delivery_304" depart="4.80" from="1499979792#0" to="255497828#12" type="delivery"/>
+    <trip id="delivery_305" depart="6.00" from="-185948954#1" to="-1307602268#1" type="delivery"/>
+    <trip id="delivery_306" depart="7.20" from="-399179069#3" to="723326350#0" type="delivery"/>
+    <trip id="delivery_307" depart="8.40" from="398815190#1" to="603531506#6" type="delivery"/>
+    <trip id="delivery_308" depart="9.60" from="901407854#0" to="172996350#0" type="delivery"/>
+    <trip id="delivery_309" depart="10.80" from="399312997" to="715783631#1" type="delivery"/>
+    <trip id="delivery_310" depart="12.00" from="-206375353#1" to="-809713230#0" type="delivery"/>
+    <trip id="delivery_311" depart="13.20" from="255497617#2" to="900590705#1" type="delivery"/>
+    <trip id="delivery_312" depart="14.40" from="358727540#4" to="-1087231947" type="delivery"/>
+    <trip id="delivery_313" depart="15.60" from="161689787#6" to="255497617#2" type="delivery"/>
+    <trip id="delivery_314" depart="16.80" from="-316447515#1" to="-906908594#1" type="delivery"/>
+    <trip id="delivery_315" depart="18.00" from="-747511199#1" to="206369818#2" type="delivery"/>
+    <trip id="delivery_316" depart="19.20" from="382490911#2" to="381458682#1" type="delivery"/>
+    <trip id="delivery_317" depart="20.40" from="-905529226#1" to="-1528365441#1" type="delivery"/>
+    <trip id="delivery_318" depart="21.60" from="1285555116#2" to="725854429#0" type="delivery"/>
+    <trip id="delivery_319" depart="22.80" from="1527335923#1" to="678440787#0" type="delivery"/>
+    <trip id="delivery_320" depart="24.00" from="-715783630#0" to="-382248461#6" type="delivery"/>
+    <trip id="delivery_321" depart="25.20" from="-206359119#0" to="161808942#2" type="delivery"/>
+    <trip id="delivery_322" depart="26.40" from="543624991#5" to="161687304#5" type="delivery"/>
+    <trip id="delivery_323" depart="27.60" from="-723376748#0" to="814058073#1" type="delivery"/>
+    <trip id="delivery_324" depart="28.80" from="206375352#1" to="906254730" type="delivery"/>
+</routes>

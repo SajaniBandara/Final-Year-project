@@ -1,0 +1,25 @@
+# Simulation Output Files
+routing.xml
+
+# SUMO Intermediate Physics Files
+fcd*.xml
+fcd_output_*.xml
+osm.passenger.trips.xml
+
+# Compiled Object Files and Executables
+*.o
+*.so
+*.a
+*.out
+*.exe
+build/
+bin/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# IDEs / OS files
+.DS_Store
+.vscode/
+.idea/

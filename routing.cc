@@ -94,7 +94,20 @@ uint32_t flow_size = 55;
 // routing_test=true and active_attack_variant=7.
 bool single_cycle = false;
 
-const int total_size = 100;
+// Number of SDVN controllers (C = {c1, ..., cm} per proposal).
+// Controllers form a 2x2 grid over the 2km x 2km simulation area.
+// Each RSU is dynamically assigned to its nearest controller (proposal eq. c*(k,t)).
+uint32_t N_Controllers = 4;
+
+// RSU-to-controller assignment table: rsu_controller_assignment[i] = index of
+// the controller node in controller_Node that RSU i is assigned to.
+// Populated in main() once RSU positions are known.
+uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
+
+const int total_size = 300; // must be >= N_Vehicles + N_RSUs + N_Controllers.
+                             // 100 was sufficient for the original defaults (N_Vehicles=80,
+                             // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
+                             // needs 200+64+4=268; 300 gives headroom.
 uint32_t N_RSUs = 20;
 uint32_t N_Vehicles = 80;
 
@@ -115,7 +128,7 @@ uint32_t large=50000;
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
 // double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 5.0; //test
+double data_transmission_frequency = 1.0; //test
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -127,6 +140,8 @@ double link_lifetime_threshold = 0.400;
 // which makes routing rule out the direct link and select a relay (e.g. via the
 // RSU) instead of sending direct and dropping. Tune to match your radio range.
 double d_max_dsrc = 270.0;
+bool use_sumo_mobility = true; // when true + routing_test==false, load Ns2MobilityHelper
+                                // SUMO trace instead of synthetic grid/random mobility
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
 int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
 int maxspeed = 80;	
@@ -93710,25 +93725,25 @@ void CustomDeltavaluesDownlinkUnicastTag::Setload (double * load)
 double dsrc_utilization_time = 0.0;
 double lte_utilization_time = 0.0;
 double ethernet_utilization_time = 0.0;
-double packet_delay[total_size+2];
-double packet_delay_dsrc[total_size+2];
+double packet_delay[total_size];
+double packet_delay_dsrc[total_size];
 
-double dsrc_packet_initial_timestamp[total_size+2];
-double packet_initial_timestamp[total_size+2];
+double dsrc_packet_initial_timestamp[total_size];
+double packet_initial_timestamp[total_size];
 double dsrc_initial_timestamp;
 double lte_initial_timestamp;
 double ethernet_initial_timestamp;
-double aodv_initial_timestamp[total_size+2];
+double aodv_initial_timestamp[total_size];
 
-double dsrc_packet_final_timestamp[total_size+2];
-double packet_final_timestamp[total_size+2];
+double dsrc_packet_final_timestamp[total_size];
+double packet_final_timestamp[total_size];
 double dsrc_final_timestamp;
 double dsrc_total_received_packets = 0.0;
 double lte_final_timestamp;
 double ethernet_final_timestamp;
-double aodv_final_timestamp[total_size+2];
+double aodv_final_timestamp[total_size];
 
-double max_distance[total_size+2];
+double max_distance[total_size];
 
 struct Q_fi
 {
@@ -94020,12 +94035,12 @@ struct routing_data_at_nodes routing_data_at_nodes_inst[total_size];
 struct routing_data_at_controller routing_data_at_controller_inst[total_size];
 
 
-struct data_at_nodes data_at_nodes_inst[total_size+2];
-struct data_at_manager data_at_manager_inst[total_size+2];
+struct data_at_nodes data_at_nodes_inst[total_size];
+struct data_at_manager data_at_manager_inst[total_size];
 
 void print_management_data()
 {
-	for(uint32_t i=0;i<total_size+2;i++)
+	for(uint32_t i=0;i<total_size+N_Controllers;i++)
 	{
 		cout<<"i ="<<i<<"node id "<<(data_at_manager_inst+i)->nodeid<<"acceleration "<<(data_at_manager_inst+i)->acceleration<<"velocity "<<(data_at_manager_inst+i)->velocity<<"position "<<(data_at_manager_inst+i)->position<<"timestamp "<<(data_at_manager_inst+i)->timestamp<<endl;
 	}
@@ -94076,7 +94091,7 @@ void update_previous_velocity(Ptr <NetDevice> nd, Ptr <Node> node)
 	Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (nd);
 	Ptr <Node> ni = DynamicCast <Node> (node);
 	//CustomDataTag tag;
-	uint32_t nid = uint32_t(ni->GetId()) - 2;
+	uint32_t nid = uint32_t(ni->GetId()) - N_Controllers;
 	//packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
 	//cout<<"updating data from node "<<nid<<endl;
 	Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (node->GetObject<MobilityModel>());
@@ -94094,7 +94109,7 @@ void add_routing_data_at_nodes(struct routing_data_at_nodes * nd1, Ptr <NetDevic
 	Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (nd);
 	Ptr <Node> ni = DynamicCast <Node> (node);
 	//CustomDataTag tag;
-	uint32_t nid = uint32_t(ni->GetId()) - 2;
+	uint32_t nid = uint32_t(ni->GetId()) - N_Controllers;
 	//packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
 	//cout<<"updating data from node "<<nid<<endl;
 	Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (node->GetObject<MobilityModel>());
@@ -94193,7 +94208,7 @@ uint32_t get_size_of_data_at_nodes(struct data_at_nodes * nd1)
 	uint32_t size = 0;
 	for(uint32_t i=0; i<max;i++)
 	{
-		if((nd1->nodeid[i] != large) and (nd1->nodeid[i] < (total_size+2)) and (nd1->nodeid[i]>1))
+		if((nd1->nodeid[i] != large) and (nd1->nodeid[i] < (total_size)) and (nd1->nodeid[i]>1))
 		{
 			size++;
 		}
@@ -94284,14 +94299,14 @@ void clear_controllerdata(struct controller_data * nd1)
 	nd1->lastupdated = Simulator::Now().GetSeconds();
 }
 
-struct neighbor_data neighbordata_inst[total_size+2];
-struct controller_data con_data_inst[total_size+2];
+struct neighbor_data neighbordata_inst[total_size];
+struct controller_data con_data_inst[total_size];
 
 double sum_of_nodeids = 0;
 void nodeid_sum()
 {
 	sum_of_nodeids = 0;
-	for (uint32_t i=2;i<total_size+2;i++)
+	for (uint32_t i=N_Controllers;i<total_size+N_Controllers;i++)
 	{
 		sum_of_nodeids = sum_of_nodeids + i;
 	}
@@ -94305,19 +94320,19 @@ double calculate_network_entropy()
 	double summation_rsu = 0.0;
 	for (uint32_t i=0;i<total_size; i++)
 	{
-		if( con_data_inst[i+2].neighborsize != 0)
+		if( con_data_inst[i+N_Controllers].neighborsize != 0)
 		{
 			int vehicle_neighbors = 0;
 			int rsu_neighbors = 0;
 			for (uint32_t j=0;j<max;j++)
 			{
-				if((con_data_inst[i+2].neighborid[j]) != large)
+				if((con_data_inst[i+N_Controllers].neighborid[j]) != large)
 				{
-					if ((con_data_inst[i+2].neighborid[j]) < (N_Vehicles+2))
+					if ((con_data_inst[i+N_Controllers].neighborid[j]) < (N_Vehicles+N_Controllers))
 					{
 						vehicle_neighbors++;
 					}
-					else if ((con_data_inst[i+2].neighborid[j]) < (total_size+2))
+					else if ((con_data_inst[i+N_Controllers].neighborid[j]) < (total_size))
 					{
 						rsu_neighbors++;
 					}
@@ -94417,7 +94432,7 @@ uint32_t getNeighborsize(struct neighbor_data * nd1)
 	uint32_t  neighborsize = 0;
 	for(uint32_t i=0; i<max;i++)
 	{
-		if((nd1->neighborid[i] != large) and (nd1->neighborid[i] > 1) and (nd1->neighborid[i] < (total_size+2)))
+		if((nd1->neighborid[i] != large) and (nd1->neighborid[i] > N_Controllers-1) and (nd1->neighborid[i] < (total_size)))
 		{
 			neighborsize++;	
 		}
@@ -94573,7 +94588,6 @@ long lte_total_packet_size = 0;
 ApplicationContainer apps;
 ApplicationContainer RSU_apps;
 NodeContainer controller_Node;
-NodeContainer management_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
@@ -94729,11 +94743,11 @@ double calculate_wireless_entropy()
 	for (uint32_t i=0;i<total_size; i++)
 	{
 		int wireless_neighbors = 0;
-		if( con_data_inst[i+2].neighborsize != 0)
+		if( con_data_inst[i+N_Controllers].neighborsize != 0)
 		{
 			for (uint32_t j=0;j<max;j++)
 			{
-				if((con_data_inst[i+2].neighborid[j]) != large)
+				if((con_data_inst[i+N_Controllers].neighborid[j]) != large)
 				{
 					if (i<N_Vehicles)
 					{
@@ -94741,11 +94755,11 @@ double calculate_wireless_entropy()
 					}
 					else
 					{
-						if ((con_data_inst[i+2].neighborid[j]) < (N_Vehicles+2))
+						if ((con_data_inst[i+N_Controllers].neighborid[j]) < (N_Vehicles+N_Controllers))
 						{
 							wireless_neighbors++;
 						}
-						else if ((con_data_inst[i+2].neighborid[j]) < (total_size+2))
+						else if ((con_data_inst[i+N_Controllers].neighborid[j]) < (total_size))
 						{
 						
 						}
@@ -94816,13 +94830,13 @@ void compute_Qnei()
 	{
 		double neighbors = 0;
 		double Q_sum = 0.0;
-		if(con_data_inst[i+2].neighborsize != 0)
+		if(con_data_inst[i+N_Controllers].neighborsize != 0)
 		{
 			for (uint32_t j=0;j<max;j++)
 			{
-				if((con_data_inst[i+2].neighborid[j]) != large)
+				if((con_data_inst[i+N_Controllers].neighborid[j]) != large)
 				{
-					uint32_t nei_index = con_data_inst[i+2].neighborid[j] - 2;
+					uint32_t nei_index = con_data_inst[i+N_Controllers].neighborid[j] - N_Controllers;
 					Q_sum = Q_sum + Q[nei_index];
 					neighbors++;
 				}
@@ -94960,11 +94974,11 @@ class SimpleUdpApplication : public Application
 #define END_CODE "\033[0m"
 
 
-bool Z_gurobi[total_size+2];
-bool X_gurobi[total_size+2];
+bool Z_gurobi[total_size];
+bool X_gurobi[total_size];
 
-bool Z_nodes[total_size+2];
-bool X_nodes[total_size+2];
+bool Z_nodes[total_size];
+bool X_nodes[total_size];
 
 
   //NS_LOG_COMPONENT_DEFINE("SimpleUdpApplication");
@@ -95045,18 +95059,18 @@ bool X_nodes[total_size+2];
 			uint32_t node_index = tag_routing.GetsenderId();
 			uint32_t destination = tag_routing.GetdestinationId() + 2;
 			uint32_t * source = tag_routing.GetNodeId();
-			Y[*source - 2] = Y[*source - 2] - 1;
-			packets_received_wi[*source - 2] = packets_received_wi[*source - 2] + 1;
+			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
+			packets_received_wi[*source - N_Controllers] = packets_received_wi[*source - N_Controllers] + 1;
 			double delay = Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds();
-			one_hop_delay_training_wi[*source - 2] = one_hop_delay_training_wi[*source - 2] + delay;
+			one_hop_delay_training_wi[*source - N_Controllers] = one_hop_delay_training_wi[*source - N_Controllers] + delay;
 			cout<<"1-hop delay wired is "<<delay<<endl;
 			
 			if (nid != destination)
 			{
-				//uint32_t next_hop = routing_tables[nid -2].rows[destination-2].next_hop;
-				uint32_t next_hop = find_next_hop(node_index,destination-2,nid -2);
+				//uint32_t next_hop = routing_tables[nid -N_Controllers].rows[destination-N_Controllers].next_hop;
+				uint32_t next_hop = find_next_hop(node_index,destination-N_Controllers,nid -N_Controllers);
 				cout<<endl<<"next hop from routing table is "<< next_hop <<endl;
-				if (next_hop == (*source -2))
+				if (next_hop == (*source -N_Controllers))
 				{
 					cout<<"routing loop. stopping routing"<<endl;
 				}
@@ -95068,11 +95082,11 @@ bool X_nodes[total_size+2];
 					tag_routing.SetTimestamp(&ti);
 					packet_i->AddPacketTag(tag_routing);
 					
-					if (((nid-2) > N_Vehicles) && (next_hop > N_Vehicles))
+					if (((nid-N_Controllers) > N_Vehicles) && (next_hop > N_Vehicles))
 					{
-						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-2-N_Vehicles));	
-				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-2-N_Vehicles));
-				  		cout<<"Ethernet data Unicasting from node "<<nid - 2<<endl;
+						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-N_Controllers-N_Vehicles));	
+				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-N_Controllers-N_Vehicles));
+				  		cout<<"Ethernet data Unicasting from node "<<nid - N_Controllers<<endl;
 						
 						Ptr <Ipv4> ipv4;  	
 					  	ipv4 = RSU_Nodes.Get(next_hop-N_Vehicles)->GetObject<Ipv4>();
@@ -95093,7 +95107,7 @@ bool X_nodes[total_size+2];
 					else
                     {
                         uint32_t final_next_hop = next_hop;
-                        uint32_t current_hop = nid - 2;
+                        uint32_t current_hop = nid - N_Controllers;
 
                         // ==============================================================
                         // ENFORCE ARCHITECTURE 3: MAC-LAYER OVERRIDE
@@ -95101,10 +95115,10 @@ bool X_nodes[total_size+2];
                         if (architecture == 3 && N_RSUs > 0)
                         {
                             uint32_t rsu_index = N_Vehicles; // e.g., index 2
-                            if (current_hop < N_Vehicles && destination-2 < N_Vehicles && current_hop != destination-2) {
+                            if (current_hop < N_Vehicles && destination-N_Controllers < N_Vehicles && current_hop != destination-N_Controllers) {
                                 final_next_hop = rsu_index;
-                            } else if (current_hop == rsu_index && destination-2 < N_Vehicles) {
-                                final_next_hop = destination - 2;
+                            } else if (current_hop == rsu_index && destination-N_Controllers < N_Vehicles) {
+                                final_next_hop = destination - N_Controllers;
                             }
                         }
 
@@ -95156,15 +95170,15 @@ bool X_nodes[total_size+2];
                         Simulator::Schedule (Seconds(0.000000), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
                     }
 					
-					Y[nid - 2] = Y[nid - 2] + 1;	
+					Y[nid - N_Controllers] = Y[nid - N_Controllers] + 1;	
 					//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 				}
 			}
 			if (nid == destination)
 			{
-				cout<<"packet successfully delivered to destination node"<<nid - 2<<endl;
-				dsrc_packet_final_timestamp[node_index+2] = Simulator::Now().GetSeconds();
-				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<nid -2 <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
+				cout<<"packet successfully delivered to destination node"<<nid - N_Controllers<<endl;
+				dsrc_packet_final_timestamp[node_index+N_Controllers] = Simulator::Now().GetSeconds();
+				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<nid -N_Controllers <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
 			}
 		}
 	}
@@ -95190,7 +95204,7 @@ bool X_nodes[total_size+2];
 			for(uint32_t j=0;j<total_size;j++)	
 			{
 				(delta_at_nodes_inst+i)->delta_fi_inst[nodeid].delta_values[j] = delta_Set[i][j];
-				//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j]<<endl;
+				//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j]<<endl;
 			}
 		       (delta_at_nodes_inst+i)->source_f = sources[i];
 		       (delta_at_nodes_inst+i)->destination_f = destinations[i];
@@ -96621,7 +96635,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN01max.Getneighborid()+i) != large) and (*(tagN01max.Getneighborid()+i) > 1) and (*(tagN01max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN01max.Getneighborid()+i) != large) and (*(tagN01max.Getneighborid()+i) > 0) and (*(tagN01max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN01max.Getneighborid()+i);
@@ -97209,7 +97223,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN2max.Getneighborid()+i) != large) and (*(tagN2max.Getneighborid()+i) > 1) and (*(tagN2max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN2max.Getneighborid()+i) != large) and (*(tagN2max.Getneighborid()+i) > 0) and (*(tagN2max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN2max.Getneighborid()+i);
@@ -97798,7 +97812,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN3max.Getneighborid()+i) != large) and (*(tagN3max.Getneighborid()+i) > 1) and (*(tagN3max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN3max.Getneighborid()+i) != large) and (*(tagN3max.Getneighborid()+i) > 0) and (*(tagN3max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN3max.Getneighborid()+i);
@@ -98386,7 +98400,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN4max.Getneighborid()+i) != large) and (*(tagN4max.Getneighborid()+i) > 1) and (*(tagN4max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN4max.Getneighborid()+i) != large) and (*(tagN4max.Getneighborid()+i) > 0) and (*(tagN4max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN4max.Getneighborid()+i);
@@ -98975,7 +98989,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN5max.Getneighborid()+i) != large) and (*(tagN5max.Getneighborid()+i) > 1) and (*(tagN5max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN5max.Getneighborid()+i) != large) and (*(tagN5max.Getneighborid()+i) > 0) and (*(tagN5max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN5max.Getneighborid()+i);
@@ -99564,7 +99578,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN6max.Getneighborid()+i) != large) and (*(tagN6max.Getneighborid()+i) > 1) and (*(tagN6max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN6max.Getneighborid()+i) != large) and (*(tagN6max.Getneighborid()+i) > 0) and (*(tagN6max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN6max.Getneighborid()+i);
@@ -100152,7 +100166,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN7max.Getneighborid()+i) != large) and (*(tagN7max.Getneighborid()+i) > 1) and (*(tagN7max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN7max.Getneighborid()+i) != large) and (*(tagN7max.Getneighborid()+i) > 0) and (*(tagN7max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN7max.Getneighborid()+i);
@@ -100740,7 +100754,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN8max.Getneighborid()+i) != large) and (*(tagN8max.Getneighborid()+i) > 1) and (*(tagN8max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN8max.Getneighborid()+i) != large) and (*(tagN8max.Getneighborid()+i) > 0) and (*(tagN8max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN8max.Getneighborid()+i);
@@ -101328,7 +101342,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN9max.Getneighborid()+i) != large) and (*(tagN9max.Getneighborid()+i) > 1) and (*(tagN9max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN9max.Getneighborid()+i) != large) and (*(tagN9max.Getneighborid()+i) > 0) and (*(tagN9max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN9max.Getneighborid()+i);
@@ -101917,7 +101931,7 @@ bool X_nodes[total_size+2];
 		  for(int i=0; i<max; i++)
 		  {
 		  	(con_data_inst+source_node_id)->neighborid[i] = *(tagN10max.Getneighborid()+i);
-		  	if ((*(tagN10max.Getneighborid()+i) != large) and (*(tagN10max.Getneighborid()+i) > 1) and (*(tagN10max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN10max.Getneighborid()+i) != large) and (*(tagN10max.Getneighborid()+i) > 0) and (*(tagN10max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN10max.Getneighborid()+i);
@@ -102505,7 +102519,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN11max.Getneighborid()+i) != large) and (*(tagN11max.Getneighborid()+i) > 1) and (*(tagN11max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN11max.Getneighborid()+i) != large) and (*(tagN11max.Getneighborid()+i) > 0) and (*(tagN11max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN11max.Getneighborid()+i);
@@ -103093,7 +103107,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN12max.Getneighborid()+i) != large) and (*(tagN12max.Getneighborid()+i) > 1) and (*(tagN12max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN12max.Getneighborid()+i) != large) and (*(tagN12max.Getneighborid()+i) > 0) and (*(tagN12max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN12max.Getneighborid()+i);
@@ -103681,7 +103695,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN13max.Getneighborid()+i) != large) and (*(tagN13max.Getneighborid()+i) > 1) and (*(tagN13max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN13max.Getneighborid()+i) != large) and (*(tagN13max.Getneighborid()+i) > 0) and (*(tagN13max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN13max.Getneighborid()+i);
@@ -104269,7 +104283,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN14max.Getneighborid()+i) != large) and (*(tagN14max.Getneighborid()+i) > 1) and (*(tagN14max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN14max.Getneighborid()+i) != large) and (*(tagN14max.Getneighborid()+i) > 0) and (*(tagN14max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN14max.Getneighborid()+i);
@@ -104857,7 +104871,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN15max.Getneighborid()+i) != large) and (*(tagN15max.Getneighborid()+i) > 1) and (*(tagN15max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN15max.Getneighborid()+i) != large) and (*(tagN15max.Getneighborid()+i) > 0) and (*(tagN15max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN15max.Getneighborid()+i);
@@ -105444,7 +105458,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN16max.Getneighborid()+i) != large) and (*(tagN16max.Getneighborid()+i) > 1) and (*(tagN16max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN16max.Getneighborid()+i) != large) and (*(tagN16max.Getneighborid()+i) > 0) and (*(tagN16max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN16max.Getneighborid()+i);
@@ -106595,7 +106609,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN17max.Getneighborid()+i) != large) and (*(tagN17max.Getneighborid()+i) > 1) and (*(tagN17max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN17max.Getneighborid()+i) != large) and (*(tagN17max.Getneighborid()+i) > 0) and (*(tagN17max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN17max.Getneighborid()+i);
@@ -106618,7 +106632,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN18max.Getneighborid()+i) != large) and (*(tagN18max.Getneighborid()+i) > 1) and (*(tagN18max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN18max.Getneighborid()+i) != large) and (*(tagN18max.Getneighborid()+i) > 0) and (*(tagN18max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN18max.Getneighborid()+i);
@@ -107205,7 +107219,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN19max.Getneighborid()+i) != large) and (*(tagN19max.Getneighborid()+i) > 1) and (*(tagN19max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN19max.Getneighborid()+i) != large) and (*(tagN19max.Getneighborid()+i) > 0) and (*(tagN19max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN19max.Getneighborid()+i);
@@ -107793,7 +107807,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN20max.Getneighborid()+i) != large) and (*(tagN20max.Getneighborid()+i) > 1) and (*(tagN20max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN20max.Getneighborid()+i) != large) and (*(tagN20max.Getneighborid()+i) > 0) and (*(tagN20max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN20max.Getneighborid()+i);
@@ -108381,7 +108395,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN21max.Getneighborid()+i) != large) and (*(tagN21max.Getneighborid()+i) > 1) and (*(tagN21max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN21max.Getneighborid()+i) != large) and (*(tagN21max.Getneighborid()+i) > 0) and (*(tagN21max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN21max.Getneighborid()+i);
@@ -108969,7 +108983,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN22max.Getneighborid()+i) != large) and (*(tagN22max.Getneighborid()+i) > 1) and (*(tagN22max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN22max.Getneighborid()+i) != large) and (*(tagN22max.Getneighborid()+i) > 0) and (*(tagN22max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN22max.Getneighborid()+i);
@@ -109557,7 +109571,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN23max.Getneighborid()+i) != large) and (*(tagN23max.Getneighborid()+i) > 1) and (*(tagN23max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN23max.Getneighborid()+i) != large) and (*(tagN23max.Getneighborid()+i) > 0) and (*(tagN23max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN23max.Getneighborid()+i);
@@ -110145,7 +110159,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN24max.Getneighborid()+i) != large) and (*(tagN24max.Getneighborid()+i) > 1) and (*(tagN24max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN24max.Getneighborid()+i) != large) and (*(tagN24max.Getneighborid()+i) > 0) and (*(tagN24max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN24max.Getneighborid()+i);
@@ -110733,7 +110747,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN25max.Getneighborid()+i) != large) and (*(tagN25max.Getneighborid()+i) > 1) and (*(tagN25max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN25max.Getneighborid()+i) != large) and (*(tagN25max.Getneighborid()+i) > 0) and (*(tagN25max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN25max.Getneighborid()+i);
@@ -110756,7 +110770,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN26max.Getneighborid()+i) != large) and (*(tagN26max.Getneighborid()+i) > 1) and (*(tagN26max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN26max.Getneighborid()+i) != large) and (*(tagN26max.Getneighborid()+i) > 0) and (*(tagN26max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN26max.Getneighborid()+i);
@@ -110779,7 +110793,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN27max.Getneighborid()+i) != large) and (*(tagN27max.Getneighborid()+i) > 1) and (*(tagN27max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN27max.Getneighborid()+i) != large) and (*(tagN27max.Getneighborid()+i) > 0) and (*(tagN27max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN27max.Getneighborid()+i);
@@ -110802,7 +110816,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN28max.Getneighborid()+i) != large) and (*(tagN28max.Getneighborid()+i) > 1) and (*(tagN28max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN28max.Getneighborid()+i) != large) and (*(tagN28max.Getneighborid()+i) > 0) and (*(tagN28max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN28max.Getneighborid()+i);
@@ -110825,7 +110839,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN29max.Getneighborid()+i) != large) and (*(tagN29max.Getneighborid()+i) > 1) and (*(tagN29max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN29max.Getneighborid()+i) != large) and (*(tagN29max.Getneighborid()+i) > 0) and (*(tagN29max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN29max.Getneighborid()+i);
@@ -110848,7 +110862,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN30max.Getneighborid()+i) != large) and (*(tagN30max.Getneighborid()+i) > 1) and (*(tagN30max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN30max.Getneighborid()+i) != large) and (*(tagN30max.Getneighborid()+i) > 0) and (*(tagN30max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN30max.Getneighborid()+i);
@@ -111960,7 +111974,7 @@ double average_latency_dsrc = 0.0;
 
 void clear_solution()
 {
-	for (int i=0;i<(total_size+2);i++)
+	for (int i=0;i<(total_size);i++)
 	{
 		Z_gurobi[i] = 1;
 		X_gurobi[i] = 1;
@@ -111980,7 +111994,7 @@ void send_LTE_metadata_uplink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Nod
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	uint32_t nid = uint32_t(nu->GetId());
-	if (nid == 2)
+	if (nid == N_Controllers)
 	{
 		lte_total_packet_size = 0;
 		lte_initial_timestamp = Simulator::Now().GetSeconds(); 	
@@ -112377,7 +112391,7 @@ void send_LTE_deltavalues_downlink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 	uint32_t destinations[2*flows];
 	uint32_t flow_ids[2*flows];
 	uint32_t flow_sizes[2*flows];
-	uint32_t nodeid = nid-2;
+	uint32_t nodeid = nid-N_Controllers;
 	double load[2*flows];
 	
 	for(uint32_t i=0;i<2*flows;i++)
@@ -112385,9 +112399,9 @@ void send_LTE_deltavalues_downlink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 		load[i] = 0.0;
 		for(uint32_t j=0;j<total_size;j++)	
 		{
-			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-2].L_values[j];
-			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j];
-			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j]<<endl;
+			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-N_Controllers].L_values[j];
+			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j];
+			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j]<<endl;
 		}
 		sources[i] = (demanding_flow_struct_controller_inst+i)->source;
 		destinations[i] = (demanding_flow_struct_controller_inst+i)->destination;
@@ -112401,7 +112415,7 @@ void send_LTE_deltavalues_downlink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 	//cout<<delta_Set[3][2]<<dest_ip<<endl;
 	//TEST - comment at implementation
 	/*
-	if ((nid-2) == 2)
+	if ((nid-N_Controllers) == 2)
 	{
 		delta_Set[3][5] = 0.75;
 		sources[3] = 7;
@@ -112437,7 +112451,7 @@ void RSU_deltavalues_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <N
 	uint32_t destinations[2*flows];
 	uint32_t flow_ids[2*flows];
 	uint32_t flow_sizes[2*flows];
-	uint32_t nodeid = nid-2;
+	uint32_t nodeid = nid-N_Controllers;
 	double load[2*flows];
 	
 	for(uint32_t i=0;i<2*flows;i++)
@@ -112445,9 +112459,9 @@ void RSU_deltavalues_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <N
 		load[i] = 0.0;
 		for(uint32_t j=0;j<total_size;j++)	
 		{
-			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-2].L_values[j];
-			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j];
-			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j]<<endl;
+			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-N_Controllers].L_values[j];
+			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j];
+			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j]<<endl;
 		}
 		sources[i] = (demanding_flow_struct_controller_inst+i)->source;
 		destinations[i] = (demanding_flow_struct_controller_inst+i)->destination;
@@ -112481,7 +112495,7 @@ void RSU_metadata_uplink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 
 	Ptr <Node> nu = DynamicCast <Node> (source_node);
 	uint32_t nid = uint32_t(nu->GetId());
-	if (nid == (N_Vehicles+2))
+	if (nid == (N_Vehicles+N_Controllers))
 	{
 		ethernet_total_packet_size = 0;
 		ethernet_initial_timestamp = Simulator::Now().GetSeconds();
@@ -112879,7 +112893,7 @@ void write_csv()
 {
 	fstream fout;
 	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
-	for (uint32_t i=2; i<total_size+2 ;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		fout << total_size << ", "
 		     <<	con_data_inst[i].B << ", "
@@ -112977,16 +112991,16 @@ void write_csv_status()
 {
 	fstream fout;
 	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-	for (uint32_t i=2; i<total_size+2 ;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		Ptr <Node> node;
-		if ((i-2) < N_Vehicles)
+		if ((i-N_Controllers) < N_Vehicles)
 		{	
-			node = DynamicCast <Node> (Vehicle_Nodes.Get(i-2));
+			node = DynamicCast <Node> (Vehicle_Nodes.Get(i-N_Controllers));
 		}
 		else
 		{
-			node = DynamicCast <Node> (RSU_Nodes.Get(i-N_Vehicles-2));
+			node = DynamicCast <Node> (RSU_Nodes.Get(i-N_Vehicles-N_Controllers));
 		}
 		
 		Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (node->GetObject<MobilityModel>());
@@ -116391,7 +116405,7 @@ void dijkstra(vector<vector<double> > adjacencyMatrix,
     	uint32_t n = new_parents[source].size();	
     	uint32_t path[total_size];
     	path[0] = source;
-    	for (uint32_t i=1;i<total_size;i++)
+    	for (uint32_t i=N_Controllers;i<total_size;i++)
     	{
     		int sh = n-i+1;
     		if((sh) > 0)
@@ -116426,7 +116440,7 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 	vector<double> x;
 	/*
 	Vector source_position = data_at_manager_inst[source_node].position;
-	for (uint32_t index = 2; index < (total_size + 2); index++)
+	for (uint32_t index = N_Controllers; index < (total_size); index++)
 	{
 		double dis = get_length(source_position, data_at_manager_inst[index].position);
 		x.push_back(dis);
@@ -116434,26 +116448,26 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 	*/
 	Ptr <Node> reference_node;
 	Ptr <Node> other_node;
-	if ((source_node-2) < N_Vehicles)
+	if ((source_node-N_Controllers) < N_Vehicles)
 	{	
-		reference_node = DynamicCast <Node> (Vehicle_Nodes.Get(source_node-2));
+		reference_node = DynamicCast <Node> (Vehicle_Nodes.Get(source_node-N_Controllers));
 	}
 	else
 	{
-		reference_node = DynamicCast <Node> (RSU_Nodes.Get(source_node-N_Vehicles-2));
+		reference_node = DynamicCast <Node> (RSU_Nodes.Get(source_node-N_Vehicles-N_Controllers));
 	}
 	
 	Ptr<ConstantVelocityMobilityModel> mdl1 = DynamicCast <ConstantVelocityMobilityModel> (reference_node->GetObject<MobilityModel>());
         Vector posi_reference = mdl1->GetPosition();
-        for (uint32_t index = 2; index < ((uint32_t)var + 2); index++)
+        for (uint32_t index = N_Controllers; index < ((uint32_t)var + N_Controllers); index++)
 	{
-		if ((index-2) < N_Vehicles)
+		if ((index-N_Controllers) < N_Vehicles)
 		{	
-			other_node = DynamicCast <Node> (Vehicle_Nodes.Get(index-2));
+			other_node = DynamicCast <Node> (Vehicle_Nodes.Get(index-N_Controllers));
 		}
 		else
 		{
-			other_node = DynamicCast <Node> (RSU_Nodes.Get(index-N_Vehicles-2));
+			other_node = DynamicCast <Node> (RSU_Nodes.Get(index-N_Vehicles-N_Controllers));
 		}
 		Ptr<ConstantVelocityMobilityModel> mdl2 = DynamicCast <ConstantVelocityMobilityModel> (other_node->GetObject<MobilityModel>());
         	Vector posi_other = mdl2->GetPosition();	
@@ -116566,7 +116580,7 @@ void update_stable(uint32_t flow_id, uint32_t current_hop)
 			
 			else
 			{
-				if((proposed_algo2_output_inst[flow_id].met[i] = false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
+				if((proposed_algo2_output_inst[flow_id].met[i] == false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
 				{
 					proposed_algo2_output_inst[flow_id].Y[i] = proposed_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					proposed_algo2_output_inst[flow_id].conn[i] = 1;
@@ -116621,7 +116635,7 @@ void update_unstable(uint32_t flow_id, uint32_t current_hop)
 			else
 			{
 				double value = distance_algo2_output_inst[flow_id].D[current_hop] + adjacencyMatrix[current_hop][i];
-				if((distance_algo2_output_inst[flow_id].met[i] = false)||(distance_algo2_output_inst[flow_id].D[i] > value))
+				if((distance_algo2_output_inst[flow_id].met[i] == false)||(distance_algo2_output_inst[flow_id].D[i] > value))
 				{
 					distance_algo2_output_inst[flow_id].Y[i] = distance_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					distance_algo2_output_inst[flow_id].D[i] = value;
@@ -116948,7 +116962,7 @@ void dijkstra_stable(uint32_t startVertex)
     	path[0] = source;
     	alternative_path[0] = source;
     	alternative_path[1] = startVertex;
-    	for (uint32_t i=1;i<total_size;i++)
+    	for (uint32_t i=N_Controllers;i<total_size;i++)
     	{
     		int sh = n-i+1;
     		if((sh) > 0)
@@ -116961,7 +116975,7 @@ void dijkstra_stable(uint32_t startVertex)
     			path[i] = large;
     		}
     	}
-    	for (uint32_t i=2;i<total_size;i++)
+    	for (uint32_t i=N_Controllers;i<total_size;i++)
     	{
 		alternative_path[i] = large;
     	}
@@ -117709,7 +117723,7 @@ void calculate_performance_evaluation_metrics()
 void calculate_average_latency()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (packet_final_timestamp[i] > packet_initial_timestamp[i])
 		{
@@ -117729,7 +117743,7 @@ void calculate_average_latency()
 void calculate_packet_delivery_ratio()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (packet_final_timestamp[i] > packet_initial_timestamp[i])
 		{
@@ -117759,7 +117773,7 @@ void calculate_packet_delivery_ratio()
 void calculate_packet_delivery_ratio_dsrc()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117780,7 +117794,7 @@ void calculate_packet_delivery_ratio_dsrc()
 void calculate_packet_delivery_ratio_dsrc_hybrid()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117800,7 +117814,7 @@ void calculate_packet_delivery_ratio_dsrc_hybrid()
 void calculate_average_latency_hybrid()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117825,7 +117839,7 @@ void calculate_average_latency_hybrid()
 void calculate_average_latency_dsrc()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117846,7 +117860,7 @@ void calculate_average_latency_dsrc()
 void calculate_aodv_packet_delivery_ratio()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i< (total_size+2); i++)
+	for (uint32_t i=N_Controllers; i< (total_size); i++)
 	{
 		if (aodv_final_timestamp[i] > aodv_initial_timestamp[i])
 		{
@@ -117864,7 +117878,7 @@ void calculate_aodv_packet_delivery_ratio()
 void calculate_aodv_latency()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2;i<(total_size+2);i++)
+	for (uint32_t i=N_Controllers;i<(total_size);i++)
 	{
 		if (aodv_final_timestamp[i] > aodv_initial_timestamp[i])
 		{
@@ -118020,7 +118034,7 @@ void transmit_solution()
 			//cout<<"index is "<<index;
 			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(index));	
 	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
-			Simulator::Schedule(Seconds(0.002 + 0.000015*u),RSU_metadata_downlink_unicast, udp_app, controller_Node.Get(0), nu);
+			Simulator::Schedule(Seconds(0.002 + 0.000015*u),RSU_metadata_downlink_unicast, udp_app, controller_Node.Get(rsu_controller_assignment[u]), nu);
 		}
 	}
 }
@@ -118043,7 +118057,7 @@ void transmit_delta_values()
 //cout<<"index is "<<index;
 			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(index));	
 	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
-			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),RSU_deltavalues_downlink_unicast, udp_app, controller_Node.Get(0), nu);
+			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),RSU_deltavalues_downlink_unicast, udp_app, controller_Node.Get(rsu_controller_assignment[u]), nu);
         }
     }
 	cout<<"Transmitting delta values at"<<Now().GetSeconds()<<endl;
@@ -118168,20 +118182,15 @@ void convert_link_lifetimes_dsrc()
 			if(i==j) continue;
 			double dist = get_length((routing_data_at_nodes_inst+i)->position,
 			                         (routing_data_at_nodes_inst+j)->position);
-			cout<<"[RANGE GATE] link "<<i<<"->"<<j<<" dist="<<dist
-			    <<" lifetime(before)="<<linklifetimeMatrix_dsrc[i][j];
 			if(dist > d_max_dsrc)
 			{
 				linklifetimeMatrix_dsrc[i][j] = 0.0;
-				cout<<" -> ZEROED (over "<<d_max_dsrc<<"m)";
 			}
 			else if(linklifetimeMatrix_dsrc[i][j] <= link_lifetime_threshold)
 			{
 				// in range but optimizer reported it unusable: floor it
 				linklifetimeMatrix_dsrc[i][j] = in_range_floor;
-				cout<<" -> FLOORED to "<<in_range_floor<<" (in range)";
 			}
-			cout<<endl;
 		}
 	}
 	
@@ -119806,7 +119815,7 @@ void  run_optimization_link_lifetime()
 
 void  run_optimization_subsequent()
 {
-	for (uint32_t i=2;i<(total_size + 2);i++)
+	for (uint32_t i=N_Controllers;i<(total_size);i++)
 	{
 		refresh_controller_data(con_data_inst+i);
 	}
@@ -120047,7 +120056,7 @@ void write_distance_metrics()
 	fout.open(filename,ios::out|ios::app);
 	
 	fout << Simulator::Now().GetSeconds();
-	for (uint32_t i=3;i<total_size+2; i=i+2)
+	for (uint32_t i=3;i<total_size+N_Controllers; i=i+2)
 	{
 		fout << max_distance[i] << ", ";
 	}
@@ -120060,7 +120069,7 @@ void write_distance_metrics()
 void calculate_normalized_mobility()
 {
 	double sum = 0.0;
-	for (uint32_t i=2; i<total_size+2 ;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		double xi,yi,zi;
 		
@@ -120958,7 +120967,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//cout<<"testing "<<destination_node_id;
 		}
 		
-		if ((destination_node_id > (total_size+1)) or (destination_node_id < 2))
+		if ((destination_node_id > (total_size)) or (destination_node_id < 2))
 		{
 			cout<<"invalid conversion. setting default value to 2"<<endl;
 			destination_node_id = 2;
@@ -120979,7 +120988,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//uint32_t nid = source_node->GetId();
 			
 			
-			uint32_t current_hop = destination_node_id -2;
+			uint32_t current_hop = destination_node_id -N_Controllers;
 			uint32_t fid = tagmodified_routing.GetflowId();
 			uint32_t packet_ID = tagmodified_routing.GetpacketId();
 			uint32_t channel = tagmodified_routing.GetchannelId();
@@ -121136,7 +121145,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
 			//uint32_t tap_fid = tagmodified_routing.GetflowId();
 			//uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			//uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
+			//uint32_t tap_receiver = (uint32_t)(destination_node_id - N_Controllers);
 
 			// // Algorithm 1 Line 10: check Controller-Defaulter-List first
 			// if (tap_check_defaulter_list(tap_sender))
@@ -121402,22 +121411,22 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 		uint32_t * source = tag_routing.GetNodeId();
 		if (architecture == 1)
 		{
-			cout<<"packet from "<<*source -2<<"with destination "<<destination -4<<"now at "<<destination_node_id -2<<endl;
+			cout<<"packet from "<<*source -N_Controllers<<"with destination "<<destination -4<<"now at "<<destination_node_id -N_Controllers<<endl;
 		}
 		if (!((paper == 1) && (architecture == 1)))
 		{
-			Y[*source - 2] = Y[*source - 2] - 1;
-			packets_received_wl[*source - 2] = packets_received_wl[*source - 2] + 1;
+			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
+			packets_received_wl[*source - N_Controllers] = packets_received_wl[*source - N_Controllers] + 1;
 			double delay = Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds();
-			one_hop_delay_training_wl[*source - 2] = one_hop_delay_training_wl[*source - 2] + delay;
+			one_hop_delay_training_wl[*source - N_Controllers] = one_hop_delay_training_wl[*source - N_Controllers] + delay;
 			cout<<"1-hop delay wireless is "<<delay<<endl;
 			
 			if (destination_node_id != destination)
 			{
-				//uint32_t next_hop = routing_tables[destination_node_id -2].rows[destination-2].next_hop;
-				uint32_t next_hop = find_next_hop(node_index,destination-2,destination_node_id -2);
+				//uint32_t next_hop = routing_tables[destination_node_id -N_Controllers].rows[destination-N_Controllers].next_hop;
+				uint32_t next_hop = find_next_hop(node_index,destination-N_Controllers,destination_node_id -N_Controllers);
 				cout<<endl<<"next hop from routing table is "<< next_hop <<endl;
-				if (next_hop == (*source -2))
+				if (next_hop == (*source -N_Controllers))
 				{
 					cout<<"routing loop. stopping routing"<<endl;
 				}
@@ -121429,11 +121438,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					tag_routing.SetTimestamp(&ti);
 					packet_i->AddPacketTag(tag_routing);
 					
-					if (((destination_node_id-2) > N_Vehicles) && (next_hop > N_Vehicles))
+					if (((destination_node_id-N_Controllers) > N_Vehicles) && (next_hop > N_Vehicles))
 					{
-						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(destination_node_id-2-N_Vehicles));	
-				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(destination_node_id-2-N_Vehicles));
-				  		cout<<"Ethernet data Unicasting from node "<<destination_node_id - 2<<endl;
+						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(destination_node_id-N_Controllers-N_Vehicles));	
+				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(destination_node_id-N_Controllers-N_Vehicles));
+				  		cout<<"Ethernet data Unicasting from node "<<destination_node_id - N_Controllers<<endl;
 						Simulator::Schedule(Seconds(0),RSU_routing_dataunicast_alone, udp_app, nu, RSU_Nodes.Get(next_hop-N_Vehicles),packet_i);
 					}
 					
@@ -121444,23 +121453,23 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
 						//cout <<endl<<"MAC address of next hop node "<<next_hop<<" is "<<dest_address<<endl;
 					  	uint16_t protocolwave = 0x88dc;//
-						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (wifidevices.Get(destination_node_id -2));
-						cout<<"DSRC data Unicasting from node "<<destination_node_id - 2<<endl;
+						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (wifidevices.Get(destination_node_id -N_Controllers));
+						cout<<"DSRC data Unicasting from node "<<destination_node_id - N_Controllers<<endl;
 						dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
 						Simulator::Schedule (Seconds(0.000000) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 					}
 					
 					
-					Y[destination_node_id - 2] = Y[destination_node_id - 2] + 1;	
+					Y[destination_node_id - N_Controllers] = Y[destination_node_id - N_Controllers] + 1;	
 					//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 					
 				}
 			}
 			if (destination_node_id == destination)
 			{
-				cout<<"packet successfully delivered to destination node"<<destination_node_id - 2<<endl;
-				dsrc_packet_final_timestamp[node_index+2] = Simulator::Now().GetSeconds();
-				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<destination_node_id -2 <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
+				cout<<"packet successfully delivered to destination node"<<destination_node_id - N_Controllers<<endl;
+				dsrc_packet_final_timestamp[node_index+N_Controllers] = Simulator::Now().GetSeconds();
+				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<destination_node_id -N_Controllers <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
 			}
 		}
 	}	
@@ -121539,7 +121548,7 @@ void Rx (std::string context, Ptr <const Packet> pkt, uint16_t channelFreqMhz,  
 				//cout<<"testing "<<destination_node_id;
 			}
 			
-			if ((destination_node_id > (total_size+1)) or (destination_node_id < 2))
+			if ((destination_node_id > (total_size)) or (destination_node_id < 2))
 			{
 				cout<<"invalid conversion. setting default value to 2"<<endl;
 				destination_node_id = 2;
@@ -122892,7 +122901,7 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 		Vector acceleration = calculate_acceleration(previous_velocity_dsrc[node_index],current_velocity,delta_t);
 		Time ti = MicroSeconds(Simulator::Now().GetMicroSeconds());
 		Ptr <Packet> packet_i = Create<Packet> (packet_additional_size);
-		tag.SetsenderId(nid-2);
+		tag.SetsenderId(nid-N_Controllers);
 		tag.SetNodeId(&nid);
 		tag.Setposition(&posi);
 		tag.Setvelocity(&current_velocity);
@@ -122902,17 +122911,17 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 		packet_i->AddPacketTag(tag);
 		
 		
-		if (((nid-2) > N_Vehicles) && (next_hop > N_Vehicles))
+		if (((nid-N_Controllers) > N_Vehicles) && (next_hop > N_Vehicles))
 		{
-			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-2-N_Vehicles));	
-	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-2-N_Vehicles));
-	  		cout<<"This is source node. Ethernet data Unicasting from node "<<nid - 2<<endl;
+			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-N_Controllers-N_Vehicles));	
+	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-N_Controllers-N_Vehicles));
+	  		cout<<"This is source node. Ethernet data Unicasting from node "<<nid - N_Controllers<<endl;
 			Simulator::Schedule(Seconds(0),RSU_routing_dataunicast_alone, udp_app, nu, RSU_Nodes.Get(next_hop-N_Vehicles),packet_i);
 		}
 		
 		else
 		{
-			cout<<"This is source node. DSRC data Unicasting from node "<<nid - 2<<endl;
+			cout<<"This is source node. DSRC data Unicasting from node "<<nid - N_Controllers<<endl;
 			Ptr <NetDevice> destination_nd = wifidevices.Get(next_hop);
 			Address addr = destination_nd->GetAddress();
 			Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
@@ -122925,7 +122934,7 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 		}
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
-		Y[*pt - 2] = Y[*pt -2] + 1;
+		Y[*pt - N_Controllers] = Y[*pt -N_Controllers] + 1;
 		//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 		previous_velocity_dsrc[node_index] = current_velocity;
 	}
@@ -123040,7 +123049,7 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
 void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint32_t flow_id, uint32_t next_hop_id, struct custom_struct arguments, uint32_t packet_ID)
 {
     uint32_t nid = source_node->GetId();
-    uint32_t source = nid - 2;
+    uint32_t source = nid - N_Controllers;
     uint32_t final_next_hop = next_hop_id;
 
     // ==============================================================
@@ -123132,10 +123141,12 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
     
     packet_i->AddPacketTag(tag);
-    WifiMacHeader header;
-    packet_i->RemoveHeader(header);
-    header.SetAddr1(dest_address);
-    packet_i->AddHeader(header);
+    // NOTE: Do NOT call RemoveHeader/AddHeader here. packet_i was created with
+    // Create<Packet>(p_size-28) — it contains only payload bytes, no real WiFi
+    // header. Calling RemoveHeader() would deserialise raw payload bytes as a
+    // WifiMacHeader, producing garbage fields that trigger NS_ASSERT inside the
+    // MAC layer on the first real transmission. WifiNetDevice::Send() already
+    // uses dest_address (the Addr1) passed as its second argument.
 
     cout << "[ARCH 3 OVERRIDE] Node " << source << " sending on Channel " << arguments.channel << " to exact MAC " << dest_address << endl;
 
@@ -123165,7 +123176,7 @@ void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_
 		CustomDataUnicastTag_Routing tag;
 		//uint32_t nid = uint32_t(ni->GetId());
 		dsrc_packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
-		cout<<"This is source node. DSRC data Unicasting from node "<<nid - 2<<endl;
+		cout<<"This is source node. DSRC data Unicasting from node "<<nid - N_Controllers<<endl;
 		Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (source_node->GetObject<MobilityModel>());
 		Vector posi = mdl->GetPosition();
 		Vector current_velocity = mdl->GetVelocity();
@@ -123173,7 +123184,7 @@ void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_
 		Vector acceleration = calculate_acceleration(previous_velocity_dsrc[node_index],current_velocity,delta_t);
 		Time ti = Seconds(Simulator::Now().GetSeconds());
 		Ptr <Packet> packet_i = Create<Packet> (0);
-		tag.SetsenderId(nid-2);
+		tag.SetsenderId(nid-N_Controllers);
 		tag.SetNodeId(&nid);
 		tag.Setposition(&posi);
 		tag.Setvelocity(&current_velocity);
@@ -123185,7 +123196,7 @@ void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_
 		Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
-		Y[*pt - 2] = Y[*pt -2] + 1;
+		Y[*pt - N_Controllers] = Y[*pt -N_Controllers] + 1;
 		//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 		previous_velocity_dsrc[node_index] = current_velocity;
 	}
@@ -123462,7 +123473,15 @@ void initialize_flow_counters()
 				
 			}
 			
-			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end());
+			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end(), [](const tuple<double,uint32_t,uint32_t>& a, const tuple<double,uint32_t,uint32_t>& b) {
+				double valA = get<0>(a);
+				double valB = get<0>(b);
+				if (std::isnan(valA)) valA = 0.0;
+				if (std::isnan(valB)) valB = 0.0;
+				if (valA != valB) return valA < valB;
+				if (get<1>(a) != get<1>(b)) return get<1>(a) < get<1>(b);
+				return get<2>(a) < get<2>(b);
+			});
 			uint32_t total_count =0;
 			for(uint32_t j =0;j<(uint32_t)var;j++)
 			{
@@ -123944,10 +123963,18 @@ void initiate_all_flows()
 		uint32_t total_packet_counter = 0;
 		
 		auto index_top = all_sorted_delta_next_hop_flow_size.begin();
+		if (fid >= all_sorted_delta_next_hop_flow_size.size()) {
+			cout << "[ERROR] fid " << fid << " out of bounds for all_sorted_... size " << all_sorted_delta_next_hop_flow_size.size() << endl;
+			continue;
+		}
 		advance(index_top,fid);
 		//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
 
 		auto index_middle = index_top->begin();
+		if (source >= index_top->size()) {
+			cout << "[ERROR] source " << source << " out of bounds for index_top size " << index_top->size() << " (fid=" << fid << ")" << endl;
+			continue;
+		}
 		advance(index_middle,source);	
 		
 		uint32_t total_subflows =0;
@@ -124411,7 +124438,7 @@ void send_LTE_routing_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 	Vector acci[2];
 	uint32_t nodeid[2];
 
-	nid = uint32_t(nu->GetId()) - 2;
+	nid = uint32_t(nu->GetId()) - N_Controllers;
         posi[0] = (routing_data_at_nodes_inst+nid)->position;
 	veli[0] = (routing_data_at_nodes_inst+nid)->velocity;
 	acci[0] = (routing_data_at_nodes_inst+nid)->acceleration;
@@ -124462,7 +124489,7 @@ void RSU_routing_statusdataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 	Vector acci[2];
 	uint32_t nodeid[2];
 
-	nid = uint32_t(nu->GetId()) - 2;
+	nid = uint32_t(nu->GetId()) - N_Controllers;
         posi[0] = (routing_data_at_nodes_inst+nid)->position;
 	veli[0] = (routing_data_at_nodes_inst+nid)->velocity;
 	acci[0] = (routing_data_at_nodes_inst+nid)->acceleration;
@@ -124508,7 +124535,7 @@ void RSU_flowdata_unicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> s
 	
 	
 
-	nid = uint32_t(nu->GetId()) - 2;
+	nid = uint32_t(nu->GetId()) - N_Controllers;
 	for (uint32_t i=0;i< (2*flows);i++)
 	{
 		source[i] = (demanding_flow_struct_nodes_inst+i)->source;
@@ -133008,7 +133035,7 @@ void send_LTE_data_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 void begin_sending_LTE_data_agent()
 {
  	list<uint32_t> agent_ids;
- 	for (uint32_t i=2;i<(N_Vehicles+2);i++)
+ 	for (uint32_t i=1;i<(N_Vehicles+N_Controllers);i++)
  	{
  		if(X_nodes[i] == 1)
  		{
@@ -133021,7 +133048,7 @@ void begin_sending_LTE_data_agent()
 		uint32_t u = *it;
 		//cout<<"u is "<<u<<endl;
 	  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
-		Simulator::Schedule(Seconds(0.000025*count),send_LTE_data_agent,udp_app,Vehicle_Nodes.Get(u-2),management_Node.Get(0), u-2);
+		Simulator::Schedule(Seconds(0.000025*count),send_LTE_data_agent,udp_app,Vehicle_Nodes.Get(u-N_Controllers),controller_Node.Get(0), u-N_Controllers);
 		count++;
 	}
 }
@@ -141105,7 +141132,7 @@ void RSU_dataunicast_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source
 void begin_sending_RSU_data_agent()
 {
 	list<uint32_t> agent_ids;
- 	for (uint32_t i=(N_Vehicles+2);i<(total_size+2);i++)
+ 	for (uint32_t i=(N_Vehicles+N_Controllers);i<(total_size);i++)
  	{
  		if(X_nodes[i] == 1)
  		{
@@ -141117,9 +141144,9 @@ void begin_sending_RSU_data_agent()
 	{
 		uint32_t u = *it;
 		//cout<<"agent u is "<<u<<endl;
-	  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u-N_Vehicles-2));	
-	  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u-N_Vehicles-2));
-		Simulator::Schedule(Seconds(0.000050*count),RSU_dataunicast_agent, udp_app, nu, management_Node.Get(0));
+	  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u-N_Vehicles-N_Controllers));	
+	  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u-N_Vehicles-N_Controllers));
+		Simulator::Schedule(Seconds(0.000050*count),RSU_dataunicast_agent, udp_app, nu, controller_Node.Get(0));
 		count++;
 	}
 }
@@ -141151,6 +141178,7 @@ int main(int argc, char *argv[])
     CommandLine cmd;
     cmd.AddValue ("N_RSUs", "N_RSUs", N_RSUs);
     cmd.AddValue ("N_Vehicles", "N_Vehicles", N_Vehicles);
+    cmd.AddValue ("N_Controllers", "N_Controllers (number of SDVN controllers)", N_Controllers);
     cmd.AddValue ("data_transmission_frequency", "data_transmission_frequency", data_transmission_frequency);
     cmd.AddValue ("link_lifetime_threshold", "link_lifetime_threshold", link_lifetime_threshold);
     cmd.AddValue ("simTime", "simTime", simTime);
@@ -141169,18 +141197,9 @@ int main(int argc, char *argv[])
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
+    cmd.AddValue ("use_sumo_mobility", "use_sumo_mobility", use_sumo_mobility);
     cmd.Parse (argc, argv);
     
-	// ==============================================================
-    // PHYSICS OVERRIDE: BOOST WI-FI POWER TO INFINITY (100 dBm)
-    // ==============================================================
-    Config::SetDefault ("ns3::WifiPhy::TxPowerStart", DoubleValue (100.0));
-    Config::SetDefault ("ns3::WifiPhy::TxPowerEnd", DoubleValue (100.0));
-    Config::SetDefault ("ns3::WifiPhy::TxPowerLevels", UintegerValue (1));
-    Config::SetDefault ("ns3::WifiPhy::TxGain", DoubleValue (50.0));
-    Config::SetDefault ("ns3::WifiPhy::RxGain", DoubleValue (50.0));
-
-	
     if (routing_test == true)
     {
         if (active_attack_variant == 4 ||
@@ -141243,20 +141262,19 @@ int main(int argc, char *argv[])
     
     clear_RQY();
     
-    for (int i = 0; i<total_size+2; i++)
+    for (int i = 0; i<total_size+N_Controllers; i++)
     {
     	clear_neighbordata(neighbordata_inst+i);
     	clear_controllerdata(con_data_inst+i);
     	clear_data_at_nodes(data_at_nodes_inst+i);
-    	clear_routing_data_at_nodes(routing_data_at_nodes_inst+i-2);
+    	clear_routing_data_at_nodes(routing_data_at_nodes_inst+i-1);
     	clear_data_at_manager(data_at_manager_inst+i);
     }
     clear_delta_at_controller(delta_at_controller_inst);
     clear_solution();
     initialize_all_routing_tables();
   
-  controller_Node.Create(1);
-  management_Node.Create(1); 
+  controller_Node.Create(N_Controllers); // multi-controller: C = {c1,...,cm} per proposal
   if (routing_test == false)
   {
   	  if(N_Vehicles > 0)
@@ -141419,7 +141437,6 @@ int main(int argc, char *argv[])
 	  csma_nodes.Add(controller_Node);
 	  if (architecture != 3) 
       {
-          csma_nodes.Add(management_Node);
       } 
 	  csmaDevices = csma.Install (csma_nodes);
   	  address.SetBase ("10.1.1.0", "255.255.255.0");
@@ -141644,6 +141661,9 @@ int main(int argc, char *argv[])
 	  	case (60):
 	  		trace_file = "/home/user/mobility/mobility_urban_60.tcl";
 	  		break;
+	  	case (150):
+	  		trace_file = "/home/user/mobility/mobility_urban_150.tcl";
+	  		break;
 	  	default:
 	  		break;
 	 }
@@ -141745,6 +141765,7 @@ int main(int argc, char *argv[])
 
   
   //Ns2MobilityHelper vehicle_mobility  = Ns2MobilityHelper (trace_file);
+  Ns2MobilityHelper sumo_mobility = Ns2MobilityHelper (trace_file);
   
  
   
@@ -141753,7 +141774,11 @@ int main(int argc, char *argv[])
   if (N_Vehicles > 0)
   {
   	
-  	if (experiment_number != 5)
+  	if (use_sumo_mobility && !trace_file.empty())
+  	{
+  		sumo_mobility.Install(Vehicle_Nodes.Begin(), Vehicle_Nodes.End());
+  	}
+  	else if (experiment_number != 5)
   	{
   		//vehicle_mobility.Install(Vehicle_Nodes.Begin(),Vehicle_Nodes.End());
   	}
@@ -141781,8 +141806,6 @@ int main(int argc, char *argv[])
   double delta_y; 
   int lte_base_posx;
   int lte_base_posy;
-  int man_base_posx;
-  int man_base_posy;
   int con_base_posx;
   int con_base_posy;
   MobilityHelper RSU_mobility;
@@ -141790,8 +141813,6 @@ int main(int argc, char *argv[])
   vehicle_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
   if (mobility_scenario == 0)//urban mobility
   {
-  	man_base_posx = 1700;
-  	man_base_posy = 1700;
   	con_base_posx = 1600;
   	con_base_posy = 1600;
   	lte_base_posx = 1500;
@@ -141801,7 +141822,13 @@ int main(int argc, char *argv[])
   	delta_y = 280;
   	//delta_x = 1600/5;
   	delta_x = 280;
-	  	if (N_RSUs < 13)
+	  	if (use_sumo_mobility)
+	  	{
+	  		// 64 (8x8) RSUs, perfectly centered on the new 2061m x 2137m LA map.
+	  		// Using MinX=100, MinY=100, and Delta=260/270 to span X: 100->1920 and Y: 100->1990.
+	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (100.0),"MinY", DoubleValue (100.0),"DeltaX", DoubleValue (260.0),"DeltaY", DoubleValue (270.0),"GridWidth", UintegerValue (8),"LayoutType", StringValue ("RowFirst"));
+	  	}
+	  	else if (N_RSUs < 13)
 	  	{		
 	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (750.0),"MinY", DoubleValue (1200.0),"DeltaX", DoubleValue (delta_x),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (7),"LayoutType", StringValue ("RowFirst"));
 	  		vehicle_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (650.0),"MinY", DoubleValue (1000.0), "DeltaX", DoubleValue (delta_x/2),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (14),"LayoutType", StringValue ("RowFirst"));
@@ -141813,11 +141840,11 @@ int main(int argc, char *argv[])
 	  		vehicle_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (650.0),"MinY", DoubleValue (1000.0), "DeltaX", DoubleValue (delta_x/2),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (14),"LayoutType", StringValue ("RowFirst"));
 	  	}
   }
-  if(routing_test == false)
+  if(routing_test == false && !use_sumo_mobility)
   {
   	vehicle_mobility.Install(Vehicle_Nodes);
   }
-  if(routing_test == false)
+  if(routing_test == false && !use_sumo_mobility)
   {
   	update_mobility();
   }
@@ -141826,8 +141853,6 @@ int main(int argc, char *argv[])
    if (mobility_scenario == 1)//non-urban mobility
   {
 
-  	man_base_posx = 4600;
-  	man_base_posy = 4600;
   	con_base_posx = 4700;
   	con_base_posy = 4700;
   	lte_base_posx = 4500;
@@ -141839,8 +141864,6 @@ int main(int argc, char *argv[])
   
   if (mobility_scenario == 2)//autobahn mobility
   {
-  	man_base_posx = 2200;
-  	man_base_posy = 3700;
   	con_base_posx = 2100;
   	con_base_posy = 3600;
   	lte_base_posx = 2000;
@@ -141852,13 +141875,11 @@ int main(int argc, char *argv[])
   
   if (routing_test == true)//routing_test
   {
-  	man_base_posx = 300;
-  	man_base_posy = 600;
   	con_base_posx = 600;
   	con_base_posy = 600;
   	lte_base_posx = 450;
   	lte_base_posy = 600;
-    // TODO: man_base_posx/posy, con_base_posx/posy, lte_base_posx/posy above are
+    // TODO: con_base_posx/posy, lte_base_posx/posy above are
     // tuned for the variant-7 (3-node) layout. Attacks 5/6/7 (variants 4/5/6,
     // 2-unit/6-vehicle topology spanning x=300..1600) likely need their own
     // base positions — to be addressed separately. Left unchanged for now.
@@ -141919,7 +141940,6 @@ int main(int argc, char *argv[])
 	  MobilityHelper other_stationary_mobility;
 	  other_stationary_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 	  other_stationary_mobility.Install(controller_Node);
-	  other_stationary_mobility.Install(management_Node);
 	  if (architecture != 1 && architecture != 3 && N_Vehicles > 0)
 	  {
 	  	other_stationary_mobility.Install(other_stationary_LTE_nodes);
@@ -141949,24 +141969,69 @@ int main(int argc, char *argv[])
 	  }
   }
   
-  //setting the position of controller node 
-  //int con_base_posx = rand()%3000;
-  //int con_base_posy = rand()%3000;
+  //setting the position of controller nodes (2x2 grid over 2km x 2km area)
+  //Per proposal: C = {c1,...,cm}, each controller covers one quadrant.
+  //Quadrant centers for 2km x 2km area: (500,500),(1500,500),(500,1500),(1500,1500)
+  {
+    // Define controller positions as a 2x2 grid over the simulation area.
+    // Adjust these if the SUMO network bounding box differs.
+    std::vector<Vector> ctrl_positions;
+    if (N_Controllers == 1)
+    {
+      ctrl_positions.push_back(Vector(con_base_posx, con_base_posy, 0));
+    }
+    else if (N_Controllers == 4)
+    {
+      // 2x2 grid - one controller per quadrant of the 2km x 2km area.
+      // Offset from RSU grid (which is at multiples of 250m) to avoid overlap.
+      // RSU grid: (0,0),(250,0),...,(1750,1750). Controllers sit at quadrant
+      // centres shifted by +125m so they fall between RSU positions.
+      ctrl_positions.push_back(Vector(515,  534,  0)); // c1: SW quadrant (Center of 0-1030, 0-1068)
+      ctrl_positions.push_back(Vector(1545, 534,  0)); // c2: SE quadrant
+      ctrl_positions.push_back(Vector(515,  1602, 0)); // c3: NW quadrant
+      ctrl_positions.push_back(Vector(1545, 1602, 0)); // c4: NE quadrant
+    }
+    else
+    {
+      // Fallback: place all controllers at con_base_posx/posy with small offsets
+      for (uint32_t ci = 0; ci < N_Controllers; ci++)
+      {
+        ctrl_positions.push_back(Vector(con_base_posx + 50*ci, con_base_posy + 50*ci, 0));
+      }
+    }
 
-  
-   {
-	   Ptr<ConstantVelocityMobilityModel> mdl_controller = DynamicCast <ConstantVelocityMobilityModel> (controller_Node.Get(0)->GetObject<MobilityModel>());
-	   mdl_controller->SetPosition(Vector(con_base_posx, con_base_posy, 0));
-	   mdl_controller->SetVelocity(Vector(0, 0, 0));//centralized controller placement
-	   
-	  //setting the position of management node
-	  //int man_base_posx = rand()%3000;
-	  //int man_base_posy = rand()%3000;
+    for (uint32_t ci = 0; ci < N_Controllers; ci++)
+    {
+      Ptr<ConstantVelocityMobilityModel> mdl_ctrl = DynamicCast<ConstantVelocityMobilityModel>
+          (controller_Node.Get(ci)->GetObject<MobilityModel>());
+      mdl_ctrl->SetPosition(ctrl_positions[ci]);
+      mdl_ctrl->SetVelocity(Vector(0, 0, 0));
+    }
 
-	   Ptr<ConstantVelocityMobilityModel> mdl_management = DynamicCast <ConstantVelocityMobilityModel> (management_Node.Get(0)->GetObject<MobilityModel>());
-	   mdl_management->SetPosition(Vector(man_base_posx, man_base_posy, 0));
-	   mdl_management->SetVelocity(Vector(0, 0, 0));//centralized management server placement
-   }
+    // RSU-to-controller assignment: each RSU is assigned to nearest controller
+    // Implements: c*(k,t) = argmin_{ci in C_trusted(t)} d(r_k, ci)  [proposal eq.]
+    for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
+    {
+      Ptr<ConstantVelocityMobilityModel> rsu_mdl = DynamicCast<ConstantVelocityMobilityModel>
+          (RSU_Nodes.Get(r)->GetObject<MobilityModel>());
+      Vector rsu_pos = rsu_mdl->GetPosition();
+
+      double min_dist = 1e18;
+      uint32_t best_ctrl = 0;
+      for (uint32_t ci = 0; ci < N_Controllers; ci++)
+      {
+        double dx = rsu_pos.x - ctrl_positions[ci].x;
+        double dy = rsu_pos.y - ctrl_positions[ci].y;
+        double dist = sqrt(dx*dx + dy*dy);
+        if (dist < min_dist)
+        {
+          min_dist = dist;
+          best_ctrl = ci;
+        }
+      }
+      rsu_controller_assignment[r] = best_ctrl;
+    }
+  }
   
   Ipv4StaticRoutingHelper ipv4routinghelper_con;
   if (N_Vehicles > 0)
@@ -141994,13 +142059,13 @@ int main(int argc, char *argv[])
 		  Ipv4InterfaceContainer controller_interfaces = ipv4helper.Assign(p2pcontroller_devices);
 		  
 		  //point to point connection for management server
-		  PointToPointHelper p2p_management;
-		  p2p_management.SetDeviceAttribute("DataRate", DataRateValue(DataRate("1000Mb/s")));
-		  p2p_management.SetChannelAttribute("Delay", TimeValue(MicroSeconds(10)));
-		  NetDeviceContainer p2pmanagement_devices = p2p_management.Install(pgw,management_Node.Get(0));
+		  PointToPointHelper p2p_server2;
+		  p2p_server2.SetDeviceAttribute("DataRate", DataRateValue(DataRate("1000Mb/s")));
+		  p2p_server2.SetChannelAttribute("Delay", TimeValue(MicroSeconds(10)));
+		  NetDeviceContainer p2pmanagement_devices = p2p_server2.Install(pgw,controller_Node.Get(0));
 		  Ipv4AddressHelper ipv4helper2;
 		  ipv4helper2.SetBase("80.1.1.0","255.255.255.0");
-		  Ipv4InterfaceContainer management_interfaces = ipv4helper2.Assign(p2pmanagement_devices);
+		  Ipv4InterfaceContainer server2_interfaces = ipv4helper2.Assign(p2pmanagement_devices);
 		  
 		  
 		  Ipv4StaticRoutingHelper ipv4routinghelper;
@@ -142011,8 +142076,8 @@ int main(int argc, char *argv[])
 		  controller_staticrouting->AddNetworkRouteTo (Ipv4Address("7.0.0.0"),Ipv4Mask("255.0.0.0"),2);
 
 		  Ipv4StaticRoutingHelper ipv4routinghelper_man;
-		  Ptr<Ipv4StaticRouting> management_staticrouting = ipv4routinghelper_man.GetStaticRouting(management_Node.Get(0)->GetObject<Ipv4>());
-		  management_staticrouting->AddNetworkRouteTo (Ipv4Address("7.0.0.0"),Ipv4Mask("255.0.0.0"),2);
+		  Ptr<Ipv4StaticRouting> server2_staticrouting = ipv4routinghelper_man.GetStaticRouting(controller_Node.Get(0)->GetObject<Ipv4>());
+		  server2_staticrouting->AddNetworkRouteTo (Ipv4Address("7.0.0.0"),Ipv4Mask("255.0.0.0"),2);
 	}
 }
 
@@ -142473,7 +142538,6 @@ int main(int argc, char *argv[])
   NetDeviceContainer uedevices;
   NodeContainer LTE_Nodes;
   LTE_Nodes.Add(controller_Node);
-  LTE_Nodes.Add(management_Node);
   
   if (N_Vehicles >0)
   {
@@ -142579,7 +142643,7 @@ if (architecture == 3 && N_Vehicles > 0)
     // Controller's CSMA IP (interface 1 = CSMA, loopback is 0)
     Ptr<Ipv4> ctrl_ipv4 = controller_Node.Get(0)->GetObject<Ipv4>();
     Ipv4Address ctrl_csma_ip = ctrl_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] Controller CSMA IP: " << ctrl_csma_ip << endl;
+    cout << "[DEBUG] Controller 0 CSMA IP: " << ctrl_csma_ip << endl;
 
     // 1. Vehicles: default route via RSU's WiFi IP (interface 1)
     for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++)
@@ -142595,20 +142659,24 @@ if (architecture == 3 && N_Vehicles > 0)
     //    (RSU already has direct interfaces on both, so these are host routes)
     // No extra routes needed — RSU has direct interfaces on both networks
 
-    // 3. Controller: route to vehicle WiFi subnet via RSU's CSMA IP
-    //    RSU CSMA IP is 10.1.1.1 (first in csma_nodes), controller is 10.1.1.2
+    // 3. All controllers: route to vehicle WiFi subnet via RSU's CSMA IP
+    //    Per proposal: all controllers get read-only network view via CSMA
     Ipv4Address rsu_csma_ip = rsu_ipv4->GetAddress(1, 0).GetLocal();
     cout << "[DEBUG] RSU CSMA IP: " << rsu_csma_ip << endl;
 
-    Ptr<Ipv4StaticRouting> ctrl_sr = ipv4RoutingHelper.GetStaticRouting(ctrl_ipv4);
-    ctrl_sr->AddNetworkRouteTo(Ipv4Address("3.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("4.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("5.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("6.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("8.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("9.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-	ctrl_sr->AddNetworkRouteTo(Ipv4Address("11.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-    cout << "[DEBUG] Controller route to 3.0.0.0/8 via RSU CSMA " << rsu_csma_ip << endl;
+    for (uint32_t ci = 0; ci < N_Controllers; ci++)
+    {
+      Ptr<Ipv4> ci_ipv4 = controller_Node.Get(ci)->GetObject<Ipv4>();
+      Ptr<Ipv4StaticRouting> ci_sr = ipv4RoutingHelper.GetStaticRouting(ci_ipv4);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("3.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("4.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("5.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("6.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("8.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("9.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("11.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      cout << "[DEBUG] Controller " << ci << " route to 3.0.0.0/8 via RSU CSMA " << rsu_csma_ip << endl;
+    }
 }
 
  
@@ -142632,7 +142700,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	// Create a container to hold ALL nodes that need the custom app
      NodeContainer SDVN_App_Nodes;
      SDVN_App_Nodes.Add(Vehicle_Nodes);
-     SDVN_App_Nodes.Add(controller_Node);
+     SDVN_App_Nodes.Add(controller_Node); // adds all N_Controllers controller nodes
     
     
      for (uint32_t u = 0; u < SDVN_App_Nodes.GetN(); u++)
@@ -142666,7 +142734,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			  {
 			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
-				Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_data_alone,udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
+				Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_data_alone,udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
 			  }
 			  Simulator::Schedule (Seconds (t), set_lte_initial_timestamp);
 			  Simulator::Schedule (Seconds (t+0.090), calculate_centralized_metrics);
@@ -142681,7 +142749,7 @@ if (architecture == 3 && N_Vehicles > 0)
 				  {
 				  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 				  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
-					Simulator::Schedule(Seconds(t+0.000050*u),RSU_dataunicast_alone, udp_app, nu, management_Node.Get(0));
+					Simulator::Schedule(Seconds(t+0.000050*u),RSU_dataunicast_alone, udp_app, nu, controller_Node.Get(rsu_controller_assignment[u]));
 			   	  }
 			   	  Simulator::Schedule (Seconds (t), set_ethernet_initial_timestamp);
 			 }
@@ -142751,9 +142819,9 @@ if (architecture == 3 && N_Vehicles > 0)
     					{
     					
 						srand(t*i);
-				  		destination = rand()%total_size;
+				  		destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 				  		srand(1.15*t*i);
-				  		source = rand()%total_size;
+				  		source = N_Controllers + rand()%var;      // excludes controller IDs 0..N_Controllers-1
 				  		bool found_both = false;
 				  		bool found_source = false;
 				  		bool found_destination = false;
@@ -142885,7 +142953,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			  		uint32_t z = flow_packet_size;
 			  		uint32_t q = qf;
 			  		Simulator::Schedule (Seconds (t+0.000002*i), add_demanding_flow_struct_nodes, demanding_flow_struct_nodes_inst+i, source, destination, x, z, q);
-			  		if(routing_test == false)
+			  		if(routing_test == false && !use_sumo_mobility)
 			  		{
 			  			Simulator::Schedule(Seconds(t-0.002), update_mobility);
 			  		}
@@ -142917,7 +142985,7 @@ if (architecture == 3 && N_Vehicles > 0)
 								uint32_t app_index = (architecture == 3) ? u : (u + 2);
 								Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
 								Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
-									udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
+									udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
 							}
 							// architecture=3: vehicle→RSU→Controller relay added in Layer 2
 						}
@@ -142981,7 +143049,9 @@ if (architecture == 3 && N_Vehicles > 0)
 					  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 					  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
 						
-						Ptr<Node> rsu_uplink_dest = (architecture == 3) ? controller_Node.Get(0) : management_Node.Get(0);
+						Ptr<Node> rsu_uplink_dest = (architecture == 3) ? 
+				    controller_Node.Get(rsu_controller_assignment[u]) : // SDVN: nearest controller per proposal
+				    controller_Node.Get(rsu_controller_assignment[u]);  // other: same assignment
 						Simulator::Schedule(Seconds(t+0.000050*u),RSU_routing_statusdataunicast_alone, udp_app, nu, rsu_uplink_dest);
 						if (u == (RSU_Nodes.GetN() - 1))
 						{
@@ -143043,7 +143113,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			//for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			//{
 			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
-	  		uint32_t destination = rand()%total_size;
+	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 7;
 	  		cout<<"destination id: "<<destination+2<<endl;
 	  		Simulator::Schedule (Seconds (t+0.10), send_distributed_packets, destination);
@@ -143097,7 +143167,7 @@ if (architecture == 3 && N_Vehicles > 0)
 		  {
 		  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 		  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
-			Simulator::Schedule(Seconds(0.4300+0.000050*u),RSU_metadata_uplink_unicast, udp_app, nu, controller_Node.Get(0));
+			Simulator::Schedule(Seconds(0.4300+0.000050*u),RSU_metadata_uplink_unicast, udp_app, nu, controller_Node.Get(rsu_controller_assignment[u]));
 		  }
 	   }
 	  if (N_Vehicles > 0)
@@ -143212,7 +143282,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	for (double t=1.100; t<simTime-1; t=t+data_transmission_period)
 		{
 		  	srand(data_transmission_frequency*t);
-	  		uint32_t destination = rand()%total_size;
+	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 5;
 	  		cout<<"destination id: "<<destination+2<<endl;
 	  		Simulator::Schedule (Seconds (t), send_hybrid_packets, destination);
@@ -143238,12 +143308,13 @@ if (architecture == 3 && N_Vehicles > 0)
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
   AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
-  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
+  anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
+  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
   // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
   // NetAnim still animates packet movement fine without metadata.
-
+          
   if (N_RSUs > 0)
   {
 	  for (uint32_t i=0; i<RSU_Nodes.GetN() ; i++)
@@ -143251,6 +143322,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeColor(RSU_Nodes.Get(i),255,255,0);//RSUs in yellow color
 	  	Ptr <Node> ni = DynamicCast <Node> (RSU_Nodes.Get(i));
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
+	  	anim.UpdateNodeDescription(RSU_Nodes.Get(i), "RSU-" + std::to_string(i+1));
 	  }
   }
   
@@ -143261,6 +143333,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeColor(Vehicle_Nodes.Get(i),0,255,0);//vehicle nodes are green color
 	  	Ptr <Node> ni = DynamicCast <Node> (Vehicle_Nodes.Get(i));
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
+	  	anim.UpdateNodeDescription(Vehicle_Nodes.Get(i), "V-" + std::to_string(i+1));
 	  }
 	   
 	  if (architecture !=1)
@@ -143276,13 +143349,15 @@ if (architecture == 3 && N_Vehicles > 0)
   
     if (architecture != 1)
     {
-	    anim.UpdateNodeColor(controller_Node.Get(0),255,0,255);//controller node is purple color.
-	    Ptr <Node> node_controller = DynamicCast <Node> (controller_Node.Get(0));
-	    anim.UpdateNodeSize(node_controller->GetId(),20.0,20.0);
-	    
-	    anim.UpdateNodeColor(management_Node.Get(0),255,0,0);//management node is red color.
-	    Ptr <Node> node_management = DynamicCast <Node> (management_Node.Get(0));
-	    anim.UpdateNodeSize(node_management->GetId(),20.0,20.0);
+      // Color and label all N_Controllers controller nodes
+      for (uint32_t ci = 0; ci < N_Controllers; ci++)
+      {
+        anim.UpdateNodeColor(controller_Node.Get(ci), 255, 0, 255); // purple/magenta
+        Ptr<Node> node_ctrl = DynamicCast<Node>(controller_Node.Get(ci));
+        anim.UpdateNodeSize(node_ctrl->GetId(), 40.0, 40.0); // 2x larger than RSUs/vehicles
+        anim.UpdateNodeDescription(controller_Node.Get(ci),
+            "CTRL-" + std::to_string(ci+1));
+      }
     }
  
   //AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml"); 
