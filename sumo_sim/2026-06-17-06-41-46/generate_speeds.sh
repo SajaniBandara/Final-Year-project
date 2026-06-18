@@ -1,5 +1,5 @@
 #!/bin/bash
-SPEEDS=(0 10 20 30 40 50 60)
+SPEEDS=(0 10 20 30 40 50 60 150)
 
 for S in "${SPEEDS[@]}"; do
     # Convert km/h to m/s
