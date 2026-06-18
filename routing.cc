@@ -114745,6 +114745,7 @@ double tap_previous_cumulative_MCC = 0.0;
 double tap_previous_cumulative_DR  = 0.0;
 double tap_previous_cumulative_FPR = 0.0;
 double tap_previous_cumulative_mit = 0.0;
+#include "tap_detection.h"
 
 
 // ============================================================
@@ -115227,12 +115228,7 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
-// TAP function prototypes
-//bool tap_check_defaulter_list(uint32_t sender_current_hop);
-void tap_report_to_controller(uint32_t attacker_current_hop);
-//void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
-void calculate_tap_security_metrics();
-void write_tap_csv();
+// TAP function prototypes are now inside tap_detection.h
 void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
@@ -121142,23 +121138,23 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 		// OnReceivedEmergencyPacket logic. Fires at every received packet.
 		if (tap_detection_active)
 		{
-			//uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-			//uint32_t tap_fid = tagmodified_routing.GetflowId();
-			//uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			//uint32_t tap_receiver = (uint32_t)(destination_node_id - N_Controllers);
+			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
+			uint32_t tap_fid = tagmodified_routing.GetflowId();
+			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
+			uint32_t tap_receiver = (uint32_t)(destination_node_id - N_Controllers);
 
-			// // Algorithm 1 Line 10: check Controller-Defaulter-List first
-			// if (tap_check_defaulter_list(tap_sender))
-			// {
-			// 	// Lines 19-20: discard packet from blacklisted node
-			// 	cout << "[TAP] Retransmission packet dropped for flow id "
-			// 		 << tap_fid << " #packet: " << tap_packet_ID << endl;
-			// }
-			// else
-			// {
-			// 	// Lines 11-18: run timing-based detection
-			// 	tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-			// }
+			// Algorithm 1 Line 10: check Controller-Defaulter-List first
+			if (tap_check_defaulter_list(tap_sender))
+			{
+				// Lines 19-20: discard packet from blacklisted node
+				cout << "[TAP] Retransmission packet dropped for flow id "
+					 << tap_fid << " #packet: " << tap_packet_ID << endl;
+			}
+			else
+			{
+				// Lines 11-18: run timing-based detection
+				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
+			}
 		}
 		// === END TAP BASELINE DETECTION ===
 					
