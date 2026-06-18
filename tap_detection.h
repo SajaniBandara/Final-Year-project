@@ -151,16 +151,8 @@ inline void write_tap_csv()
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;
 	string filename;
-	switch (attack_percentage)
-	{
-		case 0:  filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_0.csv"; break;
-		case 20: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_20.csv"; break;
-		case 40: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_40.csv"; break;
-		case 60: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_60.csv"; break;
-		case 80: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_80.csv"; break;
-		case 100:filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_100.csv"; break;
-		default: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_0.csv"; break;
-	}
+	int attack_num = active_attack_variant + 1;
+	filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + ".csv";
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
