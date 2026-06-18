@@ -117701,6 +117701,10 @@ void calculate_performance_evaluation_metrics()
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
+	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
+	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+
 	// Resolve the results directory dynamically using the USER or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
