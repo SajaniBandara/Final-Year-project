@@ -134,12 +134,12 @@ If `vType id=` does not match the trip `type=`, rename the `id` to match (e.g. c
 ### Step 1.5 — Create the combined sumocfg
 
 ```bash
-cat > osm_final.sumocfg << 'EOF'
+cat > test_osm_1000.sumocfg << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <sumoConfiguration>
     <input>
         <net-file value="osm.net.xml"/>
-        <route-files value="trips_car.trips.xml,trips_bus.trips.xml,trips_lorry.trips.xml,trips_van.trips.xml,trips_truck.trips.xml"/>
+        <route-files value="trips_car_1000.xml,trips_bus_1000.xml,trips_lorry_1000.xml,trips_van_1000.xml,trips_truck_1000.xml"/>
     </input>
     <time>
         <begin value="0"/>
@@ -162,7 +162,7 @@ EOF
 Run headless to check for issues:
 
 ```bash
-sumo -c osm_final.sumocfg 2>&1 | tee sumo_run.log
+sumo -c test_osm_1000.sumocfg 2>&1 | tee sumo_run.log
 ```
 
 Key checks:
@@ -183,25 +183,18 @@ done
 Optionally view in SUMO-GUI:
 
 ```bash
-sumo-gui -c osm_final.sumocfg
+sumo-gui -c test_osm_1000.sumocfg
 ```
 
-### Step 1.7 — Export the NS-2 mobility trace
+### Step 1.7 — Automate Trace Generation for All Speeds
 
-First re-run SUMO with FCD (Floating Car Data) output:
+To easily run "Speed Sweep" experiments in NS-3, we use a custom script (`generate_speeds.sh`) that automatically calculates the physics and generates `.tcl` files for 0, 10, 20, 30, 40, 50, 60, and 150 km/h:
 
 ```bash
-sumo -c osm_final.sumocfg --fcd-output fcd_output.xml
+bash generate_speeds.sh
 ```
 
-Then convert to NS-2 format:
-
-```bash
-python3 $SUMO_HOME/tools/traceExporter.py \
-  --fcd-input fcd_output.xml \
-  --ns2mobility-output mobility.tcl \
-  --net osm.net.xml
-```
+This script will seamlessly execute the headless `sumo` simulation and `traceExporter.py` to convert the data, saving the resulting files perfectly into `/home/user/mobility/mobility_urban_X.tcl`!
 
 Verify the trace:
 
@@ -217,11 +210,12 @@ grep -o '\$ns_ at [0-9.]*' mobility.tcl | sort -t' ' -k3 -n -u | head -1
 grep -o '\$ns_ at [0-9.]*' mobility.tcl | sort -t' ' -k3 -n -u | tail -1
 ```
 
-### Step 1.8 — Place the trace where NS-3 expects it
+### Step 1.8 — Backup the traces to the Project Repo
+
+The `generate_speeds.sh` script automatically places the `.tcl` files in `/home/user/mobility/` (where NS-3 executes). To keep your git repository fully synchronized and backed up, copy those files into your project's `mobility/` folder:
 
 ```bash
-mkdir -p /home/user/mobility
-cp mobility.tcl /home/user/mobility/mobility_urban_150.tcl
+cp /home/user/mobility/mobility_urban_*.tcl "/home/user/Final Year Project/1. Attacks/Final-Year-project/mobility/"
 ```
 
 ---
@@ -536,3 +530,4 @@ The SUMO trace coordinate origin may not align with the RSU grid origin. Both ar
 - `simTime=10` is sufficient for the 10-second NetAnim clip deliverable. Use `simTime=330` (30 s warm-up + 300 s data) for production results.
 - The `data_transmission_frequency` is set to `1.0` (one routing cycle per second). Do not change this to a higher value — `5.0` was a test value that caused a 5× slowdown.
 - SUMO should be run for 600 s total. The 300 s data-collection window for NS-3 starts at SUMO t=30 s (warm-up). For the `.tcl` trace, re-zero timestamps so SUMO t=30 s = NS-3 t=0 s, or simply start NS-3 at t=0 and begin recording results from t=30 s onward.
+- **Git Repository Hygiene:** Never commit `routing.xml` (the NetAnim file) or `fcd_output_*.xml` files to Git, as they are massive (100+ MB) and change every run. Add them to your `.gitignore`. You can safely commit the `.tcl` traces to make your repository self-contained.
