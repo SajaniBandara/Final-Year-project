@@ -1,6 +1,20 @@
 #ifndef ATTACK_VARIABLES_H
 #define ATTACK_VARIABLES_H
 
+/* =========================================================================
+   Governing threat-model assumption (must hold throughout)
+   =========================================================================
+   The thesis's threat model states: "The threat model assumes that an
+   adversary couldn't exist in both data plane and control plane at once."
+
+   This means Attack 1 (control plane) and Attack 2 (data plane) must remain
+   mutually exclusive in every simulation run. Concretely:
+   1. RSU must never be marked malicious for Attack 1 (only the controller is compromised).
+   2. Attack 1's and Attack 2's master switches must never both be true at once.
+   3. Hard stop: if you find yourself needing to mark an RSU malicious for Attack 1,
+      that is a sign you are violating the assumption!
+   ========================================================================= */
+
 // Selective Time Delay Attack Variables (Attack 2)
 // Placed in a separate header for modularity.
 

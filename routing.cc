@@ -115268,6 +115268,40 @@ void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
+void reapply_cp_selective_delay()
+{
+    if (active_attack_variant != 0) return; // Only run for Attack 1 (Control Plane)
+    double now = Simulator::Now().GetSeconds();
+    if (now >= simTime) return;
+
+    // Compromised controller installs a poisoned flowMod for every active
+    // flow that is routed through the target RSU.
+    for (uint32_t f = 0; f < flows; f++)
+    {
+        uint32_t src = (delta_at_nodes_inst + f)->source_f;
+        uint32_t dst = (delta_at_nodes_inst + f)->destination_f;
+
+        uint32_t current_next_hop = routing_tables[selective_delay_cp_target_rsu].rows[dst].next_hop;
+        
+        // Only inject if a valid legitimate route has already been computed for this destination
+        if (current_next_hop != large)
+        {
+            double variable_delay = attack1_min_delay_seconds +
+                ((double)(rand() % 1000) / 1000.0) *
+                (attack1_max_delay_seconds - attack1_min_delay_seconds);
+
+            update_route_malicious(
+                selective_delay_cp_target_rsu,
+                dst,
+                current_next_hop,
+                variable_delay);
+        }
+    }
+
+    double interval = 1.0; // Re-inject every 1 second to survive any new update_route calls
+    Simulator::Schedule(Seconds(interval), &reapply_cp_selective_delay);
+}
+
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -115300,27 +115334,11 @@ void initialise_stub_attack_state()
             // Leave all RSU-level malicious flags false/unset.
             t_onset[selective_delay_cp_target_rsu] = attack_start_time;
 
-            // Compromised controller installs a poisoned flowMod for every active
-            // flow that is routed through the target RSU. Mirrors the broadcast
-            // pattern already used by cp_attack_tick() in tcam_attack_helper.h for
-            // a different attack, but writes into the REAL routing table instead of
-            // a synthetic TCAM entry, since this attack manipulates actual
-            // forwarding decisions rather than installing decoy rules.
-            for (uint32_t f = 0; f < flows; f++)
-            {
-                uint32_t src = (delta_at_nodes_inst + f)->source_f;
-                uint32_t dst = (delta_at_nodes_inst + f)->destination_f;
-
-                double variable_delay = attack1_min_delay_seconds +
-                    ((double)(rand() % 1000) / 1000.0) *
-                    (attack1_max_delay_seconds - attack1_min_delay_seconds);
-
-                update_route_malicious(
-                    selective_delay_cp_target_rsu,
-                    dst,
-                    routing_tables[selective_delay_cp_target_rsu].rows[dst].next_hop,
-                    variable_delay);
-            }
+            // The controller schedules a recurring task to poison the routing
+            // table. This ensures the attack occurs AFTER legitimate routes
+            // have converged, so we can preserve the genuine next_hop while
+            // injecting the malicious delay.
+            Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
             cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed on RSU "
                  << selective_delay_cp_target_rsu
