@@ -45,6 +45,7 @@ using namespace std;
 extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 extern void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay);
+extern void record_attack_onset(int v, int n);
 
 // Ground truth metrics arrays defined in routing.cc
 extern bool is_malicious_node[8][300]; // NUM_ATTACK_VARIANTS x total_size
@@ -186,6 +187,7 @@ inline void reapply_cp_selective_delay()
                 (attack1_max_delay_seconds - attack1_min_delay_seconds);
 
             update_route_malicious(rsu_node_id, dst, current_next_hop, variable_delay);
+            record_attack_onset(0, rsu_node_id); // Ground truth marker for metrics
         }
     }
 
