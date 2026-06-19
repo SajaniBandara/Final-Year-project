@@ -104,6 +104,15 @@ uint32_t N_Controllers = 4;
 // Populated in main() once RSU positions are known.
 uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
 
+// Warm-up filter: the SUMO mobility trace is NOT re-zeroed, so ns-3 t=0
+// corresponds to SUMO t=0 (vehicles still spawning in). CSV result writers
+// skip rows while Now().GetSeconds() < warmup_time_seconds so every result
+// file only ever contains post-warmup (fully-populated network) data,
+// without needing to manually trim rows during analysis.
+// Default 30.0 matches the supervisor's "300s excludes warm-up" requirement
+// (SUMO spawns are clustered in t=0-30s). CLI-configurable via --warmup_time_seconds.
+double warmup_time_seconds = 30.0;
+
 const int total_size = 300; // must be >= N_Vehicles + N_RSUs + N_Controllers.
                              // 100 was sufficient for the original defaults (N_Vehicles=80,
                              // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
@@ -115578,6 +115587,15 @@ void hardcode_attack7_test_network()
 
 void write_csv_results_routing()
 {
+	// Skip all CSV result writes while still inside the SUMO warm-up window
+	// (vehicles still spawning in, network not yet at full 200-vehicle density).
+	// This means every results CSV only ever contains valid post-warmup data,
+	// so no manual row-trimming is needed when analysing results later.
+	if (Simulator::Now().GetSeconds() < warmup_time_seconds)
+	{
+		return;
+	}
+
 	fstream fout;
 	string filename;
 
@@ -140956,6 +140974,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("N_RSUs", "N_RSUs", N_RSUs);
     cmd.AddValue ("N_Vehicles", "N_Vehicles", N_Vehicles);
     cmd.AddValue ("N_Controllers", "N_Controllers (number of SDVN controllers)", N_Controllers);
+    cmd.AddValue ("warmup_time_seconds", "Skip CSV result writes before this sim time (SUMO warm-up)", warmup_time_seconds);
     cmd.AddValue ("data_transmission_frequency", "data_transmission_frequency", data_transmission_frequency);
     cmd.AddValue ("link_lifetime_threshold", "link_lifetime_threshold", link_lifetime_threshold);
     cmd.AddValue ("simTime", "simTime", simTime);
