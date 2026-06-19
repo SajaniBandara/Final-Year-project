@@ -114694,6 +114694,18 @@ int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
 double t_fwd_packet[total_size][Flow_size+2];
+
+// Records the ACTUAL transmission timestamp for TAP's PPAT calculation,
+// fired at the same simulated time the delayed WifiNetDevice::Send call
+// actually executes — not at forwarding-decision time. This must stay in
+// sync with any change to how total_tx_delay is computed or scheduled
+// elsewhere in this function; if the scheduling mechanism for the actual
+// send changes, this trampoline's scheduling must change identically.
+inline void record_actual_forward_timestamp(uint32_t node, uint32_t packet_id)
+{
+    t_fwd_packet[node][packet_id] = Simulator::Now().GetSeconds();
+}
+
 // records when each node forwarded each packet
 double delta_max_s2 = 0.050;
 // 50ms threshold per Equation 3.6 — half of 100ms safety bound
@@ -120717,8 +120729,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 						double total_tx_delay = tx_delay + tx_delay_cp;
 
-						// Record forwarding timestamp for S2 signature detection
-						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
+						// Record forwarding timestamp for TAP's PPAT calculation at the moment
+						// the packet ACTUALLY leaves this node (after total_tx_delay has
+						// elapsed), not at decision time. This was previously stamped early,
+						// which made PPAT reflect decision time rather than true wire-departure
+						// time — undermining TAP's timing-discrepancy detection.
+						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
