@@ -115268,48 +115268,7 @@ void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
-void reapply_cp_selective_delay()
-{
-    if (active_attack_variant != 0) return; // Only run for Attack 1 (Control Plane)
-    double now = Simulator::Now().GetSeconds();
-    if (now >= simTime) return;
-
-    // Compromised controllers (set by declare_attackers(), based on
-    // attack_percentage) install a poisoned flowMod for every active flow
-    // on every RSU they are responsible for, per
-    // rsu_controller_assignment[]. This generalizes the previous
-    // single-hardcoded-RSU version to the full SUMO-scale topology.
-    for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
-    {
-        uint32_t owning_controller = rsu_controller_assignment[r];
-        if (!controller_compromised[owning_controller]) continue;
-
-        // RSU node IDs in routing_tables[] are offset from vehicle IDs —
-        // confirmed against existing call sites (e.g. at line 118175 where 
-        // index = u - N_Vehicles for RSU iteration over u)
-        uint32_t rsu_node_id = N_Vehicles + r;
-
-        for (uint32_t f = 0; f < flows; f++)
-        {
-            uint32_t dst = (delta_at_nodes_inst + f)->destination_f;
-
-            uint32_t current_next_hop = routing_tables[rsu_node_id].rows[dst].next_hop;
-
-            // Only inject if a valid legitimate route has already been
-            // computed for this destination from this RSU.
-            if (current_next_hop == large) continue;
-
-            double variable_delay = attack1_min_delay_seconds +
-                ((double)(rand() % 1000) / 1000.0) *
-                (attack1_max_delay_seconds - attack1_min_delay_seconds);
-
-            update_route_malicious(rsu_node_id, dst, current_next_hop, variable_delay);
-        }
-    }
-
-    double interval = 1.0; // unchanged — re-inject every 1 second
-    Simulator::Schedule(Seconds(interval), &reapply_cp_selective_delay);
-}
+#include "attack_declaration.h"
 
 void initialise_stub_attack_state()
 {
@@ -115493,63 +115452,7 @@ bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
 
 #include "selective_time_delay.h"
 
-void declare_attackers()
-{
-	for(uint32_t i=0; i<total_size; i++)
-	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
-		if(present_selective_delay_attack_nodes == true)
-		{
-			selective_delay_malicious_nodes[i] = attacking_state;
-		}
-		else
-		{
-			selective_delay_malicious_nodes[i] = false;
-		}
-		// For test network: hardcode node 2 (RSU) as malicious
-		// This will be replaced by declare_attackers() for full experiments
-	}
-	cout << attack_tag() << " declare_attackers() completed" << endl;
-	for(uint32_t i=0; i<(uint32_t)var; i++)
-	{
-		cout << attack_tag() << " Node " << i << " selective_delay_malicious = " 
-			 << selective_delay_malicious_nodes[i] << endl;
-	}
 
-	// --- Attack 1 (Selective Time Delay, Control Plane): deterministic
-	// controller-compromise threshold ladder, mirroring the supervisor
-	// reference pattern (LDA_cc.txt declare_attackers(), controller
-	// section), generalized to N_Controllers instead of a hardcoded 4.
-	// Always leaves at least one controller honest, matching the
-	// reference's documented property of never compromising every
-	// controller regardless of attack_percentage.
-	for (uint32_t c = 0; c < N_Controllers; c++)
-	{
-		controller_compromised[c] = false; // reset every run
-	}
-
-	if (present_selective_delay_cp_attack == true && N_Controllers > 1)
-	{
-		uint32_t max_compromisable = N_Controllers - 1; // never compromise all
-		uint32_t step;
-		if (attack_percentage < 10)       step = 0;
-		else if (attack_percentage < 35)  step = 1;
-		else if (attack_percentage < 67)  step = 2;
-		else                                step = 3; // covers up to 100
-
-		uint32_t num_to_compromise = (step * max_compromisable) / 3;
-		if (num_to_compromise > max_compromisable) num_to_compromise = max_compromisable;
-
-		for (uint32_t c = 0; c < num_to_compromise; c++)
-		{
-			controller_compromised[c] = true;
-		}
-
-		cout << attack_tag() << " [ATTACK1] declare_attackers(): attack_percentage="
-		     << attack_percentage << "% -> " << num_to_compromise << " of "
-		     << N_Controllers << " controllers compromised." << endl;
-	}
-}
 
 // --- Alternate hardcode_test_network_attackers() from routing_2_.cc:
 // extended 10-node test network for Attack 2 (5 vehicles + 5 RSUs), where the
@@ -120958,47 +120861,7 @@ int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
 bool tcam_exhaust_malicious_nodes[200] = {false};
 uint32_t spy_node_id = 0;
-void declare_attack_states()
-{
-    // Reset both attacks' master switches first, so switching
-    // attack_number between runs in the same process can never leave a
-    // stale flag set from a previous selection. This mirrors the
-    // supervisor reference's pattern of explicitly setting every flag in
-    // every branch rather than relying on defaults.
-    present_selective_delay_cp_attack    = false;
-    present_selective_delay_attack_nodes = false;
 
-    switch (attack_number)
-    {
-        case (1): // Selective Time Delay — Control Plane (Attack 1)
-            present_selective_delay_cp_attack = true;
-            active_attack_variant = 0; // drives the existing case(0) block
-            break;
-
-        case (2): // Selective Time Delay — Data Plane (Attack 2)
-            present_selective_delay_attack_nodes = true;
-            active_attack_variant = 1; // drives the existing case(1) block
-            break;
-
-        // case (3) through case (8): reserved for future attacks. Add a
-        // new case here, setting that attack's own present_* flag(s) and
-        // the matching active_attack_variant value, once that attack's
-        // present_*_attack_nodes/controllers variables and
-        // active_attack_variant case body exist. Do not add empty
-        // placeholder cases for attacks that aren't implemented yet.
-
-        default:
-            cout << "[declare_attack_states] WARNING: unrecognized attack_number="
-                 << attack_number << " — no attack armed." << endl;
-            break;
-    }
-
-    cout << "[declare_attack_states] attack_number=" << attack_number
-         << " -> active_attack_variant=" << active_attack_variant
-         << ", present_selective_delay_cp_attack=" << present_selective_delay_cp_attack
-         << ", present_selective_delay_attack_nodes=" << present_selective_delay_attack_nodes
-         << endl;
-}
 
 // Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
 // Simulates the malicious controller spamming junk FlowMods to every RSU,
