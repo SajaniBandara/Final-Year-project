@@ -94489,6 +94489,12 @@ struct routing_table_row
 	uint32_t source_node;
 	uint32_t destination_node;
 	uint32_t next_hop;
+	double   injected_delay;   // Attack 1 (Selective Time Delay, Control Plane).
+	                            // 0.0 = benign rule (default). >0.0 = the
+	                            // malicious controller poisoned this flowMod
+	                            // entry with a forced forwarding delay that
+	                            // the receiving RSU will obey without knowing
+	                            // it is compromised.
 };
 
 struct routing_table
@@ -94515,6 +94521,7 @@ void initialize_all_routing_tables()
 			routing_tables[i].rows[j].destination_node = large;
 			proposed_routing_tables[i].rows[j].destination_node = large;
 			routing_tables[i].rows[j].next_hop = large;
+			routing_tables[i].rows[j].injected_delay = 0.0; // always start clean — prevents stale values leaking across runs
 			for(uint32_t k=0;k<total_size;k++)
 			{
 				proposed_routing_tables[i].rows[j].path[k] = large;
@@ -94528,6 +94535,27 @@ void update_route(uint32_t source, uint32_t destination, uint32_t next_hop)
 	routing_tables[source].rows[destination].source_node = source;
 	routing_tables[source].rows[destination].destination_node = destination;
 	routing_tables[source].rows[destination].next_hop = next_hop;
+	routing_tables[source].rows[destination].injected_delay = 0.0; // benign default
+}
+
+extern std::string attack_tag();
+
+// Attack 1: Selective Time Delay — Control Plane.
+// Simulates a compromised SDN controller transmitting a manipulated flowMod
+// to an RSU. The RSU itself is NOT malicious — it has no way to distinguish
+// this from a legitimate routing update, and will obey the injected delay
+// when it next forwards a packet for this (source, destination) pair.
+// Per the threat model's mutual-exclusion assumption, this function must
+// never be called alongside any code that marks the RSU itself malicious.
+void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay)
+{
+	update_route(source, destination, next_hop);   // install the routing decision first (benign part)
+	routing_tables[source].rows[destination].injected_delay = delay; // then poison the rule
+	cout << attack_tag() << " [ATTACK1] Malicious controller installed poisoned flowMod: "
+	     << "node=" << source << " dest=" << destination
+	     << " next_hop=" << next_hop
+	     << " injected_delay=" << delay * 1000.0 << "ms"
+	     << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
 }
 
 void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * path)
@@ -115261,6 +115289,45 @@ void initialise_stub_attack_state()
 	    // Activate Attack 2 for test network
 	switch (active_attack_variant)
     {
+        case (0): // Attack 1 — Selective Time Delay, Control Plane (NEW)
+        {
+            present_selective_delay_cp_attack = true; // arm the master switch
+            // IMPORTANT — threat-model mutual-exclusion assumption: do NOT set
+            // is_malicious_node[...][selective_delay_cp_target_rsu] = true here, and
+            // do NOT set selective_delay_malicious_nodes[selective_delay_cp_target_rsu] = true.
+            // The RSU is not the attacker in this scenario — a data-plane and
+            // control-plane adversary cannot coexist per the thesis's threat model.
+            // Leave all RSU-level malicious flags false/unset.
+            t_onset[selective_delay_cp_target_rsu] = attack_start_time;
+
+            // Compromised controller installs a poisoned flowMod for every active
+            // flow that is routed through the target RSU. Mirrors the broadcast
+            // pattern already used by cp_attack_tick() in tcam_attack_helper.h for
+            // a different attack, but writes into the REAL routing table instead of
+            // a synthetic TCAM entry, since this attack manipulates actual
+            // forwarding decisions rather than installing decoy rules.
+            for (uint32_t f = 0; f < flows; f++)
+            {
+                uint32_t src = (delta_at_nodes_inst + f)->source_f;
+                uint32_t dst = (delta_at_nodes_inst + f)->destination_f;
+
+                double variable_delay = attack1_min_delay_seconds +
+                    ((double)(rand() % 1000) / 1000.0) *
+                    (attack1_max_delay_seconds - attack1_min_delay_seconds);
+
+                update_route_malicious(
+                    selective_delay_cp_target_rsu,
+                    dst,
+                    routing_tables[selective_delay_cp_target_rsu].rows[dst].next_hop,
+                    variable_delay);
+            }
+
+            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed on RSU "
+                 << selective_delay_cp_target_rsu
+                 << ", delay range [" << attack1_min_delay_seconds * 1000.0
+                 << "-" << attack1_max_delay_seconds * 1000.0 << "]ms" << endl;
+            break;
+        }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
             is_malicious_node[1][2] = true;
             t_onset[2] = 1.0;
@@ -120673,6 +120740,22 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							flow_id,
 							attack2_delay_seconds);
 
+						double tx_delay_cp = 0.0;
+						if (present_selective_delay_cp_attack) // THE gate — Attack 1 only fires when this is true
+						{
+						    uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
+						    tx_delay_cp = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+						    if (tx_delay_cp > 0.0)
+						    {
+						        cout << attack_tag() << " [ATTACK1] RSU (node " << current_hop
+						             << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
+						             << packet_id << ", flow " << flow_id
+						             << " — forwarding with " << tx_delay_cp * 1000.0 << "ms delay"
+						             << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+						    }
+						}
+
+						double total_tx_delay = tx_delay + tx_delay_cp;
 
 						// Record forwarding timestamp for S2 signature detection
 						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
@@ -120780,14 +120863,14 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    <<" at t="<<Now().GetSeconds()<<endl;
 						// Record hit: install on first forward, then increment counters.
 						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
-						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+						Simulator::Schedule (Seconds(total_tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
-						bool apply_attack_delay = (tx_delay > 0.0);   
+						bool apply_attack_delay = (total_tx_delay > 0.0);   
 						double retry_delay = tg + 0.000100 + rand_delay;
 						if (apply_attack_delay)
 						{
 							// Prevent immediate retries from bypassing the injected delay.
-							retry_delay += tx_delay;
+							retry_delay += total_tx_delay;
 						}
 						Simulator::Schedule (Seconds (retry_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
 						//Simulator::Schedule (Seconds (tg), updateTxop, flow_id, current_hop, hop, packet_id, false,arguments.channel);
