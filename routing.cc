@@ -120782,6 +120782,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
 						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
+						bool apply_attack_delay = (tx_delay > 0.0);   
 						double retry_delay = tg + 0.000100 + rand_delay;
 						if (apply_attack_delay)
 						{
