@@ -49,6 +49,8 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 	if (!tap_detection_active) return;
 	if (sender_current_hop >= (uint32_t)total_size) return;
 	if (receiver_current_hop >= (uint32_t)total_size) return;
+	if (sender_current_hop >= (uint32_t)wifidevices.GetN()) return;
+	if (receiver_current_hop >= (uint32_t)wifidevices.GetN()) return;
 	if (packet_id >= (uint32_t)(Flow_size+2)) return;
 
 	double PAT = Simulator::Now().GetSeconds();

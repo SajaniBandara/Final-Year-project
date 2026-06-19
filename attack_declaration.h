@@ -46,6 +46,11 @@ extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 extern void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay);
 
+// Ground truth metrics arrays defined in routing.cc
+extern bool is_malicious_node[8][300]; // NUM_ATTACK_VARIANTS x total_size
+extern double t_onset[300];            // total_size
+extern double attack_start_time;
+
 // declare_attack_states():
 // Top-level dispatcher. Translates attack_number into the existing
 // active_attack_variant value plus the correct present_* master-switch
@@ -98,6 +103,12 @@ inline void declare_attackers()
         if (present_selective_delay_attack_nodes == true)
         {
             selective_delay_malicious_nodes[i] = attacking_state;
+            
+            // Sync ground-truth for TAP Detection (Attack 2 is variant index 1)
+            is_malicious_node[1][i] = attacking_state;
+            if (attacking_state) {
+                t_onset[i] = attack_start_time;
+            }
         }
         else
         {
