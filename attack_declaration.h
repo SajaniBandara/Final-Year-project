@@ -197,8 +197,10 @@ inline void reapply_cp_selective_delay()
 
         for (uint32_t f = 0; f < flows; f++)
         {
+            uint32_t src = (delta_at_nodes_inst + f)->source_f;
             uint32_t dst = (delta_at_nodes_inst + f)->destination_f;
-            uint32_t current_next_hop = routing_tables[rsu_node_id].rows[dst].next_hop;
+            if (src >= total_size || dst >= total_size) continue;
+            uint32_t current_next_hop = find_next_hop(src, dst, rsu_node_id);
             if (current_next_hop == large) continue;
 
             double variable_delay = attack1_min_delay_seconds +

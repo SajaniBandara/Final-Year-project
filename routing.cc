@@ -94574,7 +94574,6 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     // ==============================================================
     // ENFORCE ARCHITECTURE 3: VEHICLES MUST ROUTE THROUGH RSU
     // ==============================================================
-	cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
     if (architecture == 3 && N_RSUs > 0)
     {
         uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
@@ -94603,7 +94602,6 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     {
         // Safety Break: Prevent infinite loop if the path is broken
         if (k > 50) { 
-            cout << "ERROR: Route not found in proposed_routing_tables!" << endl;
             return destination; 
         }
         
@@ -113008,13 +113006,13 @@ void write_csv_status_lifetime()
 		{
 		//cout<<"writing status "<<i<<endl;
 		fout << var << ", "
-		     << (routing_data_at_controller_inst+i)->nodeid << ", "
-		     << (routing_data_at_controller_inst+i)->position.x << ", "
-		     << (routing_data_at_controller_inst+i)->position.y << ", "
-		     << (routing_data_at_controller_inst+i)->velocity.x<< ", "
-		     << (routing_data_at_controller_inst+i)->velocity.y << ", "
-		     << (routing_data_at_controller_inst+i)->acceleration.x << ", "
-		     << (routing_data_at_controller_inst+i)->acceleration.y << ", "
+		     << (routing_data_at_nodes_inst+i)->nodeid << ", "
+		     << (routing_data_at_nodes_inst+i)->position.x << ", "
+		     << (routing_data_at_nodes_inst+i)->position.y << ", "
+		     << (routing_data_at_nodes_inst+i)->velocity.x<< ", "
+		     << (routing_data_at_nodes_inst+i)->velocity.y << ", "
+		     << (routing_data_at_nodes_inst+i)->acceleration.x << ", "
+		     << (routing_data_at_nodes_inst+i)->acceleration.y << ", "
 		     << mobility_scenario << ", "
 		     << N_Vehicles << ", "
 		     << N_RSUs << ", "
@@ -115321,9 +115319,6 @@ void initialise_stub_attack_state()
             break;
         }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            is_malicious_node[1][2] = true;
-            t_onset[2] = 1.0;
-            hardcode_test_network_attackers();
             // Reset all TAP state before each Attack 2 simulation run
             for (int _n = 0; _n < total_size; _n++)
             {
@@ -116649,7 +116644,7 @@ void run_stable_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = total_size;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		proposed_algo2_output_inst[flow_id].met[i] = false;
@@ -116701,7 +116696,7 @@ void run_distance_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = total_size;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		distance_algo2_output_inst[flow_id].met[i] = false;
