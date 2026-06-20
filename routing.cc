@@ -115284,19 +115284,17 @@ void cp_attack_tick();                                             // Change 6
 
 void initialise_stub_attack_state()
 {
-    // Mark node 3 as malicious for variant 4 (Active Hidden Forwarding CP)
-    // as a demonstration. Remove/replace when real attacks are added.
-    // is_malicious_node[0][2] = true; // Removed for Attack 1 (Controller compromise, no malicious RSU)
-    is_malicious_node[4][3] = true;
-
-    // Set onset timestamps for those nodes
-    // t_onset[2] = 1.0;  // Removed for Attack 1
-    t_onset[3] = 1.0;
-
-	// Stub: simulate detection firing 50ms after onset
-	// Replace with real Simulator::Now() calls when attacks are implemented
-	// t_quarantine[2] = 1.050; // Removed for Attack 1
-	t_quarantine[3] = 1.050;
+    // Demonstration ground-truth for variant 4 (Active Hidden Forwarding
+    // CP) only. Previously ran unconditionally on every variant, which
+    // polluted t_onset[3]/t_quarantine[3] (and therefore
+    // calculate_mitigation_latency_metric()'s output) for every OTHER
+    // attack variant too, including Attack 1. Gated behind the variant it
+    // actually applies to.
+    if (active_attack_variant == 4)
+    {
+        is_malicious_node[4][3] = true;
+        t_onset[3] = 1.0;
+    }
 
 
 	    // Activate Attack 2 for test network
@@ -115325,7 +115323,6 @@ void initialise_stub_attack_state()
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
             is_malicious_node[1][2] = true;
             t_onset[2] = 1.0;
-            t_quarantine[2] = 1.050;
             hardcode_test_network_attackers();
             // Reset all TAP state before each Attack 2 simulation run
             for (int _n = 0; _n < total_size; _n++)
@@ -115375,7 +115372,6 @@ void initialise_stub_attack_state()
         case (4): // Attack 5 — Active Hidden Forwarding, Control Plane
             is_malicious_node[4][6] = true;
             t_onset[6] = 1.0;
-            t_quarantine[6] = 1.050;
             active_hf_malicious_nodes[6] = true;
             active_hf_eavesdropper_index = 2;
             passive_hf_rsu_to_eavesdropper.clear();
@@ -115389,7 +115385,6 @@ void initialise_stub_attack_state()
         case (5): // Attack 6 — Active Hidden Forwarding, Data Plane
             is_malicious_node[5][6] = true;
             t_onset[6] = 1.0;
-            t_quarantine[6] = 1.050;
             active_hf_malicious_nodes[6] = true;
             active_hf_eavesdropper_index = 2;
             passive_hf_rsu_to_eavesdropper.clear();
@@ -116261,7 +116256,6 @@ void write_csv_results_routing()
 	     << current_load_balance<< ", "
 	     << average_load_balance<< ", "
 	     << "\n";
-	data_gathering_cycle_number++;
 	fout.close();
 	cout<<"written to file successfully"<<endl;
 }
@@ -117744,6 +117738,7 @@ void fade_write_per_cycle_csv(std::string dir)
 
 void calculate_performance_evaluation_metrics()
 {
+	data_gathering_cycle_number += 1.0;
 
 	Simulator::Schedule(Seconds(0.000000), calculate_average_latency_routing);
 	Simulator::Schedule(Seconds(0.000020), calculate_average_packet_delivery_ratio_routing);
