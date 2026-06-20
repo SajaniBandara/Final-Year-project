@@ -123830,87 +123830,34 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						// Record hit: install on first send from source, then increment counters.
 						tcam_hit(source, fid, (uint32_t)arguments.p_size);
 
+						Ptr<NetDevice> dev_to_use;
 						switch(arguments.channel)
 						{
-							case(172):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							case(174):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							case(176):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							case(178):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							case(180):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							case(182):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							case(184):
-								schedule_selective_delay_attack(
-									present_selective_delay_attack_nodes,
-									selective_delay_malicious_nodes[source],
-									(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
-									attack_percentage,
-									source, packet_id, fid, attack2_delay_seconds,
-									routing_dsrc_data_unicast,
-									wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-									fid, nid, arguments, total_packet_counter+1);
-								break;
-							default:
-							break;
+							case(172): dev_to_use = wifidevices_172.Get(source); break;
+							case(174): dev_to_use = wifidevices_174.Get(source); break;
+							case(176): dev_to_use = wifidevices_176.Get(source); break;
+							case(178): dev_to_use = wifidevices.Get(source); break;
+							case(180): dev_to_use = wifidevices_180.Get(source); break;
+							case(182): dev_to_use = wifidevices_182.Get(source); break;
+							case(184): dev_to_use = wifidevices_184.Get(source); break;
+							default:   dev_to_use = wifidevices.Get(source); break;
+						}
+						
+						bool attacked = schedule_selective_delay_attack(
+							present_selective_delay_attack_nodes,
+							selective_delay_malicious_nodes[source],
+							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
+							attack_percentage,
+							source, packet_id, fid, attack2_delay_seconds,
+							routing_dsrc_data_unicast,
+							dev_to_use, dsrc_Nodes.Get(source),
+							fid, nid, arguments, total_packet_counter+1);
+							
+						if (!attacked)
+						{
+							Simulator::Schedule(Seconds(0), routing_dsrc_data_unicast,
+								dev_to_use, dsrc_Nodes.Get(source),
+								fid, nid, arguments, total_packet_counter+1);
 						}
 						
 						Simulator::Schedule (Seconds (tg+0.000050+rand_delay), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, arguments);
