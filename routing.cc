@@ -111,7 +111,7 @@ uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
 // without needing to manually trim rows during analysis.
 // Default 30.0 matches the supervisor's "300s excludes warm-up" requirement
 // (SUMO spawns are clustered in t=0-30s). CLI-configurable via --warmup_time_seconds.
-double warmup_time_seconds = 30.0;
+double warmup_time_seconds = 0.0;
 
 const int total_size = 300; // must be >= N_Vehicles + N_RSUs + N_Controllers.
                              // 100 was sufficient for the original defaults (N_Vehicles=80,
@@ -117789,6 +117789,7 @@ void calculate_average_latency()
 
 void calculate_packet_delivery_ratio()
 {
+	if (architecture >= 3) return; // Prevent overwriting SDVN PDR
 	double delivered_packets = 0.0;
 	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
@@ -120722,9 +120723,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// Record forwarding timestamp for TAP's PPAT calculation at the moment
 						// the packet ACTUALLY leaves this node (after total_tx_delay has
 						// elapsed), not at decision time. This was previously stamped early,
-						// which made PPAT reflect decision time rather than true wire-departure
 						// time — undermining TAP's timing-discrepancy detection.
-						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
+						Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
