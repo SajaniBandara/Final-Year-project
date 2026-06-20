@@ -121141,81 +121141,81 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// eFADE: record inbound packet receipt at this node
 				fade_received[fid][current_hop].insert(packet_ID);
 
+				// === SIGNATURE S2 DETECTION ===
+				// Check: t_recv - t_fwd > delta_max (Equation 3.6)
+				if(s2_detection_active)
+				{
+					// Use tagmodified_routing which is already peeked above
+					// Getprevious_senderId() returns the sim index of who forwarded this packet
+					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+					
+					if(sender_sim_index < (uint32_t)var)
+					{
+						double t_recv_now = Now().GetSeconds();
+						double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
+						
+						if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
+						{
+							double hop_delay = t_recv_now - t_fwd_by_sender;
+							
+							// cout << "[S2] Hop delay from node " << sender_sim_index
+							//      << " to node " << current_hop
+							//      << " for flow " << fid
+							//      << " packet " << packet_ID
+							//      << " = " << hop_delay * 1000.0 << "ms" << endl;
+							
+							if(hop_delay > delta_max_s2)
+							{
+								cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
+								cout << "[S2] Hop delay " << hop_delay * 1000.0
+								     << "ms exceeds threshold " 
+								     << delta_max_s2 * 1000.0 << "ms" << endl;
+								cout << "[S2] Node " << sender_sim_index
+								     << " detected as malicious attacker" << endl;
+								
+								if(!is_detected_node[1][sender_sim_index])
+								{
+									record_detection_event(1, sender_sim_index);
+									cout << "[S2] record_detection_event fired for node "
+									     << sender_sim_index 
+									     << " at t=" << Now().GetSeconds() << "s" << endl;
+								}
+							}
+						}
+					}
+				}
+				// === END SIGNATURE S2 DETECTION ===
+
+				// === TAP BASELINE DETECTION ===
+				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
+				// OnReceivedEmergencyPacket logic. Fires at every received packet.
+				if (tap_detection_active)
+				{
+					uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
+					uint32_t tap_fid = tagmodified_routing.GetflowId();
+					uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
+					uint32_t tap_receiver = current_hop;
+
+					// Algorithm 1 Line 10: check Controller-Defaulter-List first
+					if (tap_check_defaulter_list(tap_sender))
+					{
+						// Lines 19-20: discard packet from blacklisted node
+						cout << "[TAP] Retransmission packet dropped for flow id "
+							 << tap_fid << " #packet: " << tap_packet_ID << endl;
+					}
+					else
+					{
+						// Lines 11-18: run timing-based detection
+						tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
+					}
+				}
+				// === END TAP BASELINE DETECTION ===
+
 				if(destination == current_hop)
 				{
 					destination_counter[fid]++;
 					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
-					
-					// === SIGNATURE S2 DETECTION ===
-					// Check: t_recv - t_fwd > delta_max (Equation 3.6)
-					if(s2_detection_active && destination == current_hop)
-					{
-						// Use tagmodified_routing which is already peeked above
-						// Getprevious_senderId() returns the sim index of who forwarded this packet
-						uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-						
-						if(sender_sim_index < (uint32_t)var)
-						{
-							double t_recv_now = Now().GetSeconds();
-							double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
-							
-							if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
-							{
-								double hop_delay = t_recv_now - t_fwd_by_sender;
-								
-								cout << "[S2] Hop delay from node " << sender_sim_index
-								     << " to node " << current_hop
-								     << " for flow " << fid
-								     << " packet " << packet_ID
-								     << " = " << hop_delay * 1000.0 << "ms" << endl;
-								
-								if(hop_delay > delta_max_s2)
-								{
-									cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
-									cout << "[S2] Hop delay " << hop_delay * 1000.0
-									     << "ms exceeds threshold " 
-									     << delta_max_s2 * 1000.0 << "ms" << endl;
-									cout << "[S2] Node " << sender_sim_index
-									     << " detected as malicious attacker" << endl;
-									
-									if(!is_detected_node[1][sender_sim_index])
-									{
-										record_detection_event(1, sender_sim_index);
-										cout << "[S2] record_detection_event fired for node "
-										     << sender_sim_index 
-										     << " at t=" << Now().GetSeconds() << "s" << endl;
-									}
-								}
-							}
-						}
-					}
-					// === END SIGNATURE S2 DETECTION ===
-
-		// === TAP BASELINE DETECTION ===
-		// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-		// OnReceivedEmergencyPacket logic. Fires at every received packet.
-		if (tap_detection_active)
-		{
-			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-			uint32_t tap_fid = tagmodified_routing.GetflowId();
-			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			uint32_t tap_receiver = (uint32_t)(destination_node_id - N_Controllers);
-
-			// Algorithm 1 Line 10: check Controller-Defaulter-List first
-			if (tap_check_defaulter_list(tap_sender))
-			{
-				// Lines 19-20: discard packet from blacklisted node
-				cout << "[TAP] Retransmission packet dropped for flow id "
-					 << tap_fid << " #packet: " << tap_packet_ID << endl;
-			}
-			else
-			{
-				// Lines 11-18: run timing-based detection
-				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-			}
-		}
-		// === END TAP BASELINE DETECTION ===
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
 					{
@@ -123207,6 +123207,9 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
 
     // eFADE: record outbound destination at the source
     fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
+
+    // Add missing baseline timestamp for S2/TAP detection so immediate hop knows when it was dispatched
+    Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, source, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
