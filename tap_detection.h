@@ -54,7 +54,15 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 	if (packet_id >= (uint32_t)(Flow_size+2)) return;
 
 	double PAT = Simulator::Now().GetSeconds();
-	double PPAT = t_fwd_packet[sender_current_hop][packet_id];
+	// PPAT reads from t_claimed_packet (the timestamp a node CLAIMS, set at
+	// decision time before any attack delay), NOT t_fwd_packet (the
+	// ACTUAL post-delay send time, used by S2). Using t_fwd_packet here
+	// would make PPAT already include any attack-injected delay, making
+	// the (PAT - propagation_delay) vs PPAT comparison tautologically
+	// clean regardless of whether an attack occurred — defeating TAP's
+	// detection purpose. See t_claimed_packet's declaration comment in
+	// routing.cc for the full rationale.
+	double PPAT = t_claimed_packet[sender_current_hop][packet_id];
 	if (PPAT <= 0.0) return;
 
 	// Receiver position

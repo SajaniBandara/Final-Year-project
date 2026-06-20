@@ -112093,7 +112093,8 @@ void send_LTE_metadata_uplink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Nod
 
   	Ptr <Ipv4> ipv4;  	
   	ipv4 = destination_node->GetObject<Ipv4>();
-	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
+	uint32_t interface_idx = (architecture == 3) ? 1 : 2;
+	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	uint32_t nid = uint32_t(nu->GetId());
@@ -113088,6 +113089,31 @@ void write_csv_status_lifetime()
 	}
 	fout.close();
 	cout<<"finished writing link lifetime status at"<<Now().GetSeconds()<<endl;
+
+	// TEMPORARY DIAGNOSTIC — count nodes with nonzero velocity each cycle
+	{
+		uint32_t nonzero_velocity_count = 0;
+		uint32_t total_checked = 0;
+		for (uint32_t i = N_Controllers; i < total_size + N_Controllers; i++)
+		{
+			if ((i - N_Controllers) >= (uint32_t)var) continue;
+			Ptr<Node> diag_node;
+			if ((i - N_Controllers) < N_Vehicles)
+				diag_node = DynamicCast<Node>(Vehicle_Nodes.Get(i - N_Controllers));
+			else
+				diag_node = DynamicCast<Node>(RSU_Nodes.Get(i - N_Controllers - N_Vehicles));
+			if (!diag_node) continue;
+			Ptr<ConstantVelocityMobilityModel> diag_mdl =
+				DynamicCast<ConstantVelocityMobilityModel>(diag_node->GetObject<MobilityModel>());
+			if (!diag_mdl) continue;
+			Vector v = diag_mdl->GetVelocity();
+			total_checked++;
+			if (v.x != 0.0 || v.y != 0.0) nonzero_velocity_count++;
+		}
+		cout << "[DIAG-VEL-COVERAGE] t=" << Simulator::Now().GetSeconds()
+		     << " nonzero_velocity=" << nonzero_velocity_count
+		     << " / total_checked=" << total_checked << endl;
+	}
 }
 
 void write_csv_status()
@@ -114759,17 +114785,51 @@ uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from 
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
+// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
+// attack-injected delay has elapsed). S2 measures hop_delay = t_recv_now -
+// t_fwd_packet[sender][packet_id], so this MUST be the real, post-delay
+// send time for S2's elapsed-time measurement to correctly capture any
+// injected delay.
 double t_fwd_packet[total_size][Flow_size+2];
 
-// Records the ACTUAL transmission timestamp for TAP's PPAT calculation,
-// fired at the same simulated time the delayed WifiNetDevice::Send call
-// actually executes — not at forwarding-decision time. This must stay in
-// sync with any change to how total_tx_delay is computed or scheduled
-// elsewhere in this function; if the scheduling mechanism for the actual
-// send changes, this trampoline's scheduling must change identically.
+// t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
+// time — i.e., when it received/decided to forward the packet, BEFORE any
+// malicious buffering. This is the correct analogue of the TAP paper's
+// PPAT field (Algorithm 1: a value the sender embeds in the packet and
+// could lie about). A malicious node that buffers a packet for
+// total_tx_delay does NOT update what it claims — it continues to claim
+// the original, undelayed timestamp, exactly like a real attacker would
+// not voluntarily report its own injected delay. TAP's detector compares
+// this claimed value against an independent, physics-derived estimate
+// (PAT - propagation_delay); the mismatch between what the node claims
+// and what physics implies is the signal TAP is designed to catch.
+//
+// Distinct from t_fwd_packet (S2's array, which intentionally DOES
+// reflect the real post-delay send time) — do not merge these two arrays,
+// they serve opposite purposes by design.
+double t_claimed_packet[total_size][Flow_size+2];
+
+// Records the ACTUAL transmission timestamp for S2's hop_delay
+// calculation, fired at the same simulated time the delayed
+// WifiNetDevice::Send call actually executes — not at forwarding-decision
+// time. This must stay in sync with any change to how total_tx_delay is
+// computed or scheduled elsewhere in this function; if the scheduling
+// mechanism for the actual send changes, this trampoline's scheduling
+// must change identically.
 inline void record_actual_forward_timestamp(uint32_t node, uint32_t packet_id)
 {
     t_fwd_packet[node][packet_id] = Simulator::Now().GetSeconds();
+}
+
+// Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
+// fired immediately at forwarding-decision time — i.e., BEFORE any
+// attack-injected delay is applied. This deliberately does NOT wait for
+// total_tx_delay, since a malicious node has no reason to honestly
+// self-report the buffering delay it is about to introduce; it claims the
+// timestamp of when it received the packet, same as an honest node would.
+inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
+{
+    t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
 }
 
 // records when each node forwarded each packet
@@ -119920,10 +119980,13 @@ void run_proposed_RL()
 	cout<<"Proposed RL learning finished at "<<Now().GetSeconds()<<endl;
 }
 
+void diag_count_converged_routes();
+
 void  run_optimization_link_lifetime()
 {
 	cout<<"link lifetime optimization beginning at "<<Now().GetSeconds()<<endl;
 	write_csv_status_lifetime();//write status data to csv
+	diag_count_converged_routes();
 	Simulator::Schedule(Seconds(0.000050), optimize_link_lifetime);
 	Simulator::Schedule(Seconds(0.000100), read_lifetime_from_csv);
 }
@@ -120014,6 +120077,22 @@ void predict_DNN_delay()
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
+}
+
+// TEMPORARY DIAGNOSTIC — count converged routes
+void diag_count_converged_routes()
+{
+    uint32_t converged = 0, total = 0;
+    for (uint32_t i = 0; i < total_size; i++)
+    {
+        for (uint32_t j = 0; j < total_size; j++)
+        {
+            total++;
+            if (proposed_routing_tables[i].rows[j].path[0] != large) converged++;
+        }
+    }
+    cout << "[DIAG-ROUTE-CONVERGENCE] t=" << Simulator::Now().GetSeconds()
+         << " converged=" << converged << " / total=" << total << endl;
 }
 
 void  run_DNN_link_lifetime()
@@ -120788,9 +120867,17 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 						double total_tx_delay = tx_delay + tx_delay_cp;
 
-						// Record forwarding timestamp for TAP's PPAT calculation at the moment
-						// the packet ACTUALLY leaves this node (after total_tx_delay has
-						// elapsed), not at decision time.
+						// Record the CLAIMED forwarding timestamp immediately, at decision
+						// time, before any attack-injected delay is applied — this is what
+						// TAP's PPAT reads. A malicious node has no reason to honestly
+						// report the delay it is about to introduce, so this timestamp
+						// must NOT be deferred to total_tx_delay the way the actual send
+						// timestamp below is.
+						record_claimed_forward_timestamp(current_hop, packet_id);
+
+						// Record forwarding timestamp for S2's hop-delay calculation at the
+						// moment the packet ACTUALLY leaves this node (after total_tx_delay
+						// has elapsed), not at decision time.
 						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
@@ -123279,7 +123366,12 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // eFADE: record outbound destination at the source
     fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
 
-    // Add missing baseline timestamp for S2/TAP detection so immediate hop knows when it was dispatched
+    // Add missing baseline timestamp for S2/TAP detection so immediate hop knows when it was dispatched.
+    // No delay is modeled at this call site (both schedule at Seconds(0)),
+    // so the claimed and actual timestamps are identical here — both are
+    // still recorded explicitly so TAP's PPAT (t_claimed_packet) and S2's
+    // hop-delay baseline (t_fwd_packet) are both populated consistently.
+    record_claimed_forward_timestamp(source, packet_ID);
     Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, source, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
@@ -124346,7 +124438,8 @@ void send_LTE_routing_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 {
   	Ptr <Ipv4> ipv4;  	
   	ipv4 = destination_node->GetObject<Ipv4>();
-	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
+	uint32_t interface_idx = (architecture == 3) ? 1 : 2;
+	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	Ptr <Packet> packet1 = Create <Packet> (0);
@@ -124483,7 +124576,8 @@ void send_LTE_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 {
   	Ptr <Ipv4> ipv4;  	
   	ipv4 = destination_node->GetObject<Ipv4>();
-	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
+	uint32_t interface_idx = (architecture == 3) ? 1 : 2;
+	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	Ptr <Packet> packet1 = Create <Packet> (0);
@@ -124979,7 +125073,8 @@ void send_LTE_data_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 		
 		Ptr <Ipv4> ipv4;  	
 	  	ipv4 = destination_node->GetObject<Ipv4>();
-		Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
+		uint32_t interface_idx = (architecture == 3) ? 1 : 2;
+		Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
 		Ipv4Address dest_ip = iaddr.GetLocal();
 		Ptr <Packet> packet1 = Create <Packet> (0);
 		
@@ -142913,13 +143008,10 @@ if (architecture == 3 && N_Vehicles > 0)
 			  		 
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 						{
-							if (architecture != 3)
-							{
-								uint32_t app_index = (architecture == 3) ? u : (u + 2);
-								Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
-								Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
-									udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
-							}
+							uint32_t app_index = (architecture == 3) ? u : (u + 2);
+							Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
+							Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
+								udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
 							// architecture=3: vehicle→RSU→Controller relay added in Layer 2
 						}
 					  //calculate the routing solution
