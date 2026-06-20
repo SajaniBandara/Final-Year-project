@@ -94569,12 +94569,70 @@ void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * pat
 	}
 }
 
+// Forward declarations: Vehicle_Nodes and RSU_Nodes are defined later in
+// this file (~line 94638), but find_next_hop() (below) needs to look up
+// live vehicle/RSU positions for nearest-RSU routing. This forward
+// declaration lets the compiler resolve the names at this earlier point;
+// the actual containers are populated later in setup, well before any
+// real simulation traffic causes find_next_hop() to be called.
+extern NodeContainer Vehicle_Nodes;
+extern NodeContainer RSU_Nodes;
+
 // Returns true if node_index falls within the RSU range
 // [N_Vehicles, N_Vehicles + N_RSUs), generalizing find_next_hop()'s
 // architecture-3 fast path beyond the single hardcoded rsu_index.
 inline bool is_rsu_index(uint32_t node_index)
 {
     return node_index >= N_Vehicles && node_index < (N_Vehicles + N_RSUs);
+}
+
+// Returns the RSU index (in the [N_Vehicles, N_Vehicles+N_RSUs) node-ID
+// space, matching is_rsu_index()'s convention) of the RSU nearest to the
+// given vehicle node index, by current live position. Computed fresh on
+// every call (not cached) since vehicles move continuously under SUMO
+// mobility — unlike the one-time nearest-controller assignment at setup,
+// a vehicle's nearest RSU can change over the simulation's duration.
+// Falls back to RSU index N_Vehicles (the first RSU) if no valid position
+// data is available for any reason, preserving the previous hardcoded
+// behavior as a safe degradation path rather than crashing or returning
+// an invalid index.
+uint32_t find_nearest_rsu(uint32_t vehicle_index)
+{
+    if (vehicle_index >= N_Vehicles || N_RSUs == 0)
+    {
+        return N_Vehicles; // fallback: original hardcoded behavior
+    }
+
+    Ptr<ConstantVelocityMobilityModel> veh_mdl = DynamicCast<ConstantVelocityMobilityModel>
+        (Vehicle_Nodes.Get(vehicle_index)->GetObject<MobilityModel>());
+    if (!veh_mdl)
+    {
+        return N_Vehicles; // fallback: cast failed, preserve old behavior
+    }
+    Vector veh_pos = veh_mdl->GetPosition();
+
+    double min_dist = 1e18;
+    uint32_t best_rsu_offset = 0; // offset within RSU_Nodes, 0..N_RSUs-1
+
+    for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
+    {
+        Ptr<ConstantVelocityMobilityModel> rsu_mdl = DynamicCast<ConstantVelocityMobilityModel>
+            (RSU_Nodes.Get(r)->GetObject<MobilityModel>());
+        if (!rsu_mdl) continue; // skip any RSU with no valid position model
+
+        Vector rsu_pos = rsu_mdl->GetPosition();
+        double dx = veh_pos.x - rsu_pos.x;
+        double dy = veh_pos.y - rsu_pos.y;
+        double dist = sqrt(dx*dx + dy*dy);
+
+        if (dist < min_dist)
+        {
+            min_dist = dist;
+            best_rsu_offset = r;
+        }
+    }
+
+    return N_Vehicles + best_rsu_offset; // convert offset to node-ID space
 }
 
 uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_hop)
@@ -94584,14 +94642,12 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     // ==============================================================
     if (architecture == 3 && N_RSUs > 0)
     {
-        uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
-        
-        // 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
+        // 1. If a Vehicle is trying to send to another Vehicle, it MUST go
+        //    to the nearest RSU first (by the current holder's live
+        //    position, not a hardcoded RSU 0).
         if (current_hop < N_Vehicles && destination < N_Vehicles && current_hop != destination)
         {
-            // TEMPORARY DIAGNOSTIC
-            // cout << "[DIAGNOSTIC] find_next_hop: Fast-Path-1 (Vehicle -> RSU 0) used for src=" << source << " dst=" << destination << " hop=" << current_hop << endl;
-            return rsu_index; 
+            return find_nearest_rsu(current_hop);
         }
         
         // 2. If the packet is currently AT any RSU (not just RSU 0), forward
