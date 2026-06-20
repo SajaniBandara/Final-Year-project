@@ -94569,6 +94569,14 @@ void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * pat
 	}
 }
 
+// Returns true if node_index falls within the RSU range
+// [N_Vehicles, N_Vehicles + N_RSUs), generalizing find_next_hop()'s
+// architecture-3 fast path beyond the single hardcoded rsu_index.
+inline bool is_rsu_index(uint32_t node_index)
+{
+    return node_index >= N_Vehicles && node_index < (N_Vehicles + N_RSUs);
+}
+
 uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_hop)
 {
     // ==============================================================
@@ -94581,15 +94589,24 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
         // 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
         if (current_hop < N_Vehicles && destination < N_Vehicles && current_hop != destination)
         {
+            // TEMPORARY DIAGNOSTIC
+            // cout << "[DIAGNOSTIC] find_next_hop: Fast-Path-1 (Vehicle -> RSU 0) used for src=" << source << " dst=" << destination << " hop=" << current_hop << endl;
             return rsu_index; 
         }
         
-        // 2. If the RSU is holding the packet, it forwards it down to the destination Vehicle
-        if (current_hop == rsu_index && destination < N_Vehicles)
+        // 2. If the packet is currently AT any RSU (not just RSU 0), forward
+        //    it down to the destination vehicle. This is the generalization —
+        //    previously only matched current_hop == N_Vehicles exactly.
+        if (is_rsu_index(current_hop) && destination < N_Vehicles)
         {
+            // TEMPORARY DIAGNOSTIC
+            cout << "[DIAGNOSTIC] find_next_hop: Fast-Path-2 (RSU -> Vehicle) used for src=" << source << " dst=" << destination << " hop=" << current_hop << " (RSU is " << current_hop << ")" << endl;
             return destination;
         }
     }
+
+    // TEMPORARY DIAGNOSTIC
+    cout << "[DIAGNOSTIC] find_next_hop: Fallback used for src=" << source << " dst=" << destination << " hop=" << current_hop << endl;
 
     // ==============================================================
     // FALLBACK: ORIGINAL CONTROLLER LOGIC
