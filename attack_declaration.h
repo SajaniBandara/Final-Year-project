@@ -116,7 +116,7 @@ inline void declare_attackers()
         present_selective_delay_attack_nodes = (active_attack_variant == 1);
     }
 
-    for (uint32_t i = N_Controllers; i < total_size + N_Controllers; i++)
+    for (uint32_t i = 0; i < (uint32_t)var; i++)
     {
         bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
         if (present_selective_delay_attack_nodes == true)
@@ -135,17 +135,8 @@ inline void declare_attackers()
         }
     }
 
-    // Explicitly ensure no controller index can ever be marked as a
-    // data-plane attacker, regardless of attack_percentage or randomness —
-    // controllers are out of scope for Attack 2 per the threat model.
-    for (uint32_t c = 0; c < N_Controllers; c++)
-    {
-        selective_delay_malicious_nodes[c] = false;
-        is_malicious_node[1][c] = false;
-    }
-
     cout << attack_tag() << " declare_attackers() completed" << endl;
-    for (uint32_t i = N_Controllers; i < N_Controllers + (uint32_t)var; i++)
+    for (uint32_t i = 0; i < (uint32_t)var; i++)
     {
         cout << attack_tag() << " Node " << i << " selective_delay_malicious = "
              << selective_delay_malicious_nodes[i] << endl;
