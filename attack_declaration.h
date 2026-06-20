@@ -167,9 +167,11 @@ inline void declare_attackers()
             controller_compromised[c] = true;
         }
 
-        cout << attack_tag() << " [ATTACK1] declare_attackers(): attack_percentage="
-             << attack_percentage << "% -> " << num_to_compromise << " of "
-             << N_Controllers << " controllers compromised." << endl;
+        if (active_attack_variant == 0) {
+            cout << attack_tag() << " [ATTACK1] declare_attackers(): attack_percentage="
+                 << attack_percentage << "% -> " << num_to_compromise << " of "
+                 << N_Controllers << " controllers compromised." << endl;
+        }
     }
 }
 

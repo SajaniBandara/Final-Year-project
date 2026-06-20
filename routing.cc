@@ -94599,14 +94599,9 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
         //    previously only matched current_hop == N_Vehicles exactly.
         if (is_rsu_index(current_hop) && destination < N_Vehicles)
         {
-            // TEMPORARY DIAGNOSTIC
-            cout << "[DIAGNOSTIC] find_next_hop: Fast-Path-2 (RSU -> Vehicle) used for src=" << source << " dst=" << destination << " hop=" << current_hop << " (RSU is " << current_hop << ")" << endl;
             return destination;
         }
     }
-
-    // TEMPORARY DIAGNOSTIC
-    cout << "[DIAGNOSTIC] find_next_hop: Fallback used for src=" << source << " dst=" << destination << " hop=" << current_hop << endl;
 
     // ==============================================================
     // FALLBACK: ORIGINAL CONTROLLER LOGIC
