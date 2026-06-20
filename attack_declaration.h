@@ -60,6 +60,15 @@ extern double attack_start_time;
 // initialise_stub_attack_state()'s job in routing.cc.
 inline void declare_attack_states()
 {
+    if (!attack_number_explicitly_set)
+    {
+        cout << "[declare_attack_states] attack_number not explicitly set — "
+             << "skipping dispatcher, leaving active_attack_variant="
+             << active_attack_variant << " as set directly by CLI/test harness."
+             << endl;
+        return; // do not touch active_attack_variant or any present_* flag
+    }
+
     present_selective_delay_cp_attack    = false;
     present_selective_delay_attack_nodes = false;
 
@@ -98,7 +107,17 @@ inline void declare_attack_states()
 // leaving at least one controller honest.
 inline void declare_attackers()
 {
+    // If the attack_number dispatcher didn't run, infer the present_*
+    // flags directly from active_attack_variant so legacy
+    // --active_attack_variant-only invocations still behave correctly.
+    if (!attack_number_explicitly_set)
+    {
+        present_selective_delay_cp_attack    = (active_attack_variant == 0);
+        present_selective_delay_attack_nodes = (active_attack_variant == 1);
+    }
+
     for (uint32_t i = 0; i < total_size; i++)
+
     {
         bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
         if (present_selective_delay_attack_nodes == true)

@@ -57,6 +57,7 @@ uint32_t selective_delay_cp_target_rsu = 2; // which RSU's table the controller 
 //                            when each is implemented, following the same
 //                            pattern as attacks 1 and 2 below.
 int attack_number = 1; // default to Attack 1 (CP) — change via CLI/test harness
+bool attack_number_explicitly_set = false;
 
 // Per-controller compromise state for Attack 1 (Selective Time Delay, CP).
 // Indexed by controller ID (0 .. N_Controllers-1). Populated by

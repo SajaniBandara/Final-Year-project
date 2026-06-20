@@ -141049,7 +141049,17 @@ int main(int argc, char *argv[])
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
     cmd.AddValue ("use_sumo_mobility", "use_sumo_mobility", use_sumo_mobility);
+    
+    int attack_number_cli = -1; // sentinel: "not provided"
+    cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
+
     cmd.Parse (argc, argv);
+
+    if (attack_number_cli != -1)
+    {
+        attack_number = attack_number_cli;
+        attack_number_explicitly_set = true;
+    }
     
     if (routing_test == true)
     {
