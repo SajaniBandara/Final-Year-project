@@ -1,18 +1,33 @@
 #!/bin/bash
-# run_attack2_sweep.sh
-# Runs the full sweep for Attack 2 (Data Plane Selective Time Delay)
-# Across percentages: 0, 20, 40, 60, 80, 100
 
-cd ~/ns-allinone-3.35/ns-3.35
+# Define the percentages to sweep over
+PERCENTAGES=(0 20 40 60 80 100)
 
-percentages=(0 20 40 60 80 100)
+echo "Starting Attack 2 (Data Plane / Selective Time Delay) Sweep..."
 
-for p in "${percentages[@]}"; do
-    echo "=================================================="
-    echo "Starting Attack 2 Simulation at $p%..."
-    echo "=================================================="
-    ./waf --run "scratch/routing --routing_test=false --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 --simTime=16 --architecture=3 --attack_number=2 --attack_percentage=$p" > "results_routing/Attack2_${p}_run.log" 2>&1
-    echo "Completed $p%."
+# Make sure we're in the ns-3.35 directory before running waf
+# This script should ideally be run from the ns-3.35 directory,
+# but we can navigate there if needed.
+NS3_DIR="$HOME/ns-allinone-3.35/ns-3.35"
+if [ ! -d "$NS3_DIR" ]; then
+    echo "Error: ns-3 directory not found at $NS3_DIR"
+    exit 1
+fi
+
+cd "$NS3_DIR"
+
+for p in "${PERCENTAGES[@]}"; do
+    echo "====================================================="
+    echo " Running Attack 2 with $p% malicious nodes..."
+    echo "====================================================="
+    
+    # We pass the attack percentage to the script.
+    # Note: Make sure --attack2_percentage=X or the relevant flag is accepted by routing.cc.
+    # If the user script handles standard command line args:
+    ./waf --run "scratch/routing --attack_percentage=$p --active_attack_variant=1" > "results_routing/Attack2_${p}_percent_log.txt" 2>&1
+    
+    echo " Finished running $p%. Check results_routing/ for outputs."
+    sleep 2
 done
 
-echo "All simulations finished! Check the results_routing directory for the CSVs."
+echo "Sweep completed successfully!"

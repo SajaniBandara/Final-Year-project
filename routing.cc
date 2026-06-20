@@ -120722,9 +120722,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 
 						// Record forwarding timestamp for TAP's PPAT calculation at the moment
 						// the packet ACTUALLY leaves this node (after total_tx_delay has
-						// elapsed), not at decision time. This was previously stamped early,
-						// time — undermining TAP's timing-discrepancy detection.
-						Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, current_hop, packet_id);
+						// elapsed), not at decision time.
+						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
@@ -121171,14 +121170,18 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 								     << "ms exceeds threshold " 
 								     << delta_max_s2 * 1000.0 << "ms" << endl;
 								cout << "[S2] Node " << sender_sim_index
-								     << " detected as malicious attacker" << endl;
+								     << " detected as malicious attacker (variant="
+								     << active_attack_variant << ")" << endl;
 								
-								if(!is_detected_node[1][sender_sim_index])
+								if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
 								{
-									record_detection_event(1, sender_sim_index);
-									cout << "[S2] record_detection_event fired for node "
-									     << sender_sim_index 
-									     << " at t=" << Now().GetSeconds() << "s" << endl;
+									if(!is_detected_node[active_attack_variant][sender_sim_index])
+									{
+										record_detection_event(active_attack_variant, sender_sim_index);
+										cout << "[S2] record_detection_event fired for node "
+										     << sender_sim_index << " variant=" << active_attack_variant
+										     << " at t=" << Now().GetSeconds() << "s" << endl;
+									}
 								}
 							}
 						}
