@@ -114900,7 +114900,7 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.020;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+static const double TAP_MARGIN = 0.0;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
 
 bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
