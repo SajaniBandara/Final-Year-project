@@ -115341,7 +115341,10 @@ void initialise_stub_attack_state()
     }
 
 
-	    // Activate Attack 2 for test network
+	// Initialize TAP detector state globally for all attack variants
+	tap_reset_state(total_size);
+
+
 	switch (active_attack_variant)
     {
         case (0): // Attack 1 — Selective Time Delay, Control Plane (NEW)
@@ -115365,7 +115368,7 @@ void initialise_stub_attack_state()
             break;
         }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            tap_reset_state(total_size);
+            // tap_reset_state moved outside switch to apply to all variants
             break;
 
         case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
