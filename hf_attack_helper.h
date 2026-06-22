@@ -240,6 +240,46 @@ inline void hf_dp_inject_delta(uint32_t flow_id,
     Simulator::Schedule(Seconds(1.0), &hf_verify_state_trampoline);
 }
 
+// Re-applies DP poisoning for all currently-compromised RSUs. Called twice per
+// cycle: once immediately after clear_delta_at_nodes() (which runs at the very
+// start of each cycle, before initialize_flow_counters()'s own internal clear),
+// and again from inside initialize_flow_counters() itself. Two calls are needed
+// because there are two separate clearing mechanisms in routing.cc that both
+// wipe delta_at_nodes_inst at different points in the same cycle; without both
+// re-applies, the DP attack's poisoned entry is briefly (but genuinely) absent
+// for part of every cycle.
+inline void hf_reapply_dp_after_clear()
+{
+    if (active_attack_variant != 5 && active_attack_variant != 7) return;
+    for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+    {
+        uint32_t rsu_node   = kv.first;
+        uint32_t eaves_node = kv.second;
+        if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
+        {
+            (delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+        }
+    }
+}
+
+// Re-applies CP poisoning (both tables) for all currently-compromised RSUs.
+// Called immediately after clear_delta_at_nodes(), for the same reason
+// hf_reapply_dp_after_clear() exists: clear_delta_at_nodes() wipes
+// delta_at_nodes_inst at the start of every cycle, before
+// initialize_flow_counters()'s own re-apply gets a chance to run.
+inline void hf_reapply_cp_after_clear()
+{
+    if (active_attack_variant != 4 && active_attack_variant != 6) return;
+    for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+    {
+        uint32_t rsu_node   = kv.first;
+        uint32_t eaves_node = kv.second;
+        if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
+        {
+            (delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+        }
+    }
+}
 // ── Check if a poisoned delta entry exists for this RSU/eavesdropper pair ─────
 // Used in check_delivery_and_retransmit as the forwarding trigger condition.
 //
