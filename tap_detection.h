@@ -115,7 +115,7 @@ inline void calculate_tap_security_metrics()
 	tap_TP = tap_FP = tap_TN = tap_FN = 0;
 	for (int n = 0; n < total_size; n++)
 	{
-		bool malicious = is_malicious_node[1][n]; // Attack 2 is variant index 1
+		bool malicious = (active_attack_variant >= 0 && active_attack_variant < 8) ? is_malicious_node[active_attack_variant][n] : false;
 		bool detected = tap_detected_node[n];
 		if (malicious && detected) tap_TP++;
 		if (!malicious && detected) tap_FP++;
