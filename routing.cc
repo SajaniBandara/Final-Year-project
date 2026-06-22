@@ -104,12 +104,12 @@ uint32_t N_Controllers = 4;
 // Populated in main() once RSU positions are known.
 uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
 
-const int total_size = 300; // must be >= N_Vehicles + N_RSUs + N_Controllers.
+const int total_size = 268; // must be >= N_Vehicles + N_RSUs + N_Controllers.
                              // 100 was sufficient for the original defaults (N_Vehicles=80,
                              // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
                              // needs 200+64+4=268; 300 gives headroom.
-uint32_t N_RSUs = 20;
-uint32_t N_Vehicles = 80;
+uint32_t N_RSUs = 64;
+uint32_t N_Vehicles = 200;
 
 const int flows = 1;
 
