@@ -19,6 +19,22 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 
 ---
 
+## 1. Selective Time Delay Attacks
+- **Attack 1 (Control Plane):** RSUs delay flow-rule packets from SDVN Controllers, desynchronizing routing tables.
+- **Attack 2 (Data Plane):** RSUs delay DSRC data packets between vehicles.
+- **Parameters:** Delay is fixed at 80ms.
+- **Node Allocation:** `--attack_percentage` dictates the exact attacker count: `round(N_RSUs * percentage/100)`. A uniform random distribution assigns these to unique RSU IDs without overlap.
+
+## 2. TAP Defense Module
+- **Global Initialization:** `tap_reset_state()` initializes timing metrics and quarantine lists for all 8 attack variants automatically.
+- **Clean Logs:** Removed per-packet debug noise. Only aggregated cycle metrics (MCC, TP, FP) and `ATTACKER DETECTED` events are printed.
+
+## 3. Architecture Improvements
+- **Dynamic Arrays:** Removed hardcoded limits. Threat arrays (`is_malicious_node`, `t_onset`) now scale dynamically to support large SUMO topologies (e.g., 200 vehicles + 64 RSUs).
+- **CLI Dispatcher:** Added `--attack_number` to select attacks safely without breaking the legacy `--active_attack_variant` logic used by other researchers.
+
+---
+
 ## Requirements
 
 - Ubuntu 20.04+ (or equivalent Linux)
@@ -371,35 +387,53 @@ These use a small synthetic test network (`routing_test=true`) — **not** the S
 ./waf --run "scratch/routing"
 ```
 
-### Selective Time Delay Attack (Attack 2)
+### Selective Time Delay Attacks (Attack 1 & Attack 2) in Full SUMO Scenario
 
+To execute the full SUMO simulation with the Selective Time Delay attacks, utilize the `--attack_number` parameter. The delay constraint is fixed at 80ms, and the `--attack_percentage` scales the proportion of compromised attackers within the network. The TAP detector supports all attack variants and provides aggregated metric logs per routing cycle.
+
+**Attack 1 — Control Plane (CP) Selective Time Delay:**
 ```bash
 ./waf --run "scratch/routing \
-  --routing_test=true \
-  --routing_algorithm=4 \
-  --experiment_number=3 \
-  --active_attack_variant=1"
+  --routing_test=false \
+  --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
+  --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 \
+  --simTime=15 --architecture=3 \
+  --attack_number=1 \
+  --attack_percentage=20 \
+  --attack_start_time=2.0"
 ```
 
-### TAP Experiment Sweep (Attack 2, all intensities)
+**Attack 2 — Data Plane (DP) Selective Time Delay:**
+```bash
+./waf --run "scratch/routing \
+  --routing_test=false \
+  --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
+  --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 \
+  --simTime=15 --architecture=3 \
+  --attack_number=2 \
+  --attack_percentage=20 \
+  --attack_start_time=2.0"
+```
+
+### TAP Experiment Sweep (Test Network, all intensities)
 
 ```bash
 cd ~/ns-allinone-3.35/ns-3.35
 ./waf build 2>&1 | tail -5
 
-rm -f results_routing/TAP_Attack2_*.csv
-rm -f results_routing/MOBIGUARD_Attack2_*.csv
+rm -f results_routing/TAP_Attack*_*.csv
+rm -f results_routing/MOBIGUARD_Attack*_*.csv
 
-./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=0"   2>&1 | tail -3
-./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=20"  2>&1 | tail -3
-./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=40"  2>&1 | tail -3
-./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=60"  2>&1 | tail -3
-./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=80"  2>&1 | tail -3
-./waf --run "scratch/routing --active_attack_variant=1 --attack_percentage=100" 2>&1 | tail -3
+# For Attack 1 (Test Network)
+./waf --run "scratch/routing --routing_test=true --attack_number=1 --attack_percentage=20"
+# For Attack 2 (Test Network)
+./waf --run "scratch/routing --routing_test=true --attack_number=2 --attack_percentage=20"
+# ... change percentages to 40, 60, 80, 100 as needed
 ```
 
-**Attack percentage meaning:**
-- `attack_percentage` simultaneously controls delay strength (`tx_delay = attack2_delay_seconds × attack_percentage/100`) and number of malicious nodes (`num_attackers = 10 × attack_percentage/100`)
+**Attack parameters:**
+- `attack_percentage`: Controls the proportion of malicious nodes (e.g. 20% compromises 12 RSUs in a 64 RSU grid).
+- Delay strength is fixed at 80ms for standard consistency.
 
 | Value | Attackers | Delay strength |
 |---|---|---|
@@ -439,7 +473,8 @@ Plots are saved to `output/tap/`.
 | `routing_test` | true | true=small test network, false=real SUMO network |
 | `routing_algorithm` | 4 | 0=ECMP, 1=RR, 2=QR-SDN, 3=RLMR, 4=proposed, 5=DCMR |
 | `experiment_number` | 3 | 0=QoS, 1=flow size, 2=mobility, 3=network size |
-| `active_attack_variant` | -1 | -1=baseline, 0–7=attack variants (see below) |
+| `attack_number` | -1 | Supersedes active_attack_variant for new attacks. 1=CP Selective Time Delay, 2=DP Selective Time Delay |
+| `active_attack_variant` | -1 | Legacy parameter (-1=baseline, 0–7=attack variants). Handled securely under the hood by attack_number |
 | `attack_percentage` | 0 | Attack intensity 0–100% |
 | `attack_start_time` | 10.0 | Seconds before attack begins |
 | `attack_rate_pps` | 20.0 | Slow-flow injection rate (pkt/s) for Attacks 3+4 |
@@ -456,7 +491,7 @@ Plots are saved to `output/tap/`.
 | `active_attack_variant` | Attack |
 |---|---|
 | -1 | Baseline (no attack) |
-| 0 | Attack 1 |
+| 0 | Attack 1 — Selective Time Delay (Control Plane) |
 | 1 | Attack 2 — Selective Time Delay (Data Plane) |
 | 2 | Attack 3 |
 | 3 | Attack 4 |

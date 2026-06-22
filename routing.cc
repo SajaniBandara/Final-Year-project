@@ -104,12 +104,12 @@ uint32_t N_Controllers = 4;
 // Populated in main() once RSU positions are known.
 uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
 
-const int total_size = 300; // must be >= N_Vehicles + N_RSUs + N_Controllers.
+const int total_size = 268; // must be >= N_Vehicles + N_RSUs + N_Controllers.
                              // 100 was sufficient for the original defaults (N_Vehicles=80,
                              // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
                              // needs 200+64+4=268; 300 gives headroom.
-uint32_t N_RSUs = 20;
-uint32_t N_Vehicles = 80;
+uint32_t N_RSUs = 64;
+uint32_t N_Vehicles = 200;
 
 const int flows = 1;
 
@@ -94480,6 +94480,9 @@ struct routing_table_row
 	uint32_t source_node;
 	uint32_t destination_node;
 	uint32_t next_hop;
+	double   injected_delay;   // Attack 1 (Selective Time Delay, Control Plane). 0.0 = benign rule (default). >0.0 = the
+	                            // malicious controller poisoned this flowMod  entry with a forced forwarding delay that
+	                            // the receiving RSU will obey without knowing it is compromised.
 };
 
 struct routing_table
@@ -94506,6 +94509,7 @@ void initialize_all_routing_tables()
 			routing_tables[i].rows[j].destination_node = large;
 			proposed_routing_tables[i].rows[j].destination_node = large;
 			routing_tables[i].rows[j].next_hop = large;
+			routing_tables[i].rows[j].injected_delay = 0.0; // always start clean — prevents stale values leaking across runs
 			for(uint32_t k=0;k<total_size;k++)
 			{
 				proposed_routing_tables[i].rows[j].path[k] = large;
@@ -94519,6 +94523,24 @@ void update_route(uint32_t source, uint32_t destination, uint32_t next_hop)
 	routing_tables[source].rows[destination].source_node = source;
 	routing_tables[source].rows[destination].destination_node = destination;
 	routing_tables[source].rows[destination].next_hop = next_hop;
+	routing_tables[source].rows[destination].injected_delay = 0.0; // benign default
+}
+
+extern std::string attack_tag();
+
+// Attack 1: Selective Time Delay — Control Plane. Simulates a compromised SDN controller transmitting a manipulated flowMo to an RSU. 
+//The RSU itself is NOT malicious — it has no way to distinguish this from a legitimate routing update, and will obey the injected delay
+// when it next forwards a packet for this (source, destination) pair. Per the threat model's mutual-exclusion assumption, this function must
+// never be called alongside any code that marks the RSU itself malicious.
+void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay)
+{
+	update_route(source, destination, next_hop);   // install the routing decision first (benign part)
+	routing_tables[source].rows[destination].injected_delay = delay; // then poison the rule
+	cout << attack_tag() << " [ATTACK1] Malicious controller installed poisoned flowMod: "
+	     << "node=" << source << " dest=" << destination
+	     << " next_hop=" << next_hop
+	     << " injected_delay=" << delay * 1000.0 << "ms"
+	     << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
 }
 
 void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * path)
@@ -94539,7 +94561,7 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     // ==============================================================
 	cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
     if (architecture == 3 && N_RSUs > 0)
-    {
+	{
         uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
         
         // 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
@@ -94548,7 +94570,7 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
             return rsu_index; 
         }
         
-        // 2. If the RSU is holding the packet, it forwards it down to the destination Vehicle
+ 		// 2. If the RSU is holding the packet, it forwards it down to the destination Vehicle
         if (current_hop == rsu_index && destination < N_Vehicles)
         {
             return destination;
@@ -94566,7 +94588,7 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     {
         // Safety Break: Prevent infinite loop if the path is broken
         if (k > 50) { 
-            cout << "ERROR: Route not found in proposed_routing_tables!" << endl;
+			cout << "ERROR: Route not found in proposed_routing_tables!" << endl;
             return destination; 
         }
         
@@ -95057,7 +95079,6 @@ bool X_nodes[total_size];
 		if(packet->PeekPacketTag(tag_routing))
 		{
 			uint32_t node_index = tag_routing.GetsenderId();
-			// uint32_t destination = tag_routing.GetdestinationId() + 2;
 			uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
 			uint32_t * source = tag_routing.GetNodeId();
 			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
@@ -95115,7 +95136,7 @@ bool X_nodes[total_size];
                         // ==============================================================
                         if (architecture == 3 && N_RSUs > 0)
                         {
-                            uint32_t rsu_index = N_Vehicles; // e.g., index 2
+                          	uint32_t rsu_index = N_Vehicles; // e.g., index 2
                             if (current_hop < N_Vehicles && destination-N_Controllers < N_Vehicles && current_hop != destination-N_Controllers) {
                                 final_next_hop = rsu_index;
                             } else if (current_hop == rsu_index && destination-N_Controllers < N_Vehicles) {
@@ -95129,7 +95150,6 @@ bool X_nodes[total_size];
                         Mac48Address dest_address;
                         if (final_next_hop < N_Vehicles) {
                             // Find the Vehicle's Node globally (Vehicles are usually nid = 2 and 3)
-                            // uint32_t global_dest_nid = final_next_hop + 2; 
 							uint32_t global_dest_nid = final_next_hop + N_Controllers;
                             Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
                             
@@ -112987,6 +113007,7 @@ void write_csv_status_lifetime()
 	}
 	fout.close();
 	cout<<"finished writing link lifetime status at"<<Now().GetSeconds()<<endl;
+
 }
 
 void write_csv_status()
@@ -114641,9 +114662,7 @@ double average_mitigation_latency                  = 0.0;
 
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
-bool selective_delay_malicious_nodes[total_size];
-bool present_selective_delay_attack_nodes = false;
-double attack2_delay_seconds = 0.080; // 80ms injected delay
+#include "attack_variables.h"
 
 // === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
 // Malicious controller installs junk FlowMod rules into every RSU's TCAM at
@@ -114661,7 +114680,53 @@ int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N
 double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 100%)
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
+// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
+// attack-injected delay has elapsed). S2 measures hop_delay = t_recv_now -
+// t_fwd_packet[sender][packet_id], so this MUST be the real, post-delay
+// send time for S2's elapsed-time measurement to correctly capture any
+// injected delay.
 double t_fwd_packet[total_size][Flow_size+2];
+
+// t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
+// time — i.e., when it received/decided to forward the packet, BEFORE any
+// malicious buffering. This is the correct analogue of the TAP paper's
+// PPAT field (Algorithm 1: a value the sender embeds in the packet and
+// could lie about). A malicious node that buffers a packet for
+// total_tx_delay does NOT update what it claims — it continues to claim
+// the original, undelayed timestamp, exactly like a real attacker would
+// not voluntarily report its own injected delay. TAP's detector compares
+// this claimed value against an independent, physics-derived estimate
+// (PAT - propagation_delay); the mismatch between what the node claims
+// and what physics implies is the signal TAP is designed to catch.
+//
+// Distinct from t_fwd_packet (S2's array, which intentionally DOES
+// reflect the real post-delay send time) — do not merge these two arrays,
+// they serve opposite purposes by design.
+double t_claimed_packet[total_size][Flow_size+2];
+
+// Records the ACTUAL transmission timestamp for S2's hop_delay
+// calculation, fired at the same simulated time the delayed
+// WifiNetDevice::Send call actually executes — not at forwarding-decision
+// time. This must stay in sync with any change to how total_tx_delay is
+// computed or scheduled elsewhere in this function; if the scheduling
+// mechanism for the actual send changes, this trampoline's scheduling
+// must change identically.
+inline void record_actual_forward_timestamp(uint32_t node, uint32_t packet_id)
+{
+    t_fwd_packet[node][packet_id] = Simulator::Now().GetSeconds();
+}
+
+// Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
+// fired immediately at forwarding-decision time — i.e., BEFORE any
+// attack-injected delay is applied. This deliberately does NOT wait for
+// total_tx_delay, since a malicious node has no reason to honestly
+// self-report the buffering delay it is about to introduce; it claims the
+// timestamp of when it received the packet, same as an honest node would.
+inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
+{
+    t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
+}
+
 // records when each node forwarded each packet
 double delta_max_s2 = 0.050;
 // 50ms threshold per Equation 3.6 — half of 100ms safety bound
@@ -114730,7 +114795,7 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.020;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+static const double TAP_MARGIN = 0.0;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
 
 bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
@@ -114748,6 +114813,7 @@ double tap_previous_cumulative_MCC = 0.0;
 double tap_previous_cumulative_DR  = 0.0;
 double tap_previous_cumulative_FPR = 0.0;
 double tap_previous_cumulative_mit = 0.0;
+#include "tap_detection.h"
 
 
 // ============================================================
@@ -115245,16 +115311,13 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
-// TAP function prototypes
-//bool tap_check_defaulter_list(uint32_t sender_current_hop);
-void tap_report_to_controller(uint32_t attacker_current_hop);
-//void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
-void calculate_tap_security_metrics();
-void write_tap_csv();
+// TAP function prototypes are now inside tap_detection.h
 void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
+#include "attack_declaration.h"
+
 // Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
 // included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
 inline void hf_init_attack5_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
@@ -115265,43 +115328,47 @@ inline bool hf_delta_entry_active(uint32_t flow_id, uint32_t rsu_node, uint32_t 
 inline uint32_t hf_resolve_eavesdropper(uint32_t rsu_node);
 void initialise_stub_attack_state()
 {
-    // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
-    // and node 3 as malicious for variant 4 (Active Hidden Forwarding CP)
-    // as a demonstration. Remove/replace when real attacks are added.
-    is_malicious_node[0][2] = true;
-    is_malicious_node[4][3] = true;
-
-    // Set onset timestamps for those nodes
-    t_onset[2] = 1.0;  // attack starts at t=1s
-    t_onset[3] = 1.0;
-
-	// Stub: simulate detection firing 50ms after onset
-	// Replace with real Simulator::Now() calls when attacks are implemented
-	t_quarantine[2] = 1.050;
-	t_quarantine[3] = 1.050;
+    // Demonstration ground-truth for variant 4 (Active Hidden Forwarding
+    // CP) only. Previously ran unconditionally on every variant, which
+    // polluted t_onset[3]/t_quarantine[3] (and therefore
+    // calculate_mitigation_latency_metric()'s output) for every OTHER
+    // attack variant too, including Attack 1. Gated behind the variant it
+    // actually applies to.
+    if (active_attack_variant == 4)
+    {
+        is_malicious_node[4][3] = true;
+        t_onset[3] = 1.0;
+    }
 
 
-	    // Activate Attack 2 for test network
+	// Initialize TAP detector state globally for all attack variants
+	tap_reset_state(total_size);
+
+
 	switch (active_attack_variant)
     {
+        case (0): // Attack 1 — Selective Time Delay, Control Plane (NEW)
+        {
+            // IMPORTANT — threat-model mutual-exclusion assumption: do NOT set
+            // is_malicious_node[...][...] = true here, and
+            // do NOT set selective_delay_malicious_nodes[...] = true.
+            // The RSU is not the attacker in this scenario — a data-plane and
+            // control-plane adversary cannot coexist per the thesis's threat model.
+            // Leave all RSU-level malicious flags false/unset.
+
+            // The compromised controller schedules a recurring task to poison the routing
+            // tables. This ensures the attack occurs AFTER legitimate routes
+            // have converged, so we can preserve the genuine next_hop while
+            // injecting the malicious delay.
+            Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
+
+            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, delay range [" 
+                 << attack1_min_delay_seconds * 1000.0
+                 << "-" << attack1_max_delay_seconds * 1000.0 << "]ms" << endl;
+            break;
+        }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            is_malicious_node[1][2] = true;
-            t_onset[2] = 1.0;
-            t_quarantine[2] = 1.050;
-            hardcode_test_network_attackers();
-            // Reset all TAP state before each Attack 2 simulation run
-            for (int _n = 0; _n < total_size; _n++)
-            {
-                tap_defaulter_list[_n] = false;
-                tap_detected_node[_n]  = false;
-                tap_t_quarantine[_n]   = 0.0;
-            }
-            tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
-            tap_current_MCC=0.0; tap_current_DR=0.0;
-            tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
-            tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
-            tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
-            cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+            // tap_reset_state moved outside switch to apply to all variants
             break;
 
         case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
@@ -115438,29 +115505,9 @@ bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
 	return randomValue < probabilityPercent;
 }
 
-void declare_attackers()
-{
-	for(uint32_t i=0; i<total_size; i++)
-	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
-		if(present_selective_delay_attack_nodes == true)
-		{
-			selective_delay_malicious_nodes[i] = attacking_state;
-		}
-		else
-		{
-			selective_delay_malicious_nodes[i] = false;
-		}
-		// For test network: hardcode node 2 (RSU) as malicious
-		// This will be replaced by declare_attackers() for full experiments
-	}
-	cout << attack_tag() << " declare_attackers() completed" << endl;
-	for(uint32_t i=0; i<(uint32_t)var; i++)
-	{
-		cout << attack_tag() << " Node " << i << " selective_delay_malicious = " 
-			 << selective_delay_malicious_nodes[i] << endl;
-	}
-}
+#include "selective_time_delay.h"
+
+
 
 // --- Alternate hardcode_test_network_attackers() from routing_2_.cc:
 // extended 10-node test network for Attack 2 (5 vehicles + 5 RSUs), where the
@@ -116667,7 +116714,7 @@ void run_stable_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + N_Controllers;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		proposed_algo2_output_inst[flow_id].met[i] = false;
@@ -116719,7 +116766,7 @@ void run_distance_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + N_Controllers;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		distance_algo2_output_inst[flow_id].met[i] = false;
@@ -117769,6 +117816,10 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
+
+	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
+	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -120636,7 +120687,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // ==============================================================
                         Mac48Address dest_address;
 						if (hop < N_Vehicles) {
-							// uint32_t global_dest_nid = hop + 2;
 							uint32_t global_dest_nid = hop + N_Controllers;
 							Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
 							Mac48Address fallback_addr;
@@ -120675,7 +120725,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // 3. BULLETPROOF SENDER DEVICE LOOKUP (CHANNEL-AWARE)
                         // ==============================================================
                         Ptr <WifiNetDevice> wdi = 0;
-                        // uint32_t global_src_nid = current_hop + 2;
 						uint32_t global_src_nid = current_hop + N_Controllers;
                         Ptr<Node> sender_node = NodeList::GetNode(global_src_nid);
                         
@@ -120714,32 +120763,41 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             fade_forwarded[flow_id][current_hop][packet_id].insert(hop);
                         }
 
-						double tx_delay = 0.0;
-						bool apply_attack_delay = false;
-						if (present_selective_delay_attack_nodes &&
-							selective_delay_malicious_nodes[current_hop] &&
-							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
-						{
-							bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
-							if (atk)
-							{
-								apply_attack_delay = true;
-								tx_delay = attack2_delay_seconds;
-								cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
-									 << ") intercepting packet ID " << packet_id
-									 << " for flow " << flow_id
-									 << " at t=" << Now().GetSeconds() << "s" << endl;
-								cout << attack_tag() << " ④ Buffering - injecting delay of "
-									 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-								cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-									 << Now().GetSeconds() + attack2_delay_seconds
-									 << "s (delay=" << attack2_delay_seconds * 1000.0
-									 << "ms)" << endl;
-							}
-						}
+						double tx_delay = calculate_selective_delay(
+							present_selective_delay_attack_nodes,
+							selective_delay_malicious_nodes[current_hop],
+							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
+							attack_percentage,
+							current_hop,
+							packet_id,
+							flow_id,
+							attack2_delay_seconds);
 
-						// Record forwarding timestamp for S2 signature detection
-						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
+						double tx_delay_cp = 0.0;
+						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
+						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+
+						tx_delay_cp = calculate_selective_delay_cp(
+							present_selective_delay_cp_attack,
+							injected,
+							current_hop,
+							packet_id,
+							flow_id);
+
+						double total_tx_delay = tx_delay + tx_delay_cp;
+
+						// Record the CLAIMED forwarding timestamp immediately, at decision
+						// time, before any attack-injected delay is applied — this is what
+						// TAP's PPAT reads. A malicious node has no reason to honestly
+						// report the delay it is about to introduce, so this timestamp
+						// must NOT be deferred to total_tx_delay the way the actual send
+						// timestamp below is.
+						record_claimed_forward_timestamp(current_hop, packet_id);
+
+						// Record forwarding timestamp for S2's hop-delay calculation at the
+						// moment the packet ACTUALLY leaves this node (after total_tx_delay
+						// has elapsed), not at decision time.
+						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
@@ -120846,13 +120904,14 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    <<" at t="<<Now().GetSeconds()<<endl;
 						// Record hit: install on first forward, then increment counters.
 						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
-						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+						Simulator::Schedule (Seconds(total_tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
+						bool apply_attack_delay = (total_tx_delay > 0.0);   
 						double retry_delay = tg + 0.000100 + rand_delay;
 						if (apply_attack_delay)
 						{
 							// Prevent immediate retries from bypassing the injected delay.
-							retry_delay += tx_delay;
+							retry_delay += total_tx_delay;
 						}
 						Simulator::Schedule (Seconds (retry_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
 						//Simulator::Schedule (Seconds (tg), updateTxop, flow_id, current_hop, hop, packet_id, false,arguments.channel);
@@ -120884,7 +120943,7 @@ int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
 bool tcam_exhaust_malicious_nodes[200] = {false};
 uint32_t spy_node_id = 0;
-void declare_attack_states() {}
+
 
 // Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
 // Simulates the malicious controller spamming junk FlowMods to every RSU,
@@ -121158,81 +121217,66 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// eFADE: record inbound packet receipt at this node
 				fade_received[fid][current_hop].insert(packet_ID);
 
-				if(destination == current_hop)
+				// === SIGNATURE S2 DETECTION ===
+				// Check: t_recv - t_fwd > delta_max (Equation 3.6)
+				if(s2_detection_active)
 				{
-					destination_counter[fid]++;
-					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
-					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
+					// Use tagmodified_routing which is already peeked above
+					// Getprevious_senderId() returns the sim index of who forwarded this packet
+					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					
-					// === SIGNATURE S2 DETECTION ===
-					// Check: t_recv - t_fwd > delta_max (Equation 3.6)
-					if(s2_detection_active && destination == current_hop)
+					if(sender_sim_index < (uint32_t)var)
 					{
-						// Use tagmodified_routing which is already peeked above
-						// Getprevious_senderId() returns the sim index of who forwarded this packet
-						uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+						double t_recv_now = Now().GetSeconds();
+						double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
 						
-						if(sender_sim_index < (uint32_t)var)
+						if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
 						{
-							double t_recv_now = Now().GetSeconds();
-							double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
+							double hop_delay = t_recv_now - t_fwd_by_sender;
 							
-							if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
+							// cout << "[S2] Hop delay from node " << sender_sim_index
+							//      << " to node " << current_hop
+							//      << " for flow " << fid
+							//      << " packet " << packet_ID
+							//      << " = " << hop_delay * 1000.0 << "ms" << endl;
+							
+							if(hop_delay > delta_max_s2)
 							{
-								double hop_delay = t_recv_now - t_fwd_by_sender;
+								cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
+								cout << "[S2] Hop delay " << hop_delay * 1000.0
+								     << "ms exceeds threshold " 
+								     << delta_max_s2 * 1000.0 << "ms" << endl;
+								cout << "[S2] Node " << sender_sim_index
+								     << " detected as malicious attacker (variant="
+								     << active_attack_variant << ")" << endl;
 								
-								cout << "[S2] Hop delay from node " << sender_sim_index
-								     << " to node " << current_hop
-								     << " for flow " << fid
-								     << " packet " << packet_ID
-								     << " = " << hop_delay * 1000.0 << "ms" << endl;
-								
-								if(hop_delay > delta_max_s2)
+								if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
 								{
-									cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
-									cout << "[S2] Hop delay " << hop_delay * 1000.0
-									     << "ms exceeds threshold " 
-									     << delta_max_s2 * 1000.0 << "ms" << endl;
-									cout << "[S2] Node " << sender_sim_index
-									     << " detected as malicious attacker" << endl;
-									
-									if(!is_detected_node[1][sender_sim_index])
+									if(!is_detected_node[active_attack_variant][sender_sim_index])
 									{
-										record_detection_event(1, sender_sim_index);
+										record_detection_event(active_attack_variant, sender_sim_index);
 										cout << "[S2] record_detection_event fired for node "
-										     << sender_sim_index 
+										     << sender_sim_index << " variant=" << active_attack_variant
 										     << " at t=" << Now().GetSeconds() << "s" << endl;
 									}
 								}
 							}
 						}
 					}
-					// === END SIGNATURE S2 DETECTION ===
+				}
+				// === END SIGNATURE S2 DETECTION ===
 
-		// === TAP BASELINE DETECTION ===
-		// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-		// OnReceivedEmergencyPacket logic. Fires at every received packet.
-		if (tap_detection_active)
-		{
-			//uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-			//uint32_t tap_fid = tagmodified_routing.GetflowId();
-			//uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			//uint32_t tap_receiver = (uint32_t)(destination_node_id - N_Controllers);
+				// === TAP BASELINE DETECTION ===
+				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
+				// OnReceivedEmergencyPacket logic. Fires at every received packet.
+				tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
+				// === END TAP BASELINE DETECTION ===
 
-			// // Algorithm 1 Line 10: check Controller-Defaulter-List first
-			// if (tap_check_defaulter_list(tap_sender))
-			// {
-			// 	// Lines 19-20: discard packet from blacklisted node
-			// 	cout << "[TAP] Retransmission packet dropped for flow id "
-			// 		 << tap_fid << " #packet: " << tap_packet_ID << endl;
-			// }
-			// else
-			// {
-			// 	// Lines 11-18: run timing-based detection
-			// 	tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-			// }
-		}
-		// === END TAP BASELINE DETECTION ===
+				if(destination == current_hop)
+				{
+					destination_counter[fid]++;
+					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
+					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
 					{
@@ -121479,7 +121523,6 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 	if(pkt->PeekPacketTag(tag_routing))
 	{
 		uint32_t node_index = tag_routing.GetsenderId();
-		// uint32_t destination = tag_routing.GetdestinationId() + 2;
 		uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
 
 		uint32_t * source = tag_routing.GetNodeId();
@@ -123227,6 +123270,14 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // eFADE: record outbound destination at the source
     fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
 
+    // Add missing baseline timestamp for S2/TAP detection so immediate hop knows when it was dispatched.
+    // No delay is modeled at this call site (both schedule at Seconds(0)),
+    // so the claimed and actual timestamps are identical here — both are
+    // still recorded explicitly so TAP's PPAT (t_claimed_packet) and S2's
+    // hop-delay baseline (t_fwd_packet) are both populated consistently.
+    record_claimed_forward_timestamp(source, packet_ID);
+    Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, source, packet_ID);
+
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
 
@@ -123747,297 +123798,34 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						// Record hit: install on first send from source, then increment counters.
 						tcam_hit(source, fid, (uint32_t)arguments.p_size);
 
+						Ptr<NetDevice> dev_to_use;
 						switch(arguments.channel)
 						{
-							case(172):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(174):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(176):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(178):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(180):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(182):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(184):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							default:
-							break;
+							case(172): dev_to_use = wifidevices_172.Get(source); break;
+							case(174): dev_to_use = wifidevices_174.Get(source); break;
+							case(176): dev_to_use = wifidevices_176.Get(source); break;
+							case(178): dev_to_use = wifidevices.Get(source); break;
+							case(180): dev_to_use = wifidevices_180.Get(source); break;
+							case(182): dev_to_use = wifidevices_182.Get(source); break;
+							case(184): dev_to_use = wifidevices_184.Get(source); break;
+							default:   dev_to_use = wifidevices.Get(source); break;
+						}
+						
+						bool attacked = schedule_selective_delay_attack(
+							present_selective_delay_attack_nodes,
+							selective_delay_malicious_nodes[source],
+							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
+							attack_percentage,
+							source, packet_id, fid, attack2_delay_seconds,
+							routing_dsrc_data_unicast,
+							dev_to_use, dsrc_Nodes.Get(source),
+							fid, nid, arguments, total_packet_counter+1);
+							
+						if (!attacked)
+						{
+							Simulator::Schedule(Seconds(0), routing_dsrc_data_unicast,
+								dev_to_use, dsrc_Nodes.Get(source),
+								fid, nid, arguments, total_packet_counter+1);
 						}
 						
 						Simulator::Schedule (Seconds (tg+0.000050+rand_delay), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, arguments);
@@ -141382,7 +141170,17 @@ int main(int argc, char *argv[])
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
     cmd.AddValue ("use_sumo_mobility", "use_sumo_mobility", use_sumo_mobility);
+    
+    int attack_number_cli = -1; // sentinel: "not provided"
+    cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
+
     cmd.Parse (argc, argv);
+
+    if (attack_number_cli != -1)
+    {
+        attack_number = attack_number_cli;
+        attack_number_explicitly_set = true;
+    }
     
     if (routing_test == true)
     {
@@ -142980,8 +142778,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			
 		  	//DSRC flow instantiation
 		  	double t0 = 0;
-			declare_attack_states();  // Set attack flags
-  			declare_attackers();       // Mark which nodes are malicious
+
 			for (double t=t0+0.999; t<simTime-1; t=t+data_transmission_period)//All official data transmissions begin at t=0
 			{	
 				  //Go over all the wifi devices
@@ -143174,6 +142971,10 @@ if (architecture == 3 && N_Vehicles > 0)
 				  //Simulator::Schedule (Seconds (t), set_dsrc_initial_timestamp);
 			}
 			
+			// Initialize dynamic attack configurations
+			declare_attack_states();
+			declare_attackers();
+
 			// Initialize attack state before main loop
 			initialise_stub_attack_state();
 			
