@@ -115365,19 +115365,7 @@ void initialise_stub_attack_state()
             break;
         }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            // Reset all TAP state before each Attack 2 simulation run
-            for (int _n = 0; _n < total_size; _n++)
-            {
-                tap_defaulter_list[_n] = false;
-                tap_detected_node[_n]  = false;
-                tap_t_quarantine[_n]   = 0.0;
-            }
-            tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
-            tap_current_MCC=0.0; tap_current_DR=0.0;
-            tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
-            tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
-            tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
-            cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+            tap_reset_state(total_size);
             break;
 
         case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
@@ -121278,26 +121266,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
 				// OnReceivedEmergencyPacket logic. Fires at every received packet.
-				if (tap_detection_active)
-				{
-					uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-					uint32_t tap_fid = tagmodified_routing.GetflowId();
-					uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-					uint32_t tap_receiver = current_hop;
-
-					// Algorithm 1 Line 10: check Controller-Defaulter-List first
-					if (tap_check_defaulter_list(tap_sender))
-					{
-						// Lines 19-20: discard packet from blacklisted node
-						cout << "[TAP] Retransmission packet dropped for flow id "
-							 << tap_fid << " #packet: " << tap_packet_ID << endl;
-					}
-					else
-					{
-						// Lines 11-18: run timing-based detection
-						tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-					}
-				}
+				tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
 				// === END TAP BASELINE DETECTION ===
 
 				if(destination == current_hop)

@@ -189,4 +189,43 @@ inline void write_tap_csv()
 	cout << "[TAP] written to file successfully: " << filename << endl;
 }
 
+// Function 6: tap_reset_state
+inline void tap_reset_state(int total_size_val)
+{
+	for (int _n = 0; _n < total_size_val; _n++)
+	{
+		tap_defaulter_list[_n] = false;
+		tap_detected_node[_n]  = false;
+		tap_t_quarantine[_n]   = 0.0;
+	}
+	tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
+	tap_current_MCC=0.0; tap_current_DR=0.0;
+	tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
+	tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
+	tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
+	cout << "[TAP] All TAP state reset and ready for simulation run." << endl;
+}
+
+// Function 7: tap_process_packet
+inline void tap_process_packet(uint32_t receiver_current_hop,
+                               uint32_t sender_current_hop,
+                               uint32_t packet_id,
+                               uint32_t flow_id)
+{
+	if (!tap_detection_active) return;
+	
+	// Algorithm 1 Line 10: check Controller-Defaulter-List first
+	if (tap_check_defaulter_list(sender_current_hop))
+	{
+		// Lines 19-20: discard packet from blacklisted node
+		cout << "[TAP] Retransmission packet dropped for flow id "
+			 << flow_id << " #packet: " << packet_id << endl;
+	}
+	else
+	{
+		// Lines 11-18: run timing-based detection
+		tap_run_detection(receiver_current_hop, sender_current_hop, packet_id);
+	}
+}
+
 #endif // TAP_DETECTION_H
