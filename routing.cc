@@ -95057,7 +95057,8 @@ bool X_nodes[total_size];
 		if(packet->PeekPacketTag(tag_routing))
 		{
 			uint32_t node_index = tag_routing.GetsenderId();
-			uint32_t destination = tag_routing.GetdestinationId() + 2;
+			// uint32_t destination = tag_routing.GetdestinationId() + 2;
+			uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
 			uint32_t * source = tag_routing.GetNodeId();
 			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
 			packets_received_wi[*source - N_Controllers] = packets_received_wi[*source - N_Controllers] + 1;
@@ -95128,7 +95129,8 @@ bool X_nodes[total_size];
                         Mac48Address dest_address;
                         if (final_next_hop < N_Vehicles) {
                             // Find the Vehicle's Node globally (Vehicles are usually nid = 2 and 3)
-                            uint32_t global_dest_nid = final_next_hop + 2; 
+                            // uint32_t global_dest_nid = final_next_hop + 2; 
+							uint32_t global_dest_nid = final_next_hop + N_Controllers;
                             Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
                             
                             // Scan the node for its Wi-Fi device
@@ -114936,6 +114938,7 @@ bool fade_is_flow_attacked(uint32_t flow_id)
 // Forward declaration — destination_counter is defined later in the file
 // (after packet_delivery structs) but is needed here by fade_save_metrics().
 extern uint32_t destination_counter[2*flows];
+extern uint32_t origination_counter[2*flows];
 
 bool fade_is_flow_active(uint32_t flow_id)
 {
@@ -115021,8 +115024,10 @@ void fade_save_metrics()
     //   total scheduled = f_size * number_of_data_cycles per active flow
     // data_gathering_cycle_number starts at 1 and increments each cycle,
     // so after Simulator::Run() it equals (num_cycles + 1); num_cycles = it - 1.
-    uint32_t num_cycles = (uint32_t)(data_gathering_cycle_number - 1.0);
-    if (num_cycles == 0) num_cycles = 1; // guard
+    // uint32_t num_cycles = (uint32_t)(data_gathering_cycle_number - 1.0);
+    // if (num_cycles == 0) num_cycles = 1; // guard
+	uint32_t num_cycles = (uint32_t)(Simulator::Now().GetSeconds() / data_transmission_period);
+	if (num_cycles == 0) num_cycles = 1; // guard
     uint32_t g_total_delivered = 0;
     uint32_t g_total_scheduled = 0;
     for (auto &entry2 : fade_flow_config)
@@ -115031,10 +115036,22 @@ void fade_save_metrics()
         if (!entry2.second.configured) continue;
         if (!fade_is_flow_active(fid2)) continue;
         uint32_t fsz = (demanding_flow_struct_nodes_inst + fid2)->f_size;
-        if (fsz == 0) fsz = flow_size;
+        if (fsz == 0) fsz = routing_test ? 3 : flow_size;
         g_total_delivered += destination_counter[fid2];
         g_total_scheduled += fsz * num_cycles;
+        cout << "[PDR DEBUG] flow=" << fid2
+             << " fsz=" << fsz
+             << " destination_counter=" << destination_counter[fid2]
+             << " running_g_total_delivered=" << g_total_delivered
+             << " running_g_total_scheduled=" << g_total_scheduled
+             << endl;
     }
+    cout << "[PDR DEBUG TOTAL] g_total_delivered=" << g_total_delivered
+         << " g_total_scheduled=" << g_total_scheduled
+         << " num_cycles=" << num_cycles
+         << " Now=" << Simulator::Now().GetSeconds() << "s"
+         << " data_transmission_period=" << data_transmission_period
+         << endl;
     double pdr = (g_total_scheduled > 0)
         ? 100.0 * (double)g_total_delivered / (double)g_total_scheduled
         : 0.0;
@@ -115238,6 +115255,14 @@ void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
+// Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
+// included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
+inline void hf_init_attack5_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline void hf_init_attack6_dp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline void hf_init_attack7_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline void hf_init_attack8_dp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline bool hf_delta_entry_active(uint32_t flow_id, uint32_t rsu_node, uint32_t eavesdropper_node);
+inline uint32_t hf_resolve_eavesdropper(uint32_t rsu_node);
 void initialise_stub_attack_state()
 {
     // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
@@ -115317,64 +115342,71 @@ void initialise_stub_attack_state()
             break;
 
         case (4): // Attack 5 — Active Hidden Forwarding, Control Plane
-            is_malicious_node[4][6] = true;
-            t_onset[6] = 1.0;
-            t_quarantine[6] = 1.050;
-            active_hf_malicious_nodes[6] = true;
-            active_hf_eavesdropper_index = 2;
-            passive_hf_rsu_to_eavesdropper.clear();
-            passive_hf_rsu_to_eavesdropper[6] = 2;
-            passive_hf_rsu_to_eavesdropper[7] = 5;
-            present_active_hf_attack = true;
+            // 5-unit topology: RSUs=15-19, Eavesdroppers=10-14
+            // attack_percentage controls how many of the 5 RSUs are compromised.
+            // All eavesdropper mappings seeded here so hf_resolve_eavesdropper works.
+            // This hardcoded seeding is test-network specific (fixed node indices
+            // 15-19 only exist in the 5-unit test topology). In SUMO mode, real
+            // RSU indices are discovered and the map populated by
+            // hf_declare_malicious_rsus() instead — seeding bogus test-network
+            // indices here would leave stale, meaningless entries in the map
+            // that hf_reapply_cp_after_clear()/hf_reapply_dp_after_clear() would
+            // then iterate over every cycle.
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK5] [INIT] Active Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            // hf_init_attack5_cp marks malicious nodes + injects delta entries
+            // scaled by attack_percentage via hf_declare_malicious_rsus()
+            hf_init_attack5_cp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
             break;
 
         case (5): // Attack 6 — Active Hidden Forwarding, Data Plane
-            is_malicious_node[5][6] = true;
-            t_onset[6] = 1.0;
-            t_quarantine[6] = 1.050;
-            active_hf_malicious_nodes[6] = true;
-            active_hf_eavesdropper_index = 2;
-            passive_hf_rsu_to_eavesdropper.clear();
-            passive_hf_rsu_to_eavesdropper[6] = 2;
-            passive_hf_rsu_to_eavesdropper[7] = 5;
-            present_active_hf_attack = true;
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK6] [INIT] Active Hidden Forwarding (Data Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            hf_init_attack6_dp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
             break;
 
         case (6): // Attack 7 — Passive Hidden Forwarding, Control Plane
-            is_malicious_node[6][6] = true;
-            t_onset[6] = 1.0;
-            passive_hf_malicious_nodes[6] = true;
-            passive_hf_eavesdropper_index = 2;
-            passive_hf_rsu_to_eavesdropper.clear();
-            passive_hf_rsu_to_eavesdropper[6] = 2;
-            passive_hf_rsu_to_eavesdropper[7] = 5;
-            present_passive_hf_attack = true;
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            hf_init_attack7_cp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
             break;
 
-        // --- Alternate case(7) topology from routing_2_.cc (2-unit / 6-vehicle
-        // layout: RSU0=6, RSU1=7, Eavesdropper0=2, Eavesdropper1=5). Kept here
-        // commented out since routing.cc's active case(7) below uses the newer
-        // 3-node A/C/B+RSU topology via hardcode_attack7_test_network().
-        // case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
-        //     Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-        //     cout << "[ATTACK8] [INIT] Passive Hidden Forwarding (Data Plane) armed: RSU(3) malicious, eavesdropper=Node(2)" << endl;
-        //     break;
-
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
-            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
-            is_malicious_node[7][3] = true;
-            t_onset[3] = 1.0;
-            hardcode_attack7_test_network();
-            // linklifetimeMatrix_dsrc is declared after this function, so seeding
-            // is deferred to t=0 when all globals are fully initialised.
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
             Simulator::Schedule(Seconds(0.0), seed_attack8_links);
-            cout << "[ATTACK7] [INIT] Passive Hidden Forwarding (Control Plane) armed: RSU0(6) malicious, eavesdropper0=Node(2), RSU1(7) honest, eavesdropper1=Node(5)" << endl;
+            hf_init_attack8_dp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
             break;
 
 
@@ -116248,31 +116280,55 @@ vector<vector<double>> delayMatrix_ethernet;
 // -----------------------------------------------------------------------
 void seed_attack8_links()
 {
+	 // This entire function seeds hardcoded link-lifetime values for the fixed
+	 // 5-unit TEST-NETWORK topology (nodes 0-19 specifically). In SUMO mode,
+	 // those same node indices belong to real vehicles/RSUs from the SUMO trace
+	 // with their own genuine positions — writing 999.0 "always in range" links
+	 // between them here would corrupt the real link-lifetime matrix. This was
+	 // previously masked because every call site only ever ran with
+	 // routing_test=true; guarding explicitly now that HF re-apply logic also
+	 // runs unconditionally in both modes.
+	 if (!routing_test) return;
+
+	 uint32_t n = (uint32_t)var;
+    if (linklifetimeMatrix_dsrc.size() < n)
+        linklifetimeMatrix_dsrc.assign(n, std::vector<double>(n, 0.0));
+
     auto safe_set = [](uint32_t a, uint32_t b, double v) {
         if (a < linklifetimeMatrix_dsrc.size() &&
             b < linklifetimeMatrix_dsrc[a].size())
             linklifetimeMatrix_dsrc[a][b] = v;
     };
 
-    // Variants 4 (Attack5 CP), 5 (Attack6 DP), 6 (Attack7 passive CP) use the
-    // 2-unit / 6-vehicle topology (RSU0=6, RSU1=7, Eavesdropper0=2, Eavesdropper1=5),
-    // ported from routing_2_.cc. Variant 7 (Attack8 DP) uses the newer 3-node
-    // A/C/B+RSU topology below.
+    // All Hidden Forwarding variants (4-7) now use the unified 5-unit topology.
+    // Node indices: Senders=0,2,4,6,8  Destinations=1,3,5,7,9
+    //               Eavesdroppers=10,11,12,13,14  RSUs=15,16,17,18,19
     if (active_attack_variant == 4 ||
         active_attack_variant == 5 ||
-        active_attack_variant == 6)
+        active_attack_variant == 6 ||
+        active_attack_variant == 7)
     {
-        // Unit 0 links:
-        safe_set(0, 6, 999.0); safe_set(6, 0, 999.0);   // 0 <-> RSU0(6)
-        safe_set(6, 1, 999.0); safe_set(1, 6, 999.0);   // RSU0(6) <-> 1
-        safe_set(6, 2, 999.0); safe_set(2, 6, 999.0);   // RSU0(6) <-> Eavesdropper0(2) (hidden eavesdrop channel)
-
-        // Unit 1 links:
-        safe_set(3, 7, 999.0); safe_set(7, 3, 999.0);   // 3 <-> RSU1(7)
-        safe_set(7, 4, 999.0); safe_set(4, 7, 999.0);   // RSU1(7) <-> 4
-        safe_set(7, 5, 999.0); safe_set(5, 7, 999.0);   // RSU1(7) <-> Eavesdropper1(5) (hidden eavesdrop channel)
-
-        cout << "[ATTACK8] seeded link-lifetime matrix for 2 units (6 Vehicles + 2 RSUs)." << endl;
+        // Unit 0: VehA0(0) <-> RSU0(15) <-> VehB0(1), RSU0 <-> Eaves0(10)
+        safe_set(0,  15, 999.0); safe_set(15,  0, 999.0);
+        safe_set(15,  1, 999.0); safe_set( 1, 15, 999.0);
+        safe_set(15, 10, 999.0); safe_set(10, 15, 999.0);
+        // Unit 1: VehA1(2) <-> RSU1(16) <-> VehB1(3), RSU1 <-> Eaves1(11)
+        safe_set(2,  16, 999.0); safe_set(16,  2, 999.0);
+        safe_set(16,  3, 999.0); safe_set( 3, 16, 999.0);
+        safe_set(16, 11, 999.0); safe_set(11, 16, 999.0);
+        // Unit 2: VehA2(4) <-> RSU2(17) <-> VehB2(5), RSU2 <-> Eaves2(12)
+        safe_set(4,  17, 999.0); safe_set(17,  4, 999.0);
+        safe_set(17,  5, 999.0); safe_set( 5, 17, 999.0);
+        safe_set(17, 12, 999.0); safe_set(12, 17, 999.0);
+        // Unit 3: VehA3(6) <-> RSU3(18) <-> VehB3(7), RSU3 <-> Eaves3(13)
+        safe_set(6,  18, 999.0); safe_set(18,  6, 999.0);
+        safe_set(18,  7, 999.0); safe_set( 7, 18, 999.0);
+        safe_set(18, 13, 999.0); safe_set(13, 18, 999.0);
+        // Unit 4: VehA4(8) <-> RSU4(19) <-> VehB4(9), RSU4 <-> Eaves4(14)
+        safe_set(8,  19, 999.0); safe_set(19,  8, 999.0);
+        safe_set(19,  9, 999.0); safe_set( 9, 19, 999.0);
+        safe_set(19, 14, 999.0); safe_set(14, 19, 999.0);
+        cout << "[HF LINKS] Link-lifetime matrix seeded for 5-unit topology." << endl;
         return;
     }
 
@@ -116491,7 +116547,8 @@ void generate_adjacency_matrix()
 	
 	for(uint32_t i=0;i<(uint32_t)var;i++)
 	{
-		node_distance[i] = calculate_distance_to_each_node(i+2);	
+		// node_distance[i] = calculate_distance_to_each_node(i+2);	
+		node_distance[i] = calculate_distance_to_each_node(i+N_Controllers);
 	}
 	
 	/*
@@ -117713,7 +117770,7 @@ void calculate_performance_evaluation_metrics()
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
-	// Resolve the results directory dynamically using the USER or HOME environment variable
+	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
 	if (home_env != nullptr)
@@ -120435,7 +120492,9 @@ void updateTxop_self(uint32_t fid, uint32_t nodeid, uint32_t pending_packets, bo
 	txop_inst[fid].pending_packets[arguments.channel][nodeid] = pending_packets;
 }
 
-uint32_t destination_counter[2*flows];
+// uint32_t destination_counter[2*flows];
+uint32_t destination_counter[2*flows] = {0};
+uint32_t origination_counter[2*flows] = {0};  // real per-flow count of packets actually originated  // real per-flow count of packets actually originated
 vector<vector<vector<tuple<double,uint32_t,uint32_t>>>> all_sorted_delta_next_hop_flow_size;
 
 struct packet_delivery
@@ -120577,7 +120636,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // ==============================================================
                         Mac48Address dest_address;
 						if (hop < N_Vehicles) {
-							uint32_t global_dest_nid = hop + 2;
+							// uint32_t global_dest_nid = hop + 2;
+							uint32_t global_dest_nid = hop + N_Controllers;
 							Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
 							Mac48Address fallback_addr;
 							bool found_channel_match = false;
@@ -120615,7 +120675,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // 3. BULLETPROOF SENDER DEVICE LOOKUP (CHANNEL-AWARE)
                         // ==============================================================
                         Ptr <WifiNetDevice> wdi = 0;
-                        uint32_t global_src_nid = current_hop + 2;
+                        // uint32_t global_src_nid = current_hop + 2;
+						uint32_t global_src_nid = current_hop + N_Controllers;
                         Ptr<Node> sender_node = NodeList::GetNode(global_src_nid);
                         
                         for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
@@ -120691,9 +120752,10 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// The modification is simulated by flipping a content-modified flag in the log.
 						// In the real system, EdDSA would fail on the modified copy.
 						if (present_active_hf_attack &&
-						    active_hf_malicious_nodes[current_hop] &&
-						    flow_id == hf_target_flow_id &&
-						    GetBooleanWithProbability(attack_percentage, current_hop))
+							active_hf_malicious_nodes[current_hop] &&
+							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
+							flow_id == hf_target_flow_id &&
+							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
 						    uint32_t active_eaves = active_hf_eavesdropper_index;
 						    {
@@ -120735,11 +120797,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // to the eavesdropper, while forwarding the original normally.
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
                         if (present_passive_hf_attack &&
-                            passive_hf_malicious_nodes[current_hop] &&
-                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
-                            flow_id == hf_target_flow_id &&
-                            GetBooleanWithProbability(attack_percentage, current_hop))
-                        {
+							passive_hf_malicious_nodes[current_hop] &&
+							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
+							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
+							flow_id == hf_target_flow_id &&
+							GetBooleanWithProbability(attack_percentage, current_hop))
+						{
                             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
                                  << ") intercepted packet ID " << packet_id
                                  << " (flow " << flow_id << ") at t="
@@ -120815,6 +120878,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 }
 //Attack helper functions
 #include "tcam_attack_helper.h"
+#include "hf_attack_helper.h"
 
 int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
@@ -121415,7 +121479,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 	if(pkt->PeekPacketTag(tag_routing))
 	{
 		uint32_t node_index = tag_routing.GetsenderId();
-		uint32_t destination = tag_routing.GetdestinationId() + 2;
+		// uint32_t destination = tag_routing.GetdestinationId() + 2;
+		uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
+
 		uint32_t * source = tag_routing.GetNodeId();
 		if (architecture == 1)
 		{
@@ -123096,7 +123162,7 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     else 
     {
         // It's the RSU. Scan its hardware to find the exact channel card!
-        Ptr<Node> rsu_node = RSU_Nodes.Get(0); 
+        Ptr<Node> rsu_node = RSU_Nodes.Get(final_next_hop - N_Vehicles); 
         for (uint32_t i = 0; i < rsu_node->GetNDevices(); i++) 
         {
             Ptr<NetDevice> dev = rsu_node->GetDevice(i);
@@ -123399,19 +123465,83 @@ void initialize_flow_counters()
 			}
 		}
 
-		// Flow 0 (unit 0): source=0, path 0 -> 6 -> 1
-		(delta_at_nodes_inst+0)->delta_fi_inst[0].delta_values[6] = 1.0;  // 0 -> 6
+		// Flow 0 (unit 0): source=0, path 0 -> 15 -> 1 (RSU0=15)
+		(delta_at_nodes_inst+0)->delta_fi_inst[0].delta_values[15] = 1.0;  // 0 -> 15
 		(load_at_nodes+0)->load_f[0] = 1.0;
-		(delta_at_nodes_inst+0)->delta_fi_inst[6].delta_values[1] = 1.0;  // 6 -> 1
-		(load_at_nodes+0)->load_f[6] = 1.0;
-		cout << "[TEST NET] Delta seeded (pre-build): flow 0: 0->6->1, flow_size=" << flow_size << endl;
+		(delta_at_nodes_inst+0)->delta_fi_inst[15].delta_values[1] = 1.0;  // 15 -> 1
+		(load_at_nodes+0)->load_f[15] = 1.0;
+		// FADE PDR denominator fix: demanding_flow_struct_nodes_inst->f_size is
+		// never set in routing_test mode, so fade_compute_metrics() falls back
+		// to the default flow_size=55 instead of the actual 3 packets/cycle we
+		// send, producing artificially low PDR (e.g. 7.6% instead of ~100%).
+		(demanding_flow_struct_nodes_inst+0)->f_size = 3;
+		cout << "[TEST NET] Delta seeded (pre-build): flow 0: 0->15->1, flow_size=" << flow_size << endl;
 
-		// Flow 1 (unit 1): source=3, path 3 -> 7 -> 4
-		(delta_at_nodes_inst+1)->delta_fi_inst[3].delta_values[7] = 1.0;  // 3 -> 7
-		(load_at_nodes+1)->load_f[3] = 1.0;
-		(delta_at_nodes_inst+1)->delta_fi_inst[7].delta_values[4] = 1.0;  // 7 -> 4
-		(load_at_nodes+1)->load_f[7] = 1.0;
-		cout << "[TEST NET] Delta seeded (pre-build): flow 1: 3->7->4, flow_size=" << flow_size << endl;
+		// Flow 1 (unit 1): source=2, path 2 -> 16 -> 3 (RSU1=16)
+		(delta_at_nodes_inst+1)->delta_fi_inst[2].delta_values[16] = 1.0;  // 2 -> 16
+		(load_at_nodes+1)->load_f[2] = 1.0;
+		(delta_at_nodes_inst+1)->delta_fi_inst[16].delta_values[3] = 1.0;  // 16 -> 3
+		(load_at_nodes+1)->load_f[16] = 1.0;
+		(demanding_flow_struct_nodes_inst+1)->f_size = 3;
+		cout << "[TEST NET] Delta seeded (pre-build): flow 1: 2->16->3, flow_size=" << flow_size << endl;
+
+		// Re-apply the HF attack's poisoned delta entry AFTER clearing, so it
+		// survives into this cycle. Without this, the clear above wipes out
+		// whatever hf_cp_inject_delta / hf_dp_inject_delta already wrote.
+		// Re-apply the HF attack's poisoned delta entry AFTER clearing, so it
+		// survives into this cycle. Without this, the clear above wipes out
+		// whatever hf_cp_inject_delta / hf_dp_inject_delta already wrote.
+		if (active_attack_variant == 4 || active_attack_variant == 6)
+		{
+			// CP variants (5, 7): re-poison the controller table each cycle.
+			// NOTE: transmit_delta_values() exists in this codebase as the intended
+			// mechanism to carry this poisoned value down to the RSU's local table,
+			// but it has no corresponding receive handler anywhere (no code ever
+			// calls GetPacketTag<CustomDeltavaluesDownlinkUnicastTag>() to unpack and
+			// apply an incoming downlink), so calling it would build and send a
+			// packet that is silently dropped on arrival. Rather than build new
+			// network-receive infrastructure outside this project's scope, we
+			// directly write both tables here, honestly representing the end state
+			// of "the controller's malicious rule has been delivered and installed
+			// at the RSU" without depending on incomplete transport machinery.
+			for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+			{
+				uint32_t rsu_node   = kv.first;
+				uint32_t eaves_node = kv.second;
+				if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
+				{
+					(delta_at_controller_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+					(delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				}
+			}
+		}
+		else if (active_attack_variant == 5 || active_attack_variant == 7)
+		{
+			// DP variants (6, 8): re-poison the RSU's OWN local table each cycle.
+			// Without this, the clear above wipes out hf_dp_inject_delta's work
+			// after the first cycle, since DP never touches the controller table
+			// and therefore has no other mechanism to survive the periodic clear.
+			// Controller table is intentionally left untouched — DP attacks never
+			// involve the controller.
+			cout << "[DP REAPPLY CHECK] branch reached at t=" << Simulator::Now().GetSeconds()
+			     << "s, map size=" << passive_hf_rsu_to_eavesdropper.size() << endl;
+			// DP variants (6, 8): re-poison the RSU's OWN local table each cycle.
+			cout << "[DP REAPPLY CHECK] active_hf_malicious_nodes[15]=" << active_hf_malicious_nodes[15]
+			     << " passive_hf_malicious_nodes[15]=" << passive_hf_malicious_nodes[15] << endl;
+			for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+			{
+				uint32_t rsu_node   = kv.first;
+				uint32_t eaves_node = kv.second;
+				if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
+				{
+					(delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+					if (rsu_node == 15)
+						cout << "[DP REAPPLY WRITE] t=" << Simulator::Now().GetSeconds()
+						     << "s wrote delta_at_NODES[15][10]=0.5" << endl;
+				}
+			}
+		}
+	
 	}
 
 	for (uint32_t fid=0;fid<2*flows;fid++)
@@ -123914,7 +124044,9 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						routing_packet_initial_timestamp[fid][packet_id] = Now().GetSeconds();
 						sent_IDS[fid][source][packet_id] = true;
 						routing_packet_general_initial_timestamp[fid][source][packet_id] = Now().GetSeconds();
+						// pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id]++;
 						pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id]++;
+						origination_counter[fid]++;
 					}
 					else
 					{
@@ -141178,6 +141310,49 @@ double inv_factorial(long int n)
 }
 
 
+// =====================================================
+// seed_routing_test_tables — plain free function
+// (NS-3 3.35 Simulator::Schedule does not accept lambdas)
+// Seeds all 5 unit paths into proposed_routing_tables so
+// fade_configure_flow and hf_declare_malicious_rsus can find all RSUs.
+// Paths: 0->15->1, 2->16->3, 4->17->5, 6->18->7, 8->19->9
+// =====================================================
+void seed_routing_test_tables()
+{
+    if (!routing_test) return;
+    uint32_t path[total_size];
+
+    // Unit 0
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 0; path[1] = 15; path[2] = 1;
+    update_proposed_route(0, 1, path);
+    std::cout << "[FADE SEED] 0->15->1 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 1
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 2; path[1] = 16; path[2] = 3;
+    update_proposed_route(2, 3, path);
+    std::cout << "[FADE SEED] 2->16->3 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 2
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 4; path[1] = 17; path[2] = 5;
+    update_proposed_route(4, 5, path);
+    std::cout << "[FADE SEED] 4->17->5 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 3
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 6; path[1] = 18; path[2] = 7;
+    update_proposed_route(6, 7, path);
+    std::cout << "[FADE SEED] 6->18->7 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 4
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 8; path[1] = 19; path[2] = 9;
+    update_proposed_route(8, 9, path);
+    std::cout << "[FADE SEED] 8->19->9 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+}
+
 int main(int argc, char *argv[])
 {        
     initialize_empty();
@@ -141213,25 +141388,20 @@ int main(int argc, char *argv[])
     {
         if (active_attack_variant == 4 ||
             active_attack_variant == 5 ||
-            active_attack_variant == 6)
+            active_attack_variant == 6 ||
+            active_attack_variant == 7)
         {
-            N_Vehicles = 6; // VehicleA0(0), VehicleB0(1), Eavesdropper0(2), VehicleA1(3), VehicleB1(4), Eavesdropper1(5)
-            // NOTE: single_cycle is NOT auto-forced here. It defaults to false
-            // (full flow volume) and is controlled solely by --single_cycle on
-            // the command line. Pass --single_cycle=1 for a clean one-packet log
-            // when verifying the attack steps; omit it (or pass 0) for real
-            // PDR/PIR measurements with the full flow_size.
-            N_RSUs = 2;     // RSU0(6), RSU1(7)
-        }
-        else if (active_attack_variant == 7)
-        {
-            N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
-            // Default to single_cycle for attack 7 test — one packet per flow
-            // shows exactly one eavesdrop event clearly in the log.
-            // Override with --single_cycle=0 to restore full flow volume.
-            if (!single_cycle)
-                single_cycle = true;
-            N_RSUs = 1;
+            // 5-unit unified topology for all Hidden Forwarding variants (5-8).
+            // Each unit has: Sender, Destination, Eavesdropper (3 vehicles) + 1 RSU.
+            // 5 units × 3 vehicles = 15 vehicles; 5 RSUs.
+            // Node index layout:
+            //   Vehicles 0-9:  Senders(0,2,4,6,8) and Destinations(1,3,5,7,9) — 2 per unit
+            //   Vehicles 10-14: Eavesdroppers — 1 per unit (10=unit0, 11=unit1, ...)
+            //   RSUs 15-19:    RSU0..RSU4 — 1 per unit
+            // attack_percentage controls how many RSUs are compromised:
+            //   20% = 1 RSU, 40% = 2, 60% = 3, 80% = 4, 100% = 5
+            N_Vehicles = 15;
+            N_RSUs = 5;
         }
         else
         {
@@ -141330,41 +141500,48 @@ int main(int argc, char *argv[])
 
 		if (active_attack_variant == 4 ||
             active_attack_variant == 5 ||
-            active_attack_variant == 6)
+            active_attack_variant == 6 ||
+            active_attack_variant == 7)
     {
-        // Two-unit topology setup (6 Vehicles):
-        // Node 0: Vehicle A0
-        // Node 1: Vehicle B0
-        // Node 2: Eavesdropper 0
-        // Node 3: Vehicle A1
-        // Node 4: Vehicle B1
-        // Node 5: Eavesdropper 1
-        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0
-        positionAlloc->Add(Vector(600.0, 150.0, 0.0)); // Node 1
-        positionAlloc->Add(Vector(375.0, 220.0, 0.0)); // Node 2
-        positionAlloc->Add(Vector(1300.0, 150.0, 0.0)); // Node 3
-        positionAlloc->Add(Vector(1600.0, 150.0, 0.0)); // Node 4
-        positionAlloc->Add(Vector(1375.0, 220.0, 0.0)); // Node 5
-        cout << attack_tag() << " [INIT] Vehicle A0 (node 0): (300,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B0 (node 1): (600,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Eavesdropper 0 (node 2): (375,220,0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle A1 (node 3): (1300,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B1 (node 4): (1600,150,0)" << endl;
-        cout << attack_tag() << " [INIT] Eavesdropper 1 (node 5): (1375,220,0)" << endl;
-    }
-    else if (active_attack_variant == 7)
-    {
-        // Attack 7 topology:
-        // Vehicle A (node 0) at (300, 150, 0)
-        // Vehicle C (node 1) at (800, 150, 0) — legitimate destination
-        // Vehicle B (node 2) at (550, 300, 0) — eavesdropper, close to RSU
-        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0: Vehicle A (sender)
-        positionAlloc->Add(Vector(800.0, 150.0, 0.0)); // Node 1: Vehicle C (legit dest)
-        positionAlloc->Add(Vector(550.0, 300.0, 0.0)); // Node 2: Vehicle B (eavesdropper)
-        cout << attack_tag() << " [INIT] Vehicle A  (node 0): (300, 150, 0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle C  (node 1): (800, 150, 0) - legit destination" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B  (node 2): (550, 300, 0) - eavesdropper" << endl;
-        cout << attack_tag() << " [INIT] RSU        (node 3): (550,  75, 0) - MALICIOUS" << endl;
+        // Unified 5-unit topology for all Hidden Forwarding variants (Attacks 5-8).
+        // All links are <= 200m (well within 250m range limit).
+        // Units are spaced 700m apart so cross-unit links are ~300m (out of range).
+        //
+        // Layout per unit (RSU is centre point):
+        //   Sender      = RSU_x - 200m  (left)
+        //   Destination = RSU_x + 200m  (right)
+        //   Eavesdropper= RSU position + 150m down
+        //
+        // Unit 0: RSU0 at (300, 150)
+        positionAlloc->Add(Vector(100.0,  150.0, 0.0)); // Node  0: VehA0  (sender unit 0)
+        positionAlloc->Add(Vector(500.0,  150.0, 0.0)); // Node  1: VehB0  (dest   unit 0)
+        // Unit 1: RSU1 at (1000, 150)
+        positionAlloc->Add(Vector(800.0,  150.0, 0.0)); // Node  2: VehA1  (sender unit 1)
+        positionAlloc->Add(Vector(1200.0, 150.0, 0.0)); // Node  3: VehB1  (dest   unit 1)
+        // Unit 2: RSU2 at (1700, 150)
+        positionAlloc->Add(Vector(1500.0, 150.0, 0.0)); // Node  4: VehA2  (sender unit 2)
+        positionAlloc->Add(Vector(1900.0, 150.0, 0.0)); // Node  5: VehB2  (dest   unit 2)
+        // Unit 3: RSU3 at (2400, 150)
+        positionAlloc->Add(Vector(2200.0, 150.0, 0.0)); // Node  6: VehA3  (sender unit 3)
+        positionAlloc->Add(Vector(2600.0, 150.0, 0.0)); // Node  7: VehB3  (dest   unit 3)
+        // Unit 4: RSU4 at (3100, 150)
+        positionAlloc->Add(Vector(2900.0, 150.0, 0.0)); // Node  8: VehA4  (sender unit 4)
+        positionAlloc->Add(Vector(3300.0, 150.0, 0.0)); // Node  9: VehB4  (dest   unit 4)
+        // Eavesdroppers — one per unit, 150m below their RSU
+        positionAlloc->Add(Vector(300.0,  300.0, 0.0)); // Node 10: Eaves0 (unit 0)
+        positionAlloc->Add(Vector(1000.0, 300.0, 0.0)); // Node 11: Eaves1 (unit 1)
+        positionAlloc->Add(Vector(1700.0, 300.0, 0.0)); // Node 12: Eaves2 (unit 2)
+        positionAlloc->Add(Vector(2400.0, 300.0, 0.0)); // Node 13: Eaves3 (unit 3)
+        positionAlloc->Add(Vector(3100.0, 300.0, 0.0)); // Node 14: Eaves4 (unit 4)
+        cout << attack_tag() << " [INIT] 5-unit HF topology (N_Vehicles=15, N_RSUs=5)" << endl;
+        cout << attack_tag() << " [INIT] Unit0: VehA0(0)=(100,150) RSU0(15)=(300,150) VehB0(1)=(500,150) Eaves0(10)=(300,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit1: VehA1(2)=(800,150) RSU1(16)=(1000,150) VehB1(3)=(1200,150) Eaves1(11)=(1000,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit2: VehA2(4)=(1500,150) RSU2(17)=(1700,150) VehB2(5)=(1900,150) Eaves2(12)=(1700,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit3: VehA3(6)=(2200,150) RSU3(18)=(2400,150) VehB3(7)=(2600,150) Eaves3(13)=(2400,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit4: VehA4(8)=(2900,150) RSU4(19)=(3100,150) VehB4(9)=(3300,150) Eaves4(14)=(3100,300)" << endl;
+        cout << attack_tag() << " [INIT] attack_percentage=" << attack_percentage
+             << "% -> " << (int)std::ceil(5.0 * attack_percentage / 100.0)
+             << " of 5 RSUs will be compromised." << endl;
     }
     else
     {
@@ -141888,21 +142065,28 @@ int main(int argc, char *argv[])
   	con_base_posy = 600;
   	lte_base_posx = 450;
   	lte_base_posy = 600;
-    // TODO: con_base_posx/posy, lte_base_posx/posy above are
+    // TODO: man_base_posx/posy, con_base_posx/posy, lte_base_posx/posy above are
     // tuned for the variant-7 (3-node) layout. Attacks 5/6/7 (variants 4/5/6,
     // 2-unit/6-vehicle topology spanning x=300..1600) likely need their own
     // base positions — to be addressed separately. Left unchanged for now.
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
     if (active_attack_variant == 4 ||
         active_attack_variant == 5 ||
-        active_attack_variant == 6)
+        active_attack_variant == 6 ||
+        active_attack_variant == 7)
     {
-        // 2-unit topology RSUs (nodes 6-7):
-        rsuPositionAlloc->Add(Vector(450.0, 150.0, 0.0)); // Node 6: RSU0
-        rsuPositionAlloc->Add(Vector(1450.0, 150.0, 0.0)); // Node 7: RSU1
-        cout << "[TEST NETWORK] 2-unit RSU positions set:" << endl;
-        cout << "[TEST NETWORK] RSU0 (node 6): (450,150,0)" << endl;
-        cout << "[TEST NETWORK] RSU1 (node 7): (1450,150,0)" << endl;
+        // 5-unit topology RSUs (nodes 15-19), one per unit at unit centre:
+        rsuPositionAlloc->Add(Vector(300.0,  150.0, 0.0)); // Node 15: RSU0 (unit 0)
+        rsuPositionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 16: RSU1 (unit 1)
+        rsuPositionAlloc->Add(Vector(1700.0, 150.0, 0.0)); // Node 17: RSU2 (unit 2)
+        rsuPositionAlloc->Add(Vector(2400.0, 150.0, 0.0)); // Node 18: RSU3 (unit 3)
+        rsuPositionAlloc->Add(Vector(3100.0, 150.0, 0.0)); // Node 19: RSU4 (unit 4)
+        cout << "[TEST NETWORK] 5-unit RSU positions set:" << endl;
+        cout << "[TEST NETWORK] RSU0 (node 15): (300,150,0)"  << endl;
+        cout << "[TEST NETWORK] RSU1 (node 16): (1000,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU2 (node 17): (1700,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU3 (node 18): (2400,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU4 (node 19): (3100,150,0)" << endl;
     }
     else
     {
@@ -141911,7 +142095,8 @@ int main(int argc, char *argv[])
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
     if (active_attack_variant != 4 &&
         active_attack_variant != 5 &&
-        active_attack_variant != 6)
+        active_attack_variant != 6 &&
+        active_attack_variant != 7)
     {
         cout << "[TEST NETWORK] Positions set (spread for NetAnim):" << endl;
         cout << "[TEST NETWORK] Vehicle A   : (300, 300, 0)  Node 0" << endl;
@@ -142542,6 +142727,17 @@ int main(int argc, char *argv[])
   wifidevices_180 = wifi_180.Install (Phy_180, Mac_180, dsrc_Nodes);
   wifidevices_182 = wifi_182.Install (Phy_182, Mac_182, dsrc_Nodes);
   wifidevices_184 = wifi_184.Install (Phy_184, Mac_184, dsrc_Nodes);
+	cout << "[DSRC INSTALL CHECK] dsrc_Nodes.GetN()=" << dsrc_Nodes.GetN()
+		<< " wifidevices_184.GetN()=" << wifidevices_184.GetN()
+		<< " Vehicle_Nodes.GetN()=" << Vehicle_Nodes.GetN()
+		<< " RSU_Nodes.GetN()=" << RSU_Nodes.GetN() << endl;
+	for (uint32_t _i = 0; _i < dsrc_Nodes.GetN(); _i++) {
+		Ptr<Node> _n = dsrc_Nodes.Get(_i);
+		cout << "[DSRC NODE CHECK] container_index=" << _i
+			<< " ns3_node_id=" << _n->GetId()
+			<< " device_count=" << _n->GetNDevices() << endl;
+	}
+
   
   NetDeviceContainer enbdevices;
   NetDeviceContainer uedevices;
@@ -142810,15 +143006,15 @@ if (architecture == 3 && N_Vehicles > 0)
     						{
     							if (active_attack_variant == 4 ||
     							    active_attack_variant == 5 ||
-    							    active_attack_variant == 6)
+    							    active_attack_variant == 6 ||
+    							    active_attack_variant == 7)
     							{
-    								// 2-unit topology (Attacks 5/6/7): flow 1 = unit 1, path 3->7->4
-									source = 3;
-    								destination = 4;
+    								// 5-unit topology: flow 1 = unit 1 (VehA1(2)->VehB1(3))
+									source = 2;
+    								destination = 3;
     							}
     							else
     							{
-    								// source = 11;
 								source = 1;
     							destination = 0;
     							}
@@ -142986,7 +143182,19 @@ if (architecture == 3 && N_Vehicles > 0)
 			  	for (double t=t0+1.000 ; t<simTime-1; t=t+data_transmission_period)
 			  	{	
 			  		  Simulator::Schedule(Seconds(t),clear_delta_at_nodes, delta_at_nodes_inst);
-			  		 
+						// hf_reapply_dp_after_clear / hf_reapply_cp_after_clear are internally
+						// guarded by active_attack_variant and the malicious-node maps, so they
+						// are safe no-ops when no HF attack is active. They must run in BOTH
+						// routing_test and SUMO modes: clear_delta_at_nodes() above wipes
+						// delta_at_nodes_inst at the start of every cycle regardless of mode,
+						// and SUMO's hf_declare_malicious_rsus() injects the attack only once
+						// at attack_start_time with no other periodic re-apply mechanism of its
+						// own — without this running unconditionally, HF attacks (especially DP,
+						// which has no other source of truth) would go dormant after one cycle
+						// in SUMO runs.
+						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
+											
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 						{
 							if (architecture != 3)
@@ -143000,8 +143208,10 @@ if (architecture == 3 && N_Vehicles > 0)
 						}
 					  //calculate the routing solution
 					  //unicast the solution back to nodes
-					  
-					  Simulator::Schedule(Seconds(t+0.034500),run_optimization_link_lifetime);
+					  if(routing_test == false){
+						Simulator::Schedule(Seconds(t+0.034500),run_optimization_link_lifetime);
+					  }
+					  					  
 					  Simulator::Schedule(Seconds(t+0.034800),update_flows);
 					  Simulator::Schedule(Seconds(t+0.034900+(2*(flows+1)*0.000050)),filter_flows);
 					  
@@ -143124,7 +143334,8 @@ if (architecture == 3 && N_Vehicles > 0)
 			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
 	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 7;
-	  		cout<<"destination id: "<<destination+2<<endl;
+	  		// cout<<"destination id: "<<destination+2<<endl;
+			cout<<"destination id: "<<destination+N_Controllers<<endl;
 	  		Simulator::Schedule (Seconds (t+0.10), send_distributed_packets, destination);
 			Simulator::Schedule (Seconds (t+0.10), set_dsrc_initial_timestamp);
 			Simulator::Schedule (Seconds (t+(data_transmission_period - 0.005)), calculate_aodv_metrics);
@@ -143293,7 +143504,8 @@ if (architecture == 3 && N_Vehicles > 0)
 		  	srand(data_transmission_frequency*t);
 	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 5;
-	  		cout<<"destination id: "<<destination+2<<endl;
+	  		// cout<<"destination id: "<<destination+2<<endl;
+			cout<<"destination id: "<<destination+N_Controllers<<endl;
 	  		Simulator::Schedule (Seconds (t), send_hybrid_packets, destination);
 	  		//Simulator::Schedule (Seconds (t+0.100), calculate_centralized_metrics_routing); 
 		}
@@ -143422,30 +143634,17 @@ fade_csv << "FlowID,"
 // written by the normal dijkstra path, so we seed it explicitly at t=1.060
 // (after run_proposed_RL at t=1.035, before fade_configure at t=1.080).
 // =====================================================
-// Seed function: writes the known routing_test path into proposed_routing_tables
-// so fade_configure_flow can find path_len=3 (nodes 0->RSU->1).
-auto seed_routing_test_tables = []()
-{
-    if (!routing_test) return;
-    uint32_t seed_path_0[total_size];
-    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path_0[_p] = large;
-    seed_path_0[0] = 0;        // VehicleA0
-    seed_path_0[1] = 6;        // RSU0
-    seed_path_0[2] = 1;        // VehicleB0
-    update_proposed_route(0, 1, seed_path_0);
-    std::cout << "[FADE SEED] proposed_routing_tables seeded: 0->6->1 at t="
-              << Simulator::Now().GetSeconds() << "s" << std::endl;
-
-    uint32_t seed_path_1[total_size];
-    for (uint32_t _p = 0; _p < (uint32_t)total_size; _p++) seed_path_1[_p] = large;
-    seed_path_1[0] = 3;        // VehicleA1
-    seed_path_1[1] = 7;        // RSU1
-    seed_path_1[2] = 4;        // VehicleB1
-    update_proposed_route(3, 4, seed_path_1);
-    std::cout << "[FADE SEED] proposed_routing_tables seeded: 3->7->4 at t="
-              << Simulator::Now().GetSeconds() << "s" << std::endl;
-};
-Simulator::Schedule(Seconds(1.060), seed_routing_test_tables);
+// Seed function: writes the known routing_test paths into proposed_routing_tables
+// so fade_configure_flow and hf_declare_malicious_rsus can find all 5 RSUs.
+// 5-unit topology: path i = VehA_i -> RSU_i -> VehB_i
+//   Unit 0: 0  -> 15 -> 1
+//   Unit 1: 2  -> 16 -> 3
+//   Unit 2: 4  -> 17 -> 5
+//   Unit 3: 6  -> 18 -> 7
+//   Unit 4: 8  -> 19 -> 9
+// NS-3 3.35 Simulator::Schedule cannot accept lambdas — must be a plain function.
+// seed_routing_test_tables is defined as a free function below and called via pointer.
+Simulator::Schedule(Seconds(1.060), &seed_routing_test_tables);
 Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
 
 // Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
