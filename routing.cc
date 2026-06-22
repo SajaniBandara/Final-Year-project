@@ -104,13 +104,6 @@ uint32_t N_Controllers = 4;
 // Populated in main() once RSU positions are known.
 uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
 
-// Warm-up filter: the SUMO mobility trace is NOT re-zeroed, so ns-3 t=0
-// corresponds to SUMO t=0 (vehicles still spawning in). CSV result writers
-// skip rows while Now().GetSeconds() < warmup_time_seconds so every result
-// file only ever contains post-warmup (fully-populated network) data,
-// without needing to manually trim rows during analysis.
-// Default 30.0 matches the supervisor's "300s excludes warm-up" requirement
-// (SUMO spawns are clustered in t=0-30s). CLI-configurable via --warmup_time_seconds.
 double warmup_time_seconds = 0.0;
 
 const int total_size = 300; // must be >= N_Vehicles + N_RSUs + N_Controllers.
@@ -94569,72 +94562,6 @@ void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * pat
 	}
 }
 
-// Forward declarations: Vehicle_Nodes and RSU_Nodes are defined later in
-// this file (~line 94638), but find_next_hop() (below) needs to look up
-// live vehicle/RSU positions for nearest-RSU routing. This forward
-// declaration lets the compiler resolve the names at this earlier point;
-// the actual containers are populated later in setup, well before any
-// real simulation traffic causes find_next_hop() to be called.
-extern NodeContainer Vehicle_Nodes;
-extern NodeContainer RSU_Nodes;
-
-// Returns true if node_index falls within the RSU range
-// [N_Vehicles, N_Vehicles + N_RSUs), generalizing find_next_hop()'s
-// architecture-3 fast path beyond the single hardcoded rsu_index.
-inline bool is_rsu_index(uint32_t node_index)
-{
-    return node_index >= N_Vehicles && node_index < (N_Vehicles + N_RSUs);
-}
-
-// Returns the RSU index (in the [N_Vehicles, N_Vehicles+N_RSUs) node-ID
-// space, matching is_rsu_index()'s convention) of the RSU nearest to the
-// given vehicle node index, by current live position. Computed fresh on
-// every call (not cached) since vehicles move continuously under SUMO
-// mobility — unlike the one-time nearest-controller assignment at setup,
-// a vehicle's nearest RSU can change over the simulation's duration.
-// Falls back to RSU index N_Vehicles (the first RSU) if no valid position
-// data is available for any reason, preserving the previous hardcoded
-// behavior as a safe degradation path rather than crashing or returning
-// an invalid index.
-uint32_t find_nearest_rsu(uint32_t vehicle_index)
-{
-    if (vehicle_index >= N_Vehicles || N_RSUs == 0)
-    {
-        return N_Vehicles; // fallback: original hardcoded behavior
-    }
-
-    Ptr<ConstantVelocityMobilityModel> veh_mdl = DynamicCast<ConstantVelocityMobilityModel>
-        (Vehicle_Nodes.Get(vehicle_index)->GetObject<MobilityModel>());
-    if (!veh_mdl)
-    {
-        return N_Vehicles; // fallback: cast failed, preserve old behavior
-    }
-    Vector veh_pos = veh_mdl->GetPosition();
-
-    double min_dist = 1e18;
-    uint32_t best_rsu_offset = 0; // offset within RSU_Nodes, 0..N_RSUs-1
-
-    for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
-    {
-        Ptr<ConstantVelocityMobilityModel> rsu_mdl = DynamicCast<ConstantVelocityMobilityModel>
-            (RSU_Nodes.Get(r)->GetObject<MobilityModel>());
-        if (!rsu_mdl) continue; // skip any RSU with no valid position model
-
-        Vector rsu_pos = rsu_mdl->GetPosition();
-        double dx = veh_pos.x - rsu_pos.x;
-        double dy = veh_pos.y - rsu_pos.y;
-        double dist = sqrt(dx*dx + dy*dy);
-
-        if (dist < min_dist)
-        {
-            min_dist = dist;
-            best_rsu_offset = r;
-        }
-    }
-
-    return N_Vehicles + best_rsu_offset; // convert offset to node-ID space
-}
-
 uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_hop)
 {
     // ==============================================================
@@ -94647,13 +94574,11 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
         //    position, not a hardcoded RSU 0).
         if (current_hop < N_Vehicles && destination < N_Vehicles && current_hop != destination)
         {
-            return find_nearest_rsu(current_hop);
+            return rsu_index; 
         }
         
-        // 2. If the packet is currently AT any RSU (not just RSU 0), forward
-        //    it down to the destination vehicle. This is the generalization —
-        //    previously only matched current_hop == N_Vehicles exactly.
-        if (is_rsu_index(current_hop) && destination < N_Vehicles)
+ 		// 2. If the RSU is holding the packet, it forwards it down to the destination Vehicle
+        if (current_hop == rsu_index && destination < N_Vehicles)
         {
             return destination;
         }
@@ -94670,6 +94595,7 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     {
         // Safety Break: Prevent infinite loop if the path is broken
         if (k > 50) { 
+			cout << "ERROR: Route not found in proposed_routing_tables!" << endl;
             return destination; 
         }
         
@@ -95216,9 +95142,12 @@ bool X_nodes[total_size];
                         // ==============================================================
                         // ENFORCE ARCHITECTURE 3: MAC-LAYER OVERRIDE
                         // ==============================================================
+						cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
                         if (architecture == 3 && N_RSUs > 0)
                         {
-                            uint32_t rsu_index = N_Vehicles; // e.g., index 2
+                            uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
+        
+        					// 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
                             if (current_hop < N_Vehicles && destination-N_Controllers < N_Vehicles && current_hop != destination-N_Controllers) {
                                 final_next_hop = rsu_index;
                             } else if (current_hop == rsu_index && destination-N_Controllers < N_Vehicles) {
@@ -112095,8 +112024,7 @@ void send_LTE_metadata_uplink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Nod
 
   	Ptr <Ipv4> ipv4;  	
   	ipv4 = destination_node->GetObject<Ipv4>();
-	uint32_t interface_idx = (architecture == 3) ? 1 : 2;
-	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
+	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	uint32_t nid = uint32_t(nu->GetId());
@@ -113077,13 +113005,13 @@ void write_csv_status_lifetime()
 		{
 		//cout<<"writing status "<<i<<endl;
 		fout << var << ", "
-		     << (routing_data_at_nodes_inst+i)->nodeid << ", "
-		     << (routing_data_at_nodes_inst+i)->position.x << ", "
-		     << (routing_data_at_nodes_inst+i)->position.y << ", "
-		     << (routing_data_at_nodes_inst+i)->velocity.x<< ", "
-		     << (routing_data_at_nodes_inst+i)->velocity.y << ", "
-		     << (routing_data_at_nodes_inst+i)->acceleration.x << ", "
-		     << (routing_data_at_nodes_inst+i)->acceleration.y << ", "
+		     << (routing_data_at_controller_inst+i)->nodeid << ", "
+		     << (routing_data_at_controller_inst+i)->position.x << ", "
+		     << (routing_data_at_controller_inst+i)->position.y << ", "
+		     << (routing_data_at_controller_inst+i)->velocity.x<< ", "
+		     << (routing_data_at_controller_inst+i)->velocity.y << ", "
+		     << (routing_data_at_controller_inst+i)->acceleration.x << ", "
+		     << (routing_data_at_controller_inst+i)->acceleration.y << ", "
 		     << mobility_scenario << ", "
 		     << N_Vehicles << ", "
 		     << N_RSUs << ", "
@@ -113092,30 +113020,6 @@ void write_csv_status_lifetime()
 	fout.close();
 	cout<<"finished writing link lifetime status at"<<Now().GetSeconds()<<endl;
 
-	// TEMPORARY DIAGNOSTIC — count nodes with nonzero velocity each cycle
-	{
-		uint32_t nonzero_velocity_count = 0;
-		uint32_t total_checked = 0;
-		for (uint32_t i = N_Controllers; i < total_size + N_Controllers; i++)
-		{
-			if ((i - N_Controllers) >= (uint32_t)var) continue;
-			Ptr<Node> diag_node;
-			if ((i - N_Controllers) < N_Vehicles)
-				diag_node = DynamicCast<Node>(Vehicle_Nodes.Get(i - N_Controllers));
-			else
-				diag_node = DynamicCast<Node>(RSU_Nodes.Get(i - N_Controllers - N_Vehicles));
-			if (!diag_node) continue;
-			Ptr<ConstantVelocityMobilityModel> diag_mdl =
-				DynamicCast<ConstantVelocityMobilityModel>(diag_node->GetObject<MobilityModel>());
-			if (!diag_mdl) continue;
-			Vector v = diag_mdl->GetVelocity();
-			total_checked++;
-			if (v.x != 0.0 || v.y != 0.0) nonzero_velocity_count++;
-		}
-		cout << "[DIAG-VEL-COVERAGE] t=" << Simulator::Now().GetSeconds()
-		     << " nonzero_velocity=" << nonzero_velocity_count
-		     << " / total_checked=" << total_checked << endl;
-	}
 }
 
 void write_csv_status()
@@ -115786,15 +115690,6 @@ void hardcode_attack7_test_network()
 
 void write_csv_results_routing()
 {
-	// Skip all CSV result writes while still inside the SUMO warm-up window
-	// (vehicles still spawning in, network not yet at full 200-vehicle density).
-	// This means every results CSV only ever contains valid post-warmup data,
-	// so no manual row-trimming is needed when analysing results later.
-	if (Simulator::Now().GetSeconds() < warmup_time_seconds)
-	{
-		return;
-	}
-
 	fstream fout;
 	string filename;
 
@@ -116421,6 +116316,7 @@ void write_csv_results_routing()
 	     << current_load_balance<< ", "
 	     << average_load_balance<< ", "
 	     << "\n";
+	data_gathering_cycle_number++;
 	fout.close();
 	cout<<"written to file successfully"<<endl;
 }
@@ -116839,7 +116735,7 @@ void run_stable_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = total_size;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		proposed_algo2_output_inst[flow_id].met[i] = false;
@@ -116891,7 +116787,7 @@ void run_distance_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = total_size;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		distance_algo2_output_inst[flow_id].met[i] = false;
@@ -117928,7 +117824,6 @@ void fade_write_per_cycle_csv(std::string dir)
 
 void calculate_performance_evaluation_metrics()
 {
-	data_gathering_cycle_number += 1.0;
 
 	Simulator::Schedule(Seconds(0.000000), calculate_average_latency_routing);
 	Simulator::Schedule(Seconds(0.000020), calculate_average_packet_delivery_ratio_routing);
@@ -117984,7 +117879,6 @@ void calculate_average_latency()
 
 void calculate_packet_delivery_ratio()
 {
-	if (architecture >= 3) return; // Prevent overwriting SDVN PDR
 	double delivered_packets = 0.0;
 	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
@@ -120047,13 +119941,10 @@ void run_proposed_RL()
 	cout<<"Proposed RL learning finished at "<<Now().GetSeconds()<<endl;
 }
 
-void diag_count_converged_routes();
-
 void  run_optimization_link_lifetime()
 {
 	cout<<"link lifetime optimization beginning at "<<Now().GetSeconds()<<endl;
 	write_csv_status_lifetime();//write status data to csv
-	diag_count_converged_routes();
 	Simulator::Schedule(Seconds(0.000050), optimize_link_lifetime);
 	Simulator::Schedule(Seconds(0.000100), read_lifetime_from_csv);
 }
@@ -120144,22 +120035,6 @@ void predict_DNN_delay()
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
-}
-
-// TEMPORARY DIAGNOSTIC — count converged routes
-void diag_count_converged_routes()
-{
-    uint32_t converged = 0, total = 0;
-    for (uint32_t i = 0; i < total_size; i++)
-    {
-        for (uint32_t j = 0; j < total_size; j++)
-        {
-            total++;
-            if (proposed_routing_tables[i].rows[j].path[0] != large) converged++;
-        }
-    }
-    cout << "[DIAG-ROUTE-CONVERGENCE] t=" << Simulator::Now().GetSeconds()
-         << " converged=" << converged << " / total=" << total << endl;
 }
 
 void  run_DNN_link_lifetime()
@@ -124527,8 +124402,7 @@ void send_LTE_routing_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 {
   	Ptr <Ipv4> ipv4;  	
   	ipv4 = destination_node->GetObject<Ipv4>();
-	uint32_t interface_idx = (architecture == 3) ? 1 : 2;
-	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
+	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	Ptr <Packet> packet1 = Create <Packet> (0);
@@ -124665,8 +124539,7 @@ void send_LTE_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 {
   	Ptr <Ipv4> ipv4;  	
   	ipv4 = destination_node->GetObject<Ipv4>();
-	uint32_t interface_idx = (architecture == 3) ? 1 : 2;
-	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
+	Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	Ptr <Packet> packet1 = Create <Packet> (0);
@@ -141325,7 +141198,6 @@ int main(int argc, char *argv[])
     cmd.AddValue ("N_RSUs", "N_RSUs", N_RSUs);
     cmd.AddValue ("N_Vehicles", "N_Vehicles", N_Vehicles);
     cmd.AddValue ("N_Controllers", "N_Controllers (number of SDVN controllers)", N_Controllers);
-    cmd.AddValue ("warmup_time_seconds", "Skip CSV result writes before this sim time (SUMO warm-up)", warmup_time_seconds);
     cmd.AddValue ("data_transmission_frequency", "data_transmission_frequency", data_transmission_frequency);
     cmd.AddValue ("link_lifetime_threshold", "link_lifetime_threshold", link_lifetime_threshold);
     cmd.AddValue ("simTime", "simTime", simTime);
@@ -143174,10 +143046,13 @@ if (architecture == 3 && N_Vehicles > 0)
 											
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 						{
-							uint32_t app_index = (architecture == 3) ? u : (u + 2);
-							Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
-							Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
-								udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
+							if (architecture != 3)
+							{
+								uint32_t app_index = (architecture == 3) ? u : (u + 2);
+								Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
+								Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
+									udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
+							}
 							// architecture=3: vehicle→RSU→Controller relay added in Layer 2
 						}
 					  //calculate the routing solution
