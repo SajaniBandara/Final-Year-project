@@ -120783,19 +120783,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							attack2_delay_seconds);
 
 						double tx_delay_cp = 0.0;
-						if (present_selective_delay_cp_attack) // THE gate — Attack 1 only fires when this is true
-						{
-						    uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
-						    tx_delay_cp = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
-						    if (tx_delay_cp > 0.0)
-						    {
-						        cout << attack_tag() << " [ATTACK1] RSU (node " << current_hop
-						             << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
-						             << packet_id << ", flow " << flow_id
-						             << " — forwarding with " << tx_delay_cp * 1000.0 << "ms delay"
-						             << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
-						    }
-						}
+						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
+						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+
+						tx_delay_cp = calculate_selective_delay_cp(
+							present_selective_delay_cp_attack,
+							injected,
+							current_hop,
+							packet_id,
+							flow_id);
 
 						double total_tx_delay = tx_delay + tx_delay_cp;
 

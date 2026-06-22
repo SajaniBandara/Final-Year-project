@@ -44,6 +44,30 @@ inline double calculate_selective_delay(
     return tx_delay;
 }
 
+// Attack 1: Control Plane receiver delay calculator
+inline double calculate_selective_delay_cp(
+    bool present_selective_delay_cp,
+    double injected_delay,
+    uint32_t current_hop,
+    uint32_t packet_id,
+    uint32_t flow_id)
+{
+    double tx_delay_cp = 0.0;
+    if (present_selective_delay_cp)
+    {
+        tx_delay_cp = injected_delay;
+        if (tx_delay_cp > 0.0)
+        {
+            cout << attack_tag() << " [ATTACK1] RSU (node " << current_hop
+                 << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
+                 << packet_id << ", flow " << flow_id
+                 << " — forwarding with " << tx_delay_cp * 1000.0 << "ms delay"
+                 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+        }
+    }
+    return tx_delay_cp;
+}
+
 // Scheduler for routing loops
 template <typename Func, typename... Args>
 inline bool schedule_selective_delay_attack(
