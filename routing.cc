@@ -94529,7 +94529,7 @@ void update_route(uint32_t source, uint32_t destination, uint32_t next_hop)
 extern std::string attack_tag();
 
 // Attack 1: Selective Time Delay — Control Plane. Simulates a compromised SDN controller transmitting a manipulated flowMo to an RSU. 
-/ /The RSU itself is NOT malicious — it has no way to distinguish this from a legitimate routing update, and will obey the injected delay
+//The RSU itself is NOT malicious — it has no way to distinguish this from a legitimate routing update, and will obey the injected delay
 // when it next forwards a packet for this (source, destination) pair. Per the threat model's mutual-exclusion assumption, this function must
 // never be called alongside any code that marks the RSU itself malicious.
 void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay)
@@ -143025,8 +143025,8 @@ if (architecture == 3 && N_Vehicles > 0)
 						// own — without this running unconditionally, HF attacks (especially DP,
 						// which has no other source of truth) would go dormant after one cycle
 						// in SUMO runs.
-						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
-						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
+						// Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
+						// Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
 											
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 						{

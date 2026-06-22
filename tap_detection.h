@@ -110,7 +110,7 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 inline void calculate_tap_security_metrics()
 {
 	if (!tap_detection_active) return;
-	if (Simulator::Now().GetSeconds() < warmup_time_seconds) return;
+	if (Simulator::Now().GetSeconds() < attack_start_time) return;
 
 	tap_TP = tap_FP = tap_TN = tap_FN = 0;
 	for (int n = 0; n < total_size; n++)
@@ -161,7 +161,7 @@ inline void calculate_tap_security_metrics()
 // Function 5: write_tap_csv
 inline void write_tap_csv()
 {
-	if (Simulator::Now().GetSeconds() < warmup_time_seconds) return;
+	if (Simulator::Now().GetSeconds() < attack_start_time) return;
 
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;

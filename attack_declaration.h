@@ -48,8 +48,8 @@ extern void update_route_malicious(uint32_t source, uint32_t destination, uint32
 extern void record_attack_onset(int v, int n);
 
 // Ground truth metrics arrays defined in routing.cc
-extern bool is_malicious_node[8][300]; // NUM_ATTACK_VARIANTS x total_size
-extern double t_onset[300];            // total_size
+extern bool is_malicious_node[8][268]; // NUM_ATTACK_VARIANTS x total_size
+extern double t_onset[268];            // total_size
 extern double attack_start_time;
 
 // declare_attack_states():
