@@ -142993,8 +142993,8 @@ if (architecture == 3 && N_Vehicles > 0)
 						// own — without this running unconditionally, HF attacks (especially DP,
 						// which has no other source of truth) would go dormant after one cycle
 						// in SUMO runs.
-						// Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
-						// Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
 											
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 						{
