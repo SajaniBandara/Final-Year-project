@@ -95079,7 +95079,6 @@ bool X_nodes[total_size];
 		if(packet->PeekPacketTag(tag_routing))
 		{
 			uint32_t node_index = tag_routing.GetsenderId();
-			// uint32_t destination = tag_routing.GetdestinationId() + 2;
 			uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
 			uint32_t * source = tag_routing.GetNodeId();
 			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
@@ -95151,7 +95150,6 @@ bool X_nodes[total_size];
                         Mac48Address dest_address;
                         if (final_next_hop < N_Vehicles) {
                             // Find the Vehicle's Node globally (Vehicles are usually nid = 2 and 3)
-                            // uint32_t global_dest_nid = final_next_hop + 2; 
 							uint32_t global_dest_nid = final_next_hop + N_Controllers;
                             Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
                             
@@ -116725,7 +116723,7 @@ void run_stable_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + N_Controllers;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		proposed_algo2_output_inst[flow_id].met[i] = false;
@@ -116777,7 +116775,7 @@ void run_distance_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + N_Controllers;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		distance_algo2_output_inst[flow_id].met[i] = false;
@@ -120698,7 +120696,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // ==============================================================
                         Mac48Address dest_address;
 						if (hop < N_Vehicles) {
-							// uint32_t global_dest_nid = hop + 2;
 							uint32_t global_dest_nid = hop + N_Controllers;
 							Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
 							Mac48Address fallback_addr;
@@ -120737,7 +120734,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // 3. BULLETPROOF SENDER DEVICE LOOKUP (CHANNEL-AWARE)
                         // ==============================================================
                         Ptr <WifiNetDevice> wdi = 0;
-                        // uint32_t global_src_nid = current_hop + 2;
 						uint32_t global_src_nid = current_hop + N_Controllers;
                         Ptr<Node> sender_node = NodeList::GetNode(global_src_nid);
                         
@@ -121559,7 +121555,6 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 	if(pkt->PeekPacketTag(tag_routing))
 	{
 		uint32_t node_index = tag_routing.GetsenderId();
-		// uint32_t destination = tag_routing.GetdestinationId() + 2;
 		uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
 
 		uint32_t * source = tag_routing.GetNodeId();
