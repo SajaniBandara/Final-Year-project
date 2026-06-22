@@ -34,8 +34,8 @@ double attack2_delay_seconds = 0.080; // 80ms injected delay
 // Per the threat model, this flag and Attack 2's
 // present_selective_delay_attack_nodes must never both be true at once.
 bool   present_selective_delay_cp_attack = false;
-double attack1_min_delay_seconds = 0.060;
-double attack1_max_delay_seconds = 0.120;
+double attack1_min_delay_seconds = 0.080;
+double attack1_max_delay_seconds = 0.080;
 uint32_t selective_delay_cp_target_rsu = 2; // which RSU's table the controller poisons
 
 // Top-level attack-type selector, mirroring the supervisor's reference
