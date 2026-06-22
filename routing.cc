@@ -114658,6 +114658,7 @@ double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 
 double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
+double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 100%)
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
 double t_fwd_packet[total_size][Flow_size+2];
@@ -115308,9 +115309,16 @@ void initialise_stub_attack_state()
             // First RSU (N_Vehicles) acts as representative malicious-node marker.
             is_malicious_node[2][N_Vehicles] = true;
             t_onset[N_Vehicles] = attack_start_time;
-            cout << "[ATTACK3] [INIT] Slow-flow CP controller attack, "
-                 << N_RSUs << " RSU(s), rate=" << attack_rate_pps << " pps, "
-                 << "onset t=" << attack_start_time << "s" << endl;
+            {
+                uint32_t num_targeted_log = static_cast<uint32_t>(
+                    std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
+                if (num_targeted_log < 1) num_targeted_log = 1;
+                if (num_targeted_log > N_RSUs) num_targeted_log = N_RSUs;
+                cout << "[ATTACK3] [INIT] Slow-flow CP controller attack, "
+                     << num_targeted_log << "/" << N_RSUs << " RSU(s) ("
+                     << cp_attack_pct << "%), rate=" << attack_rate_pps << " pps, "
+                     << "onset t=" << attack_start_time << "s" << endl;
+            }
             Simulator::Schedule(Seconds(attack_start_time), &cp_attack_tick);
             break;
 
@@ -141369,6 +141377,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
     cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): number of attacker nodes; nodes 0..N-1 each run independently (default 1)", num_attackers);
+    cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 100.0 = all RSUs)", cp_attack_pct);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
@@ -141432,7 +141441,7 @@ int main(int argc, char *argv[])
     
     clear_RQY();
     
-    for (int i = 0; i<total_size+N_Controllers; i++)
+    for (uint32_t i = 0; i<total_size+N_Controllers; i++)
     {
     	clear_neighbordata(neighbordata_inst+i);
     	clear_controllerdata(con_data_inst+i);

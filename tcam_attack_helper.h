@@ -2,11 +2,13 @@
 #define TCAM_ATTACK_HELPER_H
 
 // The following globals are defined in routing.cc and used here:
-// extern double simTime;
-// extern int active_attack_variant;
-// extern uint32_t N_RSUs;
-// extern int num_attackers;
-// extern double attack_rate_pps;
+extern double   simTime;
+extern int      active_attack_variant;
+extern uint32_t N_RSUs;
+extern uint32_t N_Vehicles;
+extern int      num_attackers;
+extern double   attack_rate_pps;
+extern double   cp_attack_pct;         // % of RSUs targeted per CP tick (0-100)
 
 
 
@@ -409,15 +411,23 @@ inline void dp_attack_tick()
 
 // ── Change 6: self-rescheduling CP (controller) attacker tick ─────────────
 // Fires every (1/attack_rate_pps) seconds while active_attack_variant==2.
-// Each call installs one new malicious rule on EVERY RSU, simulating a
-// compromised controller broadcasting a junk FlowMod to the entire network.
+// Each call installs one new malicious rule on a configurable fraction of
+// RSUs (cp_attack_pct %, default 100%), simulating a compromised controller
+// broadcasting a junk FlowMod to part or all of the network.
+// RSUs are selected by index (0..num_targeted-1) for determinism.
 inline void cp_attack_tick()
 {
     if (active_attack_variant != 2) return;
     double now = Simulator::Now().GetSeconds();
     if (now >= simTime) return;
 
-    for (uint32_t r = 0; r < N_RSUs; r++)
+    // Compute how many RSUs to target this tick based on cp_attack_pct.
+    uint32_t num_targeted = static_cast<uint32_t>(
+        std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
+    if (num_targeted < 1)       num_targeted = 1;
+    if (num_targeted > N_RSUs)  num_targeted = N_RSUs;
+
+    for (uint32_t r = 0; r < num_targeted; r++)
     {
         uint32_t rsu_idx  = N_Vehicles + r;        // sim node index of RSU r
         uint32_t fake_fid = g_cp_attack_fid_counter++;
