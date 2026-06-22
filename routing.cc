@@ -94482,12 +94482,9 @@ struct routing_table_row
 	uint32_t source_node;
 	uint32_t destination_node;
 	uint32_t next_hop;
-	double   injected_delay;   // Attack 1 (Selective Time Delay, Control Plane).
-	                            // 0.0 = benign rule (default). >0.0 = the
-	                            // malicious controller poisoned this flowMod
-	                            // entry with a forced forwarding delay that
-	                            // the receiving RSU will obey without knowing
-	                            // it is compromised.
+	double   injected_delay;   // Attack 1 (Selective Time Delay, Control Plane). 0.0 = benign rule (default). >0.0 = the
+	                            // malicious controller poisoned this flowMod  entry with a forced forwarding delay that
+	                            // the receiving RSU will obey without knowing it is compromised.
 };
 
 struct routing_table
@@ -94533,12 +94530,9 @@ void update_route(uint32_t source, uint32_t destination, uint32_t next_hop)
 
 extern std::string attack_tag();
 
-// Attack 1: Selective Time Delay — Control Plane.
-// Simulates a compromised SDN controller transmitting a manipulated flowMod
-// to an RSU. The RSU itself is NOT malicious — it has no way to distinguish
-// this from a legitimate routing update, and will obey the injected delay
-// when it next forwards a packet for this (source, destination) pair.
-// Per the threat model's mutual-exclusion assumption, this function must
+// Attack 1: Selective Time Delay — Control Plane. Simulates a compromised SDN controller transmitting a manipulated flowMo to an RSU. 
+/ /The RSU itself is NOT malicious — it has no way to distinguish this from a legitimate routing update, and will obey the injected delay
+// when it next forwards a packet for this (source, destination) pair. Per the threat model's mutual-exclusion assumption, this function must
 // never be called alongside any code that marks the RSU itself malicious.
 void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay)
 {
@@ -94567,11 +94561,12 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     // ==============================================================
     // ENFORCE ARCHITECTURE 3: VEHICLES MUST ROUTE THROUGH RSU
     // ==============================================================
+	cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
     if (architecture == 3 && N_RSUs > 0)
-    {
-        // 1. If a Vehicle is trying to send to another Vehicle, it MUST go
-        //    to the nearest RSU first (by the current holder's live
-        //    position, not a hardcoded RSU 0).
+	{
+        uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
+        
+        // 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
         if (current_hop < N_Vehicles && destination < N_Vehicles && current_hop != destination)
         {
             return rsu_index; 
@@ -95142,12 +95137,9 @@ bool X_nodes[total_size];
                         // ==============================================================
                         // ENFORCE ARCHITECTURE 3: MAC-LAYER OVERRIDE
                         // ==============================================================
-						cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
                         if (architecture == 3 && N_RSUs > 0)
                         {
-                            uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
-        
-        					// 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
+                          	uint32_t rsu_index = N_Vehicles; // e.g., index 2
                             if (current_hop < N_Vehicles && destination-N_Controllers < N_Vehicles && current_hop != destination-N_Controllers) {
                                 final_next_hop = rsu_index;
                             } else if (current_hop == rsu_index && destination-N_Controllers < N_Vehicles) {
@@ -125035,8 +125027,7 @@ void send_LTE_data_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 		
 		Ptr <Ipv4> ipv4;  	
 	  	ipv4 = destination_node->GetObject<Ipv4>();
-		uint32_t interface_idx = (architecture == 3) ? 1 : 2;
-		Ipv4InterfaceAddress iaddr = ipv4->GetAddress(interface_idx,0);
+		Ipv4InterfaceAddress iaddr = ipv4->GetAddress(2,0);//2nd IPv4 interface,0th address index
 		Ipv4Address dest_ip = iaddr.GetLocal();
 		Ptr <Packet> packet1 = Create <Packet> (0);
 		
