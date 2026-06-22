@@ -65,7 +65,7 @@ bool attack_number_explicitly_set = false;
 // pattern as the supervisor reference, generalized to N_Controllers
 // instead of a hardcoded 4. controller_compromised[c] == true means
 // controller c is the malicious controller for this run.
-bool controller_compromised[300]; // sized >= max N_Controllers, matches
+bool controller_compromised[total_size]; // sized to total_size, matches
                                     // rsu_controller_assignment[300]'s sizing
                                     // convention already used in routing.cc
 #endif // ATTACK_VARIABLES_H
