@@ -220,8 +220,8 @@ def main():
         col    = COL_MCC_CUR,
         ylabel = "Matthews Correlation Coefficient",
         title  = "(b) Matthews Correlation Coefficient",
-        ylim   = [-0.05, 1.1],
-        yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        ylim   = [-1.1, 1.1],
+        yticks = [-1.0, -0.5, 0.0, 0.5, 1.0]
     )
 
     # Subplot (c): False Positive Rate
@@ -306,7 +306,7 @@ def main():
     metrics = [
         (COL_PDR_AVG, "Packet Delivery Ratio (%)",         "(a) PDR",         [-5, 115],  [0,20,40,60,80,100]),
         (COL_LAT_AVG, "End-to-End Latency (ms)",           "(b) Latency",     None,       None),
-        (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(c) MCC",         [-0.05,1.1],[0.0,0.2,0.4,0.6,0.8,1.0]),
+        (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(c) MCC",         [-1.1, 1.1], [-1.0, -0.5, 0.0, 0.5, 1.0]),
         (COL_DR_CUR,  "Detection Rate (%)",                "(d) DR",          [-5, 115],  [0,20,40,60,80,100]),
         (COL_FPR_CUR, "False Positive Rate (%)",           "(e) FPR",         [-5, 115],  [0,20,40,60,80,100]),
         (COL_MIT_CUR, "Mitigation Latency (ms)",           "(f) Mitigation",  None,       None),
