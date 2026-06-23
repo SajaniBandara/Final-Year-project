@@ -120583,10 +120583,16 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // it without moving the include.
 extern int g_tcam_rule_count[300];
 static const int TCAM_HW_SIZE = 256;
-// Controller round-trip (slow-path) delay in seconds when TCAM is at full
-// capacity. Linear between 0ms (empty) and 300ms (full). 300ms matches
-// realistic SDN controller latency under load in vehicular deployments.
-static const double TCAM_SLOWPATH_MAX_S = 0.300;
+// Fixed controller round-trip delay applied when TCAM is at or above capacity.
+// This is a step function: 0ms when the RSU still has free TCAM slots
+// (packet matched immediately), TCAM_SLOWPATH_S when the table is full
+// (packet-in → controller → FlowMod round-trip).  A proportional model is
+// NOT realistic because TCAM lookup is O(1) in hardware — fill ratio does
+// not affect per-packet latency; only the binary miss/hit outcome does.
+// Default 50ms matches SDVN backhaul + controller processing in the
+// literature and equals the S2 hop-delay threshold (delta_max_s2).
+// Override with --tcam_slowpath_ms on the command line.
+double tcam_slowpath_s = 0.050; // CLI: --tcam_slowpath_ms (value in ms, converted below)
 
 void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_t hop, uint32_t current_hop, Time originail_timestamp, struct custom_struct arguments)
 {
@@ -120793,26 +120799,23 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							packet_id,
 							flow_id);
 
-						// TCAM slow-path delay (Attacks 3 & 4): when an RSU's TCAM is
-						// filled with garbage rules the arriving packet has no matching
-						// entry, so it must travel to the controller (slow path) to get
-						// a FlowMod installed before forwarding.  Delay is proportional
-						// to fill ratio: 0ms at empty, TCAM_SLOWPATH_MAX_S at full.
+						// TCAM slow-path delay (Attacks 3 & 4).
+						// Real TCAM lookup is O(1) — fill level does not affect latency.
+						// The penalty fires only when the table is AT OR ABOVE capacity:
+						// the incoming packet has no matching rule, so it takes the
+						// controller slow path (PacketIn → FlowMod round-trip).
+						// Below capacity the packet hits a rule immediately (0 extra delay).
 						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
-						    current_hop >= N_Vehicles)
+						    current_hop >= N_Vehicles &&
+						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
 						{
-						    double fill = std::min(1.0,
-						        (double)g_tcam_rule_count[current_hop] / (double)TCAM_HW_SIZE);
-						    double sp_delay = fill * TCAM_SLOWPATH_MAX_S;
-						    if (sp_delay > 0.0)
-						    {
-						        total_tx_delay += sp_delay;
-						        std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
-						                  << " fill=" << (int)(fill * 100) << "%"
-						                  << " sp_delay=" << (sp_delay * 1000.0) << "ms"
-						                  << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
-						                  << std::endl;
-						    }
+						    total_tx_delay += tcam_slowpath_s;
+						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						              << " rules=" << g_tcam_rule_count[current_hop]
+						              << "/" << TCAM_HW_SIZE
+						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
+						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						              << std::endl;
 						}
 
 						// Record the CLAIMED forwarding timestamp immediately, at decision
@@ -141201,6 +141204,8 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
     cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): number of attacker nodes; nodes 0..N-1 each run independently (default 1)", num_attackers);
     cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 100.0 = all RSUs)", cp_attack_pct);
+    double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
+    cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
@@ -141210,6 +141215,9 @@ int main(int argc, char *argv[])
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
     cmd.Parse (argc, argv);
+
+    // Convert ms CLI input to seconds for the forwarding path.
+    tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
 
     if (attack_number_cli != -1)
     {
