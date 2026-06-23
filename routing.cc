@@ -117530,6 +117530,8 @@ void calculate_mitigation_latency_metric()
               << 1000.0 * average_mitigation_latency << " ms" << std::endl;
 }
 
+static const int TCAM_HW_SIZE = 256;
+#include "tcam_detection.h"
 void write_security_metrics_csv()
 {
 	fstream fout;
@@ -120610,7 +120612,6 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // it without moving the include.
 extern int g_tcam_rule_count[300];
 int g_slowpath_hit_count[300] = {0};
-static const int TCAM_HW_SIZE = 256;
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
 // (packet matched immediately), TCAM_SLOWPATH_S when the table is full
@@ -120999,7 +121000,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 //Attack helper functions
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
-#include "tcam_detection.h"
 
 int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
