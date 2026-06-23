@@ -120577,6 +120577,17 @@ uint32_t s_flow_counter[2*flows][total_size][Flow_size+2];
 void tcam_install(uint32_t node_id, uint32_t fid);
 void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 
+// TCAM slow-path: per-node rule count and hardware capacity.
+// g_tcam_rule_count is defined in tcam_attack_helper.h (included after this
+// function). The extern declaration lets check_delivery_and_retransmit read
+// it without moving the include.
+extern int g_tcam_rule_count[300];
+static const int TCAM_HW_SIZE = 256;
+// Controller round-trip (slow-path) delay in seconds when TCAM is at full
+// capacity. Linear between 0ms (empty) and 300ms (full). 300ms matches
+// realistic SDN controller latency under load in vehicular deployments.
+static const double TCAM_SLOWPATH_MAX_S = 0.300;
+
 void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_t hop, uint32_t current_hop, Time originail_timestamp, struct custom_struct arguments)
 {
 	// Guard: hop must be a valid node index.
@@ -120781,6 +120792,28 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							current_hop,
 							packet_id,
 							flow_id);
+
+						// TCAM slow-path delay (Attacks 3 & 4): when an RSU's TCAM is
+						// filled with garbage rules the arriving packet has no matching
+						// entry, so it must travel to the controller (slow path) to get
+						// a FlowMod installed before forwarding.  Delay is proportional
+						// to fill ratio: 0ms at empty, TCAM_SLOWPATH_MAX_S at full.
+						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
+						    current_hop >= N_Vehicles)
+						{
+						    double fill = std::min(1.0,
+						        (double)g_tcam_rule_count[current_hop] / (double)TCAM_HW_SIZE);
+						    double sp_delay = fill * TCAM_SLOWPATH_MAX_S;
+						    if (sp_delay > 0.0)
+						    {
+						        total_tx_delay += sp_delay;
+						        std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						                  << " fill=" << (int)(fill * 100) << "%"
+						                  << " sp_delay=" << (sp_delay * 1000.0) << "ms"
+						                  << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						                  << std::endl;
+						    }
+						}
 
 						// Record the CLAIMED forwarding timestamp immediately, at decision
 						// time, before any attack-injected delay is applied — this is what
