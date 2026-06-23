@@ -377,44 +377,83 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
         return;
     }
 
-    // ── Step 1: collect on-path RSUs from proposed_routing_tables ────────────
-    // We scan all source→destination pairs that have a valid path entry.
-    // An RSU is any node with index in [N_Vehicles, N_Vehicles + N_RSUs).
+    // ── Step 1: collect on-path RSUs ─────────────────────────────────────────────
+    // Two different sources depending on mode:
+    //   routing_test=true  → proposed_routing_tables (hardcoded test-network paths)
+    //   routing_test=false → delta_at_controller_inst (real optimizer output; 
+    //                        proposed_routing_tables is never populated in SUMO mode
+    //                        since run_stable_path_finding writes only to
+    //                        proposed_algo2_output_inst, not update_proposed_route)
     std::vector<uint32_t> on_path_rsus;
-    std::map<uint32_t, uint32_t> rsu_to_sender; // maps rsu_index → sender vehicle index
+    std::map<uint32_t, uint32_t> rsu_to_sender;
 
-    for (uint32_t src = 0; src < (uint32_t)total_size; src++)
+    if (routing_test)
     {
-        for (uint32_t dst = 0; dst < (uint32_t)total_size; dst++)
+        // Test-network mode: walk proposed_routing_tables path arrays
+        for (uint32_t src = 0; src < (uint32_t)total_size; src++)
         {
-            if (src == dst) continue;
-            uint32_t prev = 50000; // large sentinel
-            for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+            for (uint32_t dst = 0; dst < (uint32_t)total_size; dst++)
             {
-                uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-                if (node >= 50000) break; // end of path
-
-                // Is this node an RSU?
-                if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
+                if (src == dst) continue;
+                uint32_t prev = 50000;
+                for (uint32_t step = 0; step < (uint32_t)total_size; step++)
                 {
-                    // Avoid duplicates
-                    bool already_added = false;
-                    for (auto r : on_path_rsus)
-                        if (r == node) { already_added = true; break; }
-
-                    if (!already_added)
+                    uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
+                    if (node >= 50000) break;
+                    if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
                     {
-                        on_path_rsus.push_back(node);
-                        // Record the sender (previous hop) as candidate eavesdropper
-                        // Only store a vehicle (not another RSU) as eavesdropper candidate
-                        if (prev < N_Vehicles)
-                            rsu_to_sender[node] = prev;
+                        bool already_added = false;
+                        for (auto r : on_path_rsus)
+                            if (r == node) { already_added = true; break; }
+                        if (!already_added)
+                        {
+                            on_path_rsus.push_back(node);
+                            if (prev < N_Vehicles)
+                                rsu_to_sender[node] = prev;
+                        }
                     }
+                    prev = node;
                 }
-                prev = node;
             }
         }
     }
+    else
+    {
+        // SUMO mode: scan delta_at_controller_inst for active RSU forwarding rules.
+        // In architecture=3 all traffic routes through RSUs, so every active flow
+        // will have nonzero delta weights on RSU->vehicle hops.
+        for (uint32_t fid = 0; fid < (uint32_t)(2 * flows); fid++)
+        {
+            for (uint32_t cid = N_Vehicles; cid < N_Vehicles + N_RSUs; cid++)
+            {
+                for (uint32_t nid = 0; nid < (uint32_t)total_size; nid++)
+                {
+                    if ((delta_at_controller_inst + fid)->delta_fi_inst[cid].delta_values[nid] > 0.0)
+                    {
+                        bool already_added = false;
+                        for (auto r : on_path_rsus)
+                            if (r == cid) { already_added = true; break; }
+                        if (!already_added)
+                        {
+                            on_path_rsus.push_back(cid);
+                            // Find the vehicle that sends TO this RSU
+                            for (uint32_t sender = 0; sender < N_Vehicles; sender++)
+                            {
+                                if ((delta_at_controller_inst + fid)
+                                        ->delta_fi_inst[sender].delta_values[cid] > 0.0)
+                                {
+                                    rsu_to_sender[cid] = sender;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    std::cout << "[HF SCALE] Found " << on_path_rsus.size()
+          << " on-path RSUs (mode=" << (routing_test ? "test" : "SUMO") << ")" << std::endl;
 
     if (on_path_rsus.empty())
     {
@@ -475,13 +514,16 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
         }
         else
         {
-            // DP: stage globals and schedule injection after legitimate rule arrives
-            g_dp_inject_flow_id  = flow_id_to_attack;
-            g_dp_inject_rsu_node = rsu_node;
-            g_dp_inject_eaves    = eaves_node;
-            Simulator::Schedule(
-                Seconds(attack_start_time + 0.010),
-                &hf_dp_inject_trampoline);
+            // DP: call hf_dp_inject_delta directly — we are already executing
+            // inside hf_declare_malicious_rsus_trampoline (a Simulator::Schedule
+            // callback), so no lambda/trampoline is needed here.
+            //
+            // IMPORTANT: The single-slot g_dp_inject_* staging globals CANNOT
+            // handle multiple RSUs in a loop — each loop iteration overwrites the
+            // globals before the previous Simulator::Schedule fires, so only the
+            // last RSU's values would survive (e.g., only 1 of 13 injections in
+            // a 20%-intensity SUMO run). Calling directly avoids this race.
+            hf_dp_inject_delta(flow_id_to_attack, rsu_node, eaves_node);
         }
 
         std::cout << "[HF SCALE] RSU " << rsu_node
