@@ -120587,6 +120587,7 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // function). The extern declaration lets check_delivery_and_retransmit read
 // it without moving the include.
 extern int g_tcam_rule_count[300];
+int g_slowpath_hit_count[300] = {0};
 static const int TCAM_HW_SIZE = 256;
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
@@ -120815,6 +120816,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
 						{
 						    total_tx_delay += tcam_slowpath_s;
+						    g_slowpath_hit_count[current_hop]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
 						              << "/" << TCAM_HW_SIZE
@@ -120975,6 +120977,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 //Attack helper functions
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
+#include "tcam_detection.h"
 
 int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
