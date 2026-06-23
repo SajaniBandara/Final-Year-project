@@ -220,8 +220,8 @@ def main():
         col    = COL_MCC_CUR,
         ylabel = "Matthews Correlation Coefficient",
         title  = "(b) Matthews Correlation Coefficient",
-        ylim   = [-0.05, 1.1],
-        yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        ylim   = [-1.1, 1.1],
+        yticks = [-1.0, -0.5, 0.0, 0.5, 1.0]
     )
 
     # Subplot (c): False Positive Rate
@@ -230,8 +230,8 @@ def main():
         col    = COL_FPR_CUR,
         ylabel = "False Positive Rate (%)",
         title  = "(c) False Positive Rate",
-        ylim   = [-1, 15],
-        yticks = [0, 5, 10, 15]
+        ylim   = [-5, 115],
+        yticks = [0, 20, 40, 60, 80, 100]
     )
 
     # Shared legend at top (matching supervisor's NumColumns=2 style)
@@ -275,8 +275,8 @@ def main():
         col    = COL_MIT_CUR,
         ylabel = "Mitigation Latency (ms)",
         title  = "(b) Mitigation Latency",
-        ylim   = [-5, 120],
-        yticks = [0, 20, 40, 60, 80, 100]
+        ylim   = None,
+        yticks = None
     )
 
     legend_handle2 = fig2.legend(
@@ -295,20 +295,21 @@ def main():
     print(f"  Saved: {fig2_path}")
     plt.close(fig2)
 
-    # ── Figure 3: All five metrics in one 5-panel figure ─────────────────────
+    # ── Figure 3: All six metrics in one 6-panel figure ─────────────────────
     print("\nGenerating Figure 3: All metrics combined")
 
-    fig3, axes3 = plt.subplots(1, 5, figsize=(35, 7))
+    fig3, axes3 = plt.subplots(1, 6, figsize=(42, 7))
     fig3.suptitle("Complete Performance Evaluation — Attack 2 (Selective Time Delay, Data Plane)\n"
                   "TAP (Arsalan & Rehman FIT 2018)",
                   fontsize=22, fontweight='bold', y=1.02)
 
     metrics = [
         (COL_PDR_AVG, "Packet Delivery Ratio (%)",         "(a) PDR",         [-5, 115],  [0,20,40,60,80,100]),
-        (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(b) MCC",         [-0.05,1.1],[0.0,0.2,0.4,0.6,0.8,1.0]),
-        (COL_DR_CUR,  "Detection Rate (%)",                "(c) DR",          [-5, 115],  [0,20,40,60,80,100]),
-        (COL_FPR_CUR, "False Positive Rate (%)",           "(d) FPR",         [-1, 15],   [0,5,10,15]),
-        (COL_MIT_CUR, "Mitigation Latency (ms)",           "(e) Mitigation",  [-5, 120],  [0,20,40,60,80,100]),
+        (COL_LAT_AVG, "End-to-End Latency (ms)",           "(b) Latency",     None,       None),
+        (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(c) MCC",         [-1.1, 1.1], [-1.0, -0.5, 0.0, 0.5, 1.0]),
+        (COL_DR_CUR,  "Detection Rate (%)",                "(d) DR",          [-5, 115],  [0,20,40,60,80,100]),
+        (COL_FPR_CUR, "False Positive Rate (%)",           "(e) FPR",         [-5, 115],  [0,20,40,60,80,100]),
+        (COL_MIT_CUR, "Mitigation Latency (ms)",           "(f) Mitigation",  None,       None),
     ]
 
     first_p1 = None

@@ -11,24 +11,25 @@ using namespace std;
 extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 
-// Main receiver delay calculator
-inline double calculate_selective_delay(
-    bool present_selective_delay,
-    bool is_malicious,
+// Unified Receiver Delay Calculator
+inline double calculate_unified_selective_delay(
+    bool present_selective_delay_dp,
+    bool is_malicious_dp,
     bool is_first_attempt,
     double attack_percentage,
+    double attack2_delay,
+    bool present_selective_delay_cp,
+    double injected_delay_cp,
     uint32_t current_hop,
     uint32_t packet_id,
-    uint32_t flow_id,
-    double attack2_delay)
+    uint32_t flow_id)
 {
-    double tx_delay = 0.0;
-    if (present_selective_delay && is_malicious && is_first_attempt)
+    // Attack 2: Data Plane Delay (Malicious node intentionally delays)
+    if (present_selective_delay_dp && is_malicious_dp && is_first_attempt)
     {
-        bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
-        if (atk)
-        {
-            tx_delay = attack2_delay;
+        // bool atk = GetBooleanWithProbability(attack_percentage, current_hop);
+        // if (atk)
+        // {
             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
                  << ") intercepting packet ID " << packet_id
                  << " for flow " << flow_id
@@ -39,54 +40,56 @@ inline double calculate_selective_delay(
                  << Simulator::Now().GetSeconds() + attack2_delay
                  << "s (delay=" << attack2_delay * 1000.0
                  << "ms)" << endl;
-        }
+            return attack2_delay;
+        // }
     }
-    return tx_delay;
-}
-
-// Attack 1: Control Plane receiver delay calculator
-inline double calculate_selective_delay_cp(
-    bool present_selective_delay_cp,
-    double injected_delay,
-    uint32_t current_hop,
-    uint32_t packet_id,
-    uint32_t flow_id)
-{
-    double tx_delay_cp = 0.0;
-    if (present_selective_delay_cp)
+    
+    // Attack 1: Control Plane Delay (Benign node obeying poisoned FlowMod)
+    // Mutually exclusive: only runs if DP attack did not trigger
+    if (present_selective_delay_cp && injected_delay_cp > 0.0)
     {
-        tx_delay_cp = injected_delay;
-        if (tx_delay_cp > 0.0)
-        {
-            cout << attack_tag() << " [ATTACK1] RSU (node " << current_hop
-                 << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
-                 << packet_id << ", flow " << flow_id
-                 << " — forwarding with " << tx_delay_cp * 1000.0 << "ms delay"
-                 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
-        }
+        cout << attack_tag() << " [ATTACK1] RSU (node " << current_hop
+             << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
+             << packet_id << ", flow " << flow_id
+             << " — forwarding with " << injected_delay_cp * 1000.0 << "ms delay"
+             << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+        return injected_delay_cp;
     }
-    return tx_delay_cp;
+
+    return 0.0;
 }
 
-// Scheduler for routing loops
+// Unified Scheduler for routing loops
 template <typename Func, typename... Args>
-inline bool schedule_selective_delay_attack(
-    bool present_selective_delay,
-    bool is_malicious,
+inline bool schedule_unified_selective_delay_attack(
+    bool present_selective_delay_dp,
+    bool is_malicious_dp,
     bool is_first_attempt,
     double attack_percentage,
+    double attack2_delay,
+    bool present_selective_delay_cp,
+    double injected_delay_cp,
     uint32_t source,
     uint32_t packet_ID,
     uint32_t fid,
-    double attack2_delay,
     Func func,
     Args... args)
 {
-    if (is_malicious && present_selective_delay && is_first_attempt)
+    std::cout << "[DEBUG] schedule_unified_selective_delay_attack called on node " << source
+              << " for packet " << packet_ID << ". Params: "
+              << "present_dp=" << present_selective_delay_dp
+              << ", is_malicious_dp=" << is_malicious_dp
+              << ", is_first_attempt=" << is_first_attempt
+              << ", attack_percentage=" << attack_percentage 
+              << ", present_cp=" << present_selective_delay_cp
+              << ", injected_delay_cp=" << injected_delay_cp << std::endl;
+
+    // Attack 2: Data Plane Delay
+    if (present_selective_delay_dp && is_malicious_dp && is_first_attempt)
     {
-        bool atk = GetBooleanWithProbability(attack_percentage, source);
-        if (atk)
-        {
+        // bool atk = GetBooleanWithProbability(attack_percentage, source);
+        // if (atk)
+        // {
             cout << attack_tag() << " ③ Malicious RSU (node " << source
                  << ") intercepting packet ID " << packet_ID
                  << " for flow " << fid << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
@@ -98,8 +101,23 @@ inline bool schedule_selective_delay_attack(
             
             Simulator::Schedule(Seconds(attack2_delay), func, args...);
             return true;
-        }
+        // }
     }
+
+    // Attack 1: Control Plane Delay
+    // Mutually exclusive: only runs if DP attack did not trigger
+    if (present_selective_delay_cp && injected_delay_cp > 0.0)
+    {
+        cout << attack_tag() << " [ATTACK1] RSU (node " << source
+             << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
+             << packet_ID << ", flow " << fid
+             << " — forwarding with " << injected_delay_cp * 1000.0 << "ms delay"
+             << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+
+        Simulator::Schedule(Seconds(injected_delay_cp), func, args...);
+        return true;
+    }
+
     return false;
 }
 

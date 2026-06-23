@@ -400,7 +400,7 @@ To execute the full SUMO simulation with the Selective Time Delay attacks, utili
   --simTime=15 --architecture=3 \
   --attack_number=1 \
   --attack_percentage=20 \
-  --attack_start_time=2.0"
+  --attack_start_time=2.0" > cp_selective_delay_sumo.log 2>&1
 ```
 
 **Attack 2 — Data Plane (DP) Selective Time Delay:**
@@ -412,7 +412,7 @@ To execute the full SUMO simulation with the Selective Time Delay attacks, utili
   --simTime=15 --architecture=3 \
   --attack_number=2 \
   --attack_percentage=20 \
-  --attack_start_time=2.0"
+  --attack_start_time=2.0" > dp_selective_delay_sumo.log 2>&1
 ```
 
 ### TAP Experiment Sweep (Test Network, all intensities)
@@ -425,9 +425,9 @@ rm -f results_routing/TAP_Attack*_*.csv
 rm -f results_routing/MOBIGUARD_Attack*_*.csv
 
 # For Attack 1 (Test Network)
-./waf --run "scratch/routing --routing_test=true --attack_number=1 --attack_percentage=20"
+./waf --run "scratch/routing --routing_test=true --attack_number=1"
 # For Attack 2 (Test Network)
-./waf --run "scratch/routing --routing_test=true --attack_number=2 --attack_percentage=20"
+./waf --run "scratch/routing --routing_test=true --attack_number=2 --attack_percentage=100"
 # ... change percentages to 40, 60, 80, 100 as needed
 ```
 
