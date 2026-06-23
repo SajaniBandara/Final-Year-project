@@ -230,8 +230,8 @@ def main():
         col    = COL_FPR_CUR,
         ylabel = "False Positive Rate (%)",
         title  = "(c) False Positive Rate",
-        ylim   = [-1, 15],
-        yticks = [0, 5, 10, 15]
+        ylim   = [-5, 115],
+        yticks = [0, 20, 40, 60, 80, 100]
     )
 
     # Shared legend at top (matching supervisor's NumColumns=2 style)
@@ -275,8 +275,8 @@ def main():
         col    = COL_MIT_CUR,
         ylabel = "Mitigation Latency (ms)",
         title  = "(b) Mitigation Latency",
-        ylim   = [-5, 120],
-        yticks = [0, 20, 40, 60, 80, 100]
+        ylim   = None,
+        yticks = None
     )
 
     legend_handle2 = fig2.legend(
@@ -308,8 +308,8 @@ def main():
         (COL_LAT_AVG, "End-to-End Latency (ms)",           "(b) Latency",     None,       None),
         (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(c) MCC",         [-0.05,1.1],[0.0,0.2,0.4,0.6,0.8,1.0]),
         (COL_DR_CUR,  "Detection Rate (%)",                "(d) DR",          [-5, 115],  [0,20,40,60,80,100]),
-        (COL_FPR_CUR, "False Positive Rate (%)",           "(e) FPR",         [-1, 15],   [0,5,10,15]),
-        (COL_MIT_CUR, "Mitigation Latency (ms)",           "(f) Mitigation",  [-5, 120],  [0,20,40,60,80,100]),
+        (COL_FPR_CUR, "False Positive Rate (%)",           "(e) FPR",         [-5, 115],  [0,20,40,60,80,100]),
+        (COL_MIT_CUR, "Mitigation Latency (ms)",           "(f) Mitigation",  None,       None),
     ]
 
     first_p1 = None
