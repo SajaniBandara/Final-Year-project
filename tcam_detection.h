@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -72,15 +71,15 @@ inline TcamCycleMetrics ComputeTcamDetection(
 
         // 1. TCAM utilisation, clamped to [0, 1]
         double tcam_util = g_tcam_rule_count[node_id] / (double)TCAM_HW_SIZE;
-        tcam_util = std::max(0.0, std::min(1.0, tcam_util));
+        tcam_util = (tcam_util < 0.0 ? 0.0 : (tcam_util > 1.0 ? 1.0 : tcam_util));
 
         // 2. FlowMod install rate (rules installed this cycle / 1 s)
         const int rules_this_cycle = g_tcam_rule_count[node_id] - g_prev_rule_count[node_id];
-        const double lambda_fm = std::max(0.0, (double)rules_this_cycle / 1.0);
+        const double lambda_fm = (rules_this_cycle > 0) ? (double)rules_this_cycle : 0.0;
 
         // 3. PACKET_IN (slow-path) rate (hits this cycle / 1 s)
         const int hits_this_cycle = g_slowpath_hit_count[node_id] - g_prev_slowpath_hits[node_id];
-        const double lambda_pi = std::max(0.0, (double)hits_this_cycle / 1.0);
+        const double lambda_pi = (hits_this_cycle > 0) ? (double)hits_this_cycle : 0.0;
 
         // 4. Count malicious TCAM entries belonging to this RSU
         int malicious_count = 0;
@@ -106,7 +105,7 @@ inline TcamCycleMetrics ComputeTcamDetection(
 
         // Accumulate into cycle-level aggregate
         util_sum                += tcam_util;
-        metrics.max_tcam_util    = std::max(metrics.max_tcam_util, tcam_util);
+        if (tcam_util > metrics.max_tcam_util) metrics.max_tcam_util = tcam_util;
         metrics.total_lambda_fm += lambda_fm;
         metrics.total_lambda_pi += lambda_pi;
         metrics.total_malicious += malicious_count;
