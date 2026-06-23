@@ -114678,6 +114678,11 @@ double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign 
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
 double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 100%)
+// Attack 4 (DP): percentage of vehicles acting as attackers.
+// 0 = disabled (use --num_attackers directly).
+// >0 overrides num_attackers: num_attackers = ceil(N_Vehicles * dp_attack_pct/100).
+// Mirrors cp_attack_pct so both attacks have symmetric terminal control.
+double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
 // t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
@@ -141202,7 +141207,8 @@ int main(int argc, char *argv[])
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
-    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): number of attacker nodes; nodes 0..N-1 each run independently (default 1)", num_attackers);
+    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): absolute attacker count; nodes 0..N-1 (default 1, overridden by --dp_attack_pct if >0)", num_attackers);
+    cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): percentage of vehicles acting as attackers (0-100). Overrides --num_attackers when >0. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
     cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 100.0 = all RSUs)", cp_attack_pct);
     double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
     cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
@@ -141218,6 +141224,18 @@ int main(int argc, char *argv[])
 
     // Convert ms CLI input to seconds for the forwarding path.
     tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
+
+    // Attack 4 (DP TCAM): if --dp_attack_pct was given, derive num_attackers
+    // from it so both attacks share symmetric percentage-based terminal control.
+    // cp_attack_pct already works this way for Attack 3 (RSU targeting fraction).
+    if (dp_attack_pct > 0.0)
+    {
+        num_attackers = (int)std::ceil(N_Vehicles * (dp_attack_pct / 100.0));
+        if (num_attackers < 1)               num_attackers = 1;
+        if (num_attackers > (int)N_Vehicles) num_attackers = (int)N_Vehicles;
+        cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% -> num_attackers="
+             << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
+    }
 
     if (attack_number_cli != -1)
     {
