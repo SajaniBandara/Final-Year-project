@@ -117607,6 +117607,26 @@ void write_security_metrics_csv()
 
 	fout.open(filename, ios::out|ios::app);
 
+	if (fout.tellp() == 0) {
+		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
+			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
+			 << "# TP, FP, TN, FN,\n"
+			 << "# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
+			 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4\n";
+	}
+
+	TcamCycleMetrics tcam_metrics{};
+	if (active_attack_variant == 2 || active_attack_variant == 3) {
+		double active_vehicles = (double)N_Vehicles;
+		tcam_metrics = ComputeTcamDetection(
+			N_Vehicles, N_RSUs,
+			10.0,
+			15.0,
+			0.80,
+			active_vehicles
+		);
+	}
+
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
@@ -117623,7 +117643,9 @@ void write_security_metrics_csv()
 		 << sec_TP[selected_variant] << ", "
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
-		 << sec_FN[selected_variant] << "\n";
+		 << sec_FN[selected_variant]
+		 << TcamDetectionCsvColumns(tcam_metrics)
+		 << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
