@@ -189,9 +189,8 @@ inline void reapply_cp_selective_delay()
     for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
     {
         uint32_t owning_controller = rsu_controller_assignment[r];
+        cout << "[DEBUG] reapply_cp_selective_delay r=" << r << " owning_ctrl=" << owning_controller << " compromised=" << controller_compromised[owning_controller] << endl;
         if (!controller_compromised[owning_controller]) continue;
-
-        // RSU-index-to-node-ID conversion — copy the exact conversion
         // already used in routing.cc's own rsu_controller_assignment[]
         // call sites (e.g. RSU_dataunicast_alone,
         // RSU_metadata_downlink_unicast). Do not assume r == node ID.

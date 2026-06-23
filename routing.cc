@@ -115365,11 +115365,15 @@ void initialise_stub_attack_state()
             cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, delay range [" 
                  << attack1_min_delay_seconds * 1000.0
                  << "-" << attack1_max_delay_seconds * 1000.0 << "]ms" << endl;
+            if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
         }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
+        {
+            if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             // tap_reset_state moved outside switch to apply to all variants
             break;
+        }
 
         case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
             // Malicious controller floods ALL RSUs with junk FlowMod broadcasts.
@@ -115552,59 +115556,52 @@ bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
 // 		record_attack_onset(1, node);
 // 		cout << attack_tag() << " Node " << node
 // 		     << " marked as malicious selective delay attacker" << endl;
-// 	}
-//
-// 	present_selective_delay_attack_nodes = (num_attackers_local > 0);
-//
-// 	cout << attack_tag() << " Attack 2 extended test network: "
-// 	     << num_attackers_local << " malicious nodes out of 10 ("
-// 	     << attack_percentage << "%)" << endl;
-// 	cout << attack_tag() << " Traffic path: Vehicle A(0) -> RSU0(5) -> "
-// 	     << "RSU1(6) -> RSU2(7) -> Vehicle B(1)" << endl;
-// }
+void poison_test_network_cp_attackers()
+{
+	if (active_attack_variant == 0)
+	{
+		update_route_malicious(15, 1, 1, attack2_delay_seconds);
+		update_route_malicious(16, 3, 3, attack2_delay_seconds);
+	}
+}
 
 void hardcode_test_network_attackers()
 {
-	// Force 100% attack rate for test network verification
-	attack_percentage = 100;  //2.With attack 
-	// attack_percentage =0; //1. without the attack
-
-	// Test network: Node 0=Vehicle A, Node 1=Vehicle B, Node 2=RSU (attacker)
-	// Attack 2 scenario from Figure 3.2(b):
-	// Malicious RSU (node 2) intercepts and delays packets
-	for(uint32_t i=0; i<total_size; i++)
+	for (uint32_t i = 0; i < total_size; i++)
 	{
 		selective_delay_malicious_nodes[i] = false;
 	}
-	selective_delay_malicious_nodes[2] = true; // RSU is the attacker
 
-
-	/*--------------------------------------------------------
-// Change 1: attack never fires
-//attack_percentage = 0;
-
-// Change 2: do not mark node 2 as malicious in ground truth
-// Comment out these two lines:
-// selective_delay_malicious_nodes[2] = true;
-// record_attack_onset(1, 2);
-
-// Keep this line (master switch stays false effect)
-//present_selective_delay_attack_nodes = false;
-
-//s2_detection_active=false;
---------------------------------------------------------------*/
-
-	present_selective_delay_attack_nodes = true; //2. With attack scenario
-    
-	cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
-	cout << attack_tag() << " ① Node 2 (RSU) marked as malicious selective delay attacker" << endl;
-	cout << attack_tag() << " ① Attack 2 scenario: Vehicle A(0) -> Malicious RSU(2) -> Vehicle B(1)" << endl;
-	cout << attack_tag() << " ① Routing forced through RSU (Node 2) for attack verification" << endl;
-	cout << attack_tag() << " ① Node positions adjusted: Vehicle A at (0,0), RSU at (0,-150), Vehicle B at (0,-300)" << endl;
-	cout << attack_tag() << " ① Direct link Node0-Node1 broken, all traffic routes via RSU" << endl;
-    
-	// Record attack onset for metric M4
-record_attack_onset(1, 2);   
+	if (active_attack_variant == 1)
+	{
+		selective_delay_malicious_nodes[15] = true; // RSU0 is the attacker
+		selective_delay_malicious_nodes[16] = true; // RSU1 is the attacker
+        is_malicious_node[1][15] = true; // Explicitly flag for TP/FN metrics
+        is_malicious_node[1][16] = true; // Explicitly flag for TP/FN metrics
+		present_selective_delay_attack_nodes = true;
+		
+		cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
+		cout << attack_tag() << " ① Node 15 and 16 (RSUs) marked as malicious selective delay attackers" << endl;
+		cout << attack_tag() << " ① Attack 2 scenario active on 5-unit topology" << endl;
+		
+		// Record attack onset for metric M4
+		record_attack_onset(1, 15);   
+		record_attack_onset(1, 16);   
+	}
+	else if (active_attack_variant == 0)
+	{
+		present_selective_delay_cp_attack = true;
+		
+		// Explicitly map RSU 15 and 16 as the malicious actors for metrics evaluation
+		is_malicious_node[0][15] = true; 
+		is_malicious_node[0][16] = true; 
+		
+		cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
+		cout << attack_tag() << " ① Attack 1 (Control Plane) scenario active on 5-unit topology" << endl;
+		
+		// We must poison the routes AFTER seed_routing_test_tables runs at t=1.060
+		Simulator::Schedule(Seconds(1.070), &poison_test_network_cp_attackers);
+	}
 }
 
 void hardcode_attack7_test_network()
@@ -116350,7 +116347,9 @@ void seed_attack8_links()
     // All Hidden Forwarding variants (4-7) now use the unified 5-unit topology.
     // Node indices: Senders=0,2,4,6,8  Destinations=1,3,5,7,9
     //               Eavesdroppers=10,11,12,13,14  RSUs=15,16,17,18,19
-    if (active_attack_variant == 4 ||
+    if (active_attack_variant == 0 ||
+        active_attack_variant == 1 ||
+        active_attack_variant == 4 ||
         active_attack_variant == 5 ||
         active_attack_variant == 6 ||
         active_attack_variant == 7)
@@ -117415,7 +117414,12 @@ void calculate_security_detection_metrics()
         sec_TP[v] = 0; sec_FP[v] = 0;
         sec_TN[v] = 0; sec_FN[v] = 0;
 
-        for (int n = 0; n < total_size; n++)
+        int active_topology_nodes = total_size;
+        if (routing_test) {
+            active_topology_nodes = N_Vehicles + N_RSUs + N_Controllers;
+        }
+
+        for (int n = 0; n < active_topology_nodes; n++)
         {
             bool malicious = is_malicious_node[v][n];
             bool detected  = is_detected_node[v][n];
@@ -120763,28 +120767,20 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             fade_forwarded[flow_id][current_hop][packet_id].insert(hop);
                         }
 
-						double tx_delay = calculate_selective_delay(
+						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
+						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+
+						double total_tx_delay = calculate_unified_selective_delay(
 							present_selective_delay_attack_nodes,
 							selective_delay_malicious_nodes[current_hop],
 							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							current_hop,
-							packet_id,
-							flow_id,
-							attack2_delay_seconds);
-
-						double tx_delay_cp = 0.0;
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
-						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
-
-						tx_delay_cp = calculate_selective_delay_cp(
+							attack2_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected,
 							current_hop,
 							packet_id,
 							flow_id);
-
-						double total_tx_delay = tx_delay + tx_delay_cp;
 
 						// Record the CLAIMED forwarding timestamp immediately, at decision
 						// time, before any attack-injected delay is applied — this is what
@@ -123811,12 +123807,18 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							default:   dev_to_use = wifidevices.Get(source); break;
 						}
 						
-						bool attacked = schedule_selective_delay_attack(
+						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
+						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
+
+						bool attacked = schedule_unified_selective_delay_attack(
 							present_selective_delay_attack_nodes,
 							selective_delay_malicious_nodes[source],
 							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							source, packet_id, fid, attack2_delay_seconds,
+							attack2_delay_seconds,
+							present_selective_delay_cp_attack,
+							injected_cp,
+							source, packet_id, fid,
 							routing_dsrc_data_unicast,
 							dev_to_use, dsrc_Nodes.Get(source),
 							fid, nid, arguments, total_packet_counter+1);
@@ -141184,7 +141186,9 @@ int main(int argc, char *argv[])
     
     if (routing_test == true)
     {
-        if (active_attack_variant == 4 ||
+        if (active_attack_variant == 0 || 
+			active_attack_variant == 1 || 
+			active_attack_variant == 4 ||
             active_attack_variant == 5 ||
             active_attack_variant == 6 ||
             active_attack_variant == 7)
@@ -141295,8 +141299,8 @@ int main(int argc, char *argv[])
 	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
 	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
 	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
-
-		if (active_attack_variant == 4 ||
+		if ((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+            active_attack_variant == 4 ||
             active_attack_variant == 5 ||
             active_attack_variant == 6 ||
             active_attack_variant == 7)
@@ -141866,9 +141870,9 @@ int main(int argc, char *argv[])
     // TODO: man_base_posx/posy, con_base_posx/posy, lte_base_posx/posy above are
     // tuned for the variant-7 (3-node) layout. Attacks 5/6/7 (variants 4/5/6,
     // 2-unit/6-vehicle topology spanning x=300..1600) likely need their own
-    // base positions — to be addressed separately. Left unchanged for now.
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-    if (active_attack_variant == 4 ||
+    if ((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+        active_attack_variant == 4 ||
         active_attack_variant == 5 ||
         active_attack_variant == 6 ||
         active_attack_variant == 7)
@@ -141891,10 +141895,11 @@ int main(int argc, char *argv[])
         rsuPositionAlloc->Add(Vector(600.0, 450.0, 0.0)); // RSU: above the A-B midpoint
     }
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
-    if (active_attack_variant != 4 &&
-        active_attack_variant != 5 &&
-        active_attack_variant != 6 &&
-        active_attack_variant != 7)
+    if (!((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+          active_attack_variant == 4 ||
+          active_attack_variant == 5 ||
+          active_attack_variant == 6 ||
+          active_attack_variant == 7))
     {
         cout << "[TEST NETWORK] Positions set (spread for NetAnim):" << endl;
         cout << "[TEST NETWORK] Vehicle A   : (300, 300, 0)  Node 0" << endl;
@@ -142801,10 +142806,11 @@ if (architecture == 3 && N_Vehicles > 0)
     						}
     						else
     						{
-    							if (active_attack_variant == 4 ||
-    							    active_attack_variant == 5 ||
-    							    active_attack_variant == 6 ||
-    							    active_attack_variant == 7)
+    							if ((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+                                    active_attack_variant == 4 ||
+                                    active_attack_variant == 5 ||
+                                    active_attack_variant == 6 ||
+                                    active_attack_variant == 7)
     							{
     								// 5-unit topology: flow 1 = unit 1 (VehA1(2)->VehB1(3))
 									source = 2;
@@ -142974,6 +142980,10 @@ if (architecture == 3 && N_Vehicles > 0)
 			// Initialize dynamic attack configurations
 			declare_attack_states();
 			declare_attackers();
+			
+			if (routing_test) {
+			    hardcode_test_network_attackers();
+			}
 
 			// Initialize attack state before main loop
 			initialise_stub_attack_state();
@@ -143396,8 +143406,11 @@ if (architecture == 3 && N_Vehicles > 0)
   Simulator::Stop(Seconds(simTime));
   
     // Position override: only apply the 4-node test layout when NOT running Attacks 5, 6, 7, 8
-    // (active_attack_variant==4/5/6/7 with routing_test=true uses its own positionAlloc above)
+    // The unified 15-node test topology already assigns positions for all nodes
+    // via the custom PositionAllocator above. No need to override positions here.
     if (routing_test &&
+        active_attack_variant != 0 &&
+        active_attack_variant != 1 &&
         active_attack_variant != 4 &&
         active_attack_variant != 5 &&
         active_attack_variant != 6 &&
@@ -143406,14 +143419,12 @@ if (architecture == 3 && N_Vehicles > 0)
         Ptr<MobilityModel> mob0 = NodeList::GetNode(2)->GetObject<MobilityModel>(); // Vehicle 0 (Node ID 2)
         Ptr<MobilityModel> mob1 = NodeList::GetNode(3)->GetObject<MobilityModel>(); // Vehicle 1 (Node ID 3)
         Ptr<MobilityModel> mobRSU = RSU_Nodes.Get(0)->GetObject<MobilityModel>();   // The RSU
-        
+
         mobRSU->SetPosition(Vector(500.0, 150.0, 0.0));
-		mob0->SetPosition(Vector(400.0, 100.0, 0.0)); 
-		mob1->SetPosition(Vector(600.0, 100.0, 0.0));
+               mob0->SetPosition(Vector(400.0, 100.0, 0.0));
+
+               mob1->SetPosition(Vector(600.0, 100.0, 0.0));
     }
-
-
-  
 
 // =====================================================
 // FADE CSV INITIALIZATION
