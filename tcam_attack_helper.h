@@ -32,11 +32,6 @@ struct TcamEntry {
 std::vector<TcamEntry> g_tcam_table;
 std::set<std::pair<uint32_t,uint32_t>> g_tcam_installed; // (flow_id, node_id) dedup
 
-// Hardware TCAM capacity per RSU (256 entries matches real SDN switch TCAMs).
-// When a node's rule count reaches this limit, new packet-misses go to the
-// controller via the slow path, incurring a controller round-trip delay.
-static const int TCAM_HW_SIZE = 256;
-
 // Per-node installed rule count — updated by tcam_install() and
 // tcam_install_malicious().  Declared here so routing.cc can forward-declare
 // it with `extern` before check_delivery_and_retransmit is defined.
