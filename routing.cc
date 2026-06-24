@@ -117581,30 +117581,9 @@ void write_security_metrics_csv()
 
 	if (active_attack_variant != -1)
 	{
-		switch (attack_percentage)
-		{
-			case (0):
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
-				break;
-			case (20):
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_20.csv";
-				break;
-			case (40):
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_40.csv";
-				break;
-			case (60):
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_60.csv";
-				break;
-			case (80):
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_80.csv";
-				break;
-			case (100):
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_100.csv";
-				break;
-			default:
-				filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
-				break;
-		}
+		filename = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+		           + to_string(attack_id)
+		           + "_" + to_string(attack_percentage) + ".csv";
 	}
 
 	fout.open(filename, ios::out|ios::app);
