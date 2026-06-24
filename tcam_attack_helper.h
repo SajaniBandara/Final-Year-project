@@ -32,6 +32,11 @@ struct TcamEntry {
 std::vector<TcamEntry> g_tcam_table;
 std::set<std::pair<uint32_t,uint32_t>> g_tcam_installed; // (flow_id, node_id) dedup
 
+// Per-node installed rule count — updated by tcam_install() and
+// tcam_install_malicious().  Declared here so routing.cc can forward-declare
+// it with `extern` before check_delivery_and_retransmit is defined.
+int g_tcam_rule_count[300] = {0}; // indexed by node_id, sized >= total_size
+
 // Returns the first non-loopback IPv4 address of a node given its sim index (0-based).
 // NodeList IDs in this simulation are offset by 2 (management + controller nodes occupy 0,1).
 inline static uint32_t get_node_ipv4(uint32_t sim_node_index)
@@ -187,6 +192,7 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     e.byte_count     = 0;
     e.is_malicious   = false;
     g_tcam_table.push_back(e);
+    g_tcam_rule_count[node_id]++;
 
     Ipv4Address sip, dip;
     sip.Set(src_ip);
@@ -344,21 +350,36 @@ inline void export_tcam_snapshot_baseline()
 //   • skips g_tcam_installed dedup (each fake_fid is intentionally unique)
 //   • sets is_malicious = true
 //   • derives 5-tuple from fake_fid alone (no delta_at_nodes_inst needed)
+//
+// flow_id stored in the TCAM entry (and CSV) is derived from the 5-tuple via
+// get_or_create_ip_flow_id(), placing it in the same [1000, N] range as
+// legitimate traffic.  The raw fake_fid (1M+ / 2M+) is only used internally
+// as a seed to produce a unique 5-tuple and is never written to any output.
+// Without this, an LSTM or similar model can trivially classify entries as
+// malicious purely from the flow_id magnitude.
 inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
 {
     // Build a synthetic 5-tuple unique to this fake_fid.
-    // src IP = attacker node's real IP; dst IP = a synthetic remote address.
+    // src IP = attacker node's real IP; dst IP sampled from the same server
+    // range used by benign traffic (10.1.1.65–68) so the dst_ip column does
+    // not leak attack membership to an ML classifier.
     uint32_t src_ip  = get_node_ipv4(node_id);
-    // Encode fake_fid into the last two octets of a routable-looking address
-    // (192.168.x.y where x.y encode fake_fid mod 65535).
     uint32_t encoded = fake_fid & 0xFFFF;
-    uint32_t dst_ip  = Ipv4Address("192.168.0.0").Get() | encoded;
+    // Cycle through the four real RSU server addresses (.65 .66 .67 .68)
+    uint32_t dst_last = 65u + (encoded % 4u);
+    uint32_t dst_ip   = ((uint32_t)10 << 24) | ((uint32_t)1 << 16)
+                      | ((uint32_t)1 << 8)   | dst_last;
 
     uint16_t src_port = derive_port(fake_fid, node_id, 0xDEAD, 0x1111u);
     uint16_t dst_port = derive_port(fake_fid, 0xDEAD, node_id, 0x2222u);
 
+    // Derive the visible flow_id from the 5-tuple using the same lookup used
+    // for benign flows — result lands in [1000, N], indistinguishable from
+    // legitimate entries by flow_id alone.
+    uint32_t visible_fid = get_or_create_ip_flow_id(src_ip, dst_ip, src_port, dst_port, 17);
+
     TcamEntry e;
-    e.flow_id        = fake_fid;
+    e.flow_id        = visible_fid;
     e.node_id        = node_id;
     e.src_ip         = src_ip;
     e.dst_ip         = dst_ip;
@@ -371,6 +392,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
     e.byte_count     = 750;  // nominal packet size consistent with benign traffic
     e.is_malicious   = true;
     g_tcam_table.push_back(e);
+    g_tcam_rule_count[node_id]++;
     // NOTE: intentionally NOT inserted into g_tcam_installed so repeated calls
     // with the same fake_fid could be used for refresh; but dp_attack_tick always
     // increments g_dp_attack_fid_counter so each call is truly unique.
@@ -378,7 +400,8 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
     Ipv4Address sip, dip;
     sip.Set(src_ip);
     dip.Set(dst_ip);
-    std::cout << "[TCAM INSTALL MAL] fake_fid=" << fake_fid
+    std::cout << "[TCAM INSTALL MAL] visible_fid=" << visible_fid
+              << " (seed=" << fake_fid << ")"
               << " node=" << node_id
               << " " << sip << ":" << src_port
               << " -> " << dip << ":" << dst_port

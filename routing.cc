@@ -114678,6 +114678,11 @@ double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign 
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
 double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 100%)
+// Attack 4 (DP): percentage of vehicles acting as attackers.
+// 0 = disabled (use --num_attackers directly).
+// >0 overrides num_attackers: num_attackers = ceil(N_Vehicles * dp_attack_pct/100).
+// Mirrors cp_attack_pct so both attacks have symmetric terminal control.
+double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
 // t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
@@ -117525,6 +117530,8 @@ void calculate_mitigation_latency_metric()
               << 1000.0 * average_mitigation_latency << " ms" << std::endl;
 }
 
+static const int TCAM_HW_SIZE = 256;
+#include "tcam_detection.h"
 void write_security_metrics_csv()
 {
 	fstream fout;
@@ -117574,33 +117581,32 @@ void write_security_metrics_csv()
 
 	if (active_attack_variant != -1)
 	{
-		switch (attack_percentage)
-		{
-			case (0):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
-				break;
-			case (20):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_20.csv";
-				break;
-			case (40):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_40.csv";
-				break;
-			case (60):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_60.csv";
-				break;
-			case (80):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_80.csv";
-				break;
-			case (100):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_100.csv";
-				break;
-			default:
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
-				break;
-		}
+		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+		           + to_string(attack_id)
+		           + "_" + to_string(attack_percentage) + ".csv";
 	}
 
 	fout.open(filename, ios::out|ios::app);
+
+	if (fout.tellp() == 0) {
+		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
+			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
+			 << "# TP, FP, TN, FN,\n"
+			 << "# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
+			 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4\n";
+	}
+
+	TcamCycleMetrics tcam_metrics{};
+	if (active_attack_variant == 2 || active_attack_variant == 3) {
+		double active_vehicles = (double)N_Vehicles;
+		tcam_metrics = ComputeTcamDetection(
+			N_Vehicles, N_RSUs,
+			10.0,
+			15.0,
+			0.80,
+			active_vehicles
+		);
+	}
 
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
@@ -117618,7 +117624,9 @@ void write_security_metrics_csv()
 		 << sec_TP[selected_variant] << ", "
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
-		 << sec_FN[selected_variant] << "\n";
+		 << sec_FN[selected_variant]
+		 << TcamDetectionCsvColumns(tcam_metrics)
+		 << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
@@ -120577,6 +120585,23 @@ uint32_t s_flow_counter[2*flows][total_size][Flow_size+2];
 void tcam_install(uint32_t node_id, uint32_t fid);
 void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 
+// TCAM slow-path: per-node rule count and hardware capacity.
+// g_tcam_rule_count is defined in tcam_attack_helper.h (included after this
+// function). The extern declaration lets check_delivery_and_retransmit read
+// it without moving the include.
+extern int g_tcam_rule_count[300];
+int g_slowpath_hit_count[300] = {0};
+// Fixed controller round-trip delay applied when TCAM is at or above capacity.
+// This is a step function: 0ms when the RSU still has free TCAM slots
+// (packet matched immediately), TCAM_SLOWPATH_S when the table is full
+// (packet-in → controller → FlowMod round-trip).  A proportional model is
+// NOT realistic because TCAM lookup is O(1) in hardware — fill ratio does
+// not affect per-packet latency; only the binary miss/hit outcome does.
+// Default 50ms matches SDVN backhaul + controller processing in the
+// literature and equals the S2 hop-delay threshold (delta_max_s2).
+// Override with --tcam_slowpath_ms on the command line.
+double tcam_slowpath_s = 0.050; // CLI: --tcam_slowpath_ms (value in ms, converted below)
+
 void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_t hop, uint32_t current_hop, Time originail_timestamp, struct custom_struct arguments)
 {
 	// Guard: hop must be a valid node index.
@@ -120781,6 +120806,26 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							current_hop,
 							packet_id,
 							flow_id);
+
+						// TCAM slow-path delay (Attacks 3 & 4).
+						// Real TCAM lookup is O(1) — fill level does not affect latency.
+						// The penalty fires only when the table is AT OR ABOVE capacity:
+						// the incoming packet has no matching rule, so it takes the
+						// controller slow path (PacketIn → FlowMod round-trip).
+						// Below capacity the packet hits a rule immediately (0 extra delay).
+						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
+						    current_hop >= N_Vehicles &&
+						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						{
+						    total_tx_delay += tcam_slowpath_s;
+						    g_slowpath_hit_count[current_hop]++;
+						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						              << " rules=" << g_tcam_rule_count[current_hop]
+						              << "/" << TCAM_HW_SIZE
+						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
+						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						              << std::endl;
+						}
 
 						// Record the CLAIMED forwarding timestamp immediately, at decision
 						// time, before any attack-injected delay is applied — this is what
@@ -141166,8 +141211,11 @@ int main(int argc, char *argv[])
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
-    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): number of attacker nodes; nodes 0..N-1 each run independently (default 1)", num_attackers);
+    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): absolute attacker count; nodes 0..N-1 (default 1, overridden by --dp_attack_pct if >0)", num_attackers);
+    cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): percentage of vehicles acting as attackers (0-100). Overrides --num_attackers when >0. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
     cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 100.0 = all RSUs)", cp_attack_pct);
+    double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
+    cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
@@ -141177,6 +141225,21 @@ int main(int argc, char *argv[])
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
     cmd.Parse (argc, argv);
+
+    // Convert ms CLI input to seconds for the forwarding path.
+    tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
+
+    // Attack 4 (DP TCAM): if --dp_attack_pct was given, derive num_attackers
+    // from it so both attacks share symmetric percentage-based terminal control.
+    // cp_attack_pct already works this way for Attack 3 (RSU targeting fraction).
+    if (dp_attack_pct > 0.0)
+    {
+        num_attackers = (int)std::ceil(N_Vehicles * (dp_attack_pct / 100.0));
+        if (num_attackers < 1)               num_attackers = 1;
+        if (num_attackers > (int)N_Vehicles) num_attackers = (int)N_Vehicles;
+        cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% -> num_attackers="
+             << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
+    }
 
     if (attack_number_cli != -1)
     {
