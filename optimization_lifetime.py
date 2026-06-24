@@ -19,7 +19,7 @@ try:
     mobility_scenario = 1
     d_max = 270
 
-    with open("/home/nipuni/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",
+    with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",
               'r', encoding='UTF8') as csvfile:
         csvreader = csv.reader(csvfile, delimiter=',', quotechar='"',
                                quoting=csv.QUOTE_MINIMAL)
@@ -118,7 +118,7 @@ try:
                 # Unbounded or unexpected — treat as stable
                 lifetime.append(STATIONARY_LIFETIME)
 
-    with open("/home/nipuni/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",
+    with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",
               'w', encoding='UTF8') as csvfile:
         writer = csv.writer(csvfile, delimiter=',', quotechar='"',
                             quoting=csv.QUOTE_MINIMAL)
