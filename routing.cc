@@ -1,4 +1,4 @@
-#include <set>
+﻿#include <set>
 #include "ns3/wave-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/lte-helper.h"
@@ -94676,7 +94676,7 @@ void reset_delays_and_packets()
 void write_csv_delay_training(uint32_t index, uint32_t mode)
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
+	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
 	fout << mode << ", "
 	     << mode*D_wl_bar[index] << ", "
 	     <<	(1-mode)*D_wi_bar[index] << ", "
@@ -94704,7 +94704,7 @@ void write_csv_delay_training(uint32_t index, uint32_t mode)
 void write_csv_delay_prediction()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
+	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
 	for (uint32_t index=0;index<total_size;index++)
 	{
 		for(double mode=0.0;mode < 2.0;mode++)
@@ -112914,7 +112914,7 @@ void RSU_metadata_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <Node
 void write_csv()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
+	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
 	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		fout << total_size << ", "
@@ -112943,44 +112943,44 @@ void write_csv_status_lifetime()
 	switch(routing_algorithm)
 	{
 		case(0):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
 			break;
 		case(1):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
 			break;
 		case(2):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			break;
 		case(3):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			break;
 		case(4):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 		case(5):
 			/*
 			if(experiment_number == 0)
 			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 1)
 			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
+				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 2)
 			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
+				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
 			}
 			if(experiment_number == 3)
 			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+				fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			}
 			*/
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
 			break;
 			
 		default:
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+			fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 	}
 	cout << "[DEBUG] Node 0 position in CSV: " 
@@ -113013,7 +113013,7 @@ void write_csv_status_lifetime()
 void write_csv_status()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+	fout.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		Ptr <Node> node;
@@ -113050,7 +113050,7 @@ void write_csv_status()
 void read_csv()
 {
     fstream fin;
-    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
+    fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -113115,59 +113115,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
 				}
 
 				break;
@@ -113175,37 +113175,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113215,25 +113215,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
+				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113245,37 +113245,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
+					   		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113287,46 +113287,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113346,126 +113346,126 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;	
 			case (8)://threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
 				}
 				break;
 			case (10): //number of nodes for routing
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113475,25 +113475,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
+				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113505,22 +113505,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
 				  	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113532,28 +113532,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113568,59 +113568,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
 				}
 
 				break;
@@ -113628,37 +113628,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113668,25 +113668,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
+				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113698,22 +113698,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113725,27 +113725,27 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113765,89 +113765,89 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;	
 			case (8)://contention threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
 				}
 
 				break;
@@ -113855,37 +113855,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113895,25 +113895,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
+				  			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113925,22 +113925,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113952,28 +113952,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113990,93 +113990,93 @@ void write_csv_results()
 			case (0)://entropy experiment
 				if (entropy_threshold == 0.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
 				}
 				if(entropy_threshold == 0.001)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
 				}
 				if(entropy_threshold == 0.002)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
 				}
 				if(entropy_threshold == 0.005)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
 				}
 				if(entropy_threshold == 0.010)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
 				}
 				if(entropy_threshold == 0.020)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
 				}
 				if(entropy_threshold == 0.050)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
 				}
 				if(entropy_threshold == 0.100)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
 				}
 				if(entropy_threshold == 0.200)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
 				}
 				if(entropy_threshold == 0.500)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
 				}
 				break;
 			case (1)://optimization frequency
 				if (optimization_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
 				}
 				if (optimization_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
 				}
 				if (optimization_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
 				}
 				if (optimization_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
 				}
 				if (optimization_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
 				}
 				if (optimization_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
 				}
 				if (optimization_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
 				}
 
 				if (optimization_frequency ==4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
 				}
 		
 				if (optimization_frequency == 6.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
 				}
 
 				if (optimization_frequency ==8.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
 				}
 
 				if (optimization_frequency ==10.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
 				}
 
 				break;
@@ -114084,37 +114084,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
 						break;
 				}
 				break;
@@ -114124,25 +114124,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -114154,37 +114154,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
+					   		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -114196,46 +114196,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -114255,167 +114255,167 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime experiment
 				if (link_lifetime_threshold == 0.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
 				}
 				if(link_lifetime_threshold == 0.100)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
 				}
 				if(link_lifetime_threshold == 0.200)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
 				}
 				if(link_lifetime_threshold == 0.500)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
 				}
 				if(link_lifetime_threshold == 1.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
 				}
 				if(link_lifetime_threshold == 2.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
 				}
 				if(link_lifetime_threshold == 4.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
 				}
 				if(link_lifetime_threshold == 6.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
 				}
 				if(link_lifetime_threshold == 8.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
 				}
 				if(link_lifetime_threshold == 12.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
 				}
 				break;	
 			case (8)://contention experiment
 				if (contention_threshold == 0.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
 				}
 				if(contention_threshold == 0.001)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
 				}
 				if(contention_threshold == 0.002)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
 				}
 				if(contention_threshold == 0.005)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
 				}
 				if(contention_threshold == 0.010)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
 				}
 				if(contention_threshold == 0.020)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
 				}
 				if(contention_threshold == 0.050)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
 				}
 				if(contention_threshold == 0.100)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
 				}
 				if(contention_threshold == 0.200)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
 				}
 				if(contention_threshold == 0.500)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
 				}
 				break;	
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
+					filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
 				}
 
 				break;
@@ -114423,37 +114423,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
+						filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -114463,25 +114463,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -114493,22 +114493,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
+					  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -114520,28 +114520,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -114745,6 +114745,7 @@ uint32_t passive_hf_eavesdropper_index = 2;  // legacy single-RSU fallback — k
 // Multi-RSU Attack 8: maps each malicious RSU (current_hop index) to its paired eavesdropper index.
 // Populated by hardcode_attack7_test_network() based on attack_percentage.
 std::map<uint32_t, uint32_t> passive_hf_rsu_to_eavesdropper;
+std::map<uint32_t, uint32_t> passive_hf_rsu_to_legitimate_hop;
 
 // Active Hidden Forwarding globals (Attacks 5 & 6 — content-modified copy)
 bool active_hf_malicious_nodes[total_size] = {false};
@@ -115208,16 +115209,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
 							break;
 						default:
 							break;
@@ -115227,16 +115228,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -115246,16 +115247,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
 							break;
 						default:
 							break;
@@ -115265,16 +115266,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -115284,16 +115285,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
 							break;
 						default:
 							break;
@@ -115304,16 +115305,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -115331,19 +115332,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115353,19 +115354,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115375,19 +115376,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115397,19 +115398,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115420,19 +115421,19 @@ void write_csv_results_routing()
 					{
 						
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115442,19 +115443,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115472,28 +115473,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115503,28 +115504,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115534,28 +115535,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115565,28 +115566,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115596,28 +115597,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115627,19 +115628,19 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
 							break;
 						default:
 							break;
@@ -115656,22 +115657,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115681,22 +115682,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115706,22 +115707,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115731,22 +115732,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115756,22 +115757,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115781,22 +115782,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
+							filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -117073,7 +117074,7 @@ void write_security_metrics_csv()
 	switch (active_attack_variant)
 	{
 		case (-1):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
 			break;
 		case (0):
 			attack_id = 1;
@@ -117106,7 +117107,7 @@ void write_security_metrics_csv()
 
 	if (active_attack_variant != -1)
 	{
-		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+		filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
 		           + to_string(attack_id)
 		           + "_" + to_string(attack_percentage) + ".csv";
 	}
@@ -117355,11 +117356,15 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
 	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
-	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
-	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+	// TAP only runs for selective-delay attacks (variants 0-3); HF attacks use eFADE.
+	if (active_attack_variant <= 3)
+	{
+		Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+		Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+	}
 
-	// Resolve the results directory dynamically using the user or HOME environment variable
-	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
+	// Resolve the results directory dynamically using the sajani or HOME environment variable
+	std::string results_dir = "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
 	if (home_env != nullptr)
 	{
@@ -117720,7 +117725,7 @@ void transmit_delta_values()
 void optimize_subsequent()
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -117733,44 +117738,44 @@ void optimize_link_lifetime()
 	switch(routing_algorithm)
 	{
 		case(0):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
 			break;
 		case(1):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
 			break;
 		case(2):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			break;
 		case(3):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			break;
 		case(4):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
 			break;
 		case(5):
 			/*
 			if(experiment_number == 0)
 			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			}
 			if(experiment_number == 1)
 			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
 			}
 			if(experiment_number == 2)
 			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
 			}
 			if(experiment_number == 3)
 			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+				filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			}
 			*/
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
 			
 			break;
 		default:
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
+			filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
 			break;
 		
 	}
@@ -117781,7 +117786,7 @@ void optimize_link_lifetime()
 
 void optimize_first_time()
 {
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -117939,44 +117944,44 @@ void read_lifetime_from_csv()
     switch(routing_algorithm)
     {
     	case(0):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
     		break;
     	case(1):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
     		break;
     	case(2):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		break;
     	case(3):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		break;
     	case(4):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
     		break;	
     	case(5):
     		/*
     		if(experiment_number == 0)
     		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		}
     		if(experiment_number == 1)
     		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
+    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
     		}
     		if(experiment_number == 2)
     		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
+    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
     		}
     		if(experiment_number == 3)
     		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    			fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		}
     		*/
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
     		break;	
     		
     	default:
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
+    		fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
     		break;
     }
     
@@ -119538,7 +119543,7 @@ void  run_optimization_subsequent()
 void predict_DNN_link_lifetime()
 {
 	cout<<"predicting link lifetimes"<<endl;
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
+	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -119547,7 +119552,7 @@ void predict_DNN_link_lifetime()
 void predict_DNN_delay()
 {
 	cout<<"predicting delay"<<endl;
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
+	std::string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -119637,7 +119642,7 @@ void read_delay_from_csv()
 {
     fstream fin;
     cout<<"reading delay from csv"<<endl;
-    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
+    fin.open("/home/sajani/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -119705,7 +119710,7 @@ void calculate_dijkstra_stable_solution(uint32_t destination)
 void write_distance_metrics()
 {
 	fstream fout;
-	string filename = "/home/user/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
+	string filename = "/home/sajani/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
 	fout.open(filename,ios::out|ios::app);
 	
 	fout << Simulator::Now().GetSeconds();
@@ -120413,7 +120418,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    g_total_copies_scheduled++;
 						    // eFADE: record duplicate destination immediately at scheduling
 						    // to ensure it falls within the same measurement epoch as the incoming packet.
-						    fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
+						    { uint32_t fade_fid = g_hdup_flow_id & 0xFFFFu; fade_forwarded[fade_fid][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves); }
+					    // eFADE: seed legitimate hop so dest_set = {eavesdropper, legit_hop} = size 2
+					    {
+					        auto _leg = passive_hf_rsu_to_legitimate_hop.find(current_hop);
+					        if (_leg != passive_hf_rsu_to_legitimate_hop.end())
+					            fade_forwarded[flow_id][current_hop][packet_id].insert(_leg->second);
+					    }
 						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
 						}
                         // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
@@ -120455,9 +120466,18 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // MacRx can distinguish it from ambient Wi-Fi overhear.
                             g_hdup_intentional    = true;
                             g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
-                            // eFADE: record duplicate destination immediately at scheduling
-                            // to ensure it falls within the same measurement epoch as the incoming packet.
-                            fade_forwarded[g_hdup_flow_id][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
+                            // eFADE: record duplicate under the ORIGINAL flow_id so FADE's
+                            // multi-dest check fires correctly. Active attacks set
+                            // g_hdup_flow_id = 0xDEAD0000|flow_id — stripping the marker
+                            // ensures the entry lands in the same map key FADE monitors.
+                            uint32_t fade_fid = g_hdup_flow_id & 0xFFFFu;
+                            fade_forwarded[fade_fid][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
+                            // eFADE: seed legitimate hop so dest_set = {eavesdropper, legit_hop} = size 2
+                            {
+                                auto _leg = passive_hf_rsu_to_legitimate_hop.find(current_hop);
+                                if (_leg != passive_hf_rsu_to_legitimate_hop.end())
+                                    fade_forwarded[flow_id][current_hop][packet_id].insert(_leg->second);
+                            }
                             Simulator::Schedule(Seconds(0.001),
                                                 send_hidden_duplicate_trampoline);
                         }
@@ -120835,7 +120855,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
 				// OnReceivedEmergencyPacket logic. Fires at every received packet.
-				tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
+				if (active_attack_variant <= 3)
+					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
 				// === END TAP BASELINE DETECTION ===
 
 				if(destination == current_hop)
@@ -123102,63 +123123,36 @@ void initialize_flow_counters()
 		(demanding_flow_struct_nodes_inst+1)->f_size = 3;
 		cout << "[TEST NET] Delta seeded (pre-build): flow 1: 2->16->3, flow_size=" << flow_size << endl;
 
-		// Re-apply the HF attack's poisoned delta entry AFTER clearing, so it
-		// survives into this cycle. Without this, the clear above wipes out
-		// whatever hf_cp_inject_delta / hf_dp_inject_delta already wrote.
-		// Re-apply the HF attack's poisoned delta entry AFTER clearing, so it
-		// survives into this cycle. Without this, the clear above wipes out
-		// whatever hf_cp_inject_delta / hf_dp_inject_delta already wrote.
-		if (active_attack_variant == 4 || active_attack_variant == 6)
+	}
+
+	// Re-apply HF attack poisoned delta entries after the per-cycle clear.
+	// Runs in both routing_test and SUMO mode — the blocks above only seed the
+	// test-network topology; the attack re-apply must happen unconditionally so
+	// SUMO runs (routing_test=false) are also covered.
+	if (active_attack_variant == 4 || active_attack_variant == 6)
+	{
+		for (auto const& kv : passive_hf_rsu_to_eavesdropper)
 		{
-			// CP variants (5, 7): re-poison the controller table each cycle.
-			// NOTE: transmit_delta_values() exists in this codebase as the intended
-			// mechanism to carry this poisoned value down to the RSU's local table,
-			// but it has no corresponding receive handler anywhere (no code ever
-			// calls GetPacketTag<CustomDeltavaluesDownlinkUnicastTag>() to unpack and
-			// apply an incoming downlink), so calling it would build and send a
-			// packet that is silently dropped on arrival. Rather than build new
-			// network-receive infrastructure outside this project's scope, we
-			// directly write both tables here, honestly representing the end state
-			// of "the controller's malicious rule has been delivered and installed
-			// at the RSU" without depending on incomplete transport machinery.
-			for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+			uint32_t rsu_node   = kv.first;
+			uint32_t eaves_node = kv.second;
+			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
 			{
-				uint32_t rsu_node   = kv.first;
-				uint32_t eaves_node = kv.second;
-				if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
-				{
-					(delta_at_controller_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-					(delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-				}
+				(delta_at_controller_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				(delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
 			}
 		}
-		else if (active_attack_variant == 5 || active_attack_variant == 7)
+	}
+	else if (active_attack_variant == 5 || active_attack_variant == 7)
+	{
+		for (auto const& kv : passive_hf_rsu_to_eavesdropper)
 		{
-			// DP variants (6, 8): re-poison the RSU's OWN local table each cycle.
-			// Without this, the clear above wipes out hf_dp_inject_delta's work
-			// after the first cycle, since DP never touches the controller table
-			// and therefore has no other mechanism to survive the periodic clear.
-			// Controller table is intentionally left untouched — DP attacks never
-			// involve the controller.
-			cout << "[DP REAPPLY CHECK] branch reached at t=" << Simulator::Now().GetSeconds()
-			     << "s, map size=" << passive_hf_rsu_to_eavesdropper.size() << endl;
-			// DP variants (6, 8): re-poison the RSU's OWN local table each cycle.
-			cout << "[DP REAPPLY CHECK] active_hf_malicious_nodes[15]=" << active_hf_malicious_nodes[15]
-			     << " passive_hf_malicious_nodes[15]=" << passive_hf_malicious_nodes[15] << endl;
-			for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+			uint32_t rsu_node   = kv.first;
+			uint32_t eaves_node = kv.second;
+			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
 			{
-				uint32_t rsu_node   = kv.first;
-				uint32_t eaves_node = kv.second;
-				if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
-				{
-					(delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-					if (rsu_node == 15)
-						cout << "[DP REAPPLY WRITE] t=" << Simulator::Now().GetSeconds()
-						     << "s wrote delta_at_NODES[15][10]=0.5" << endl;
-				}
+				(delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
 			}
 		}
-	
 	}
 
 	for (uint32_t fid=0;fid<2*flows;fid++)
@@ -141122,10 +141116,10 @@ int main(int argc, char *argv[])
 		  ltehelper = CreateObject<LteHelper> ();
 		  ltehelper->SetAttribute("FadingModel",StringValue("ns3::TraceFadingLossModel"));
 		  std::ifstream TraceFile;
-		  TraceFile.open("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
+		  TraceFile.open("/home/sajani/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
 		  if(TraceFile.good())
 		  {
-		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
+		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/sajani/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
 		  }
 		  
 		  ltehelper->SetFadingModelAttribute("TraceLength",TimeValue(Seconds(10.0)));
@@ -141217,28 +141211,28 @@ int main(int argc, char *argv[])
   	switch(maxspeed)
   	{
   		case (0):
-  			trace_file = "/home/user/mobility/mobility_urban_0.tcl";
+  			trace_file = "/home/sajani/mobility/mobility_urban_0.tcl";
   			break;
   		case (10):
-	  		trace_file = "/home/user/mobility/mobility_urban_10.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_10.tcl";
 	  		break;
 	  	case (20):
-	  		trace_file = "/home/user/mobility/mobility_urban_20.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_20.tcl";
 	  		break;
 	  	case (30):
-	  		trace_file = "/home/user/mobility/mobility_urban_30.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_30.tcl";
 	  		break;
 	  	case (40):
-	  		trace_file = "/home/user/mobility/mobility_urban_40.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/user/mobility/mobility_urban_50.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/user/mobility/mobility_urban_60.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_60.tcl";
 	  		break;
 	  	case (150):
-	  		trace_file = "/home/user/mobility/mobility_urban_150.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_urban_150.tcl";
 	  		break;
 	  	default:
 	  		break;
@@ -141250,37 +141244,37 @@ int main(int argc, char *argv[])
    	switch(maxspeed)
    	{
    		case (0):
-   			trace_file = "/home/user/mobility/mobility_rural_0.tcl";
+   			trace_file = "/home/sajani/mobility/mobility_rural_0.tcl";
    	  		break;
    		case (10):
-   	  		trace_file = "/home/user/mobility/mobility_rural_10.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_rural_10.tcl";
    	  		break;
    	  	case (20):
-	  		trace_file = "/home/user/mobility/mobility_rural_20.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_rural_20.tcl";
 	  		break;
 	  	case (30):
-	   		trace_file = "/home/user/mobility/mobility_rural_30.tcl";
+	   		trace_file = "/home/sajani/mobility/mobility_rural_30.tcl";
 	   		break;
 	   	case (40):
-	  		trace_file = "/home/user/mobility/mobility_rural_40.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_rural_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/user/mobility/mobility_rural_50.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_rural_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/user/mobility/mobility_rural_60.tcl";
+	  		trace_file = "/home/sajani/mobility/mobility_rural_60.tcl";
 	  		break;
    	  	case (70):
-   	  		trace_file = "/home/user/mobility/mobility_rural_70.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_rural_70.tcl";
    	  		break;
    	  	case (80):
-   	  		trace_file = "/home/user/mobility/mobility_rural_80.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_rural_80.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/user/mobility/mobility_rural_90.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_rural_90.tcl";
    	  		break;
    	  	case (100):
-   	  		trace_file = "/home/user/mobility/mobility_rural_100.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_rural_100.tcl";
    	  		break;
    	  	default:
    	  		break;
@@ -141292,46 +141286,46 @@ int main(int argc, char *argv[])
    	  switch(maxspeed)
    	  {
    	  	case (0):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_0.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_0.tcl";
    	  		break;	
    	  	case (10):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_10.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_10.tcl";
    	  		break;
    	  	case (30):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_30.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_30.tcl";
    	  		break;
    	  	case (50):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_50.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_50.tcl";
    	  		break;
    	  	case (70):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_70.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_70.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_90.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_90.tcl";
    	  		break;
    	  	case (110):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_110.tcl";
+   	  		trace_file = "/home/sajani/mobility/mobility_autobahn_110.tcl";
    	  		break;
 	 	case (130):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_130.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_130.tcl";
 	 		break;
 	 	case (150):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_150.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_150.tcl";
 	 		break;
 	 	case (170):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_170.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_170.tcl";
 	 		break;
 	 	case (190):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_190.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_190.tcl";
 	 		break;
 	 	case (210):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_210.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_210.tcl";
 	 		break;
 	 	case (230):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_230.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_230.tcl";
 	 		break;
 	 	case (250):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_250.tcl";
+	 		trace_file = "/home/sajani/mobility/mobility_autobahn_250.tcl";
 	 		break;
 	 	default:
 	 		break;
@@ -142593,6 +142587,8 @@ if (architecture == 3 && N_Vehicles > 0)
 						// in SUMO runs.
 						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
 						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0650), &hf_reapply_dp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0650), &hf_reapply_cp_after_clear);
 											
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 						{
@@ -142927,7 +142923,7 @@ if (architecture == 3 && N_Vehicles > 0)
   Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
+  AnimationInterface anim("/home/sajani/ns-allinone-3.35/ns-3.35/routing.xml");  
   anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
   // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
@@ -142980,7 +142976,7 @@ if (architecture == 3 && N_Vehicles > 0)
       }
     }
  
-  //AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml"); 
+  //AnimationInterface anim("/home/sajani/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
   for (uint32_t i=0; i<Custom_Nodes.GetN() ; i++)
@@ -143046,6 +143042,12 @@ fade_csv << "FlowID,"
 // seed_routing_test_tables is defined as a free function below and called via pointer.
 Simulator::Schedule(Seconds(1.060), &seed_routing_test_tables);
 Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
+// Re-walk delta_at_nodes_inst 0.5s before attack fires so both eFADE's
+// monitored path and the attack's RSU target reflect current vehicle positions.
+// Uses fade_reconfigure_all_flows (not fade_configure_all_flows) so the
+// configured=true early-return in fade_configure_flow is bypassed.
+if (attack_start_time > 2.0)
+    Simulator::Schedule(Seconds(attack_start_time - 0.5), &fade_reconfigure_all_flows);
 
 // Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
 Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
@@ -143087,3 +143089,4 @@ fade_save_metrics();
   //apb.SetFinish();
   return 0;  
 }
+

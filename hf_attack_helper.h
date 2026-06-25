@@ -96,6 +96,11 @@
 #include <fstream>
 #include <iostream>
 
+// Staging globals — must be declared before any function that references them
+static uint32_t g_declare_flow_id = 0;
+static bool     g_declare_is_cp   = false;
+static bool     g_declare_active  = false;
+
 // =============================================================================
 // HF EVENT LOG
 // =============================================================================
@@ -123,7 +128,7 @@ inline void export_hf_event_log()
     if (it != variant_to_label.end()) mode = it->second;
 
     const std::string base_dir =
-        "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sajani/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string path = base_dir + "hf_events_" + mode + "_" +
                        std::to_string(attack_percentage) + ".csv";
 
@@ -257,7 +262,7 @@ inline void hf_reapply_dp_after_clear()
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            (delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            (delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
         }
     }
 }
@@ -270,13 +275,18 @@ inline void hf_reapply_dp_after_clear()
 inline void hf_reapply_cp_after_clear()
 {
     if (active_attack_variant != 4 && active_attack_variant != 6) return;
+    std::cout << "[CP REAPPLY] t=" << Simulator::Now().GetSeconds()
+              << "s map_size=" << passive_hf_rsu_to_eavesdropper.size()
+              << " flow=" << g_declare_flow_id << std::endl;
     for (auto const& kv : passive_hf_rsu_to_eavesdropper)
     {
         uint32_t rsu_node   = kv.first;
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            (delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            (delta_at_controller_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            (delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            std::cout << "[CP REAPPLY] wrote CTRL+NODES[" << rsu_node << "][" << eaves_node << "]=0.5" << std::endl;
         }
     }
 }
@@ -324,10 +334,7 @@ inline void hf_dp_inject_trampoline()
                        g_dp_inject_eaves);
 }
 
-// Staging globals for SUMO-mode hf_declare_malicious_rsus scheduled call
-static uint32_t g_declare_flow_id = 0;
-static bool     g_declare_is_cp   = false;
-static bool     g_declare_active  = false;
+// Staging globals moved to top of file (after #include block) for forward visibility
 
 // Forward declaration — hf_declare_malicious_rsus is defined below the trampolines
 inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack, bool is_cp, bool is_active);
@@ -419,37 +426,64 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
     }
     else
     {
-        // SUMO mode: scan delta_at_controller_inst for active RSU forwarding rules.
-        // In architecture=3 all traffic routes through RSUs, so every active flow
-        // will have nonzero delta weights on RSU->vehicle hops.
-        for (uint32_t fid = 0; fid < (uint32_t)(2 * flows); fid++)
+        // SUMO mode: use eFADE's pre-configured path for flow_id_to_attack.
+        //
+        // delta_at_nodes_inst changes every cycle as vehicles move in SUMO.
+        // Scanning it at t=attack_start_time (t=10s) finds completely different
+        // RSUs than eFADE locked in at t=1.080s — so the attack targets nodes
+        // eFADE never monitors, leaving attacked=0 forever.
+        //
+        // fade_flow_config[flow_id_to_attack] is populated by fade_configure_all_flows
+        // at t=1.080s and is stable for the rest of the simulation. Using it here
+        // guarantees the attacked RSUs are exactly the ones eFADE is monitoring.
+        //
+        // hf_attack_helper.h is included after efade_detection.h in routing.cc
+        // (line 120509 vs 114831), so fade_flow_config is visible here.
+        auto cfg_it = fade_flow_config.find(flow_id_to_attack);
+        if (cfg_it != fade_flow_config.end() && cfg_it->second.configured)
         {
-            for (uint32_t cid = N_Vehicles; cid < N_Vehicles + N_RSUs; cid++)
+            FadeFlowConfig const &fcfg = cfg_it->second;
+            for (uint32_t i = 0; i < fcfg.path_len; i++)
             {
-                for (uint32_t nid = 0; nid < (uint32_t)total_size; nid++)
+                uint32_t node = fcfg.path_nodes[i];
+                if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
                 {
-                    if ((delta_at_controller_inst + fid)->delta_fi_inst[cid].delta_values[nid] > 0.0)
+                    on_path_rsus.push_back(node);
+                    // Eavesdropper = nearby vehicle with highest delta weight from this RSU,
+                    // excluding the flow's source and destination so it is a true third party.
+                    uint32_t best_eaves = fcfg.source; // safe fallback
+                    double   best_w     = 0.0;
+                    for (uint32_t n = 0; n < (uint32_t)total_size; n++)
                     {
-                        bool already_added = false;
-                        for (auto r : on_path_rsus)
-                            if (r == cid) { already_added = true; break; }
-                        if (!already_added)
-                        {
-                            on_path_rsus.push_back(cid);
-                            // Find the vehicle that sends TO this RSU
-                            for (uint32_t sender = 0; sender < N_Vehicles; sender++)
-                            {
-                                if ((delta_at_controller_inst + fid)
-                                        ->delta_fi_inst[sender].delta_values[cid] > 0.0)
-                                {
-                                    rsu_to_sender[cid] = sender;
-                                    break;
-                                }
-                            }
-                        }
+                        if (n == fcfg.source)      continue;
+                        if (n == fcfg.destination) continue;
+                        if (n >= N_Vehicles)       continue; // must be a vehicle
+                        double w = (delta_at_nodes_inst + flow_id_to_attack)
+                                       ->delta_fi_inst[node].delta_values[n];
+                        if (w > best_w) { best_w = w; best_eaves = n; }
                     }
+                    rsu_to_sender[node] = best_eaves;
+                    // Record the legitimate next hop (highest delta weight excluding eavesdropper)
+                    // so fade_forwarded can be seeded with both destinations.
+                    uint32_t legit_hop = fcfg.destination; // safe fallback
+                    double   legit_w   = 0.0;
+                    for (uint32_t n = 0; n < (uint32_t)total_size; n++)
+                    {
+                        if (n == best_eaves) continue;
+                        double w = (delta_at_nodes_inst + flow_id_to_attack)
+                                       ->delta_fi_inst[node].delta_values[n];
+                        if (w > legit_w) { legit_w = w; legit_hop = n; }
+                    }
+                    passive_hf_rsu_to_legitimate_hop[node] = legit_hop;
                 }
             }
+        }
+        else
+        {
+            std::cout << "[HF SCALE] WARNING: eFADE path for flow "
+                      << flow_id_to_attack
+                      << " not yet configured — has fade_configure_all_flows fired?"
+                      << std::endl;
         }
     }
     std::cout << "[HF SCALE] Found " << on_path_rsus.size()

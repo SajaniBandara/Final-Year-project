@@ -133,12 +133,41 @@ inline void fade_configure_flow(uint32_t flow_id)
     cfg.destination = dst;
     cfg.path_len    = 0;
 
-    // Walk the stored path to find its nodes and length
-    for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+    // Walk the stored path to find its nodes and length.
+    // Test mode:  proposed_routing_tables is populated by run_stable_path_finding.
+    // SUMO mode:  proposed_routing_tables is never populated; reconstruct path by
+    //             greedily following the highest-weight delta hop from delta_at_nodes_inst.
+    if (routing_test)
     {
-        uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-        if (node >= (uint32_t)total_size) break;
-        cfg.path_nodes[cfg.path_len++] = node;
+        for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+        {
+            uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
+            if (node >= (uint32_t)total_size) break;
+            cfg.path_nodes[cfg.path_len++] = node;
+        }
+    }
+    else
+    {
+        bool visited[total_size];
+        memset(visited, 0, sizeof(visited));
+        uint32_t cur = src;
+        for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+        {
+            if (cur >= (uint32_t)total_size) break;
+            cfg.path_nodes[cfg.path_len++] = cur;
+            if (cur == dst) break;
+            visited[cur] = true;
+            uint32_t best_next = (uint32_t)total_size;
+            double   best_w    = 0.0;
+            for (uint32_t n = 0; n < (uint32_t)total_size; n++)
+            {
+                if (visited[n]) continue;
+                double w = (delta_at_nodes_inst + flow_id)->delta_fi_inst[cur].delta_values[n];
+                if (w > best_w) { best_w = w; best_next = n; }
+            }
+            if (best_next >= (uint32_t)total_size || best_w <= 0.0) break;
+            cur = best_next;
+        }
     }
 
     std::cout << "[eFADE DEBUG] configure flow " << flow_id
@@ -147,14 +176,43 @@ inline void fade_configure_flow(uint32_t flow_id)
     for (uint32_t i = 0; i < cfg.path_len; i++) std::cout << " " << cfg.path_nodes[i];
     std::cout << std::endl;
 
-    if (cfg.path_len < 2)
+    // In test mode the full path (vehicle→RSU→vehicle) is available via
+    // proposed_routing_tables, so require it to reach dst.
+    // In SUMO mode delta_at_nodes_inst only stores vehicle→RSU forwarding
+    // weights; RSU→RSU or RSU→vehicle hops are controlled via the controller
+    // and are not reflected in the node-side delta table.  Accept any path
+    // that reaches at least one RSU — that RSU is the anomalous forwarder
+    // eFADE needs to monitor; the destination vehicle leg is irrelevant.
+    if (routing_test)
     {
-        // No valid route — mark as configured but skip
-        cfg.configured = true;
-        fade_flow_config[flow_id] = cfg;
-        return;
+        bool reached_dst = (cfg.path_len > 0 && cfg.path_nodes[cfg.path_len - 1] == dst);
+        if (cfg.path_len < 2 || !reached_dst)
+        {
+            fade_flow_config[flow_id] = cfg;
+            return;
+        }
+    }
+    else
+    {
+        bool has_rsu = false;
+        for (uint32_t i = 0; i < cfg.path_len; i++)
+        {
+            if (cfg.path_nodes[i] >= (uint32_t)N_Vehicles &&
+                cfg.path_nodes[i] <  (uint32_t)(N_Vehicles + N_RSUs))
+            {
+                has_rsu = true;
+                break;
+            }
+        }
+        if (cfg.path_len < 2 || !has_rsu)
+        {
+            fade_flow_config[flow_id] = cfg;
+            return;
+        }
     }
 
+    if (cfg.path_len > 0 && cfg.path_nodes[cfg.path_len - 1] != dst)
+        cfg.path_nodes[cfg.path_len++] = dst;
     cfg.configured  = true;
     fade_flow_config[flow_id] = cfg;
 
@@ -174,6 +232,19 @@ inline void fade_configure_all_flows()
         fade_configure_flow(fid);
 }
 
+// Forces a fresh delta walk regardless of prior configuration state.
+// Used at attack_start_time - 0.5s so the path reflects current vehicle
+// positions rather than the stale t=1.08s snapshot.
+inline void fade_reconfigure_all_flows()
+{
+    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+    {
+        if (fade_flow_config.count(fid))
+            fade_flow_config[fid].configured = false;
+        fade_configure_flow(fid);
+    }
+}
+
 // ── Helper: is any node on this flow's path a malicious node? ────────────────
 // Used to classify TP / FP / TN / FN for the FADE MCC calculation.
 inline bool fade_is_flow_attacked(uint32_t flow_id)
@@ -181,26 +252,16 @@ inline bool fade_is_flow_attacked(uint32_t flow_id)
     auto it = fade_flow_config.find(flow_id);
     if (it == fade_flow_config.end() || !it->second.configured) return false;
 
-    FadeFlowConfig &cfg = it->second;
-    uint32_t src = cfg.source;
-    uint32_t dst = cfg.destination;
-
-    for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+    FadeFlowConfig const &cfg = it->second;
+    // eFADE covers Hidden Forwarding attacks only (variants 4–7).
+    // Use the pre-built cfg.path_nodes — proposed_routing_tables is empty in SUMO mode.
+    for (uint32_t i = 0; i < cfg.path_len; i++)
     {
-        uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-        if (node >= (uint32_t)total_size) break;
-        // Only check the array that corresponds to the active attack variant.
-        // variant 1  = Attack 2 (Selective Time Delay, Data Plane)
-        // variant 7  = Attack 8 (Passive Hidden Forwarding, Data Plane)
-        if (active_attack_variant == 1 && selective_delay_malicious_nodes[node]) return true;
-        if (active_attack_variant == 7 && passive_hf_malicious_nodes[node])      return true;
-        // Active Hidden Forwarding (variant 4 = Attack 5 Control Plane,
-        // variant 5 = Attack 6 Data Plane): malicious RSU is in active_hf array.
+        uint32_t node = cfg.path_nodes[i];
         if ((active_attack_variant == 4 || active_attack_variant == 5)
-            && active_hf_malicious_nodes[node])                                  return true;
-        // Passive Hidden Forwarding, Control Plane (variant 6 = Attack 7):
-        // malicious RSU is in passive_hf array.
-        if (active_attack_variant == 6 && passive_hf_malicious_nodes[node])      return true;
+            && active_hf_malicious_nodes[node])  return true;
+        if ((active_attack_variant == 6 || active_attack_variant == 7)
+            && passive_hf_malicious_nodes[node]) return true;
     }
     return false;
 }
@@ -237,13 +298,13 @@ inline void fade_find_active_attack_flow_and_node(int32_t &atk_fid, int32_t &mal
         if (!entry.second.configured) continue;
         if (!fade_is_flow_active(flow_id)) continue;
 
-        uint32_t src = entry.second.source;
-        uint32_t dst = entry.second.destination;
-        for (uint32_t step = 0; step < (uint32_t)total_size; step++)
+        // Use the pre-configured path (works for both test and SUMO mode,
+        // since fade_configure_flow already resolved the correct path nodes).
+        FadeFlowConfig const &cfg = entry.second;
+        for (uint32_t i = 0; i < cfg.path_len; i++)
         {
-            uint32_t node = proposed_routing_tables[src].rows[dst].path[step];
-            if (node >= (uint32_t)total_size) break;
-            if (passive_hf_malicious_nodes[node] || active_hf_malicious_nodes[node] || selective_delay_malicious_nodes[node])
+            uint32_t node = cfg.path_nodes[i];
+            if (passive_hf_malicious_nodes[node] || active_hf_malicious_nodes[node])
             {
                 atk_fid = flow_id;
                 mal_node = node;
@@ -398,6 +459,13 @@ inline void fade_detect_anomaly()
 {
     double now = Simulator::Now().GetSeconds();
 
+    // Retry path configuration for any flow not yet fully configured.
+    // Paths built at t=1.080 may be incomplete if delta tables weren't
+    // fully propagated yet; this ensures they get completed once routing
+    // has stabilised (typically by the second or third epoch).
+    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+        fade_configure_flow(fid);
+
 	 if (active_attack_variant < 4 || active_attack_variant > 7)
     {
         fade_received.clear();
@@ -480,20 +548,33 @@ inline void fade_detect_anomaly()
     int32_t epoch_mal_node = -1;
     fade_find_active_attack_flow_and_node(epoch_atk_fid, epoch_mal_node);
 
-    if (epoch_atk_fid != -1 && epoch_mal_node != -1)
+    // Per-packet TP/FP/TN/FN accumulation across all configured flows.
+    // For each node on each flow path (excluding source), classify each
+    // forwarded packet as TP/FP/TN/FN based on whether the node is
+    // malicious and whether it sent to multiple destinations.
+    for (auto const &flow_entry : fade_flow_config)
     {
-        auto it_fid = fade_forwarded.find(epoch_atk_fid);
-        if (it_fid != fade_forwarded.end())
+        uint32_t fid2 = flow_entry.first;
+        if (!flow_entry.second.configured) continue;
+        FadeFlowConfig const &cfg2 = flow_entry.second;
+        for (uint32_t i = 0; i < cfg2.path_len; i++)
         {
-            auto it_node = it_fid->second.find(epoch_mal_node);
-            if (it_node != it_fid->second.end())
+            uint32_t node = cfg2.path_nodes[i];
+            if (node == cfg2.source) continue;
+            bool node_malicious = active_hf_malicious_nodes[node] || passive_hf_malicious_nodes[node];
+
+            auto it_fid = fade_forwarded.find(fid2);
+            if (it_fid == fade_forwarded.end()) continue;
+            auto it_node = it_fid->second.find(node);
+            if (it_node == it_fid->second.end()) continue;
+
+            for (auto const &p_entry : it_node->second)
             {
-                for (auto const &p_entry : it_node->second)
-                {
-                    bool dup = (p_entry.second.size() >= 2);
-                    if (dup) pp_tp_global++;   // duplicated and detected
-                    else     pp_tn_global++;   // not duplicated, correctly clean
-                }
+                bool dup = (p_entry.second.size() >= 2);
+                if ( node_malicious &&  dup) pp_tp_global++;
+                if (!node_malicious &&  dup) pp_fp_global++;
+                if (!node_malicious && !dup) pp_tn_global++;
+                if ( node_malicious && !dup) pp_fn_global++;
             }
         }
     }
