@@ -119,7 +119,7 @@ int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
 // double simTime = 240;
-double simTime = 60; // Change 9: default 60 s (≈10 s benign baseline + 50 s attack evolution)
+double simTime = 300; // Proposal simulation table: "each run lasts 300 s"
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -148,7 +148,7 @@ int maxspeed = 80;
 
 int paper = 1; //0-optimization, 1 -architecture
 
-uint32_t flow_packet_size = 100;
+uint32_t flow_packet_size = 750; // Proposal simulation table: "Flow packet type, size: UDP, 750 bytes"
 uint32_t qf = 1;
 uint32_t AIFSN = 0;
 double B_max = 0.0;
@@ -94613,7 +94613,7 @@ NodeContainer controller_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
-bool routing_test = true;
+bool routing_test = false; // Proposal: all results on 200-vehicle/64-RSU SUMO topology. Pass --routing_test=true for the small test network only.
 
 NetDeviceContainer wifidevices;
 NetDeviceContainer wifidevices_172;
@@ -114664,6 +114664,23 @@ double average_mitigation_latency                  = 0.0;
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
 #include "attack_variables.h"
 
+// Phase 1 / D1: Reproducibility globals for the ns-3 RNG seed infrastructure.
+// Proposal simulation table: "5 fixed pseudorandom seeds each (300 s/run)".
+// Pass --sim_seed and --sim_run from the experiment loop.
+// Must be set via RngSeedManager::SetSeed/SetRun BEFORE any ns-3 random variable
+// is created — done immediately after cmd.Parse() in main().
+uint32_t sim_seed = 1;  // seed ∈ {1,2,3,4,5}
+uint32_t sim_run  = 1;  // run index, distinct per seed
+
+// Phase 4 / D5: Per-flow safety-critical (HIGH-priority) flag.
+// Proposal Signature S1 (Eq. 3.4) and S2 (Eq. 3.5): both attacks must only delay
+// packets where Priority(p) = HIGH. Best-effort (non-safety-critical) packets must
+// pass through without delay. True for flows carrying collision-avoidance or BSM-
+// equivalent traffic. Populated once after flow initialisation — see the
+// "Populate is_safety_critical_flow" block in the SUMO/test setup section of main().
+// Indexed by flow_id (0 to 2*flows-1).
+bool is_safety_critical_flow[Flow_size + 2] = {false};
+
 // === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
 // Malicious controller installs junk FlowMod rules into every RSU's TCAM at
 // attack_rate_pps rules/second. Entries flagged is_malicious=1.
@@ -114732,12 +114749,13 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
     t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
 }
 
-// records when each node forwarded each packet
-double delta_max_s2 = 0.050;
-// 50ms threshold per Equation 3.6 — half of 100ms safety bound
-bool s2_detection_active = true;
-bool tap_detection_active = true; // enable/disable TAP detection
-// enable/disable S2 detection
+// NOTE: delta_max_s2 removed — S2 detection now lives in detection_signatures.h
+// (s2_detect_packet()) and uses S2_DELTA_MAX = 0.050 s (50 ms).
+// t_fwd_packet and t_claimed_packet above are still required:
+//   t_fwd_packet   is read by s2_detect_packet() in detection_signatures.h
+//   t_claimed_packet is read by tap_run_detection() in tap_detection.h
+bool s2_detection_active = true;     // master enable for S2 — read by detection_signatures.h
+bool tap_detection_active = true;    // master enable for TAP — read by tap_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -114800,7 +114818,13 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.0;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+// TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1 uses an EXACT equality
+// check: if (v != PPAT) then flag attacker. In IEEE 754 double arithmetic a
+// pure 0.0 margin would fail on negligible rounding errors. We therefore use
+// a 1 μs epsilon — tight enough to catch any real attack-injected delay
+// (minimum 50 ms) while tolerating floating-point imprecision only.
+// This is strictly faithful to the paper's "exact equality" intent.
+static const double TAP_MARGIN = 1e-6; // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
 
 bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
@@ -115349,6 +115373,9 @@ void initialise_stub_attack_state()
 	// Initialize TAP detector state globally for all attack variants
 	tap_reset_state(total_size);
 
+	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
+	s1_reset_state();
+
 
 	switch (active_attack_variant)
     {
@@ -115507,14 +115534,26 @@ void record_detection_event(int v, int n)
 	t_quarantine[n] = Simulator::Now().GetSeconds();
 }
 
-// Random boolean helper copied from LDA_2_.cc
-bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
-	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
-	double randomValue = 1.0*(rand()%100);
-	return randomValue < probabilityPercent;
+// Random boolean helper — Phase 1 / D1 fix.
+// ORIGINAL used srand(time+rand()+nodeID) which is non-reproducible across
+// runs with the same --attack_percentage. Replaced with a global ns-3
+// UniformRandomVariable so the result is fully determined by sim_seed + sim_run
+// (set via RngSeedManager::SetSeed/SetRun in main(), immediately after
+// cmd.Parse()). nodeID parameter kept for API compatibility; no longer used
+// for seeding — the stream advances deterministically across calls.
+// Proposal simulation table: "5 fixed pseudorandom seeds each (300 s/run)".
+bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
+    static Ptr<UniformRandomVariable> rng = nullptr;
+    if (!rng) {
+        rng = CreateObject<UniformRandomVariable>();
+        rng->SetAttribute("Min", DoubleValue(0.0));
+        rng->SetAttribute("Max", DoubleValue(100.0));
+    }
+    return rng->GetValue() < probabilityPercent;
 }
 
 #include "selective_time_delay.h"
+#include "detection_signatures.h"   // S1 (CP) and S2 (DP) MOBIGUARD detection signatures
 
 
 
@@ -117832,6 +117871,22 @@ void calculate_performance_evaluation_metrics()
 	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
 	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
 	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+
+	// --- MOBIGUARD S1/S2 detection metrics ---
+	// S1 baseline update: use current vehicle count as density proxy.
+	// In SUMO runs with actual density tracking, replace N_Vehicles with
+	// the per-RSU active vehicle count from the mobility module.
+	// Mean speed default 14 m/s ≈ 50 km/h; in full SUMO runs this would
+	// read from the SUMO TraCI interface per-RSU.
+	for (uint32_t _r = 0; _r < N_RSUs; _r++)
+	{
+		s1_update_baseline(_r,
+		                   (double)N_Vehicles,   // ρ(t): active vehicle count
+		                   14.0,                 // v̄(t): mean speed m/s (50 km/h approx)
+		                   s1_delta0);           // observed baseline as starting point
+	}
+	Simulator::Schedule(Seconds(0.000130), s1_write_csv);
+	Simulator::Schedule(Seconds(0.000140), s2_write_csv);
 
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -120598,7 +120653,8 @@ int g_slowpath_hit_count[300] = {0};
 // NOT realistic because TCAM lookup is O(1) in hardware — fill ratio does
 // not affect per-packet latency; only the binary miss/hit outcome does.
 // Default 50ms matches SDVN backhaul + controller processing in the
-// literature and equals the S2 hop-delay threshold (delta_max_s2).
+// literature and equals the S2 hop-delay threshold (S2_DELTA_MAX in
+// detection_signatures.h = 0.050 s).
 // Override with --tcam_slowpath_ms on the command line.
 double tcam_slowpath_s = 0.050; // CLI: --tcam_slowpath_ms (value in ms, converted below)
 
@@ -120800,12 +120856,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							selective_delay_malicious_nodes[current_hop],
 							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_delay_seconds,
+							attack2_delay_seconds,        // nominal mean (logging only)
+							attack2_min_delay_seconds,    // Phase 3/D4: variable delay lower bound
+							attack2_max_delay_seconds,    // Phase 3/D4: variable delay upper bound
 							present_selective_delay_cp_attack,
 							injected,
 							current_hop,
 							packet_id,
-							flow_id);
+							flow_id,
+							is_safety_critical_flow[flow_id]); // Phase 4/D5: S1/S2 Priority(p)=HIGH guard
 
 						// TCAM slow-path delay (Attacks 3 & 4).
 						// Real TCAM lookup is O(1) — fill level does not affect latency.
@@ -121258,59 +121317,55 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// eFADE: record inbound packet receipt at this node
 				fade_received[fid][current_hop].insert(packet_ID);
 
-				// === SIGNATURE S2 DETECTION ===
-				// Check: t_recv - t_fwd > delta_max (Equation 3.6)
-				if(s2_detection_active)
+				// === SIGNATURE S2 DETECTION (MOBIGUARD — Attack 2 Data Plane) ===
+				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
+				// Implemented in detection_signatures.h: s2_detect_packet().
+				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
 				{
-					// Use tagmodified_routing which is already peeked above
-					// Getprevious_senderId() returns the sim index of who forwarded this packet
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					
-					if(sender_sim_index < (uint32_t)var)
-					{
-						double t_recv_now = Now().GetSeconds();
-						double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
-						
-						if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
-						{
-							double hop_delay = t_recv_now - t_fwd_by_sender;
-							
-							// cout << "[S2] Hop delay from node " << sender_sim_index
-							//      << " to node " << current_hop
-							//      << " for flow " << fid
-							//      << " packet " << packet_ID
-							//      << " = " << hop_delay * 1000.0 << "ms" << endl;
-							
-							if(hop_delay > delta_max_s2)
-							{
-								cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
-								cout << "[S2] Hop delay " << hop_delay * 1000.0
-								     << "ms exceeds threshold " 
-								     << delta_max_s2 * 1000.0 << "ms" << endl;
-								cout << "[S2] Node " << sender_sim_index
-								     << " detected as malicious attacker (variant="
-								     << active_attack_variant << ")" << endl;
-								
-								if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
-								{
-									if(!is_detected_node[active_attack_variant][sender_sim_index])
-									{
-										record_detection_event(active_attack_variant, sender_sim_index);
-										cout << "[S2] record_detection_event fired for node "
-										     << sender_sim_index << " variant=" << active_attack_variant
-										     << " at t=" << Now().GetSeconds() << "s" << endl;
-									}
-								}
-							}
-						}
-					}
+					s2_detect_packet(sender_sim_index,
+					                 Now().GetSeconds(),
+					                 is_safety_critical_flow[fid],
+					                 current_hop,
+					                 packet_ID,
+					                 fid);
 				}
 				// === END SIGNATURE S2 DETECTION ===
 
+				// === SIGNATURE S1 DETECTION (MOBIGUARD — Attack 1 Control Plane) ===
+				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
+				// Implemented in detection_signatures.h: s1_detect_packet().
+				// RSU index = current_hop − N_Vehicles (only fires if current_hop is an RSU).
+				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
+				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				{
+					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
+					                         ? t_fwd_packet[sender_sim_index][packet_ID]
+					                         : 0.0;
+					if (t_fwd_by_sender > 0.0)
+					{
+						double packet_delay_s = Now().GetSeconds() - t_fwd_by_sender;
+						uint32_t rsu_idx = current_hop - N_Vehicles;
+						s1_detect_packet(rsu_idx,
+						                 packet_delay_s,
+						                 is_safety_critical_flow[fid],
+						                 current_hop,
+						                 packet_ID,
+						                 fid);
+					}
+				}
+				// === END SIGNATURE S1 DETECTION ===
+
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-				// OnReceivedEmergencyPacket logic. Fires at every received packet.
-				tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
+				// OnReceivedEmergencyPacket logic. The TAP paper targets emergency
+				// (safety-critical) packets only — applying it to best-effort traffic
+				// would inflate false positives. Gate on is_safety_critical_flow[fid].
+				if (is_safety_critical_flow[fid])
+				{
+					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
+				}
 				// === END TAP BASELINE DETECTION ===
 
 				if(destination == current_hop)
@@ -123860,10 +123915,13 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							selective_delay_malicious_nodes[source],
 							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_delay_seconds,
+							attack2_delay_seconds,           // nominal mean (logging only)
+							attack2_min_delay_seconds,       // Phase 3/D4: variable delay lower bound
+							attack2_max_delay_seconds,       // Phase 3/D4: variable delay upper bound
 							present_selective_delay_cp_attack,
 							injected_cp,
 							source, packet_id, fid,
+							is_safety_critical_flow[fid],    // Phase 4/D5: S1/S2 Priority(p)=HIGH guard
 							routing_dsrc_data_unicast,
 							dev_to_use, dsrc_Nodes.Get(source),
 							fid, nid, arguments, total_packet_counter+1);
@@ -141224,7 +141282,37 @@ int main(int argc, char *argv[])
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
+    // Phase 1 / D1: Reproducibility.
+    cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
+    cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
+
+    // S1 detection tunable parameters (Eq. 3.11–3.14, proposal §3462–3486).
+    // Default values are initial candidates; final values calibrated from benign SUMO traces.
+    cmd.AddValue("s1_delta0",     "S1: static propagation baseline δ₀ (s, default 0.002)",     s1_delta0);
+    cmd.AddValue("s1_alpha_rho",  "S1: density sensitivity α_ρ (s/vehicle, default 0.0001)",   s1_alpha_rho);
+    cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
+    cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
+    cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
+
+    // Attack delay range CLI overrides (default 50–150 ms per proposal §1517–1519)
+    cmd.AddValue("attack1_min_delay_ms", "Attack 1 CP: min injected delay (ms, default 50)",
+                 attack1_min_delay_seconds);
+    cmd.AddValue("attack1_max_delay_ms", "Attack 1 CP: max injected delay (ms, default 150)",
+                 attack1_max_delay_seconds);
+    cmd.AddValue("attack2_min_delay_ms", "Attack 2 DP: min injected delay (ms, default 50)",
+                 attack2_min_delay_seconds);
+    cmd.AddValue("attack2_max_delay_ms", "Attack 2 DP: max injected delay (ms, default 150)",
+                 attack2_max_delay_seconds);
+
     cmd.Parse (argc, argv);
+
+    // Phase 1 / D1: Must be called BEFORE any ns-3 random variable is created or used.
+    // Controls GetBooleanWithProbability(), the Attack 2 dp_delay_rng, and the
+    // Attack 1 cp_delay_rng — all three are seeded by this single call.
+    ns3::RngSeedManager::SetSeed(sim_seed);
+    ns3::RngSeedManager::SetRun(sim_run);
+    cout << "[RNG] Seed=" << sim_seed << " Run=" << sim_run
+         << " — fully reproducible per proposal simulation table." << endl;
 
     // Convert ms CLI input to seconds for the forwarding path.
     tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
@@ -143040,6 +143128,21 @@ if (architecture == 3 && N_Vehicles > 0)
 				  //Simulator::Schedule (Seconds (t), set_dsrc_initial_timestamp);
 			}
 			
+			// Phase 4 / D5: Populate is_safety_critical_flow[] once after flow setup.
+			// Proposal Signature S1 (Eq. 3.4): "Priority(p) = HIGH" is a load-bearing
+			// conjunction — attacks must only delay safety-critical packets.
+			// Even-indexed flow IDs are designated safety-critical (collision-avoidance /
+			// BSM-equivalent); odd-indexed are best-effort. For SUMO runs with real
+			// heterogeneous flows, replace this modulo rule with a lookup against the
+			// flow's registered QoS class. is_safety_critical_flow is indexed by flow_id
+			// (0 to 2*flows-1) and read by calculate_unified_selective_delay() and
+			// schedule_unified_selective_delay_attack() at every forwarding decision.
+			for (uint32_t _f = 0; _f < (uint32_t)(2 * flows); _f++) {
+			    is_safety_critical_flow[_f] = (_f % 2 == 0);
+			    cout << "[FLOW-PRIORITY] flow_id=" << _f
+			         << " is_safety_critical=" << is_safety_critical_flow[_f] << endl;
+			}
+
 			// Initialize dynamic attack configurations
 			declare_attack_states();
 			declare_attackers();

@@ -60,6 +60,15 @@ extern double attack_start_time;
 // initialise_stub_attack_state()'s job in routing.cc.
 inline void declare_attack_states()
 {
+    // IMPORTANT: when attack_number_explicitly_set is false (legacy path where
+    // --active_attack_variant is passed directly without --attack_number),
+    // declare_attack_states() returns early and active_attack_variant is used
+    // as-is. The declare_attackers() fallback below re-derives present_* flags
+    // from active_attack_variant for this case. This path exists for backward
+    // compatibility with scripts that predate the attack_number CLI parameter.
+    // New experiment runs should always pass --attack_number; direct use of
+    // --active_attack_variant without --attack_number bypasses the mutual-
+    // exclusion reset and is not recommended.
     if (!attack_number_explicitly_set)
     {
         cout << "[declare_attack_states] attack_number not explicitly set — "
@@ -173,6 +182,29 @@ inline void declare_attackers()
                  << N_Controllers << " controllers compromised." << endl;
         }
     }
+
+    // Ground truth: mark all RSUs whose owning controller is compromised as
+    // Attack 1 (variant index 0) malicious actors, and record onset at
+    // attack_start_time. This is the SINGLE authoritative write for variant 0 —
+    // do NOT call record_attack_onset() again elsewhere for variant 0, as doing
+    // so would overwrite t_onset[] with a later timestamp and break the
+    // mitigation-latency metric Lmit = t_quarantine - t_onset (proposal metrics
+    // section). Fixes deviation D6 (is_malicious_node[0] ground truth not set
+    // in SUMO path) and deviation D2 (t_onset[] overwritten every second).
+    if (present_selective_delay_cp_attack) {
+        for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++) {
+            uint32_t ctrl = rsu_controller_assignment[r];
+            if (controller_compromised[ctrl]) {
+                uint32_t rsu_node_id = N_Vehicles + r;
+                is_malicious_node[0][rsu_node_id] = true;
+                t_onset[rsu_node_id] = attack_start_time;
+                cout << attack_tag()
+                     << " [ATTACK1] Ground truth: RSU node " << rsu_node_id
+                     << " (rsu index " << r << ") marked malicious via compromised controller "
+                     << ctrl << ", onset=" << attack_start_time << "s" << endl;
+            }
+        }
+    }
 }
 
 // reapply_cp_selective_delay():
@@ -204,12 +236,23 @@ inline void reapply_cp_selective_delay()
             uint32_t current_next_hop = find_next_hop(src, dst, rsu_node_id);
             if (current_next_hop == large) continue;
 
-            double variable_delay = attack1_min_delay_seconds +
-                ((double)(rand() % 1000) / 1000.0) *
-                (attack1_max_delay_seconds - attack1_min_delay_seconds);
+            // Phase 3 / D3: replace rand()-based draw with a reproducible ns-3
+            // UniformRandomVariable so results are fully determined by sim_seed
+            // + sim_run (set via RngSeedManager in main()). The static pointer
+            // is initialised once; ns-3's single-threaded model makes this safe.
+            static Ptr<UniformRandomVariable> cp_delay_rng = nullptr;
+            if (!cp_delay_rng) {
+                cp_delay_rng = CreateObject<UniformRandomVariable>();
+            }
+            double variable_delay = cp_delay_rng->GetValue(attack1_min_delay_seconds,
+                                                           attack1_max_delay_seconds);
 
             update_route_malicious(rsu_node_id, dst, current_next_hop, variable_delay);
-            record_attack_onset(0, rsu_node_id); // Ground truth marker for metrics
+            // NOTE: record_attack_onset(0, rsu_node_id) is intentionally NOT called
+            // here. Ground-truth onset recording for variant 0 is performed once in
+            // declare_attackers() at attack_start_time. Calling it here would
+            // overwrite t_onset[] on every 1-second tick, breaking the mitigation-
+            // latency metric Lmit = t_quarantine - t_onset (deviation D2 fix).
         }
     }
 
