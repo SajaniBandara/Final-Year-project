@@ -261,13 +261,7 @@
 
 
 \chapter*{Abstract}
-\begin{comment}
-In the future of  intelligent transportation systems, Software-Defined Vehicular Networks (SDVNs) will play an important role in providing programmable communication systems. However, the programmable nature of  SDVN can create fetal security issues. Selective Time Delay Attacks and Hidden Forwarding attacks are more dangerous in SDVN because these attacks can bypass traditional security systems by mimicking legitimate traffic or using hidden channels. These attacks can manipulate safety-critical information without alerting system.
-A multi-layer defense architecture is proposed in this paper, has followed zero trust archtecture. This is achieved by combining blockchain technology and cryptographic techniques to create an immutable and tamper-proof ledger for the purpose of transaction recording and model validation, thus removing single point of failure inherent in the use of the centralized controller. here real-time anomaly detection while maintaining the confidentiality of the data is achieved through the use of Federated Long Short-Term Memory (LSTM) models.
 
-The proposed approach will mitigate the single point of failure, assuring even in the case of controller or Roadside Unit (RSU) is compromised, network integrity is not compromised. This proposed approach will address the important gaps in the literature by making use of decentralized auditing in combination with privacy-preserving machine learning.
-\newpage
-\end{comment}
 
 
 % Software defined vehicular networks (SDVNs) are central to next generation
@@ -376,9 +370,6 @@ Selective Time Delay attacks involve a compromised entity, such as a malicious S
 While there are various exsisting  mitigation strategies for SDN and VANET security, they may not precisely address the specific challenges of SDVNs. First, more reliable frameworks such as SIFT \cite{pascoal2017slow} and FSDM \cite{9356082} rely on logically centralized architectures that operate under an ``assumed trust'' model \cite{electronics12143077}. If the controller itself is malicious the results will be fatal as this creates single point of faliure. These systems lack the immutable auditing to detect malicious rule manipulation \cite{jaballah2019survey}. Second, existing path-validation and anomaly detection methods, such as HSA \cite{mohammadi2016detecting}, typically require the centralized collection of raw metadata. This mass data collection poses severe privacy risks, potentially exposing sensitive user information like geographic vehical location and driving patterns \cite{11059879}. Existing defense mechanisms are focused on either timing-related anomalies or routing attacks separately. There is no integrated, multi-layered framework that can jointly mitigate Selective Time Delay and Hidden Forwarding attacks while maintaining the low-latency requirements of highly mobile vehicular networks.
 
 \section{Problem Statement}
-\begin{comment}
-Current security frameworks in Software-Defined Vehicular Networks (SDVNs) cannot robustly detect stealthy Selective Time Delay and Hidden Forwarding attacks under high-mobility, zero-trust environments. Specifically, existing centralized mitigation strategies fail when the SDN controller itself is compromised, creating a single point of failure that bypasses standard auditing. Conversely, current distributed detection methods cannot perform granular anomaly detection without violating driver privacy through mass data ingestion or exceeding the strict latency constraints ($<100$ms) required for safety-critical vehicular applications.
-\end{comment}
 
 In software-defined vehicular networks, a compromised entity---whether a
 malicious SDN controller, RSU, or vehicle---can selectively delay
@@ -630,9 +621,6 @@ For federated vehicular IDS, Liu et al.~\cite{Liu2021BFLVEC} proposed blockchain
 
 \textbf{Critical gap:} Existing FL+LSTM approaches target generic intrusion classes (DDoS, Sybil, position forging). No work applies federated LSTM specifically to detecting selective time delay patterns or hidden forwarding signatures in SDVN, nor do any existing works offer a dual-mode (lightweight rule-based + full AI) detection architecture suitable for resource-heterogeneous vehicular nodes.
 
-% ============================================================
-% 2.1.7 — NEW (inserted per supervisor comment)
-% ============================================================
 \subsection{Cryptographic and Blockchain-Based Defenses for Vehicular Networks}
 \label{sec:crypto_defense}
 
@@ -650,9 +638,6 @@ Shahrouz and Analouei~\cite{Shahrouz2024} combined ZKP with blockchain for anony
 
 \subsection{Limitations of Existing Approaches}
 
-% ============================================================
-% UNCHANGED (original)
-% ============================================================
 \subsubsection{Limitations of the SIFT Framework}
 
 Previous studies \cite{pascoal2017slow} show that the SIFT framework assumes the SDN controller is trustworthy. It is a centralized software module, so if the controller is compromised, the defense fails and accountability is lost.
@@ -661,9 +646,6 @@ Furthermore, SIFT uses limited detection logic, removing rules randomly when the
 
 This focus on availability over speed causes delays; experiments show that attacks make legitimate clients wait longer while rules are removed. Since SIFT relies on a central controller to manage flow rules, it cannot protect the privacy of the data it handles.
 
-% ============================================================
-% UNCHANGED (original)
-% ============================================================
 \subsubsection{Limitations of the FSDM Framework}
 
 Previous studies \cite{9356082} show that the FSDM framework works under a centralized trust model as a standalone controller module. This creates a single point of failure and cannot audit flow rules in a decentralized way.
@@ -699,11 +681,6 @@ Previous studies \cite{mohammadi2016detecting} show that HSA has limitations bec
 
 Furthermore, collecting packet headers and trajectory data in one place can expose sensitive information about user locations and driving patterns. Moreover, HSA cannot clearly tell whether problems are caused by faulty nodes or protocol errors, often marking large areas as suspicious. Malicious switches can escape detection by failing to report or by altering packet headers, so HSA cannot see duplicated or harmful packets.
 
-% ============================================================
-%% SUPERVISOR COMMENT: "REPLACE existing research gap paragraph —
-%% current gap analysis does not mention mobility-specific
-%% vulnerabilities. Replace with the revised 5-gap paragraph below."
-% ============================================================
 \subsection{Research Gap}
 
 Analysis of the existing literature reveals five critical gaps.
@@ -717,310 +694,6 @@ Analysis of the existing literature reveals five critical gaps.
 \textbf{Gap~4 (Privacy violation):} Centralized detection requires mass ingestion of flow statistics and packet metadata, exposing vehicle trajectory and communication patterns. While federated learning approaches (Liu~\cite{Liu2021BFLVEC}, Mansouri~\cite{Mansouri2024}) preserve training data locality, they do not protect individual flow-rule verification queries or audit trail privacy.
 
 \textbf{Gap~5 (No dual-mode defense):} Vehicular nodes range from resource-constrained OBUs to powerful RSU edge servers. No existing framework offers both a lightweight rule-based detection mode for constrained nodes and a full AI/cryptographic verification mode for capable nodes, adaptively switching based on available resources and threat level.
-
-\begin{comment}
-    
-
-\chapter{Literature Review}
-\section{Previous Work}
-\subsection{Hardware and Control Plane Induced Selective Time Delay Attacks}
-
-Earlier work has demonstrated TCAM as a high-speed but very limited resource in SDN switches, usually holding only 1,500 to 8,000 rules \cite{PASCOAL2020107223}. Literature shows that attackers can exploit this small capacity using the Slow TCAM Exhaustion attack, a stealthy variant that periodically refreshes malicious rules at rates as low as 3.2 packets per second to bypass volume-based detection, effectively maintaining a table full state with minimal traffic overhead \cite{PASCOAL2020107223} \cite{pascoal2017slow}. 
-
-While traditional flooding attacks simply crash the network or drop packets, previous studies highlight a specific timing problem within the OpenFlow SDN protocol architecture. Specifically, whenever a packet fails to match an existing forwarding rule, a table-miss occurs, compelling the switch to encapsulate the packet into a PACKET\_IN message to query the controller\cite{PASCOAL2020107223}. The packets failing to match a rule ``experience higher delay'' as they are diverted from the hardware-based ``fast path'' to the software-mediated ``slow path'' (controller-level processing) \cite{9356082} \cite{7929710}. In high-mobility vehicular environments, even small delays of a few milliseconds can disrupt safety-critical coordination. Such delays may lead to serious performance and reliability issues.
-
-Previous studies also show that when the controller processes a PACKET\_IN message through the slow path, it can respond using a PACKET\_OUT message. This message directly instructs the switch, such as an RSU, to send the packet to its destination. By using this method, the controller does not need to add a permanent flow rule to the switch’s flow table. Studies show that this approach reduces delays caused by updating the flow table and by packet reordering. As a result, controller-initiated forwarding improves packet delivery performance in latency-sensitive environments. \cite{PASCOAL2020107223} \cite{7929710}.
-
-Previous research has proposed several centralized frameworks to reduce the effects of TCAM exhaustion and the network delays it causes. A primary example is the SelectIve DeFense for TCAM (SIFT) \cite{pascoal2017slow}, which was designed to maintain continuous SDN operation when the TCAM becomes full. SIFT is activated when the switch receives a TABLE\_FULL message. The framework uses a probabilistic method to decide whether a new flow rule should be accepted. If the new flow rule is approved, SIFT randomly removes one existing rule to make space in the TCAM. This process helps ensure that legitimate network users continue to receive service. This study identifies specific hardware conditions in which limited memory causes millisecond-level delays. These delays form the basis of a hardware-based Selective Time Delay attack.
-
-Recent research has examined network desynchronization caused by control plane saturation. In these situations, malicious hosts exploit table-miss packets to consume network resources. The studies propose a framework called Fast Recovery Saturation attack Detection and Mitigation (FSDM) \cite{9356082}. FSDM uses an entropy-based detection method to identify ports involved in the attack. The framework also deploys Mitigation Agents at the network edge to filter malicious traffic. FSDM includes a Force\_Checking module that actively removes attack-related flows from the controller’s event queue. This mechanism is reported to reduce ping round-trip time by more than 81\%. The study mainly focuses on restoring system performance after delays caused by saturation. These delays are similar to those observed in Selective Time Delay attack scenarios.
-
-
-\subsection{Protocol-Level and Authentication Timing Manipulation in Selective Time Delay Attacks}
-
-Recent studies show that in Software Defined Named Data Networks (SD-NDN) with VANETs, attackers can delay important packets, like those about accidents, VIP messages, or traffic jams \cite{8616999}. To prevent this, researchers propose the Timing Attack Prevention (TAP) protocol, which allows vehicles to calculate signal speed and distance to detect differences between the message’s sending time and its arrival time. This study explains how to detect such differences in packet
-arrival times, which is essential for finding Selective Time Delay attacks \cite{8616999}.
-
-Another case is Infrastructure-based Authentication Timing Attacks, which target communication between vehicles and road infrastructure (V2I). In this attack, an attacker can slow down a vehicle’s authentication message sent to a roadside unit (RSU). \cite{Timing_Attack}. To stop this, researchers recommend using a Trusted Platform Module (TPM) and the Direct Anonymous Attestation (DAA) protocol. These methods use secure hardware and strong cryptography to protect the timing and integrity of messages \cite{Timing_Attack}. This study shows that strong cryptographic hardware can maintain timing security in vehicle-to-infrastructure (V2I) systems.
-
-
-\subsection{Path Validation and Routing Integrity in Hidden Forwarding Attacks}
-Earlier research has identified hidden forwarding attacks, also called Copy attacks, where a compromised switch secretly duplicates packets and sends them to unauthorized destinations while pretending to follow normal routing rules \cite{bu2020unveiling} \cite{mohammadi2016detecting}. To prevent this, previous studies proposed methods that compare the network’s forwarding state with the actual movement of packets. One main detection method uses HSA to model how the network should transfer packets and Trajectory Sampling to track the real movement of packets in real time. \cite{mohammadi2016detecting}. This method turns the network into a distributed detection system that can find switches that secretly send duplicate packets to illegal destinations. Although this works well for verifying paths, HSA-based monitoring is centralized, which slows down real-time vehicular security.
-
-...
-
-\subsection{Detection of Timing and Forwarding Attacks in SDN}
-\label{sec:attack_detection_sdn}
-
-Pascoal et al.~\cite{Pascoal2017} demonstrated that Slow-TCAM exhaustion 
-attacks can deny service at rates as low as 3.2\,packets/s  and proposed SIFT, 
-a probabilistic rule installation strategy activated upon \texttt{TABLE\_FULL} 
-events.  While effective in static SDN, SIFT's random rule dropping can discard 
-safety-critical vehicular flows. Cao et al.~\cite{Cao2023LOFT} extended this 
-line with the LOFT attack, computing the minimum rate to overflow flow tables 
-by fingerprinting TCAM parameters,  and proposed LOFTGuard as a collaborative 
-data-to-control-plane defense.  Tang et al.~\cite{Tang2023SFTO} introduced 
-SFTO-Guard for real-time slow-rate overflow detection using rule-count 
-prediction and adaptive eviction, though it was validated only on static Mininet 
-topologies. 
-
-Huang et al.~\cite{Huang2020} proposed FSDM for control-plane saturation 
-detection using Control Channel Occupation Rate (CCOR) distributions and 
-distributed mitigation agents. FSDM reduces HTTP RTT by 87\% under attack but 
-does not address selective per-flow delays or hidden forwarding.
-
-For forwarding anomaly detection, Zhang et al.~\cite{Zhang2021FADE} proposed 
-FADE, which generates dedicated measurement flow rules to detect packet 
-dropping, duplication, and path deviation using the flow conservation principle. 
-However, FADE relies on flow statistics accuracy from switches and cannot 
-detect selective per-packet delays. Chi et al.~\cite{Chi2020} developed ECSD, 
-a stochastic RNN-based multivariate time-series anomaly detector for 
-compromised SDN switches exhibiting abnormal behaviors including delaying 
-and modifying traffic; however, it requires extensive training data and was 
-not evaluated under vehicular mobility.
-
-Mohammadi et al.~\cite{Mohammadi2016} used Header Space Analysis (HSA) to 
-correlate intended versus actual forwarding paths, detecting packet drops and 
-misroutings. Their approach does not address time delay attacks and assumes 
-static topology.  Duffield and Grossglauser~\cite{Duffield2001} proposed 
-trajectory sampling using deterministic hash functions to reconstruct packet 
-paths across network domains; while foundational, the method relies on 
-immutable packet fields and was designed for backbone networks without mobility. 
-
-% \textbf{Critical gap:} No existing SDN attack detection mechanism accounts for 
-% vehicular mobility's impact on timing baselines, flow-rule churn, or 
-% observation windows.
-
-\subsection{Misbehavior and Intrusion Detection in SDVN}
-\label{sec:sdvn_detection}
-
-Arsalan and Rehman~\cite{Arsalan2018} proposed TAP, the only timing attack 
-prevention protocol specifically targeting SDN-enabled VANETs. TAP compares 
-expected versus actual response times at the SDN controller to identify 
-attacker vehicles in an NDN-VANET architecture.  Despite being mobility-aware 
-in principle, TAP requires a large number of connections for statistical 
-reliability and has not been evaluated under high-density, high-speed scenarios. 
-
-Nayak et al.~\cite{Nayak2022} introduced TFMD-SDVN, a trust framework for 
-misbehavior detection at the SDVN edge using rating, recommendation, and 
-similarity metrics.  Evaluated with SUMO mobility traces, TFMD-SDVN addresses 
-packet dropping and data falsification but does not target timing manipulation 
-or hidden forwarding. Sedjelmaci et al.~\cite{Sedjelmaci2014} designed ELIDV, 
-a lightweight multi-attack IDS for VANETs using cooperative guard vehicles and 
-reputation-based evaluation;  while efficient, it predates SDN integration and 
-does not address control-plane attacks.
-
-Krishnan et al.~\cite{Krishnan2023} proposed FTISCON, preserving flow-table 
-integrity through Ethereum smart contracts that verify flow rules before 
-deployment.  Li et al.~\cite{Li2022BlockREV} introduced BlockREV, using 
-blockchain with aggregate signatures for multi-controller rule enforcement 
-verification.  Both approaches add blockchain overhead that may be prohibitive 
-for latency-critical vehicular applications and verify only pre-deployment 
-rule correctness—not runtime forwarding fidelity.
-
-Wang et al.~\cite{Wang2020Topology} demonstrated topology poisoning in 
-SDN-enabled vehicular edge networks, showing that vehicular mobility 
-significantly lowers the attack barrier for topology manipulation across 
-four mainstream SDN controllers.
-
-\subsection{AI-Based Anomaly Detection for SDN and Vehicular Networks}
-\label{sec:ai_defense}
-
-Novaes et al.~\cite{Novaes2020} combined LSTM with fuzzy logic (LSTM-FUZZY) 
-for DDoS and portscan detection in SDN, achieving autonomous mitigation through 
-OpenFlow rule dropping. While demonstrating LSTM's effectiveness for SDN 
-traffic characterization, the system is centralized and targets only 
-volumetric attacks. Elsayed et al.~\cite{Elsayed2021} proposed a hybrid 
-CNN-LSTM architecture for SDN anomaly detection achieving 96.32\% accuracy 
-on the InSDN dataset; however, generalization to zero-day attacks and 
-vehicular contexts remains unvalidated. 
-
-For federated vehicular IDS, Liu et al.~\cite{Liu2021BFLVEC} proposed 
-blockchain-based federated learning for collaborative intrusion detection in 
-vehicular edge computing, offloading training to distributed edge devices 
-while ensuring tamper-proof model aggregation.  Abou El Houda 
-et al.~\cite{AbouElHouda2024} advanced this with an edge-based FL+blockchain 
-framework achieving high accuracy against zero-day threats in ITS.  Mansouri 
-et al.~\cite{Mansouri2024} implemented MLP, LSTM, GRU, MANN, and CW-RNN 
-models under federated training with blockchain for VANET intrusion detection, 
-achieving 68--94\% precision across attack types on the VeReMi dataset. 
-
-\textbf{Critical gap:} Existing FL+LSTM approaches target generic intrusion 
-classes (DDoS, Sybil, position forging). No work applies federated LSTM 
-specifically to detecting selective time delay patterns or hidden forwarding 
-signatures in SDVN, nor do any existing works offer a dual-mode 
-(lightweight rule-based + full AI) detection architecture suitable for 
-resource-heterogeneous vehicular nodes.
-
-
-
-\subsection{Cryptographic and Blockchain-Based Defenses for Vehicular Networks}
-\label{sec:crypto_defense}
-
-Sumra et al.~\cite{Sumra2011} proposed a TPM-based chain of trust with Direct 
-Anonymous Attestation (DAA) for privacy-preserving VANET authentication.  While 
-pioneering, the approach requires hardware TPM modules in every vehicle and 
-does not address SDN-specific threats. Ju\'{a}rez C\'{a}diz and Bordel 
-S\'{a}nchez~\cite{JuarezCadiz2023} developed a dual-layer blockchain 
-architecture with Bayesian reputation assessment, achieving 86\% efficacy 
-against malicious behaviors—insufficient for safety-critical vehicular 
-applications. 
-
-For post-quantum vehicular authentication, El-Dalahmeh and 
-Alia~\cite{ElDalahmeh2025} proposed a lattice-based V2R authentication protocol 
-integrating post-quantum cryptography (PQC), zero-knowledge proofs, and fog 
-computing,  achieving lower message delay and packet loss than ECC-based methods.  
-Al-Mekhlafi et al.~\cite{AlMekhlafi2024} designed a lattice-based anonymous 
-authentication scheme for 5G vehicular communications using fog computing.  
-A post-quantum ZKP framework for decentralized connected autonomous vehicles 
-was proposed in~\cite{PQZKP2025}, achieving cryptographic commitments in 
-$<$5\,$\mu$s and Binius proof verification in $<$0.17\,s.
-
-Shahrouz and Analouei~\cite{Shahrouz2024} combined ZKP with blockchain for 
-anonymous VANET authentication with conditional privacy preservation.  These 
-zero-knowledge approaches enable privacy-preserving verification but introduce 
-computational overhead that remains challenging for real-time V2V messaging. 
-
-\textbf{Critical gap:} No existing work integrates EdDSA-based packet integrity, 
-aggregate signatures for batch verification, and ZKP-based privacy preservation 
-into a unified cryptographic layer specifically designed for SDVN flow-rule 
-and data-plane integrity verification. Furthermore, no scheme provides a 
-lightweight fallback mode for resource-constrained scenarios alongside a 
-full cryptographic verification mode.
-
-\section{Gaps in Literature}
-
-\subsection{Limitations of Existing Approaches}
-
-\subsubsection{Limitations of the SIFT Framework}
-
-Previous studies \cite{pascoal2017slow} show that the SIFT framework assumes the SDN controller is trustworthy. It is a centralized software module, so if the controller is compromised, the defense fails and accountability is lost. 
-
-Furthermore, SIFT uses limited detection logic, removing rules randomly when the flow table is full instead of checking packet timing or content. This method depends on the likelihood that attacker rules will fill the table. SIFT only reacts after a TABLE\_FULL message appears and cannot prevent attacks beforehand. 
-
-This focus on availability over speed causes delays; experiments show that attacks make legitimate clients wait longer while rules are removed. Since SIFT relies on a central controller to manage flow rules, it cannot protect the privacy of the data it handles. 
-
-\subsubsection{Limitations of the FSDM Framework}
-
-Previous studies \cite{9356082} show that the FSDM framework works under a centralized trust model as a standalone controller module. This creates a single point of failure and cannot audit flow rules in a decentralized way. 
-
-Furthermore, FSDM uses fixed thresholds for traffic volume and entropy to detect saturation, which cannot detect slow or subtle attacks like Slow TCAM Exhaustion. Attackers can study these thresholds and change traffic to avoid detection. 
-
-Consequently, FSDM reacts only after attack traffic fills the controller’s queue, instead of preventing resource exhaustion. The framework collects and processes raw packet-in messages centrally to calculate entropy, exposing sensitive network information and lacking privacy protection.
-
-
-\subsubsection{Limitations of the TAP Protocol}
-
-Previous studies \cite{8616999} show that the TAP protocol uses a centralized trust model and a changeable Controller-Defaulter-List. If the controller is compromised, it could change the list without being noticed. 
-
-Additionally, TAP checks message arrival times using fixed physics-based calculations, but attackers can bypass this by changing coordinates. Therefore, TAP only detects delays and cannot find hidden forwarding attacks where packets are duplicated but arrive on time. TAP requires vehicles to send Attacker IDs to the controller, which may risk user privacy.
-
-\subsubsection{Limitations of the TPM and DAA Framework}
-
-Previous studies \cite{Timing_Attack} show that TPM and DAA frameworks face problems with scalability and deployment because hardware-based cryptography is expensive and not compatible with older vehicles. These frameworks only check messages and cannot predict future attacks or detect subtle insider threats. 
-
-The hardware can be attacked using side-channel techniques, like power analysis or voltage glitches, which can steal cryptographic keys. Therefore, these frameworks cannot detect logical flow attacks, such as hidden forwarding, where malicious nodes send valid packets to unauthorized destinations.
-
-
-
-\subsubsection{Limitations of the HSA Framework}
-
-Previous studies \cite{mohammadi2016detecting} show that HSA has limitations because it depends on a centralized model, creating a single point of failure and processing delays. If the controller is compromised, the defense does not work. 
-
-Furthermore, collecting packet headers and trajectory data in one place can expose sensitive information about user locations and driving patterns. Moreover, HSA cannot clearly tell whether problems are caused by faulty nodes or protocol errors, often marking large areas as suspicious. Malicious switches can escape detection by failing to report or by altering packet headers, so HSA cannot see duplicated or harmful packets.
-
-
-\subsection{Research Gap}
-
-The current literature lacks an integrated, multi-layered defense framework for SDVNs that operates within a Zero-Trust architecture to simultaneously mitigate stealthy Selective Time Delay and Hidden Forwarding attacks. Specifically, there is a missing capability to perform granular anomaly detection and immutable auditing of flow rules without relying on a trusted centralized controller or resorting to the mass ingestion of raw vehicular data, which violates driver privacy and exceeds the strict latency constraints required for safety-critical vehicular applications.
-
-Analysis of the existing literature reveals five critical gaps. \\ \\
-\textbf{Gap~1 (Mobility-induced vulnerability):} Existing SDN defenses 
-(SIFT, FSDM, FADE, ECSD, LOFT) assume stable topology and 
-well-characterized timing baselines. In SDVN, handoff delays of 
-50--300 \, ms mask attack-induced delays, flow-rule churn from vehicle 
-mobility camouflages slow TCAM exhaustion, and vehicles reside in each RSU zone for only 10--30 \, s---too brief for statistical detection. No 
-existing work models or defends against these mobility-amplified attack variants. \\ \\
-\textbf{Gap~2 (No joint detection):} All reviewed detection 
-mechanisms address either timing attacks \emph{or} forwarding anomalies, 
-never both simultaneously. Selective time delay and hidden forwarding 
-attacks can be launched in tandem by a single compromised node; detecting 
-them independently leaves exploitable blind spots. \\
-\textbf{Gap~3 (Centralization and single point of failure):} SDN-based detectors (SPHINX, HSA, LSTM-Fuzzy) rely on a trusted, centralized controller as both the detection engine and the attack target. A compromised controller application can manipulate detection outcomes. Blockchain-based rule verification (FTISCON, BlockREV) partially addresses this but introduces latency unsuitable for real-time vehicular applications.\\ \\
-\textbf{Gap~4 (Privacy violation):} Centralized detection requires mass ingestion of flow statistics and packet metadata, exposing vehicle trajectory and communication patterns. While federated learning approaches (Liu~\cite{Liu2021BFLVEC}, Mansouri~\cite{Mansouri2024}) preserve training data locality, they do not protect individual flow-rule 
-verification queries or audit trail privacy. \\ \\
-\textbf{Gap~5 (No 
-dual-mode defense):} Vehicular nodes range from resource-constrained OBUs to powerful RSU edge servers. No existing framework offers both a lightweight rule-based detection mode for constrained nodes and a full AI/cryptographic verification mode for capable nodes, adaptively switching based on available resources and threat level.
-
-\end{comment}
-\begin{comment}
-\begin{table}[H]
-\centering
-\caption{Comparison of related approaches and gaps addressed by the proposed SDVN framework.}
-\vspace{0.5\baselineskip}
-\label{tab:related-work-comparison}
-\renewcommand{\arraystretch}{1.2}
-\setlength{\tabcolsep}{6pt}
-\begin{tabular}{|p{2.0cm}|p{1.7cm}|p{2.5cm}|c|p{2.0cm}|p{2.9cm}|}
-\hline
-\textbf{Approach} &
-\textbf{Domain} &
-\textbf{Attack} &
-\textbf{Decentralized} &
-\textbf{Controller Trust} &
-\textbf{Unaddressed Gap} \\
-\hline
-
-SIFT \cite{pascoal2017slow} &
-SDN &
-Slow-TCAM &
-$\times$ &
-Assumed &
-Reactive, Non-auditable, Centralized \\
-\hline
-
-FSDM \cite{9356082} &
-SDN &
-Saturation Delay &
-$\times$ &
-Assumed &
-Centralized, Recovery-only, Non-integrative \\
-\hline
-
-TAP \cite{8616999} &	
-SD-NDN &
-Selective Delay &
-$\times$ &
-Assumed &
-Tamperable-list, Centralized, Static-thresholds \\
-\hline
-
-TPM and DAA \cite{Timing_Attack} &
-VANET &
-Authentication Timing &
-$\checkmark$ &
-Assumed &
-Hardware-dependency, Non-AI-predictive \\
-\hline
-
-HSA \cite{mohammadi2016detecting}&
-SDN &
-Hidden Forwarding &
-$\times$ &
-Assumed &
-Privacy-leakage, Centralized Collection\\
-\hline
-
-Proposed Approach &
-SDVN &
-Selective Time Delay and Hidden Forwarding &
-$\checkmark$ &
-Zero Trust &
-Fills decentralisation, privacy, and integration gaps \\
-\hline
-\end{tabular}
-\end{table}
-\end{comment}
 
 % \hl{...}
 
@@ -1456,7 +1129,9 @@ frameworks.
                         \hline
                         $sk_i, pk_i, k_i$ & Private key, public key, and pre-shared symmetric key of node $i$, respectively. \\
                         \hline
-                        $\sigma_i, \sigma$ &  Individual ML-DSA-87 signature and accumulated per-hop signature set, respectively
+                        $\sigma_i, \boldsymbol{\sigma}$ & Individual ML-DSA-87 signature
+                        and accumulated per-hop signature set $\{\sigma_i\}_{i=1}^n$,
+                        respectively.
                         \\
                         \hline
                         $\tau_i$ & Lightweight
@@ -1475,6 +1150,12 @@ frameworks.
                          \hline
                          $b_{delay,i}, b_{hop,i}$ &
                         Binary STARK verification outcomes (1=pass, 0=fail) for timing and hop proofs \\
+                        \hline
+                        $b_\pi$ & Combined binary STARK verification outcome;
+                        $b_\pi = \textsc{STARK.Verify}(\pi_{delay},\ldots)
+                        \land \textsc{STARK.Verify}(\pi_{hop},\ldots)$;
+                        used in trust score update
+                        (Eq.~\ref{eq:trust_update}). \\
 
                         \hline
                         $\mathcal{L}_w, W, H(p)$ & Witness short-term cache, observation time window, and cryptographic packet hash, respectively. \\
@@ -1775,138 +1456,11 @@ mitigation mechanism, since ZKP verification is per-packet and
 requires no observation window, complemented by federated LSTM
 sequence modeling that can detect anomalous patterns over short
 windows without requiring flow-level aggregation.
-\begin{comment}
-    
 
-\subsection{Mobility-Induced Threat Amplification in SDVN}
-\label{sec:mobility_amplification}
-
-The eight attack variants defined in Sections{sec:Overview of the four Selective Time Delay Attacks}
-and {sec:Overview of the four Hidden Forwarding Attacks} are not merely transposed from static SDN to a
-vehicular setting; vehicular mobility structurally amplifies each
-attack class through four mechanisms that must be explicitly modeled
-to derive accurate detection thresholds and cryptographic verification
-scopes.
-
-\textbf{Mechanism 1: Handoff masking of delay signatures.}
-At highway speeds of 80--120\,km/h, a vehicle traverses a typical
-RSU coverage zone of 300--500\,m in approximately 9--22\,s, inducing
-legitimate handoff latencies of 50--300\,ms during flow-rule
-recomputation and reinstallation~\cite{Islam2021SDVN}. An adversary
-executing Attack Variants~1 and~2 (Selective Time Delay,
-control-plane and data-plane) can inject delays within this range,
-rendering attack-induced delay statistically indistinguishable from
-legitimate handoff jitter. Let $\delta_h$ denote the handoff latency
-distribution and $\delta_a$ the attacker-injected delay; detection
-is feasible only when the two distributions are separable, i.e.,
-when their Bhattacharyya distance
-\begin{equation}
-D_B(\delta_h, \delta_a) = -\ln\left(\int \sqrt{p_h(x)\,p_a(x)}\,dx\right) > \epsilon
-\label{eq:bhattacharyya}
-\end{equation}
-for some detection threshold $\epsilon$. Existing static-SDN detectors
-implicitly assume $\delta_h = 0$, making them blind to this overlap.
-
-\textbf{Mechanism 2: Topology change exploiting control-plane
-staleness.}
-The SDVN controller maintains its network view through periodic LLDP
-topology discovery messages, typically every 1--5\,s~\cite{Wang2020Topology}.
-Between discovery cycles, the controller's topology view is stale by
-definition. In static SDN this staleness is negligible; in SDVN,
-vehicles enter and leave RSU coverage zones continuously, meaning the
-controller's forwarding graph can diverge substantially from the true
-network state within a single discovery interval. Attackers exploit
-this window in two ways. First, for selective time delay attacks,
-a compromised RSU can exploit stale routing decisions that direct
-traffic through a suboptimal multi-hop path, adding propagation delay
-that is indistinguishable from attack-induced delay since the
-controller itself expects elevated latency due to its outdated topology
-view. Second, for hidden forwarding attacks, a malicious node can
-install covert forwarding rules during a topology update cycle; these
-rules are not present in the controller's stale view and therefore
-escape flow-rule consistency verification. The effective detection
-window narrows with the topology update interval $T_{topo}$; the
-probability that a malicious rule survives undetected for $k$
-consecutive discovery cycles is
-\begin{equation}
-P_{evade}(k) = \left(1 - P_{detect}\right)^k
-\label{eq:evasion_probability}
-\end{equation}
-where $P_{detect}$ is the per-cycle detection probability. In high-mobility
-SDVN, frequent topology changes reduce $P_{detect}$ per cycle by
-invalidating the reference forwarding model used for comparison,
-making $P_{evade}(k)$ unacceptably large even for moderate $k$.
-
-\textbf{Mechanism 3: Flow-rule churn camouflage of TCAM exhaustion.}
-In SDVN, legitimate mobility-driven flow installations at busy
-intersections reach rates of hundreds of \texttt{FlowMod} messages
-per minute as vehicles continuously enter and leave RSU coverage
-zones. The slow TCAM exhaustion variants (Attacks~3 and~4) operate
-at rates of 3.2--40\,packets/s~\cite{Pascoal2017}, which fall within
-the lower tail of the legitimate installation rate distribution. Let
-$\lambda_l(t)$ denote the legitimate flow installation rate as a
-function of vehicle density $\rho(t)$, and $\lambda_a$ the attack
-installation rate. Detection requires identifying $\lambda_a$ as
-anomalous within the observed total rate $\lambda_{obs}(t) =
-\lambda_l(t) + \lambda_a$. A static threshold $\lambda_{thresh}$
-calibrated for static SDN will generate unacceptably high false
-positive rates in SDVN because $\lambda_l(t)$ varies significantly
-with road density. This requires vehicle-density-normalized TCAM
-installation rate monitoring
-\begin{equation}
-\hat{\lambda}_a(t) = \lambda_{obs}(t) - \mathbb{E}\left[\lambda_l(t)\,|\,\rho(t)\right]
-\label{eq:density_normalized_rate}
-\end{equation}
-as part of the rule-based detection signature for Variants~3 and~4,
-where $\mathbb{E}[\lambda_l(t)\,|\,\rho(t)]$ is estimated from the
-predicted vehicle density at the RSU.
-
-\textbf{Mechanism 4: Short observation windows for hidden forwarding
-detection.}
-Flow conservation-based hidden forwarding detectors such as FADE and
-HSA require sufficient packet samples over a flow's lifetime to detect
-duplication or path deviation. In SDVN, a vehicle resides within a
-single RSU's observation window for only 9--22\,s at highway speed,
-and each topology change effectively resets the observation window
-for multi-hop path validation since the reference header space must
-be recomputed. Let $N_{obs}$ denote the number of packets observed
-within a single RSU zone crossing and $N_{min}$ the minimum sample
-size for reliable flow conservation testing at significance level
-$\alpha$. The condition
-\begin{equation}
-N_{obs} = r \cdot t_{zone} < N_{min}(\alpha)
-\label{eq:observation_window}
-\end{equation}
-where $r$ is the per-flow packet rate and $t_{zone}$ is the zone
-residence time, is frequently violated under highway mobility,
-rendering flow-conservation approaches statistically unreliable.
-This fundamentally motivates the use of cryptographic per-packet
-ZKP-based behavioral verification as the primary hidden forwarding
-mitigation mechanism, since ZKP verification is per-packet and
-requires no observation window, complemented by federated LSTM
-sequence modeling that can detect anomalous patterns over short
-windows without requiring flow-level aggregation.
-
-\end{comment}
 
 
 \clearpage
 \section{Proposed Solution}
-\begin{comment}
-    
-
-\section{High-Level Functional Block Diagram}
-The defense mechanism handles communication through a number of functional stages to guarantee network trust and real-time detection as shown in Figure \ref{fig:Block Diagram}
-
-
-  \begin{figure}[H]
-  \centering
-  \includegraphics[width=0.95\textwidth]{Block Diagram.png}
-  \caption{Block Diagram}
-  \label{fig:Block Diagram}
-  \end{figure}
-
-\end{comment}
 % \begin{enumerate}
 %   \item Layer 1: Packet Monitoring: This involves capturing sequential packet data, including timing and routing histories \cite{DBLP:journals/air/QammarKND23}
 %   \item Layer 2: Cryptographic Verification: Uses digital signatures and secure hashing to ensure the integrity and authenticity of every packet \cite{Zhai_2019}
@@ -2403,8 +1957,6 @@ immediately triggering escalation to the nearest
 and S5--S8 are not evaluated at the \ac{OBU} since
 they require \ac{ZKP} inputs unavailable on
 resource-constrained nodes.
-
-
 
 The lightweight detection algorithm deployed on
 resource-constrained \ac{OBU}s evaluates only signatures
@@ -3216,84 +2768,7 @@ the hash pre-committed to the blockchain by RSU $r_k$, ensuring that
 no RSU can submit a weight update that differs from its committed
 model and that the controller, which has no blockchain write access,
 cannot interfere with the validation process.
-\begin{comment}
 
-
-    
-\subsection{Federated LSTM Anomaly Detection}
-\label{sec:fed_lstm}
-
-\subsubsection{Local LSTM Model}
-Each RSU $r_k$ trains a local LSTM model on its observed packet
-sequences. The input feature vector at timestep $t$ for flow $f$
-is:
-\begin{equation}
-\mathbf{x}_t^{(f)} = \left[\delta_t,\, \lambda_{PI,t},\,
-U_{TCAM,t},\, \mathbb{1}[\pi_{delay}=\bot],\,
-\mathbb{1}[\pi_{hop}=\bot],\, \rho_t,\, \bar{v}_t \right]^T
-\label{eq:lstm_input}
-\end{equation}
-where the ZKP failure indicators $\mathbb{1}[\pi=\bot]$ are novel
-mobility-cryptographic features that encode cryptographic evidence
-of attacks directly into the LSTM input. The hidden state evolves as:
-\begin{equation}
-\mathbf{h}_t = \textsc{LSTM}\!\left(\mathbf{x}_t, \mathbf{h}_{t-1};\,
-\mathbf{W}_{local}^{(k)}\right)
-\label{eq:lstm_hidden}
-\end{equation}
-The anomaly score for timestep $t$ is the reconstruction error of an
-autoencoder-mode LSTM:
-\begin{equation}
-\mathcal{A}_t^{(k)} =
-\left\|\mathbf{x}_t - \hat{\mathbf{x}}_t\right\|_2^2
-\label{eq:anomaly_score}
-\end{equation}
-A detection event is triggered when:
-\begin{equation}
-D_{LSTM}^{(k)}(t) =
-\begin{cases}
-1 & \mathcal{A}_t^{(k)} > \theta^{(k)} \\
-0 & \text{otherwise}
-\end{cases}
-\label{eq:lstm_detection}
-\end{equation}
-where the RSU-specific threshold $\theta^{(k)}$ is computed from the
-local training distribution:
-\begin{equation}
-\theta^{(k)} = \mu_{\mathcal{A}}^{(k)} + z_\alpha \cdot \sigma_{\mathcal{A}}^{(k)}
-\label{eq:lstm_threshold}
-\end{equation}
-and $z_\alpha$ is the $z$-score corresponding to false positive rate
-$\alpha$.
-
-\subsubsection{Federated Aggregation with Byzantine Robustness}
-Since vehicular nodes may be compromised, standard FedAvg is replaced
-with a Byzantine-robust aggregation strategy. The global model weights
-are updated as:
-\begin{equation}
-\mathbf{W}_{global}^{(t+1)} =
-\frac{\sum_{k=1}^{K} n_k \cdot \mathbf{W}_{local}^{(k)}(t)
-\cdot \mathbb{1}\!\left[d\!\left(\mathbf{W}_{local}^{(k)},
-\tilde{\mathbf{W}}\right) < \gamma\right]}
-{\sum_{k=1}^{K} n_k \cdot \mathbb{1}\!\left[d\!\left(\mathbf{W}_{local}^{(k)},
-\tilde{\mathbf{W}}\right) < \gamma\right]}
-\label{eq:fed_robust}
-\end{equation}
-where $\tilde{\mathbf{W}}$ is the coordinate-wise median of submitted
-weights, $d(\cdot,\cdot)$ is Euclidean distance, and $\gamma$ is an
-outlier rejection threshold. This Krum-inspired filtering excludes
-model updates from RSUs whose weights deviate significantly from the
-consensus---rejecting gradient poisoning by compromised RSU nodes.
-Model hash submissions are written to the RSU-chain exclusively by
-RSUs; the smart contract verifies the hash of submitted weights
-before inclusion in aggregation, and the controller has no
-participation in this validation process:
-\begin{equation}
-\mathbb{1}_{BC}^{(k)} = \textsc{SC.VerifyModelHash}\!\left(
-H(\mathbf{W}_{local}^{(k)}),\; \textsc{CommittedHash}^{(k)}\right)
-\label{eq:bc_model_verify}
-\end{equation}
-\end{comment}
 
 
 The Byzantine-robust federated aggregation
@@ -3590,156 +3065,6 @@ detection by honest RSUs.}
 ZKP next-hop proofs reference this RSU-endorsed commitment,
 preventing the controller from secretly modifying $\mathcal{P}(s,d)$
 after flow installation without detection by honest RSUs.
-
-\begin{comment}
-\subsection{Blockchain Architecture Under Zero-Trust
-Controller Assumption}
-\label{sec:blockchain_redesign}
-
-A critical requirement arising from the zero-trust threat model is
-that the SDN controller---which is assumed potentially
-malicious---must be \emph{excluded from the blockchain write path}.
-Permitting the controller to commit flow policies, log FlowMod
-installations, or participate in model validation would reduce the
-blockchain's integrity guarantee to that of the controller itself,
-directly contradicting the zero-trust assumption. The redesigned
-architecture enforces three principles: (i)~all blockchain writes
-originate exclusively from RSUs, which independently observe network
-behavior; (ii)~flow-rule validity is established through
-\emph{multi-RSU endorsement} rather than controller assertion; and
-(iii)~the controller receives verified defense policies \emph{from}
-the blockchain rather than writing to it.
-
-\subsubsection{Multi-RSU Flow-Rule Endorsement}
-Rather than the controller unilaterally committing the authorized
-forwarding policy $\mathcal{P}(s,d)$, each FlowMod installation
-must be endorsed by $f+1$ independent neighboring RSUs before
-blockchain commitment, where $f$ is the maximum number of Byzantine
-RSUs tolerated. Each endorsing RSU $r_j$ independently verifies
-that the proposed flow rule is consistent with the current network
-topology and established routing policy, then signs the endorsement:
-\begin{equation}
-\epsilon_j = \textsc{EdDSA.Sign}\!\left(sk_{r_j},\;
-H(\text{FlowMod} \,\|\, ts \,\|\, \mathcal{T}_{r_j})\right)
-\label{eq:rsu_endorsement}
-\end{equation}
-where $\mathcal{T}_{r_j}$ is RSU $r_j$'s independently maintained
-local topology view. The flow rule is committed to the blockchain
-only when $f+1$ valid endorsements are collected:
-\begin{equation}
-C_{\mathcal{P}} = \textsc{BC.Commit}\!\left(
-H(\text{FlowMod}) \,\|\,
-\{\epsilon_j\}_{j=1}^{f+1} \,\|\, ts_{commit}\right)
-\label{eq:endorsed_commit}
-\end{equation}
-A malicious controller issuing unauthorized FlowMods will fail to
-collect $f+1$ honest endorsements, preventing the malicious rule
-from being recorded as legitimate on the blockchain and directly
-enabling Signature~S3 and~S5 detection against a malicious
-controller without relying on the controller's own reporting.
-
-\subsubsection{RSU-Initiated Blockchain Writes}
-All blockchain events---FlowMod installations, ZKP verification
-outcomes, trust score updates, and detection alerts---are written
-exclusively by RSUs based on independent local observations. An
-RSU $r_k$ writes a detection event upon a rule engine or LSTM
-detection flag:
-\begin{equation}
-\textsc{BC.Write}\!\left(r_k,\;
-v_{suspect} \,\|\, S_i \,\|\, ts \,\|\,
-\textsc{EdDSA.Sign}(sk_{r_k},
-H(v_{suspect} \,\|\, S_i \,\|\, ts))\right)
-\label{eq:rsu_write}
-\end{equation}
-The controller has \emph{read-only} access to the blockchain,
-receiving verified defense policies through smart contract outputs.
-This inverts the trust relationship: the controller's behavior is
-audited by the blockchain rather than the blockchain being
-populated by the controller.
-
-\subsubsection{Controller Behavior Auditing via RSU Logging}
-Since the controller issues FlowMods to RSUs, each RSU independently
-logs every received FlowMod to the local RSU-chain immediately upon
-receipt, \emph{before} installation:
-\begin{equation}
-\textsc{BC.LogFlowMod}\!\left(r_k,\;
-H(\text{FlowMod}_{recv}) \,\|\, ts_{recv} \,\|\,
-\epsilon_{endorsement}\right)
-\label{eq:flowmod_log}
-\end{equation}
-A FlowMod arriving at RSU $r_k$ without a corresponding blockchain
-commitment $C_{\mathcal{P}}$ from Eq.~\eqref{eq:endorsed_commit}
-is immediately flagged as unauthorized:
-\begin{equation}
-f_{unauth}(r_k, t) =
-\begin{cases}
-1 & \text{FlowMod}_{recv} \notin
-    \textsc{BC.Query}(\mathcal{C}_{\mathcal{P}}) \\
-0 & \text{otherwise}
-\end{cases}
-\label{eq:unauth_flowmod}
-\end{equation}
-This detects malicious controller FlowMods underlying Attacks~1,
-3, 5, and~7 without relying on the controller's own reporting,
-closing the design flaw inherent in controller-sourced blockchain
-writes.
-
-\subsubsection{Two-Tier Chain Structure}
-A local RSU-level permissioned chain (RSU-chain) operates with
-low-latency PBFT consensus among neighboring RSUs, tolerating
-$f < n/3$ Byzantine RSU nodes. The global chain anchors RSU-chain
-Merkle roots periodically:
-\begin{equation}
-H_{anchor}^{(r)} = H\!\left(H_{root}^{RSU} \,\|\,
-ts_{anchor} \,\|\, H_{prev}^{global}\right)
-\label{eq:anchor_hash}
-\end{equation}
-This limits global consensus overhead to anchor events while
-enabling sub-second local logging latency for real-time detection.
-
-\subsubsection{Smart Contract Trust Management}
-Each node $v$ maintains a blockchain-recorded trust score
-$T_v \in [0,1]$, updated by RSUs via smart contract upon each
-ZKP and aggregate signature verification outcome:
-\begin{equation}
-T_v^{(t+1)} =
-\begin{cases}
-\min(1,\; T_v^{(t)} + \Delta_r) &
-\text{if } \textsc{VerifyAgg} = 1 \;\land\; \pi_i = \top \\
-\max(0,\; T_v^{(t)} - \Delta_p) &
-\text{if } \textsc{VerifyAgg} = 0 \;\lor\; \pi_i = \bot
-\end{cases}
-\label{eq:trust_update}
-\end{equation}
-where $\Delta_r$ and $\Delta_p$ are the reward and penalty
-increments respectively. When $T_v^{(t)} < T_{min}$, the smart
-contract automatically emits a \textsc{Quarantine} event,
-instructing all RSUs to drop flows originating from $v$:
-\begin{equation}
-\textsc{SC.Quarantine}(v) \Leftarrow T_v^{(t)} < T_{min}
-\label{eq:quarantine}
-\end{equation}
-
-\subsubsection{Flow-Rule Commitment Scheme}
-At flow setup, the \emph{endorsed} forwarding policy
-$\mathcal{P}(s,d)$ is committed to the blockchain by the endorsing
-RSUs, not the controller:
-\begin{equation}
-C_{\mathcal{P}} = \textsc{Commit}\!\left(
-H(\mathcal{P}(s,d)) \,\|\, ts_{setup} \,\|\,
-\{\epsilon_j\}_{j=1}^{f+1}\right)
-\label{eq:policy_commit}
-\end{equation}
-ZKP next-hop proofs reference this RSU-endorsed commitment,
-preventing the controller from secretly modifying $\mathcal{P}(s,d)$
-after flow installation without detection by honest RSUs.
-
-\subsubsection{Revised Trust Architecture Summary}
-Table~\ref{tab:trust_roles} summarizes the access rights of each
-entity under the corrected zero-trust design.
-
-    
-\end{comment}
 
 \subsubsection{Trust Architecture Summary}
 Table~\ref{tab:trust_roles} summarizes the access rights of each
@@ -4125,7 +3450,7 @@ Figure \ref{fig:Sumo} shows the SUMO simulation window running the generated roa
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{netanim.eps}
+    \includegraphics[width=0.75\textwidth]{netanim.eps}
     \caption{NetAnim visualization with RSU placement}
     \label{fig:Netanim}
 \end{figure}
