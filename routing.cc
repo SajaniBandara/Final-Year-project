@@ -114702,13 +114702,6 @@ double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs 
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === DETECTION TIMESTAMP GLOBALS ===
-// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
-// attack-injected delay has elapsed). It is populated by
-// record_actual_forward_timestamp() but is NOT read by any detection
-// function — S1, S2, and TAP all use t_claimed_packet instead. Retained
-// for potential future diagnostics or offline trace analysis.
-double t_fwd_packet[total_size][Flow_size+2];
-
 // t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
 // time — i.e., when it received/decided to forward the packet, BEFORE any
 // malicious buffering. This is the correct analogue of the TAP paper's
@@ -114721,21 +114714,8 @@ double t_fwd_packet[total_size][Flow_size+2];
 // (PAT - propagation_delay); the mismatch between what the node claims
 // and what physics implies is the signal TAP is designed to catch.
 //
-// Distinct from t_fwd_packet (which reflects the real post-delay send time
-// but is not read by any detector) — do not merge these two arrays, they
-// serve different purposes: t_claimed_packet is the detection input;
-// t_fwd_packet is a raw timing record.
 double t_claimed_packet[total_size][Flow_size+2];
 
-// Records the ACTUAL wire-departure timestamp into t_fwd_packet, fired at
-// the same simulated time the delayed WifiNetDevice::Send call executes —
-// not at forwarding-decision time. Note: no detection function reads
-// t_fwd_packet; detection uses t_claimed_packet exclusively. This trampoline
-// is retained for offline trace analysis and future diagnostics.
-inline void record_actual_forward_timestamp(uint32_t node, uint32_t packet_id)
-{
-    t_fwd_packet[node][packet_id] = Simulator::Now().GetSeconds();
-}
 
 // Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
 // fired immediately at forwarding-decision time — i.e., BEFORE any
@@ -114748,11 +114728,10 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
     t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
 }
 
-// Detection functions and the arrays they read:
-//   s1_detect_packet()  (s1_detection.h) — reads t_claimed_packet for hop-delay
-//   s2_detect_packet()  (s2_detection.h) — reads t_claimed_packet for hop-delay
-//   tap_run_detection() (tap_detection.h) — reads t_claimed_packet as PPAT
-//   t_fwd_packet is populated but not read by any detector (retained for traces).
+// Detection functions and the array they read (t_claimed_packet):
+//   s1_detect_packet()  (s1_detection.h) — hop-delay = t_recv − t_claimed
+//   s2_detect_packet()  (s2_detection.h) — hop-delay = t_recv − t_claimed
+//   tap_run_detection() (tap_detection.h) — PPAT = t_claimed
 bool s1_detection_active = true;     // master enable for S1 — read by s1_detection.h
 bool s2_detection_active = true;     // master enable for S2 — read by s2_detection.h
 bool tap_detection_active = true;    // master enable for TAP — read by tap_detection.h
@@ -120921,10 +120900,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// timestamp below is.
 						record_claimed_forward_timestamp(current_hop, packet_id);
 
-						// Record forwarding timestamp for S2's hop-delay calculation at the
-						// moment the packet ACTUALLY leaves this node (after total_tx_delay
-						// has elapsed), not at decision time.
-						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
@@ -123397,13 +123372,9 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // eFADE: record outbound destination at the source
     fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
 
-    // Stamp claimed and actual timestamps so S1/S2/TAP detectors have a baseline
-    // for this hop. No attack delay is modeled here (both schedule at Seconds(0)),
-    // so claimed and actual are identical — both are recorded for consistency.
-    // t_claimed_packet is the detection input (S1 hop-delay, S2 hop-delay, TAP PPAT);
-    // t_fwd_packet is the actual wire-departure record (not read by any detector).
+    // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline
+    // for this hop (S1/S2 hop-delay = t_recv − t_claimed; TAP PPAT = t_claimed).
     record_claimed_forward_timestamp(source, packet_ID);
-    Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, source, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
