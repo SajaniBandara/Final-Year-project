@@ -93,8 +93,29 @@ inline void declare_attack_states()
             active_attack_variant = 1;
             break;
 
-        // case (3) through case (8): reserved. Add a new case here when
-        // each attack's present_* flag(s) exist, mirroring this pattern.
+        case (3): // TCAM Exhaustion — Control Plane (Attack 3)
+            active_attack_variant = 2;
+            break;
+
+        case (4): // TCAM Exhaustion — Data Plane (Attack 4)
+            active_attack_variant = 3;
+            break;
+
+        case (5): // Active Hidden Forwarding — Control Plane (Attack 5)
+            active_attack_variant = 4;
+            break;
+
+        case (6): // Active Hidden Forwarding — Data Plane (Attack 6)
+            active_attack_variant = 5;
+            break;
+
+        case (7): // Passive Hidden Forwarding — Control Plane (Attack 7)
+            active_attack_variant = 6;
+            break;
+
+        case (8): // Passive Hidden Forwarding — Data Plane (Attack 8)
+            active_attack_variant = 7;
+            break;
 
         default:
             cout << "[declare_attack_states] WARNING: unrecognized attack_number="
