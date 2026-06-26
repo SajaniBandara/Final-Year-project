@@ -121341,7 +121341,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
-					                         ? t_fwd_packet[sender_sim_index][packet_ID]
+					                         ? t_claimed_packet[sender_sim_index][packet_ID]
 					                         : 0.0;
 					if (t_fwd_by_sender > 0.0)
 					{
