@@ -48,7 +48,7 @@ from pathlib import Path
 # Paths
 # ---------------------------------------------------------------------------
 PROJECT_DIR = Path(__file__).resolve().parent.parent          # …/Final-Year-project/
-NS3_DIR     = Path.home() / "ns-allinone-3.35" / "ns-3.35"
+NS3_DIR     = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
 SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs"
