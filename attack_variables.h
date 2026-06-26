@@ -27,13 +27,13 @@ bool present_selective_delay_attack_nodes = false;
 // The actual per-packet delay is drawn uniformly from [attack2_min, attack2_max].
 double attack2_delay_seconds     = 0.080; // nominal mean (used for logging only)
 // Variable delay bounds for Attack 2 (Data Plane).
-// Range spans the handoff jitter window defined in §1582–1608 (50–300 ms).
+// Range spans the handoff jitter window defined in §1319–1327 (50–300 ms).
 // Lower bound 0.060 s sits 10 ms above S2_DELTA_MAX (50 ms) so every attack
 // packet strictly exceeds the detection threshold under the thesis's Eq. 3.5
 // strict '>' comparison — fixes deviation B2 (min_delay = Δ_max boundary case).
-// Proposal §1517–1519: "intentional, variable lags" — fixes deviation D4.
+// Thesis §1255: "intentional, variable lags" — fixes deviation D4.
 double attack2_min_delay_seconds = 0.060; // 60 ms — 10 ms above S2_DELTA_MAX
-double attack2_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1582–1608
+double attack2_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1319–1327
 
 // Selective Time Delay Attack Variables (Attack 1 — Control Plane)
 // The RSU itself is never marked malicious for this attack; only the
@@ -45,14 +45,14 @@ double attack2_max_delay_seconds = 0.300; // 300 ms — full handoff jitter wind
 // Per the threat model, this flag and Attack 2's
 // present_selective_delay_attack_nodes must never both be true at once.
 bool   present_selective_delay_cp_attack = false;
-// Variable delay range spanning the handoff jitter window (proposal §1582–1608,
-// §1317–1331: legitimate handoff latencies of 50–300 ms).
-// Fixed 80 ms constant replaced with 50–150 ms range per proposal §1517–1519
+// Variable delay range spanning the handoff jitter window (§1319–1327:
+// legitimate handoff latencies of 50–300 ms).
+// Fixed 80 ms constant replaced with variable range per thesis §1255
 // ("intentional, variable lags") — fixes deviation D3.
 // Note: selective_delay_cp_target_rsu removed (was dead code — reapply_cp_selective_delay
 // iterates ALL RSUs under compromised controllers, not a single hardcoded one).
 double attack1_min_delay_seconds = 0.060; // 60 ms — above S1 baseline (~2 ms + 3σ) ensuring detection
-double attack1_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1582–1608
+double attack1_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1319–1327
 
 // Top-level attack-type selector, mirroring the supervisor's reference
 // numbering convention (attack_number 1, 2, 3, ...). This is DISTINCT from

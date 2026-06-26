@@ -17,7 +17,7 @@ extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 //   attack2_min_delay, attack2_max_delay — per-packet variable delay bounds for
 //     Attack 2 (Data Plane).  Replaces the single fixed attack2_delay constant.
 //     attack2_delay is kept as the nominal mean purely for logging / backward compat.
-//     Proposal §1517–1519: "intentional, variable lags".
+//     Thesis §1255: "intentional, variable lags".
 //   is_safety_critical — Phase 4 / D5: both attacks must only delay HIGH-priority
 //     safety-critical packets per Signature S1 (Equation 3.4) and S2 (Equation 3.5).
 //     Best-effort packets fall through both guards and return 0.0.
@@ -42,7 +42,7 @@ inline double calculate_unified_selective_delay(
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
-        // Draw a fresh variable delay per packet (proposal §1517–1519).
+        // Draw a fresh variable delay per packet (thesis §1255).
         // Static RNG seeded by RngSeedManager in main() — fully reproducible
         // given fixed sim_seed + sim_run (Phase 1 / D1 fix).
         static Ptr<UniformRandomVariable> dp_delay_rng = nullptr;
