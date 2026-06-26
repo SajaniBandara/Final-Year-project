@@ -117575,9 +117575,11 @@ void write_security_metrics_csv()
 	if (fout.tellp() == 0) {
 		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
 			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
-			 << "# TP, FP, TN, FN,\n"
-			 << "# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
-			 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4\n";
+			 << "# TP, FP, TN, FN";
+		if (active_attack_variant == 2 || active_attack_variant == 3)
+			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
+				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
+		fout << "\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117608,9 +117610,10 @@ void write_security_metrics_csv()
 		 << sec_TP[selected_variant] << ", "
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
-		 << sec_FN[selected_variant]
-		 << TcamDetectionCsvColumns(tcam_metrics)
-		 << "\n";
+		 << sec_FN[selected_variant];
+	if (active_attack_variant == 2 || active_attack_variant == 3)
+		fout << TcamDetectionCsvColumns(tcam_metrics);
+	fout << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
