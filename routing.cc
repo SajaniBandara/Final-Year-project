@@ -143011,7 +143011,7 @@ if (architecture == 3 && N_Vehicles > 0)
 // =====================================================
 // FADE CSV INITIALIZATION
 // =====================================================
-fade_csv.open("fade_results.csv");
+fade_csv.open("fade_results" + g_sim_tag + ".csv");
 fade_csv << "FlowID,"
          << "AnomalyType,"
          << "Detected,"

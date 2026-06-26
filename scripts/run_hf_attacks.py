@@ -1,41 +1,45 @@
 #!/usr/bin/env python3
 """
-run_std_attacks.py — Parallel launcher for Selective Time Delay attack sweeps.
+run_hf_attacks.py — Parallel launcher for Hidden Forwarding (HF) attack sweeps.
 
-Runs both attack variants across all 6 attack percentages {0,20,40,60,80,100}
-as concurrent subprocesses so every combination finishes in the time of the
-longest single run instead of serially.
+Runs all four HF attack variants across all 6 attack percentages {0,20,40,60,80,100}
+as concurrent subprocesses.
+
+Attack mapping:
+  attack_number=5  →  active_attack_variant=4  →  Attack 5 (HF CP)
+  attack_number=6  →  active_attack_variant=5  →  Attack 6 (HF DP)
+  attack_number=7  →  active_attack_variant=6  →  Attack 7 (HF CP variant)
+  attack_number=8  →  active_attack_variant=7  →  Attack 8 (HF DP variant)
 
 Result CSVs written by the simulation:
-  results_routing/MOBIGUARD_Attack1_<pct>.csv  — Attack 1 (CP), MOBIGUARD S1 detector
-  results_routing/MOBIGUARD_Attack2_<pct>.csv  — Attack 2 (DP), MOBIGUARD S2 detector
-  results_routing/TAP_Attack2_<pct>.csv        — Attack 2 (DP), TAP baseline detector
+  results_routing/MOBIGUARD_Attack<N>_<pct>.csv  — MOBIGUARD detector
+  results_routing/FADE_Attack<N>_<pct>.csv        — eFADE detector (primary for HF)
+
+Per-run files in the NS-3 working directory (tagged, no collision):
+  fade_results_V<v>_pct<p>.csv   — per-flow FADE detection detail
+  fade_metrics_V<v>_pct<p>.csv   — per-run FADE summary row
 
 Per-run logs (stdout + stderr):
   logs/A<N>_pct<P>_seed<S>.log
 
 Usage examples:
-  # Run all 12 combinations (both attacks × 6 percentages) in parallel:
-  python3 scripts/run_std_attacks.py
+  # Run all 24 combinations (4 attacks × 6 percentages) in parallel:
+  python3 scripts/run_hf_attacks.py
 
   # Sync headers + rebuild first, then run:
-  python3 scripts/run_std_attacks.py --build
+  python3 scripts/run_hf_attacks.py --build
 
-  # Run only Attack 1 at 40%:
-  python3 scripts/run_std_attacks.py --attack 1 --percentage 40
+  # Run only Attack 5 at 40%:
+  python3 scripts/run_hf_attacks.py --attack 5 --percentage 40
 
-  # Use a different RNG seed / run index:
-  python3 scripts/run_std_attacks.py --seed 2 --sim-run 3
-
-  # Limit to 4 parallel jobs (useful on low-core machines):
-  python3 scripts/run_std_attacks.py --workers 4
+  # Limit to 6 parallel jobs:
+  python3 scripts/run_hf_attacks.py --workers 6
 
   # Clear old result CSVs before starting:
-  python3 scripts/run_std_attacks.py --clean
+  python3 scripts/run_hf_attacks.py --clean
 """
 
 import argparse
-import glob
 import os
 import shutil
 import subprocess
@@ -47,36 +51,35 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-PROJECT_DIR = Path(__file__).resolve().parent.parent          # …/Final-Year-project/
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 NS3_DIR     = Path.home() / "ns-allinone-3.35" / "ns-3.35"
 SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs"
 
 # ---------------------------------------------------------------------------
-# Simulation parameters — mirrors run_attack2_sweep.sh conventions
+# Simulation parameters
 # ---------------------------------------------------------------------------
 ATTACK_PERCENTAGES = [0, 20, 40, 60, 80, 100]
 
 ATTACKS = [
-    {"attack_number": 1, "label": "Attack1_CP"},
-    {"attack_number": 2, "label": "Attack2_DP"},
+    {"attack_number": 5, "label": "Attack5_HF_CP"},
+    {"attack_number": 6, "label": "Attack6_HF_DP"},
+    {"attack_number": 7, "label": "Attack7_HF_CP_v2"},
+    {"attack_number": 8, "label": "Attack8_HF_DP_v2"},
 ]
 
-# Fixed topology / mobility parameters shared across all runs.
-# Matches run_attack2_sweep.sh and the thesis simulation table.
 FIXED_PARAMS = {
-    "routing_test":     "false",
-    "N_Vehicles":       200,
-    "N_RSUs":           64,
-    "N_Controllers":    4,
+    "routing_test":      "false",
+    "N_Vehicles":        200,
+    "N_RSUs":            64,
+    "N_Controllers":     4,
     "mobility_scenario": 0,
-    "maxspeed":         150,
+    "maxspeed":          150,
     "use_sumo_mobility": 1,
-    "architecture":     3,
+    "architecture":      3,
 }
 
-# Headers to copy from PROJECT_DIR to SCRATCH_DIR before a build.
 SYNC_FILES = [
     "routing.cc",
     "attack_declaration.h",
@@ -90,20 +93,12 @@ SYNC_FILES = [
     "optimization_lifetime.py",
 ]
 
-# Result CSV patterns expected after all runs complete.
-EXPECTED_RESULTS = (
-    [f"MOBIGUARD_Attack1_{p}.csv" for p in ATTACK_PERCENTAGES] +
-    [f"MOBIGUARD_Attack2_{p}.csv" for p in ATTACK_PERCENTAGES] +
-    [f"TAP_Attack2_{p}.csv"       for p in ATTACK_PERCENTAGES]
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def sync_files() -> None:
-    """Copy the latest project headers and routing.cc into NS-3 scratch."""
     print("── Syncing project files to NS-3 scratch ──")
     for name in SYNC_FILES:
         src = PROJECT_DIR / name
@@ -116,13 +111,8 @@ def sync_files() -> None:
 
 
 def build_simulation() -> bool:
-    """Run ./waf build. Returns True on success."""
     print("\n── Building NS-3 simulation ──")
-    result = subprocess.run(
-        ["./waf", "build"],
-        cwd=NS3_DIR,
-        text=True,
-    )
+    result = subprocess.run(["./waf", "build"], cwd=NS3_DIR, text=True)
     if result.returncode != 0:
         print("ERROR: Build failed. Fix compilation errors before running.")
         return False
@@ -131,37 +121,28 @@ def build_simulation() -> bool:
 
 
 def clean_results(attack: int | None, percentage: int | None) -> None:
-    """Remove old result CSVs that match the requested scope."""
-    patterns = []
-    attacks  = [attack] if attack else [1, 2]
-    percs    = [percentage] if percentage is not None else ATTACK_PERCENTAGES
+    attacks = [attack] if attack else [a["attack_number"] for a in ATTACKS]
+    percs   = [percentage] if percentage is not None else ATTACK_PERCENTAGES
 
+    patterns = []
     for a in attacks:
         for p in percs:
-            if a == 1:
-                patterns.append(RESULTS_DIR / f"MOBIGUARD_Attack1_{p}.csv")
-            else:
-                patterns.append(RESULTS_DIR / f"MOBIGUARD_Attack2_{p}.csv")
-                patterns.append(RESULTS_DIR / f"TAP_Attack2_{p}.csv")
+            patterns.append(RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}.csv")
+            patterns.append(RESULTS_DIR / f"FADE_Attack{a}_{p}.csv")
 
-    removed = 0
-    for f in patterns:
-        if f.exists():
-            f.unlink()
-            removed += 1
+    removed = sum(1 for f in patterns if f.exists() and (f.unlink() or True))
     if removed:
         print(f"── Removed {removed} old result file(s) ──\n")
 
 
 def build_waf_command(attack_number: int, attack_percentage: int,
                       sim_time: int, seed: int, sim_run: int) -> list[str]:
-    """Construct the full ./waf --run command for one simulation run."""
     params = dict(FIXED_PARAMS)
-    params["simTime"]          = sim_time
-    params["attack_number"]    = attack_number
+    params["simTime"]           = sim_time
+    params["attack_number"]     = attack_number
     params["attack_percentage"] = attack_percentage
-    params["sim_seed"]         = seed
-    params["sim_run"]          = sim_run
+    params["sim_seed"]          = seed
+    params["sim_run"]           = sim_run
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
     return ["./waf", "--run", f"scratch/routing {param_str}"]
@@ -170,10 +151,6 @@ def build_waf_command(attack_number: int, attack_percentage: int,
 def run_one(attack_number: int, attack_percentage: int,
             sim_time: int, seed: int, sim_run: int,
             log_path: Path) -> dict:
-    """
-    Execute a single simulation run.
-    Returns a result dict with label, returncode, elapsed time, and log path.
-    """
     label = f"A{attack_number}_pct{attack_percentage}"
     cmd   = build_waf_command(attack_number, attack_percentage, sim_time, seed, sim_run)
 
@@ -184,6 +161,7 @@ def run_one(attack_number: int, attack_percentage: int,
     with open(log_path, "w") as logf:
         logf.write(f"# Command: {' '.join(cmd)}\n")
         logf.write(f"# Started: {start.isoformat()}\n\n")
+        logf.flush()
         proc = subprocess.run(
             cmd,
             cwd=NS3_DIR,
@@ -194,35 +172,28 @@ def run_one(attack_number: int, attack_percentage: int,
 
     elapsed = (datetime.now() - start).total_seconds()
     ok      = proc.returncode == 0
-    status  = "OK" if ok else "FAILED"
-    print(f"  [{label}] {status:<6}  {elapsed:5.0f}s  →  {log_path.name}")
+    print(f"  [{label}] {'OK' if ok else 'FAILED':<6}  {elapsed:5.0f}s  →  {log_path.name}")
 
     return {
-        "label":            label,
-        "attack_number":    attack_number,
+        "label":             label,
+        "attack_number":     attack_number,
         "attack_percentage": attack_percentage,
-        "returncode":       proc.returncode,
-        "elapsed_s":        elapsed,
-        "log":              log_path,
-        "ok":               ok,
+        "returncode":        proc.returncode,
+        "elapsed_s":         elapsed,
+        "log":               log_path,
+        "ok":                ok,
     }
 
 
 def check_results(scope_attacks: list[int], scope_percs: list[int]) -> None:
-    """Print a table showing which expected result CSVs were produced."""
     print("\n── Result files ──")
     all_ok = True
     for a in scope_attacks:
         for p in scope_percs:
-            files = []
-            if a == 1:
-                files = [RESULTS_DIR / f"MOBIGUARD_Attack1_{p}.csv"]
-            else:
-                files = [
-                    RESULTS_DIR / f"MOBIGUARD_Attack2_{p}.csv",
-                    RESULTS_DIR / f"TAP_Attack2_{p}.csv",
-                ]
-            for f in files:
+            for f in [
+                RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}.csv",
+                RESULTS_DIR / f"FADE_Attack{a}_{p}.csv",
+            ]:
                 exists = f.exists() and f.stat().st_size > 0
                 mark   = "✓" if exists else "✗ MISSING"
                 print(f"  {mark:<10}  {f.name}")
@@ -240,7 +211,7 @@ def check_results(scope_attacks: list[int], scope_percs: list[int]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Launch Selective Time Delay attack simulations in parallel.",
+        description="Launch Hidden Forwarding attack simulations in parallel.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -253,8 +224,8 @@ def main() -> None:
         help="Delete old result CSVs for the selected scope before running.",
     )
     parser.add_argument(
-        "--attack", type=int, choices=[1, 2], default=None,
-        help="Run only this attack number (default: both 1 and 2).",
+        "--attack", type=int, choices=[5, 6, 7, 8], default=None,
+        help="Run only this attack number (default: all four 5–8).",
     )
     parser.add_argument(
         "--percentage", type=int, choices=ATTACK_PERCENTAGES, default=None,
@@ -275,17 +246,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--workers", type=int, default=12,
-        help="Maximum number of parallel simulation processes (default: 12 = all at once).",
+        help="Maximum number of parallel simulation processes (default: 12).",
     )
     args = parser.parse_args()
 
-    # ── Optional sync + build ────────────────────────────────────────────────
     if args.build:
         sync_files()
         if not build_simulation():
             sys.exit(1)
 
-    # ── Resolve scope ────────────────────────────────────────────────────────
     scope_attacks = [args.attack] if args.attack else [a["attack_number"] for a in ATTACKS]
     scope_percs   = [args.percentage] if args.percentage is not None else ATTACK_PERCENTAGES
 
@@ -294,10 +263,9 @@ def main() -> None:
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── Build run list ───────────────────────────────────────────────────────
     runs = [
         {
-            "attack_number":    a,
+            "attack_number":     a,
             "attack_percentage": p,
             "log": LOGS_DIR / f"A{a}_pct{p}_seed{args.seed}.log",
         }
@@ -313,7 +281,6 @@ def main() -> None:
         f"workers={min(args.workers, total)}] ──\n"
     )
 
-    # ── Run in parallel ──────────────────────────────────────────────────────
     passed, failed = [], []
     wall_start = datetime.now()
 
@@ -336,7 +303,6 @@ def main() -> None:
 
     wall_elapsed = (datetime.now() - wall_start).total_seconds()
 
-    # ── Summary ──────────────────────────────────────────────────────────────
     print(f"\n── Summary  (wall time: {wall_elapsed:.0f}s) ──")
     print(f"  Passed : {len(passed)}/{total}")
     if failed:
@@ -346,7 +312,6 @@ def main() -> None:
             print(f"      log → {r['log']}")
 
     check_results(scope_attacks, scope_percs)
-
     sys.exit(0 if not failed else 1)
 
 
