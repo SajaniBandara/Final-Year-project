@@ -61,6 +61,12 @@ double s1_beta = 0.9;
 double s1_delta_bar[300] = {0.0};   // δ̄_r(t): mobility-adjusted baseline per RSU
 double s1_sigma2[300]    = {0.0};   // σ²_r(t): EWMA variance per RSU
 
+// Per-RSU observed-delay accumulators for the EWMA input δ_r(t) (Eq. 3.12).
+// Accumulated inside s1_detect_packet() for every valid packet; drained
+// and reset at each s1_update_baseline() call site in routing.cc.
+double   s1_rsu_obs_sum[300]   = {0.0};
+uint32_t s1_rsu_obs_count[300] = {0};
+
 // =========================================================================
 // s1_update_baseline():
 // Updates the mobility-adjusted baseline for one RSU (Eq. 3.11/3.12/3.13).
@@ -111,6 +117,14 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 {
     if (!s1_detection_active) return false;
     if (rsu_idx >= (uint32_t)N_RSUs) return false;
+
+    // Accumulate observed hop-delay for δ_r(t) (Eq. 3.12/3.13), before the SC
+    // guard so the EWMA baseline tracks all traffic at this RSU, not only SC.
+    if (packet_delay_s > 0.0)
+    {
+        s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
+        s1_rsu_obs_count[rsu_idx] += 1;
+    }
 
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4)
     if (!is_safety_crit) return false;
@@ -166,8 +180,10 @@ inline void s1_reset_state()
 {
     for (int r = 0; r < 300; r++)
     {
-        s1_delta_bar[r] = 0.0;
-        s1_sigma2[r]    = 0.0;
+        s1_delta_bar[r]    = 0.0;
+        s1_sigma2[r]       = 0.0;
+        s1_rsu_obs_sum[r]  = 0.0;
+        s1_rsu_obs_count[r] = 0;
     }
     cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
 }

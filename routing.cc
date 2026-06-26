@@ -117898,7 +117898,14 @@ void calculate_performance_evaluation_metrics()
 		double rho_t   = (double)rho_count;
 		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
 
-		s1_update_baseline(_r, rho_t, v_bar_t, s1_delta0);
+		// δ_r(t): use mean of observed hop-delays since the last update tick
+		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
+		double obs_delay = (s1_rsu_obs_count[_r] > 0)
+		                 ? (s1_rsu_obs_sum[_r] / (double)s1_rsu_obs_count[_r])
+		                 : s1_delta0;
+		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
+		s1_rsu_obs_sum[_r]   = 0.0;
+		s1_rsu_obs_count[_r] = 0;
 	}
 	Simulator::Schedule(Seconds(0.000130), s1_write_csv);
 	Simulator::Schedule(Seconds(0.000140), s2_write_csv);
