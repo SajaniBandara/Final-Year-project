@@ -33,7 +33,7 @@ double attack2_delay_seconds     = 0.080; // nominal mean (used for logging only
 // strict '>' comparison — fixes deviation B2 (min_delay = Δ_max boundary case).
 // Proposal §1517–1519: "intentional, variable lags" — fixes deviation D4.
 double attack2_min_delay_seconds = 0.060; // 60 ms — 10 ms above S2_DELTA_MAX
-double attack2_max_delay_seconds = 0.150; // 150 ms upper bound
+double attack2_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1582–1608
 
 // Selective Time Delay Attack Variables (Attack 1 — Control Plane)
 // The RSU itself is never marked malicious for this attack; only the
@@ -52,7 +52,7 @@ bool   present_selective_delay_cp_attack = false;
 // Note: selective_delay_cp_target_rsu removed (was dead code — reapply_cp_selective_delay
 // iterates ALL RSUs under compromised controllers, not a single hardcoded one).
 double attack1_min_delay_seconds = 0.060; // 60 ms — above S1 baseline (~2 ms + 3σ) ensuring detection
-double attack1_max_delay_seconds = 0.150; // 150 ms — mid-range of handoff jitter window
+double attack1_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1582–1608
 
 // Top-level attack-type selector, mirroring the supervisor's reference
 // numbering convention (attack_number 1, 2, 3, ...). This is DISTINCT from
