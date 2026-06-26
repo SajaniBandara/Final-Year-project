@@ -233,9 +233,13 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // best-effort packets are not delayed by the attack and should not trigger.
     if (!is_safety_crit) return false;
 
-    // Read actual forwarding timestamp recorded by the sender
-    // (after any attack-injected delay, so it reflects real wire-departure time)
-    double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_id];
+    // Read the claimed forwarding timestamp recorded by the sender
+    // (before any attack-injected delay — this is t^fwd_u in Eq. 3.5, the
+    // "claimed timestamp" per thesis §1637). Using the post-delay actual
+    // departure time would reduce hop_delay to propagation-only (~µs),
+    // making S2 undetectable. t_claimed_packet is set at forwarding-decision
+    // time, before buffering, so hop_delay = attack_delay + propagation.
+    double t_fwd_by_sender = t_claimed_packet[sender_sim_index][packet_id];
     if (t_fwd_by_sender <= 0.0) return false; // no valid timestamp yet
 
     // Condition 1: t_recv − t_fwd > Δ_max  (Eq. 3.5 first conjunction)
