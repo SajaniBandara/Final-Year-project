@@ -117356,12 +117356,8 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
 	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
-	// TAP only runs for selective-delay attacks (variants 0-3); HF attacks use eFADE.
-	if (active_attack_variant <= 3)
-	{
-		Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
-		Simulator::Schedule(Seconds(0.000120), write_tap_csv);
-	}
+	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -120853,7 +120849,6 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
 				// OnReceivedEmergencyPacket logic. Fires at every received packet.
-				if (active_attack_variant <= 3)
 					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
 				// === END TAP BASELINE DETECTION ===
 
@@ -123137,8 +123132,8 @@ void initialize_flow_counters()
 			{
 				for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
 				{
+					// CP: controller table only — nodes_inst must stay clean
 					(delta_at_controller_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-					(delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
 				}
 			}
 		}
@@ -123151,8 +123146,8 @@ void initialize_flow_counters()
 			uint32_t eaves_node = kv.second;
 			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
 			{
-				for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
-					(delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				// DP trigger uses malicious-node flag — no delta write needed here.
+				// Writing to nodes_inst would corrupt routing decisions.
 			}
 		}
 	}

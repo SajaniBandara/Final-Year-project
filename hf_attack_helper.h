@@ -262,8 +262,9 @@ inline void hf_reapply_dp_after_clear()
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
-                (delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            // DP trigger uses malicious-node flag — no delta write needed here.
+            // Writing to nodes_inst would corrupt routing decisions
+            // (original rerouted to eavesdropper instead of legitimate hop).
         }
     }
 }
@@ -287,10 +288,12 @@ inline void hf_reapply_cp_after_clear()
         {
             for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
             {
+                // CP: poison controller table only. nodes_inst must stay clean
+                // so routing decisions (initiate_all_flows) send the original
+                // packet to the legitimate next hop, not the eavesdropper.
                 (delta_at_controller_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-                (delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
             }
-            std::cout << "[CP REAPPLY] wrote CTRL+NODES[" << rsu_node << "][" << eaves_node << "]=0.5 (all flows)" << std::endl;
+            std::cout << "[CP REAPPLY] wrote CTRL[" << rsu_node << "][" << eaves_node << "]=0.5 (all flows)" << std::endl;
         }
     }
 }
@@ -301,9 +304,15 @@ inline bool hf_delta_entry_active(uint32_t flow_id,
                                    uint32_t rsu_node,
                                    uint32_t eavesdropper_node)
 {
-    return (delta_at_nodes_inst + flow_id)
-               ->delta_fi_inst[rsu_node]
-               .delta_values[eavesdropper_node] > 0.0;
+    // Use the malicious-node flag as the HF trigger instead of reading
+    // delta tables. Writing to nodes_inst would corrupt routing decisions
+    // in initiate_all_flows (routing the original to the eavesdropper
+    // instead of the legitimate hop, dropping PDR). Writing to
+    // controller_inst for DP attacks would erase the CP/DP forensic
+    // distinction. The malicious flag is set by hf_declare_malicious_rsus
+    // at attack_start_time and stays set for the rest of the simulation.
+    return active_hf_malicious_nodes[rsu_node] ||
+           passive_hf_malicious_nodes[rsu_node];
 }
 
 // ── Resolve the eavesdropper index for a given RSU ────────────────────────────
