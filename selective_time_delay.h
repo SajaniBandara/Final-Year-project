@@ -51,7 +51,9 @@ inline double calculate_unified_selective_delay(
         }
         double actual_delay = dp_delay_rng->GetValue(attack2_min_delay, attack2_max_delay);
 
-        cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
+        cout << attack_tag() << " ③ "
+             << (current_hop < (uint32_t)N_Vehicles ? "Malicious Vehicle" : "Malicious RSU")
+             << " (node " << current_hop
              << ") intercepting packet ID " << packet_id
              << " for flow " << flow_id
              << " [SAFETY-CRITICAL] at t=" << Simulator::Now().GetSeconds() << "s" << endl;
@@ -127,7 +129,9 @@ inline bool schedule_unified_selective_delay_attack(
         }
         double actual_delay = dp_sched_rng->GetValue(attack2_min_delay, attack2_max_delay);
 
-        cout << attack_tag() << " ③ Malicious RSU (node " << source
+        cout << attack_tag() << " ③ "
+             << (source < (uint32_t)N_Vehicles ? "Malicious Vehicle" : "Malicious RSU")
+             << " (node " << source
              << ") intercepting packet ID " << packet_ID
              << " for flow " << fid
              << " [SAFETY-CRITICAL] at t=" << Simulator::Now().GetSeconds() << "s" << endl;
