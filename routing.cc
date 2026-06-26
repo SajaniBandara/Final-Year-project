@@ -117870,9 +117870,15 @@ void calculate_performance_evaluation_metrics()
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
-	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
-	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
-	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+	// --- TAP baseline metrics (only for Attack 2 — Data Plane) ---
+	// TAP (Arsalan & Rehman FIT 2018) is a DP detector. Computing its metrics
+	// for Attack 1 (CP / compromised controller) is methodologically invalid
+	// and would produce meaningless TP/FP counts — fixes deviation C5/C6.
+	if (active_attack_variant == 1)
+	{
+		Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+		Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+	}
 
 	// --- MOBIGUARD S1/S2 detection metrics ---
 	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
@@ -121384,7 +121390,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// OnReceivedEmergencyPacket logic. The TAP paper targets emergency
 				// (safety-critical) packets only — applying it to best-effort traffic
 				// would inflate false positives. Gate on is_safety_critical_flow[fid].
-				if (is_safety_critical_flow[fid])
+				// TAP is a Data Plane detector — only valid for Attack 2 (variant 1).
+				// Running it for Attack 1 (CP) is methodologically invalid: the threat
+				// model is a compromised controller, not a delaying vehicle, and TAP's
+				// signal-propagation timing model cannot observe that plane.
+				if (is_safety_critical_flow[fid] && active_attack_variant == 1)
 				{
 					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
 				}
