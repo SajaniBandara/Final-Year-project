@@ -116,6 +116,10 @@ const int flows = 1;
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int attack_percentage = 0;
+// Unique tag for all per-run scratch-level CSV files (e.g. "_A1_pct20").
+// Set in main() after cmd.Parse() so parallel runs never collide on
+// optimization_link_lifetime_data.csv / link_lifetime_solution.csv.
+std::string g_sim_tag;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
 double simTime = 300; // Proposal simulation table: "each run lasts 300 s"
@@ -112936,50 +112940,19 @@ void write_csv()
 
 void write_csv_status_lifetime()
 {
-	fstream fout;
+	static const std::string SCR = "/home/user/ns-allinone-3.35/ns-3.35/scratch/";
+	std::string ll_data;
 	switch(routing_algorithm)
 	{
-		case(0):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
-			break;
-		case(1):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
-			break;
-		case(2):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			break;
-		case(3):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			break;
-		case(4):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-			break;
-		case(5):
-			/*
-			if(experiment_number == 0)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 1)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 2)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 3)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			}
-			*/
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			break;
-			
-		default:
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-			break;
+		case(0): ll_data = SCR + "optimization_link_lifetime_data_ECMP"  + g_sim_tag + ".csv"; break;
+		case(1): ll_data = SCR + "optimization_link_lifetime_data_RR"    + g_sim_tag + ".csv"; break;
+		case(2): ll_data = SCR + "optimization_link_lifetime_data_QRSDN" + g_sim_tag + ".csv"; break;
+		case(3): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		case(5): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		default: ll_data = SCR + "optimization_link_lifetime_data"        + g_sim_tag + ".csv"; break;
 	}
+	fstream fout;
+	fout.open(ll_data, ios::out|ios::trunc);
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -113004,7 +112977,7 @@ void write_csv_status_lifetime()
 void write_csv_status()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data" + g_sim_tag + ".csv",ios::out|ios::trunc);
 	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		Ptr <Node> node;
@@ -115316,6 +115289,9 @@ void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
+void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+#include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
+#include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 
 // Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
 // included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
@@ -115523,8 +115499,6 @@ bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
 }
 
 #include "selective_time_delay.h"
-#include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
-#include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 
 
 
@@ -118264,51 +118238,15 @@ void optimize_link_lifetime()
 	std::string filename;
 	switch(routing_algorithm)
 	{
-		case(0):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
-			break;
-		case(1):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
-			break;
-		case(2):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			break;
-		case(3):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			break;
-		case(4):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
-			break;
-		case(5):
-			/*
-			if(experiment_number == 0)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			}
-			if(experiment_number == 1)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
-			}
-			if(experiment_number == 2)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			}
-			if(experiment_number == 3)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			}
-			*/
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			
-			break;
-		default:
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
-			break;
-		
+		case(0): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";  break;
+		case(1): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";    break;
+		case(2): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py"; break;
+		case(3): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		case(5): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		default: filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";        break;
 	}
-    	std::string command = "python3 ";
-    	command += filename;
-    	system(command.c_str());
+	std::string command = "python3 " + filename + " --tag=" + g_sim_tag;
+	system(command.c_str());
 }
 
 void optimize_first_time()
@@ -118465,51 +118403,20 @@ void convert_link_lifetimes()
 
 void read_lifetime_from_csv()
 {
-    fstream fin;
     cout<<"reading lifetime from csv at"<<Now().GetSeconds()<<endl;
+    static const std::string SCR = "/home/user/ns-allinone-3.35/ns-3.35/scratch/";
+    std::string ll_sol;
     switch(routing_algorithm)
     {
-    	case(0):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
-    		break;
-    	case(1):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
-    		break;
-    	case(2):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		break;
-    	case(3):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		break;
-    	case(4):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
-    		break;	
-    	case(5):
-    		/*
-    		if(experiment_number == 0)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		}
-    		if(experiment_number == 1)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
-    		}
-    		if(experiment_number == 2)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		}
-    		if(experiment_number == 3)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		}
-    		*/
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		break;	
-    		
-    	default:
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
-    		break;
+    	case(0): ll_sol = SCR + "link_lifetime_solution_ECMP"  + g_sim_tag + ".csv"; break;
+    	case(1): ll_sol = SCR + "link_lifetime_solution_RR"    + g_sim_tag + ".csv"; break;
+    	case(2): ll_sol = SCR + "link_lifetime_solution_QRSDN" + g_sim_tag + ".csv"; break;
+    	case(3): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	case(5): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	default: ll_sol = SCR + "link_lifetime_solution"        + g_sim_tag + ".csv"; break;
     }
+    fstream fin;
+    fin.open(ll_sol, ios::in);
     
     vector<string> row;
     string line;
@@ -143134,6 +143041,14 @@ if (architecture == 3 && N_Vehicles > 0)
 			// Initialize dynamic attack configurations
 			declare_attack_states();
 			declare_attackers();
+
+			// Set unique tag for all per-run scratch-level CSV files AFTER
+			// declare_attack_states() has resolved active_attack_variant from
+			// either --attack_number (new path) or --active_attack_variant
+			// (legacy path). Using active_attack_variant means every variant —
+			// including those that never set attack_number — gets a distinct tag.
+			g_sim_tag = "_V" + std::to_string(active_attack_variant)
+			          + "_pct" + std::to_string(attack_percentage);
 			
 			if (routing_test) {
 			    hardcode_test_network_attackers();
