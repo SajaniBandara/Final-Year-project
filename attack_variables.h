@@ -28,11 +28,11 @@ bool present_selective_delay_attack_nodes = false;
 double attack2_delay_seconds     = 0.080; // nominal mean (used for logging only)
 // Variable delay bounds for Attack 2 (Data Plane).
 // Range spans the handoff jitter window defined in §1582–1608 (50–300 ms).
-// Lower bound 0.050 s equals the S2 detection threshold so every delayed packet
-// is detectable; upper bound 0.150 ms sits mid-range of the window to model evasion
-// difficulty per Equation 3.1 (Bhattacharyya overlap, proposal §1331–1335).
+// Lower bound 0.060 s sits 10 ms above S2_DELTA_MAX (50 ms) so every attack
+// packet strictly exceeds the detection threshold under the thesis's Eq. 3.5
+// strict '>' comparison — fixes deviation B2 (min_delay = Δ_max boundary case).
 // Proposal §1517–1519: "intentional, variable lags" — fixes deviation D4.
-double attack2_min_delay_seconds = 0.050; // 50 ms lower bound
+double attack2_min_delay_seconds = 0.060; // 60 ms — 10 ms above S2_DELTA_MAX
 double attack2_max_delay_seconds = 0.150; // 150 ms upper bound
 
 // Selective Time Delay Attack Variables (Attack 1 — Control Plane)
@@ -51,7 +51,7 @@ bool   present_selective_delay_cp_attack = false;
 // ("intentional, variable lags") — fixes deviation D3.
 // Note: selective_delay_cp_target_rsu removed (was dead code — reapply_cp_selective_delay
 // iterates ALL RSUs under compromised controllers, not a single hardcoded one).
-double attack1_min_delay_seconds = 0.050; // 50 ms — at the S1 threshold boundary
+double attack1_min_delay_seconds = 0.060; // 60 ms — above S1 baseline (~2 ms + 3σ) ensuring detection
 double attack1_max_delay_seconds = 0.150; // 150 ms — mid-range of handoff jitter window
 
 // Top-level attack-type selector, mirroring the supervisor's reference
