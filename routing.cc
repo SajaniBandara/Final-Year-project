@@ -120758,6 +120758,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
 				// Implemented in s2_detection.h: s2_detect_packet().
 				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
+				// Guard: S2 is the Attack 2 (DP) detector — do not run for other variants.
+				if (active_attack_variant == 1)
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					s2_detect_packet(sender_sim_index,
@@ -120774,7 +120776,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// Implemented in s1_detection.h: s1_detect_packet().
 				// RSU index = current_hop − N_Vehicles (only fires if current_hop is an RSU).
 				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
-				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				// Guard: S1 is the Attack 1 (CP) detector — do not run for other variants.
+				if (active_attack_variant == 0 &&
+				    current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
