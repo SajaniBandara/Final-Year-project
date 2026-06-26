@@ -74,8 +74,17 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     double t_fwd_by_sender = t_claimed_packet[sender_sim_index][packet_id];
     if (t_fwd_by_sender <= 0.0) return false;
 
-    // Condition 1: t_recv_{u+1} − t_fwd_u > Δ_max  (Eq. 3.5)
     double hop_delay = t_recv_now - t_fwd_by_sender;
+
+    // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
+    bool delay_exceeds = (hop_delay > S2_DELTA_MAX);
+
+    // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥
+    // Simulation proxy: a node that buffered the packet beyond Δ_max cannot
+    // produce a valid STARK timing proof that it forwarded on time, so proof
+    // failure is deterministically derived from the delay measurement.
+    // In deployed MOBIGUARD this is STARK.Verify(π_delay(u)) == false.
+    bool zkp_proof_fails = delay_exceeds;
 
     cout << "[S2] sender=" << sender_sim_index
          << " receiver=" << current_hop
@@ -83,16 +92,16 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
          << " pkt=" << packet_id
          << " hop_delay=" << hop_delay * 1000.0 << "ms"
          << " Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms"
+         << " delay_exceeds=" << delay_exceeds
+         << " zkp_proof_fails=" << zkp_proof_fails
          << " [SAFETY-CRITICAL]" << endl;
 
-    if (hop_delay > S2_DELTA_MAX)
+    if (delay_exceeds && zkp_proof_fails)
     {
-        // Condition 2: π_delay(u) = ⊥ — inferred from threshold violation.
-        // In the full MOBIGUARD system this is an explicit STARK.Verify failure.
         cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!"
-             << " Hop delay " << hop_delay * 1000.0
-             << "ms exceeds Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms"
-             << " AND ZKP timing proof would FAIL (π_delay=⊥)"
+             << " hop_delay=" << hop_delay * 1000.0
+             << "ms > Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms"
+             << " AND π_delay(u)=⊥ (ZKP timing proof fails)"
              << " on safety-critical flow " << flow_id
              << " sender node " << sender_sim_index
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
@@ -109,7 +118,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
         return true;
     }
 
-    cout << "[S2] No violation: hop_delay " << hop_delay * 1000.0
+    cout << "[S2] No violation: hop_delay=" << hop_delay * 1000.0
          << "ms within Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms" << endl;
     return false;
 }
