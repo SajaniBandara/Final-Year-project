@@ -117859,14 +117859,6 @@ void calculate_performance_evaluation_metrics()
 		s1_rsu_obs_sum[_r]   = 0.0;
 		s1_rsu_obs_count[_r] = 0;
 	}
-	// S1 metrics are only meaningful for Attack 1 (CP); S2 for Attack 2 (DP).
-	// Writing the inactive detector's CSV produces all-TN rows that add no
-	// information and pollute the results directory.
-	if (active_attack_variant == 0)
-		Simulator::Schedule(Seconds(0.000130), s1_write_csv);
-	if (active_attack_variant == 1)
-		Simulator::Schedule(Seconds(0.000140), s2_write_csv);
-
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
