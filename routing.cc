@@ -121357,7 +121357,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						s1_detect_packet(rsu_idx,
 						                 packet_delay_s,
 						                 is_safety_critical_flow[fid],
-						                 current_hop,
+						                 sender_sim_index,  // malicious RSU that applied the delay
+						                 current_hop,       // receiving RSU (EWMA baseline + logging)
 						                 packet_ID,
 						                 fid);
 					}

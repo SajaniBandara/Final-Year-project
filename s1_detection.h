@@ -115,16 +115,20 @@ inline void s1_update_baseline(uint32_t rsu_idx,
 //   1. δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)   [delay threshold violation]
 //   2. Priority(p) = HIGH                   [safety-critical packet only]
 //
-//   rsu_idx        — RSU index (0..N_RSUs-1)
+//   rsu_idx        — RSU index (0..N_RSUs-1), derived from current_hop
 //   packet_delay_s — t_recv - t_claimed_fwd for this hop (seconds)
 //   is_safety_crit — Priority(p) = HIGH
-//   current_hop    — receiving RSU node ID (for logging)
+//   sender_node_id — sim index of the node that SENT this packet (the RSU
+//                    that applied the injected delay — this is the malicious
+//                    node to record in the detection event, NOT current_hop)
+//   current_hop    — receiving RSU node ID (for EWMA baseline and logging)
 //   packet_id      — packet ID (for logging)
 //   flow_id        — flow ID (for logging)
 // =========================================================================
 inline bool s1_detect_packet(uint32_t rsu_idx,
                               double   packet_delay_s,
                               bool     is_safety_crit,
+                              uint32_t sender_node_id,
                               uint32_t current_hop,
                               uint32_t packet_id,
                               uint32_t flow_id)
@@ -174,14 +178,19 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
              << " at RSU node " << current_hop
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
+        // Record detection against the SENDER (the RSU that applied the delay),
+        // not current_hop (the innocent receiver). is_malicious_node[0] is set
+        // on the sending RSU under the compromised controller — recording
+        // current_hop would produce a FP (benign receiver) and FN (malicious
+        // sender missed), corrupting TP/FP/TN/FN counts.
         if (active_attack_variant == 0 &&
-            current_hop < (uint32_t)total_size &&
-            !is_detected_node[0][current_hop])
+            sender_node_id < (uint32_t)total_size &&
+            !is_detected_node[0][sender_node_id])
         {
-            record_detection_event(0, current_hop);
-            cout << "[S1] record_detection_event fired for node "
-                 << current_hop << " variant=0 at t="
-                 << Simulator::Now().GetSeconds() << "s" << endl;
+            record_detection_event(0, sender_node_id);
+            cout << "[S1] record_detection_event fired for sender node "
+                 << sender_node_id << " (detected at RSU " << current_hop
+                 << ") variant=0 at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;
     }
