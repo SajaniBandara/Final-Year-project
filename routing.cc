@@ -116,10 +116,13 @@ const int flows = 1;
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int attack_percentage = 0;
+// Unique tag for all per-run scratch-level CSV files (e.g. "_A1_pct20").
+// Set in main() after cmd.Parse() so parallel runs never collide on
+// optimization_link_lifetime_data.csv / link_lifetime_solution.csv.
+std::string g_sim_tag;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
-// double simTime = 240;
-double simTime = 60; // Change 9: default 60 s (≈10 s benign baseline + 50 s attack evolution)
+double simTime = 300; // Proposal simulation table: "each run lasts 300 s"
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -127,8 +130,7 @@ uint32_t large=50000;
 
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
-// double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 1.0; //test
+double data_transmission_frequency = 1.0;
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -148,7 +150,7 @@ int maxspeed = 80;
 
 int paper = 1; //0-optimization, 1 -architecture
 
-uint32_t flow_packet_size = 100;
+uint32_t flow_packet_size = 750; // Proposal simulation table: "Flow packet type, size: UDP, 750 bytes"
 uint32_t qf = 1;
 uint32_t AIFSN = 0;
 double B_max = 0.0;
@@ -94559,7 +94561,6 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     // ==============================================================
     // ENFORCE ARCHITECTURE 3: VEHICLES MUST ROUTE THROUGH RSU
     // ==============================================================
-	cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
     if (architecture == 3 && N_RSUs > 0)
 	{
         uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
@@ -94613,7 +94614,7 @@ NodeContainer controller_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
-bool routing_test = true;
+bool routing_test = false; // Proposal: all results on 200-vehicle/64-RSU SUMO topology. Pass --routing_test=true for the small test network only.
 
 NetDeviceContainer wifidevices;
 NetDeviceContainer wifidevices_172;
@@ -112939,56 +112940,19 @@ void write_csv()
 
 void write_csv_status_lifetime()
 {
-	fstream fout;
+	static const std::string SCR = "/home/user/ns-allinone-3.35/ns-3.35/scratch/";
+	std::string ll_data;
 	switch(routing_algorithm)
 	{
-		case(0):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
-			break;
-		case(1):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
-			break;
-		case(2):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			break;
-		case(3):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			break;
-		case(4):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-			break;
-		case(5):
-			/*
-			if(experiment_number == 0)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 1)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 2)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 3)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			}
-			*/
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			break;
-			
-		default:
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-			break;
+		case(0): ll_data = SCR + "optimization_link_lifetime_data_ECMP"  + g_sim_tag + ".csv"; break;
+		case(1): ll_data = SCR + "optimization_link_lifetime_data_RR"    + g_sim_tag + ".csv"; break;
+		case(2): ll_data = SCR + "optimization_link_lifetime_data_QRSDN" + g_sim_tag + ".csv"; break;
+		case(3): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		case(5): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		default: ll_data = SCR + "optimization_link_lifetime_data"        + g_sim_tag + ".csv"; break;
 	}
-	cout << "[DEBUG] Node 0 position in CSV: " 
-	     << (routing_data_at_nodes_inst+0)->position << endl;
-	cout << "[DEBUG] Node 1 position in CSV: " 
-	     << (routing_data_at_nodes_inst+1)->position << endl;
-	cout << "[DEBUG] Node 2 position in CSV: " 
-	     << (routing_data_at_nodes_inst+2)->position << endl;
+	fstream fout;
+	fout.open(ll_data, ios::out|ios::trunc);
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -113013,7 +112977,7 @@ void write_csv_status_lifetime()
 void write_csv_status()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
+	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data" + g_sim_tag + ".csv",ios::out|ios::trunc);
 	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		Ptr <Node> node;
@@ -114664,6 +114628,23 @@ double average_mitigation_latency                  = 0.0;
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
 #include "attack_variables.h"
 
+// Phase 1 / D1: Reproducibility globals for the ns-3 RNG seed infrastructure.
+// Proposal simulation table: "5 fixed pseudorandom seeds each (300 s/run)".
+// Pass --sim_seed and --sim_run from the experiment loop.
+// Must be set via RngSeedManager::SetSeed/SetRun BEFORE any ns-3 random variable
+// is created — done immediately after cmd.Parse() in main().
+uint32_t sim_seed = 1;  // seed ∈ {1,2,3,4,5}
+uint32_t sim_run  = 1;  // run index, distinct per seed
+
+// Phase 4 / D5: Per-flow safety-critical (HIGH-priority) flag.
+// Proposal Signature S1 (Eq. 3.4) and S2 (Eq. 3.5): both attacks must only delay
+// packets where Priority(p) = HIGH. Best-effort (non-safety-critical) packets must
+// pass through without delay. True for flows carrying collision-avoidance or BSM-
+// equivalent traffic. Populated once after flow initialisation — see the
+// "Populate is_safety_critical_flow" block in the SUMO/test setup section of main().
+// Indexed by flow_id (0 to 2*flows-1).
+bool is_safety_critical_flow[Flow_size + 2] = {false};
+
 // === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
 // Malicious controller installs junk FlowMod rules into every RSU's TCAM at
 // attack_rate_pps rules/second. Entries flagged is_malicious=1.
@@ -114684,14 +114665,7 @@ double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs 
 // Mirrors cp_attack_pct so both attacks have symmetric terminal control.
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
-// === SIGNATURE S2 DETECTION GLOBALS ===
-// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
-// attack-injected delay has elapsed). S2 measures hop_delay = t_recv_now -
-// t_fwd_packet[sender][packet_id], so this MUST be the real, post-delay
-// send time for S2's elapsed-time measurement to correctly capture any
-// injected delay.
-double t_fwd_packet[total_size][Flow_size+2];
-
+// === DETECTION TIMESTAMP GLOBALS ===
 // t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
 // time — i.e., when it received/decided to forward the packet, BEFORE any
 // malicious buffering. This is the correct analogue of the TAP paper's
@@ -114704,22 +114678,8 @@ double t_fwd_packet[total_size][Flow_size+2];
 // (PAT - propagation_delay); the mismatch between what the node claims
 // and what physics implies is the signal TAP is designed to catch.
 //
-// Distinct from t_fwd_packet (S2's array, which intentionally DOES
-// reflect the real post-delay send time) — do not merge these two arrays,
-// they serve opposite purposes by design.
 double t_claimed_packet[total_size][Flow_size+2];
 
-// Records the ACTUAL transmission timestamp for S2's hop_delay
-// calculation, fired at the same simulated time the delayed
-// WifiNetDevice::Send call actually executes — not at forwarding-decision
-// time. This must stay in sync with any change to how total_tx_delay is
-// computed or scheduled elsewhere in this function; if the scheduling
-// mechanism for the actual send changes, this trampoline's scheduling
-// must change identically.
-inline void record_actual_forward_timestamp(uint32_t node, uint32_t packet_id)
-{
-    t_fwd_packet[node][packet_id] = Simulator::Now().GetSeconds();
-}
 
 // Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
 // fired immediately at forwarding-decision time — i.e., BEFORE any
@@ -114732,12 +114692,13 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
     t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
 }
 
-// records when each node forwarded each packet
-double delta_max_s2 = 0.050;
-// 50ms threshold per Equation 3.6 — half of 100ms safety bound
-bool s2_detection_active = true;
-bool tap_detection_active = true; // enable/disable TAP detection
-// enable/disable S2 detection
+// Detection functions and the array they read (t_claimed_packet):
+//   s1_detect_packet()  (s1_detection.h) — hop-delay = t_recv − t_claimed
+//   s2_detect_packet()  (s2_detection.h) — hop-delay = t_recv − t_claimed
+//   tap_run_detection() (tap_detection.h) — PPAT = t_claimed
+bool s1_detection_active = true;     // master enable for S1 — read by s1_detection.h
+bool s2_detection_active = true;     // master enable for S2 — read by s2_detection.h
+bool tap_detection_active = true;    // master enable for TAP — read by tap_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -114801,7 +114762,13 @@ double previous_cumulative_mitigation_latency                  = 0.0;
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.0;            // 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+// TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1 uses an EXACT equality
+// check: if (v != PPAT) then flag attacker. In IEEE 754 double arithmetic a
+// pure 0.0 margin would fail on negligible rounding errors. We therefore use
+// a 1 μs epsilon — tight enough to catch any real attack-injected delay
+// (minimum 50 ms) while tolerating floating-point imprecision only.
+// This is strictly faithful to the paper's "exact equality" intent.
+static const double TAP_MARGIN = 1e-6; // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
 
 bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
@@ -114848,6 +114815,9 @@ void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
+void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+#include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
+#include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 
 // Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
 // included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
@@ -114874,6 +114844,9 @@ void initialise_stub_attack_state()
 
 	// Initialize TAP detector state globally for all attack variants
 	tap_reset_state(total_size);
+
+	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
+	s1_init_state(N_RSUs);
 
 
 	switch (active_attack_variant)
@@ -115033,11 +115006,22 @@ void record_detection_event(int v, int n)
 	t_quarantine[n] = Simulator::Now().GetSeconds();
 }
 
-// Random boolean helper copied from LDA_2_.cc
-bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
-	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
-	double randomValue = 1.0*(rand()%100);
-	return randomValue < probabilityPercent;
+// Random boolean helper — Phase 1 / D1 fix.
+// ORIGINAL used srand(time+rand()+nodeID) which is non-reproducible across
+// runs with the same --attack_percentage. Replaced with a global ns-3
+// UniformRandomVariable so the result is fully determined by sim_seed + sim_run
+// (set via RngSeedManager::SetSeed/SetRun in main(), immediately after
+// cmd.Parse()). nodeID parameter kept for API compatibility; no longer used
+// for seeding — the stream advances deterministically across calls.
+// Proposal simulation table: "5 fixed pseudorandom seeds each (300 s/run)".
+bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
+    static Ptr<UniformRandomVariable> rng = nullptr;
+    if (!rng) {
+        rng = CreateObject<UniformRandomVariable>();
+        rng->SetAttribute("Min", DoubleValue(0.0));
+        rng->SetAttribute("Max", DoubleValue(100.0));
+    }
+    return rng->GetValue() < probabilityPercent;
 }
 
 #include "selective_time_delay.h"
@@ -115091,8 +115075,8 @@ void poison_test_network_cp_attackers()
 {
 	if (active_attack_variant == 0)
 	{
-		update_route_malicious(15, 1, 1, attack2_delay_seconds);
-		update_route_malicious(16, 3, 3, attack2_delay_seconds);
+		update_route_malicious(15, 1, 1, 0.080);
+		update_route_malicious(16, 3, 3, 0.080);
 	}
 }
 
@@ -117117,9 +117101,11 @@ void write_security_metrics_csv()
 	if (fout.tellp() == 0) {
 		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
 			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
-			 << "# TP, FP, TN, FN,\n"
-			 << "# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
-			 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4\n";
+			 << "# TP, FP, TN, FN";
+		if (active_attack_variant == 2 || active_attack_variant == 3)
+			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
+				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
+		fout << "\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117150,9 +117136,10 @@ void write_security_metrics_csv()
 		 << sec_TP[selected_variant] << ", "
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
-		 << sec_FN[selected_variant]
-		 << TcamDetectionCsvColumns(tcam_metrics)
-		 << "\n";
+		 << sec_FN[selected_variant];
+	if (active_attack_variant == 2 || active_attack_variant == 3)
+		fout << TcamDetectionCsvColumns(tcam_metrics);
+	fout << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
@@ -117355,10 +117342,49 @@ void calculate_performance_evaluation_metrics()
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
-	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
-	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
-	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+	// --- TAP baseline metrics (only for Attack 2 — Data Plane) ---
+	// TAP (Arsalan & Rehman FIT 2018) is a DP detector. Computing its metrics
+	// for Attack 1 (CP / compromised controller) is methodologically invalid
+	// and would produce meaningless TP/FP counts — fixes deviation C5/C6.
+	if (active_attack_variant == 1)
+	{
+		Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+		Simulator::Schedule(Seconds(0.000120), write_tap_csv);
+	}
 
+	// --- MOBIGUARD S1/S2 detection metrics ---
+	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
+	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
+	// zone when linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, which matches the
+	// d_max_dsrc = 270 m coverage radius used by the routing engine.
+	for (uint32_t _r = 0; _r < N_RSUs; _r++)
+	{
+		uint32_t rsu_sim_idx = N_Vehicles + _r;
+
+		uint32_t rho_count = 0;
+		double   speed_sum = 0.0;
+		for (uint32_t _v = 0; _v < (uint32_t)N_Vehicles; _v++)
+		{
+			if (rsu_sim_idx < linklifetimeMatrix_dsrc[_v].size() &&
+			    linklifetimeMatrix_dsrc[_v][rsu_sim_idx] > 0.0)
+			{
+				rho_count++;
+				Vector vel = (routing_data_at_nodes_inst + _v)->velocity;
+				speed_sum += std::sqrt(vel.x * vel.x + vel.y * vel.y);
+			}
+		}
+		double rho_t   = (double)rho_count;
+		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
+
+		// δ_r(t): use mean of observed hop-delays since the last update tick
+		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
+		double obs_delay = (s1_rsu_obs_count[_r] > 0)
+		                 ? (s1_rsu_obs_sum[_r] / (double)s1_rsu_obs_count[_r])
+		                 : s1_delta0;
+		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
+		s1_rsu_obs_sum[_r]   = 0.0;
+		s1_rsu_obs_count[_r] = 0;
+	}
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
@@ -117733,51 +117759,15 @@ void optimize_link_lifetime()
 	std::string filename;
 	switch(routing_algorithm)
 	{
-		case(0):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
-			break;
-		case(1):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
-			break;
-		case(2):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			break;
-		case(3):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			break;
-		case(4):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
-			break;
-		case(5):
-			/*
-			if(experiment_number == 0)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			}
-			if(experiment_number == 1)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
-			}
-			if(experiment_number == 2)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			}
-			if(experiment_number == 3)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			}
-			*/
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			
-			break;
-		default:
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
-			break;
-		
+		case(0): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";  break;
+		case(1): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";    break;
+		case(2): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py"; break;
+		case(3): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		case(5): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		default: filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";        break;
 	}
-    	std::string command = "python3 ";
-    	command += filename;
-    	system(command.c_str());
+	std::string command = "python3 " + filename + " --tag=" + g_sim_tag;
+	system(command.c_str());
 }
 
 void optimize_first_time()
@@ -117826,8 +117816,7 @@ void convert_link_lifetimes_dsrc()
 	//     value so the relay path can form);
 	//   - a link beyond d_max_dsrc is removed (lifetime 0) so routing won't pick
 	//     an unreliable direct link and will relay via the RSU instead.
-	// Positions come from routing_data_at_nodes_inst (the struct the [DEBUG]
-	// "position in CSV" prints use). Self-link (i==j) is left untouched.
+	// Positions come from routing_data_at_nodes_inst. Self-link (i==j) is left untouched.
 	double in_range_floor = link_lifetime_threshold + 1.0; // safely above threshold
 	for(uint32_t i=0;i<(uint32_t)var;i++)
 	{
@@ -117935,51 +117924,20 @@ void convert_link_lifetimes()
 
 void read_lifetime_from_csv()
 {
-    fstream fin;
     cout<<"reading lifetime from csv at"<<Now().GetSeconds()<<endl;
+    static const std::string SCR = "/home/user/ns-allinone-3.35/ns-3.35/scratch/";
+    std::string ll_sol;
     switch(routing_algorithm)
     {
-    	case(0):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
-    		break;
-    	case(1):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
-    		break;
-    	case(2):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		break;
-    	case(3):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		break;
-    	case(4):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
-    		break;	
-    	case(5):
-    		/*
-    		if(experiment_number == 0)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		}
-    		if(experiment_number == 1)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
-    		}
-    		if(experiment_number == 2)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		}
-    		if(experiment_number == 3)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		}
-    		*/
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		break;	
-    		
-    	default:
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
-    		break;
+    	case(0): ll_sol = SCR + "link_lifetime_solution_ECMP"  + g_sim_tag + ".csv"; break;
+    	case(1): ll_sol = SCR + "link_lifetime_solution_RR"    + g_sim_tag + ".csv"; break;
+    	case(2): ll_sol = SCR + "link_lifetime_solution_QRSDN" + g_sim_tag + ".csv"; break;
+    	case(3): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	case(5): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	default: ll_sol = SCR + "link_lifetime_solution"        + g_sim_tag + ".csv"; break;
     }
+    fstream fin;
+    fin.open(ll_sol, ios::in);
     
     vector<string> row;
     string line;
@@ -120124,7 +120082,8 @@ int g_slowpath_hit_count[300] = {0};
 // NOT realistic because TCAM lookup is O(1) in hardware — fill ratio does
 // not affect per-packet latency; only the binary miss/hit outcome does.
 // Default 50ms matches SDVN backhaul + controller processing in the
-// literature and equals the S2 hop-delay threshold (delta_max_s2).
+// literature and equals the S2 hop-delay threshold (S2_DELTA_MAX in
+// s2_detection.h = 0.050 s).
 // Override with --tcam_slowpath_ms on the command line.
 double tcam_slowpath_s = 0.050; // CLI: --tcam_slowpath_ms (value in ms, converted below)
 
@@ -120326,12 +120285,14 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							selective_delay_malicious_nodes[current_hop],
 							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_delay_seconds,
+							attack2_min_delay_seconds,
+							attack2_max_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected,
 							current_hop,
 							packet_id,
-							flow_id);
+							flow_id,
+							is_safety_critical_flow[flow_id]);
 
 						// TCAM slow-path delay (Attacks 3 & 4).
 						// Real TCAM lookup is O(1) — fill level does not affect latency.
@@ -120361,10 +120322,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// timestamp below is.
 						record_claimed_forward_timestamp(current_hop, packet_id);
 
-						// Record forwarding timestamp for S2's hop-delay calculation at the
-						// moment the packet ACTUALLY leaves this node (after total_tx_delay
-						// has elapsed), not at decision time.
-						Simulator::Schedule(Seconds(total_tx_delay), &record_actual_forward_timestamp, current_hop, packet_id);
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
@@ -120797,59 +120754,60 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// eFADE: record inbound packet receipt at this node
 				fade_received[fid][current_hop].insert(packet_ID);
 
-				// === SIGNATURE S2 DETECTION ===
-				// Check: t_recv - t_fwd > delta_max (Equation 3.6)
-				if(s2_detection_active)
+				// === SIGNATURE S2 DETECTION (MOBIGUARD — Attack 2 Data Plane) ===
+				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
+				// Implemented in s2_detection.h: s2_detect_packet().
+				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
 				{
-					// Use tagmodified_routing which is already peeked above
-					// Getprevious_senderId() returns the sim index of who forwarded this packet
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					
-					if(sender_sim_index < (uint32_t)var)
-					{
-						double t_recv_now = Now().GetSeconds();
-						double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
-						
-						if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
-						{
-							double hop_delay = t_recv_now - t_fwd_by_sender;
-							
-							// cout << "[S2] Hop delay from node " << sender_sim_index
-							//      << " to node " << current_hop
-							//      << " for flow " << fid
-							//      << " packet " << packet_ID
-							//      << " = " << hop_delay * 1000.0 << "ms" << endl;
-							
-							if(hop_delay > delta_max_s2)
-							{
-								cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
-								cout << "[S2] Hop delay " << hop_delay * 1000.0
-								     << "ms exceeds threshold " 
-								     << delta_max_s2 * 1000.0 << "ms" << endl;
-								cout << "[S2] Node " << sender_sim_index
-								     << " detected as malicious attacker (variant="
-								     << active_attack_variant << ")" << endl;
-								
-								if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
-								{
-									if(!is_detected_node[active_attack_variant][sender_sim_index])
-									{
-										record_detection_event(active_attack_variant, sender_sim_index);
-										cout << "[S2] record_detection_event fired for node "
-										     << sender_sim_index << " variant=" << active_attack_variant
-										     << " at t=" << Now().GetSeconds() << "s" << endl;
-									}
-								}
-							}
-						}
-					}
+					s2_detect_packet(sender_sim_index,
+					                 Now().GetSeconds(),
+					                 is_safety_critical_flow[fid],
+					                 current_hop,
+					                 packet_ID,
+					                 fid);
 				}
 				// === END SIGNATURE S2 DETECTION ===
 
+				// === SIGNATURE S1 DETECTION (MOBIGUARD — Attack 1 Control Plane) ===
+				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
+				// Implemented in s1_detection.h: s1_detect_packet().
+				// RSU index = current_hop − N_Vehicles (only fires if current_hop is an RSU).
+				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
+				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				{
+					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
+					                         ? t_claimed_packet[sender_sim_index][packet_ID]
+					                         : 0.0;
+					if (t_fwd_by_sender > 0.0)
+					{
+						double packet_delay_s = Now().GetSeconds() - t_fwd_by_sender;
+						uint32_t rsu_idx = current_hop - N_Vehicles;
+						s1_detect_packet(rsu_idx,
+						                 packet_delay_s,
+						                 is_safety_critical_flow[fid],
+						                 sender_sim_index,  // malicious RSU that applied the delay
+						                 current_hop,       // receiving RSU (EWMA baseline + logging)
+						                 packet_ID,
+						                 fid);
+					}
+				}
+				// === END SIGNATURE S1 DETECTION ===
+
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-				// OnReceivedEmergencyPacket logic. Fires at every received packet.
+				// OnReceivedEmergencyPacket logic. The TAP paper targets emergency
+				// (safety-critical) packets only — applying it to best-effort traffic
+				// would inflate false positives. Gate on is_safety_critical_flow[fid].
+				// TAP is a Data Plane detector — only valid for Attack 2 (variant 1).
+				// Running it for Attack 1 (CP) is methodologically invalid: the threat
+				// model is a compromised controller, not a delaying vehicle, and TAP's
+				// signal-propagation timing model cannot observe that plane.
+				if (is_safety_critical_flow[fid] && active_attack_variant == 1)
+				{
 					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
+				}
 				// === END TAP BASELINE DETECTION ===
 
 				if(destination == current_hop)
@@ -122850,13 +122808,9 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // eFADE: record outbound destination at the source
     fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
 
-    // Add missing baseline timestamp for S2/TAP detection so immediate hop knows when it was dispatched.
-    // No delay is modeled at this call site (both schedule at Seconds(0)),
-    // so the claimed and actual timestamps are identical here — both are
-    // still recorded explicitly so TAP's PPAT (t_claimed_packet) and S2's
-    // hop-delay baseline (t_fwd_packet) are both populated consistently.
+    // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline
+    // for this hop (S1/S2 hop-delay = t_recv − t_claimed; TAP PPAT = t_claimed).
     record_claimed_forward_timestamp(source, packet_ID);
-    Simulator::Schedule(Seconds(0.0), &record_actual_forward_timestamp, source, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
@@ -123376,10 +123330,12 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							selective_delay_malicious_nodes[source],
 							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_delay_seconds,
+							attack2_min_delay_seconds,
+							attack2_max_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected_cp,
 							source, packet_id, fid,
+							is_safety_critical_flow[fid],
 							routing_dsrc_data_unicast,
 							dev_to_use, dsrc_Nodes.Get(source),
 							fid, nid, arguments, total_packet_counter+1);
@@ -140740,7 +140696,37 @@ int main(int argc, char *argv[])
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
+    // Phase 1 / D1: Reproducibility.
+    cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
+    cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
+
+    // S1 detection tunable parameters (Eq. 3.11–3.14, proposal §3462–3486).
+    // Default values are initial candidates; final values calibrated from benign SUMO traces.
+    cmd.AddValue("s1_delta0",     "S1: static propagation baseline δ₀ (s, default 0.002)",     s1_delta0);
+    cmd.AddValue("s1_alpha_rho",  "S1: density sensitivity α_ρ (s/vehicle, default 0.0001)",   s1_alpha_rho);
+    cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
+    cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
+    cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
+
+    // Attack delay range CLI overrides (default 50–150 ms per proposal §1517–1519)
+    cmd.AddValue("attack1_min_delay_ms", "Attack 1 CP: min injected delay (ms, default 50)",
+                 attack1_min_delay_seconds);
+    cmd.AddValue("attack1_max_delay_ms", "Attack 1 CP: max injected delay (ms, default 150)",
+                 attack1_max_delay_seconds);
+    cmd.AddValue("attack2_min_delay_ms", "Attack 2 DP: min injected delay (ms, default 50)",
+                 attack2_min_delay_seconds);
+    cmd.AddValue("attack2_max_delay_ms", "Attack 2 DP: max injected delay (ms, default 150)",
+                 attack2_max_delay_seconds);
+
     cmd.Parse (argc, argv);
+
+    // Phase 1 / D1: Must be called BEFORE any ns-3 random variable is created or used.
+    // Controls GetBooleanWithProbability(), the Attack 2 dp_delay_rng, and the
+    // Attack 1 cp_delay_rng — all three are seeded by this single call.
+    ns3::RngSeedManager::SetSeed(sim_seed);
+    ns3::RngSeedManager::SetRun(sim_run);
+    cout << "[RNG] Seed=" << sim_seed << " Run=" << sim_run
+         << " — fully reproducible per proposal simulation table." << endl;
 
     // Convert ms CLI input to seconds for the forwarding path.
     tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
@@ -142225,12 +142211,10 @@ if (architecture == 3 && N_Vehicles > 0)
     // so after address_dsrc.Assign: Vehicle_A=3.0.0.1, Vehicle_B=3.0.0.2, RSU=3.0.0.3
     Ptr<Ipv4> rsu_ipv4 = RSU_Nodes.Get(0)->GetObject<Ipv4>();
     Ipv4Address rsu_wifi_ip = rsu_ipv4->GetAddress(2, 0).GetLocal(); // interface 2 = WiFi ch178
-    cout << "[DEBUG] RSU wifi IP: " << rsu_wifi_ip << endl;
 
     // Controller's CSMA IP (interface 1 = CSMA, loopback is 0)
     Ptr<Ipv4> ctrl_ipv4 = controller_Node.Get(0)->GetObject<Ipv4>();
     Ipv4Address ctrl_csma_ip = ctrl_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] Controller 0 CSMA IP: " << ctrl_csma_ip << endl;
 
     // 1. Vehicles: default route via RSU's WiFi IP (interface 1)
     for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++)
@@ -142238,7 +142222,6 @@ if (architecture == 3 && N_Vehicles > 0)
         Ptr<Ipv4StaticRouting> sr = ipv4RoutingHelper.GetStaticRouting(
             Vehicle_Nodes.Get(i)->GetObject<Ipv4>());
         sr->SetDefaultRoute(rsu_wifi_ip, 1);
-        cout << "[DEBUG] Vehicle " << i << " default route -> " << rsu_wifi_ip << endl;
     }
 
     // 2. RSU: route to vehicle subnets (3.0.0.0/8) via its own WiFi (interface 1)
@@ -142249,7 +142232,6 @@ if (architecture == 3 && N_Vehicles > 0)
     // 3. All controllers: route to vehicle WiFi subnet via RSU's CSMA IP
     //    Per proposal: all controllers get read-only network view via CSMA
     Ipv4Address rsu_csma_ip = rsu_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] RSU CSMA IP: " << rsu_csma_ip << endl;
 
     for (uint32_t ci = 0; ci < N_Controllers; ci++)
     {
@@ -142262,7 +142244,6 @@ if (architecture == 3 && N_Vehicles > 0)
       ci_sr->AddNetworkRouteTo(Ipv4Address("8.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
       ci_sr->AddNetworkRouteTo(Ipv4Address("9.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
       ci_sr->AddNetworkRouteTo(Ipv4Address("11.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-      cout << "[DEBUG] Controller " << ci << " route to 3.0.0.0/8 via RSU CSMA " << rsu_csma_ip << endl;
     }
 }
 
@@ -142556,9 +142537,29 @@ if (architecture == 3 && N_Vehicles > 0)
 				  //Simulator::Schedule (Seconds (t), set_dsrc_initial_timestamp);
 			}
 			
+			// Phase 4 / D5: Populate is_safety_critical_flow[] once after flow setup.
+			// Proposal Signature S1 (Eq. 3.4): "Priority(p) = HIGH" is a load-bearing
+			// conjunction — attacks must only delay safety-critical packets.
+			// Flow IDs 0..(flows-1) are safety-critical (collision-avoidance / BSM-equivalent);
+			// flow IDs flows..(2*flows-1) are best-effort. The split is explicit rather than
+			// inferred from ID parity, matching the thesis's two-tier QoS model directly.
+			for (uint32_t _f = 0; _f < (uint32_t)(2 * flows); _f++) {
+			    is_safety_critical_flow[_f] = (_f < (uint32_t)flows);
+			    cout << "[FLOW-PRIORITY] flow_id=" << _f
+			         << " is_safety_critical=" << is_safety_critical_flow[_f] << endl;
+			}
+
 			// Initialize dynamic attack configurations
 			declare_attack_states();
 			declare_attackers();
+
+			// Set unique tag for all per-run scratch-level CSV files AFTER
+			// declare_attack_states() has resolved active_attack_variant from
+			// either --attack_number (new path) or --active_attack_variant
+			// (legacy path). Using active_attack_variant means every variant —
+			// including those that never set attack_number — gets a distinct tag.
+			g_sim_tag = "_V" + std::to_string(active_attack_variant)
+			          + "_pct" + std::to_string(attack_percentage);
 			
 			if (routing_test) {
 			    hardcode_test_network_attackers();

@@ -1,7 +1,17 @@
+import argparse
 import gurobipy as gp
 from gurobipy import GRB
 import csv
 import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--tag', default='', help='Run tag appended to CSV filenames')
+args = parser.parse_args()
+TAG = args.tag
+
+SCRATCH          = "/home/user/ns-allinone-3.35/ns-3.35/scratch/"
+INPUT_CSV        = SCRATCH + "optimization_link_lifetime_data" + TAG + ".csv"
+OUTPUT_CSV       = SCRATCH + "link_lifetime_solution"          + TAG + ".csv"
 
 STATIONARY_LIFETIME = 100.0
 EPSILON = 1e-9
@@ -19,8 +29,7 @@ try:
     mobility_scenario = 1
     d_max = 270
 
-    with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",
-              'r', encoding='UTF8') as csvfile:
+    with open(INPUT_CSV, 'r', encoding='UTF8') as csvfile:
         csvreader = csv.reader(csvfile, delimiter=',', quotechar='"',
                                quoting=csv.QUOTE_MINIMAL)
         for row in csvreader:
@@ -118,8 +127,7 @@ try:
                 # Unbounded or unexpected — treat as stable
                 lifetime.append(STATIONARY_LIFETIME)
 
-    with open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",
-              'w', encoding='UTF8') as csvfile:
+    with open(OUTPUT_CSV, 'w', encoding='UTF8') as csvfile:
         writer = csv.writer(csvfile, delimiter=',', quotechar='"',
                             quoting=csv.QUOTE_MINIMAL)
         for i in range(n**2):
