@@ -114749,12 +114749,13 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
     t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
 }
 
-// NOTE: delta_max_s2 removed — S2 detection now lives in detection_signatures.h
-// (s2_detect_packet()) and uses S2_DELTA_MAX = 0.050 s (50 ms).
+// NOTE: S2 detection lives in s2_detection.h (s2_detect_packet()),
+// S2_DELTA_MAX = 0.050 s (50 ms).
 // t_fwd_packet and t_claimed_packet above are still required:
-//   t_fwd_packet   is read by s2_detect_packet() in detection_signatures.h
+//   t_fwd_packet   is read by s2_detect_packet() in s2_detection.h
 //   t_claimed_packet is read by tap_run_detection() in tap_detection.h
-bool s2_detection_active = true;     // master enable for S2 — read by detection_signatures.h
+bool s1_detection_active = true;     // master enable for S1 — read by s1_detection.h
+bool s2_detection_active = true;     // master enable for S2 — read by s2_detection.h
 bool tap_detection_active = true;    // master enable for TAP — read by tap_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -115553,7 +115554,8 @@ bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
 }
 
 #include "selective_time_delay.h"
-#include "detection_signatures.h"   // S1 (CP) and S2 (DP) MOBIGUARD detection signatures
+#include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
+#include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 
 
 
@@ -120654,7 +120656,7 @@ int g_slowpath_hit_count[300] = {0};
 // not affect per-packet latency; only the binary miss/hit outcome does.
 // Default 50ms matches SDVN backhaul + controller processing in the
 // literature and equals the S2 hop-delay threshold (S2_DELTA_MAX in
-// detection_signatures.h = 0.050 s).
+// s2_detection.h = 0.050 s).
 // Override with --tcam_slowpath_ms on the command line.
 double tcam_slowpath_s = 0.050; // CLI: --tcam_slowpath_ms (value in ms, converted below)
 
@@ -121319,7 +121321,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 				// === SIGNATURE S2 DETECTION (MOBIGUARD — Attack 2 Data Plane) ===
 				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
-				// Implemented in detection_signatures.h: s2_detect_packet().
+				// Implemented in s2_detection.h: s2_detect_packet().
 				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
@@ -121334,7 +121336,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 				// === SIGNATURE S1 DETECTION (MOBIGUARD — Attack 1 Control Plane) ===
 				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
-				// Implemented in detection_signatures.h: s1_detect_packet().
+				// Implemented in s1_detection.h: s1_detect_packet().
 				// RSU index = current_hop − N_Vehicles (only fires if current_hop is an RSU).
 				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
 				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
