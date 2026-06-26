@@ -156,7 +156,7 @@ inline void s2_write_csv()
          << "% TP=" << s2_TP << " FP=" << s2_FP
          << " TN=" << s2_TN << " FN=" << s2_FN << endl;
 
-    string filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/S2_Attack2_"
+    string filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack2_"
                     + std::to_string(attack_percentage) + ".csv";
     fstream fout;
     fout.open(filename, ios::out | ios::app);
