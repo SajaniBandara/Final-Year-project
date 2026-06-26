@@ -63,6 +63,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
 {
     if (!s2_detection_active) return false;
     if (sender_sim_index >= (uint32_t)var) return false;
+    if (packet_id >= (uint32_t)(Flow_size + 2)) return false;
 
     // Condition 2 conjunction: safety-critical packets only (Eq. 3.5).
     if (!is_safety_crit) return false;
