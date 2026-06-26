@@ -167,8 +167,8 @@ inline void declare_attackers()
                                                                  : N_Controllers - 1;
         uint32_t step;
         if (attack_percentage < 10)       step = 0;
-        else if (attack_percentage < 35)  step = 1;
-        else if (attack_percentage < 67)  step = 2;
+        else if (attack_percentage < 33)  step = 1;
+        else if (attack_percentage < 66)  step = 2;
         else                              step = 3;
 
         uint32_t num_to_compromise = (step * max_compromisable) / 3;
