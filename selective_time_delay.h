@@ -13,28 +13,23 @@ extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 
 // Unified Receiver Delay Calculator
 //
-// Parameters added vs. original (Phase 3 / D3 / D4 and Phase 4 / D5):
-//   attack2_min_delay, attack2_max_delay — per-packet variable delay bounds for
-//     Attack 2 (Data Plane).  Replaces the single fixed attack2_delay constant.
-//     attack2_delay is kept as the nominal mean purely for logging / backward compat.
-//     Thesis §1255: "intentional, variable lags".
-//   is_safety_critical — Phase 4 / D5: both attacks must only delay HIGH-priority
-//     safety-critical packets per Signature S1 (Equation 3.4) and S2 (Equation 3.5).
-//     Best-effort packets fall through both guards and return 0.0.
+// attack2_min_delay, attack2_max_delay — per-packet variable delay bounds for
+//   Attack 2 (Data Plane). Thesis §1255: "intentional, variable lags".
+// is_safety_critical — both attacks only delay HIGH-priority safety-critical
+//   packets per S1 (Eq. 3.4) and S2 (Eq. 3.5). Best-effort falls through.
 inline double calculate_unified_selective_delay(
     bool present_selective_delay_dp,
     bool is_malicious_dp,
     bool is_first_attempt,
     double attack_percentage,
-    double attack2_delay,         // nominal mean — used for logging only
-    double attack2_min_delay,     // NEW: lower bound of variable delay range (Phase 3/D4)
-    double attack2_max_delay,     // NEW: upper bound of variable delay range (Phase 3/D4)
+    double attack2_min_delay,
+    double attack2_max_delay,
     bool present_selective_delay_cp,
     double injected_delay_cp,
     uint32_t current_hop,
     uint32_t packet_id,
     uint32_t flow_id,
-    bool is_safety_critical)      // NEW: Phase 4/D5 — only delay HIGH-priority packets
+    bool is_safety_critical)
 {
     // Attack 2: Data Plane Delay (Malicious node intentionally delays)
     // Guard: is_safety_critical enforces Signature S2 / Equation 3.5 conjunction
@@ -60,7 +55,7 @@ inline double calculate_unified_selective_delay(
         cout << attack_tag() << " ④ Buffering — injecting variable delay of "
              << actual_delay * 1000.0 << "ms (range ["
              << attack2_min_delay * 1000.0 << "–"
-             << attack2_max_delay * 1000.0 << "] ms, nominal=" << attack2_delay * 1000.0 << "ms)" << endl;
+             << attack2_max_delay * 1000.0 << "ms])" << endl;
         cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
              << Simulator::Now().GetSeconds() + actual_delay
              << "s (delay=" << actual_delay * 1000.0 << "ms)" << endl;
@@ -87,35 +82,23 @@ inline double calculate_unified_selective_delay(
 }
 
 // Unified Scheduler for routing loops
-//
-// Same new parameters as calculate_unified_selective_delay above (Phase 3 and Phase 4).
 template <typename Func, typename... Args>
 inline bool schedule_unified_selective_delay_attack(
     bool present_selective_delay_dp,
     bool is_malicious_dp,
     bool is_first_attempt,
     double attack_percentage,
-    double attack2_delay,         // nominal mean — used for logging only
-    double attack2_min_delay,     // NEW: lower bound of variable delay range (Phase 3/D4)
-    double attack2_max_delay,     // NEW: upper bound of variable delay range (Phase 3/D4)
+    double attack2_min_delay,
+    double attack2_max_delay,
     bool present_selective_delay_cp,
     double injected_delay_cp,
     uint32_t source,
     uint32_t packet_ID,
     uint32_t fid,
-    bool is_safety_critical,      // NEW: Phase 4/D5 — only delay HIGH-priority packets
+    bool is_safety_critical,
     Func func,
     Args... args)
 {
-    std::cout << "[DEBUG] schedule_unified_selective_delay_attack called on node " << source
-              << " for packet " << packet_ID << ". Params: "
-              << "present_dp=" << present_selective_delay_dp
-              << ", is_malicious_dp=" << is_malicious_dp
-              << ", is_first_attempt=" << is_first_attempt
-              << ", attack_percentage=" << attack_percentage
-              << ", present_cp=" << present_selective_delay_cp
-              << ", injected_delay_cp=" << injected_delay_cp
-              << ", is_safety_critical=" << is_safety_critical << std::endl;
 
     // Attack 2: Data Plane Delay
     // Guard: is_safety_critical enforces Signature S2 / Equation 3.5.
@@ -138,7 +121,7 @@ inline bool schedule_unified_selective_delay_attack(
         cout << attack_tag() << " ④ Buffering — injecting variable delay of "
              << actual_delay * 1000.0 << "ms (range ["
              << attack2_min_delay * 1000.0 << "–"
-             << attack2_max_delay * 1000.0 << "] ms, nominal=" << attack2_delay * 1000.0 << "ms)" << endl;
+             << attack2_max_delay * 1000.0 << "ms])" << endl;
         cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
              << Simulator::Now().GetSeconds() + actual_delay
              << "s (delay=" << actual_delay * 1000.0 << "ms)" << endl;

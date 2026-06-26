@@ -112,7 +112,6 @@ inline void calculate_tap_security_metrics()
 	if (!tap_detection_active) return;
 	// TAP is a Data Plane detector — metrics are only valid for Attack 2 (variant 1).
 	if (active_attack_variant != 1) return;
-	// if (Simulator::Now().GetSeconds() < attack_start_time) return;
 
 	tap_TP = tap_FP = tap_TN = tap_FN = 0;
 	for (int n = 0; n < total_size; n++)
@@ -165,7 +164,6 @@ inline void write_tap_csv()
 {
 	// TAP is a Data Plane detector — only write results for Attack 2 (variant 1).
 	if (active_attack_variant != 1) return;
-	// if (Simulator::Now().GetSeconds() < attack_start_time) return;
 
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;

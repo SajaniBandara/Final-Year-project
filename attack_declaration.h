@@ -159,7 +159,7 @@ inline void declare_attackers()
         controller_compromised[c] = false; // reset every run
     }
 
-    if (present_selective_delay_cp_attack == true && N_Controllers > 1)
+    if (present_selective_delay_cp_attack == true)
     {
         // At p=100% the thesis (§3503) specifies all controllers are compromised.
         // Below 100%, always leave at least one controller honest.
@@ -224,7 +224,6 @@ inline void reapply_cp_selective_delay()
     for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
     {
         uint32_t owning_controller = rsu_controller_assignment[r];
-        cout << "[DEBUG] reapply_cp_selective_delay r=" << r << " owning_ctrl=" << owning_controller << " compromised=" << controller_compromised[owning_controller] << endl;
         if (!controller_compromised[owning_controller]) continue;
         // already used in routing.cc's own rsu_controller_assignment[]
         // call sites (e.g. RSU_dataunicast_alone,

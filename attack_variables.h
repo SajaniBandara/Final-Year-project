@@ -32,10 +32,6 @@
 bool selective_delay_malicious_nodes[total_size]; 
 
 bool present_selective_delay_attack_nodes = false;
-// attack2_delay_seconds: nominal mean kept for test-network logging and backward
-// compatibility with the single-scenario verification result (80 ms, MCC=1.0).
-// The actual per-packet delay is drawn uniformly from [attack2_min, attack2_max].
-double attack2_delay_seconds     = 0.080; // nominal mean (used for logging only)
 // Variable delay bounds for Attack 2 (Data Plane).
 // Range spans the handoff jitter window defined in §1319–1327 (50–300 ms).
 // Lower bound 0.060 s sits 10 ms above S2_DELTA_MAX (50 ms) so every attack

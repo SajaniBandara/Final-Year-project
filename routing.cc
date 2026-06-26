@@ -118,7 +118,6 @@ int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int attack_percentage = 0;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
-// double simTime = 240;
 double simTime = 300; // Proposal simulation table: "each run lasts 300 s"
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
@@ -127,8 +126,7 @@ uint32_t large=50000;
 
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
-// double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 1.0; //test
+double data_transmission_frequency = 1.0;
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
@@ -94559,7 +94557,6 @@ uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_h
     // ==============================================================
     // ENFORCE ARCHITECTURE 3: VEHICLES MUST ROUTE THROUGH RSU
     // ==============================================================
-	cout << "[DEBUG] Inside find_next_hop! current_hop: " << current_hop << " destination: " << destination << endl;
     if (architecture == 3 && N_RSUs > 0)
 	{
         uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
@@ -112983,12 +112980,6 @@ void write_csv_status_lifetime()
 			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
 			break;
 	}
-	cout << "[DEBUG] Node 0 position in CSV: " 
-	     << (routing_data_at_nodes_inst+0)->position << endl;
-	cout << "[DEBUG] Node 1 position in CSV: " 
-	     << (routing_data_at_nodes_inst+1)->position << endl;
-	cout << "[DEBUG] Node 2 position in CSV: " 
-	     << (routing_data_at_nodes_inst+2)->position << endl;
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -115584,8 +115575,8 @@ void poison_test_network_cp_attackers()
 {
 	if (active_attack_variant == 0)
 	{
-		update_route_malicious(15, 1, 1, attack2_delay_seconds);
-		update_route_malicious(16, 3, 3, attack2_delay_seconds);
+		update_route_malicious(15, 1, 1, 0.080);
+		update_route_malicious(16, 3, 3, 0.080);
 	}
 }
 
@@ -118366,8 +118357,7 @@ void convert_link_lifetimes_dsrc()
 	//     value so the relay path can form);
 	//   - a link beyond d_max_dsrc is removed (lifetime 0) so routing won't pick
 	//     an unreliable direct link and will relay via the RSU instead.
-	// Positions come from routing_data_at_nodes_inst (the struct the [DEBUG]
-	// "position in CSV" prints use). Self-link (i==j) is left untouched.
+	// Positions come from routing_data_at_nodes_inst. Self-link (i==j) is left untouched.
 	double in_range_floor = link_lifetime_threshold + 1.0; // safely above threshold
 	for(uint32_t i=0;i<(uint32_t)var;i++)
 	{
@@ -120867,15 +120857,14 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							selective_delay_malicious_nodes[current_hop],
 							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_delay_seconds,        // nominal mean (logging only)
-							attack2_min_delay_seconds,    // Phase 3/D4: variable delay lower bound
-							attack2_max_delay_seconds,    // Phase 3/D4: variable delay upper bound
+							attack2_min_delay_seconds,
+							attack2_max_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected,
 							current_hop,
 							packet_id,
 							flow_id,
-							is_safety_critical_flow[flow_id]); // Phase 4/D5: S1/S2 Priority(p)=HIGH guard
+							is_safety_critical_flow[flow_id]);
 
 						// TCAM slow-path delay (Attacks 3 & 4).
 						// Real TCAM lookup is O(1) — fill level does not affect latency.
@@ -123923,13 +123912,12 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							selective_delay_malicious_nodes[source],
 							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_delay_seconds,           // nominal mean (logging only)
-							attack2_min_delay_seconds,       // Phase 3/D4: variable delay lower bound
-							attack2_max_delay_seconds,       // Phase 3/D4: variable delay upper bound
+							attack2_min_delay_seconds,
+							attack2_max_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected_cp,
 							source, packet_id, fid,
-							is_safety_critical_flow[fid],    // Phase 4/D5: S1/S2 Priority(p)=HIGH guard
+							is_safety_critical_flow[fid],
 							routing_dsrc_data_unicast,
 							dev_to_use, dsrc_Nodes.Get(source),
 							fid, nid, arguments, total_packet_counter+1);
@@ -142805,12 +142793,10 @@ if (architecture == 3 && N_Vehicles > 0)
     // so after address_dsrc.Assign: Vehicle_A=3.0.0.1, Vehicle_B=3.0.0.2, RSU=3.0.0.3
     Ptr<Ipv4> rsu_ipv4 = RSU_Nodes.Get(0)->GetObject<Ipv4>();
     Ipv4Address rsu_wifi_ip = rsu_ipv4->GetAddress(2, 0).GetLocal(); // interface 2 = WiFi ch178
-    cout << "[DEBUG] RSU wifi IP: " << rsu_wifi_ip << endl;
 
     // Controller's CSMA IP (interface 1 = CSMA, loopback is 0)
     Ptr<Ipv4> ctrl_ipv4 = controller_Node.Get(0)->GetObject<Ipv4>();
     Ipv4Address ctrl_csma_ip = ctrl_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] Controller 0 CSMA IP: " << ctrl_csma_ip << endl;
 
     // 1. Vehicles: default route via RSU's WiFi IP (interface 1)
     for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++)
@@ -142818,7 +142804,6 @@ if (architecture == 3 && N_Vehicles > 0)
         Ptr<Ipv4StaticRouting> sr = ipv4RoutingHelper.GetStaticRouting(
             Vehicle_Nodes.Get(i)->GetObject<Ipv4>());
         sr->SetDefaultRoute(rsu_wifi_ip, 1);
-        cout << "[DEBUG] Vehicle " << i << " default route -> " << rsu_wifi_ip << endl;
     }
 
     // 2. RSU: route to vehicle subnets (3.0.0.0/8) via its own WiFi (interface 1)
@@ -142829,7 +142814,6 @@ if (architecture == 3 && N_Vehicles > 0)
     // 3. All controllers: route to vehicle WiFi subnet via RSU's CSMA IP
     //    Per proposal: all controllers get read-only network view via CSMA
     Ipv4Address rsu_csma_ip = rsu_ipv4->GetAddress(1, 0).GetLocal();
-    cout << "[DEBUG] RSU CSMA IP: " << rsu_csma_ip << endl;
 
     for (uint32_t ci = 0; ci < N_Controllers; ci++)
     {
@@ -142842,7 +142826,6 @@ if (architecture == 3 && N_Vehicles > 0)
       ci_sr->AddNetworkRouteTo(Ipv4Address("8.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
       ci_sr->AddNetworkRouteTo(Ipv4Address("9.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
       ci_sr->AddNetworkRouteTo(Ipv4Address("11.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
-      cout << "[DEBUG] Controller " << ci << " route to 3.0.0.0/8 via RSU CSMA " << rsu_csma_ip << endl;
     }
 }
 
