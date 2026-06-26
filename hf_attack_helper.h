@@ -96,6 +96,11 @@
 #include <fstream>
 #include <iostream>
 
+// Staging globals — must be declared before any function that references them
+static uint32_t g_declare_flow_id = 0;
+static bool     g_declare_is_cp   = false;
+static bool     g_declare_active  = false;
+
 // =============================================================================
 // HF EVENT LOG
 // =============================================================================
@@ -257,7 +262,9 @@ inline void hf_reapply_dp_after_clear()
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            (delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            // DP trigger uses malicious-node flag — no delta write needed here.
+            // Writing to nodes_inst would corrupt routing decisions
+            // (original rerouted to eavesdropper instead of legitimate hop).
         }
     }
 }
@@ -270,13 +277,23 @@ inline void hf_reapply_dp_after_clear()
 inline void hf_reapply_cp_after_clear()
 {
     if (active_attack_variant != 4 && active_attack_variant != 6) return;
+    std::cout << "[CP REAPPLY] t=" << Simulator::Now().GetSeconds()
+              << "s map_size=" << passive_hf_rsu_to_eavesdropper.size()
+              << " flow=" << g_declare_flow_id << std::endl;
     for (auto const& kv : passive_hf_rsu_to_eavesdropper)
     {
         uint32_t rsu_node   = kv.first;
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            (delta_at_nodes_inst+0)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+            {
+                // CP: poison controller table only. nodes_inst must stay clean
+                // so routing decisions (initiate_all_flows) send the original
+                // packet to the legitimate next hop, not the eavesdropper.
+                (delta_at_controller_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            }
+            std::cout << "[CP REAPPLY] wrote CTRL[" << rsu_node << "][" << eaves_node << "]=0.5 (all flows)" << std::endl;
         }
     }
 }
@@ -287,9 +304,15 @@ inline bool hf_delta_entry_active(uint32_t flow_id,
                                    uint32_t rsu_node,
                                    uint32_t eavesdropper_node)
 {
-    return (delta_at_nodes_inst + flow_id)
-               ->delta_fi_inst[rsu_node]
-               .delta_values[eavesdropper_node] > 0.0;
+    // Use the malicious-node flag as the HF trigger instead of reading
+    // delta tables. Writing to nodes_inst would corrupt routing decisions
+    // in initiate_all_flows (routing the original to the eavesdropper
+    // instead of the legitimate hop, dropping PDR). Writing to
+    // controller_inst for DP attacks would erase the CP/DP forensic
+    // distinction. The malicious flag is set by hf_declare_malicious_rsus
+    // at attack_start_time and stays set for the rest of the simulation.
+    return active_hf_malicious_nodes[rsu_node] ||
+           passive_hf_malicious_nodes[rsu_node];
 }
 
 // ── Resolve the eavesdropper index for a given RSU ────────────────────────────
@@ -324,10 +347,7 @@ inline void hf_dp_inject_trampoline()
                        g_dp_inject_eaves);
 }
 
-// Staging globals for SUMO-mode hf_declare_malicious_rsus scheduled call
-static uint32_t g_declare_flow_id = 0;
-static bool     g_declare_is_cp   = false;
-static bool     g_declare_active  = false;
+// Staging globals moved to top of file (after #include block) for forward visibility
 
 // Forward declaration — hf_declare_malicious_rsus is defined below the trampolines
 inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack, bool is_cp, bool is_active);
@@ -419,37 +439,51 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
     }
     else
     {
-        // SUMO mode: scan delta_at_controller_inst for active RSU forwarding rules.
-        // In architecture=3 all traffic routes through RSUs, so every active flow
-        // will have nonzero delta weights on RSU->vehicle hops.
-        for (uint32_t fid = 0; fid < (uint32_t)(2 * flows); fid++)
+        // SUMO mode: compromise attack_percentage% of ALL RSUs in the network.
+        // Scan delta_at_controller_inst (not nodes_inst) because clear_delta_at_nodes()
+        // fires at the same time as this function (t=attack_start_time) and wipes
+        // delta_at_nodes_inst to zero — making any scan of nodes_inst return nothing.
+        // delta_at_controller_inst is written by run_proposed_RL and never cleared
+        // by clear_delta_at_nodes, so it always holds valid routing weights here.
+        for (uint32_t rsu = N_Vehicles; rsu < N_Vehicles + N_RSUs; rsu++)
         {
-            for (uint32_t cid = N_Vehicles; cid < N_Vehicles + N_RSUs; cid++)
+            on_path_rsus.push_back(rsu);
+
+            // Eavesdropper = vehicle with highest delta weight pointing TO this RSU
+            // across any flow (i.e. a nearby vehicle that sends through this RSU).
+            uint32_t best_eaves = rsu - N_Vehicles; // fallback: vehicle with same index
+            double   best_w     = 0.0;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
             {
-                for (uint32_t nid = 0; nid < (uint32_t)total_size; nid++)
+                for (uint32_t v = 0; v < N_Vehicles; v++)
                 {
-                    if ((delta_at_controller_inst + fid)->delta_fi_inst[cid].delta_values[nid] > 0.0)
-                    {
-                        bool already_added = false;
-                        for (auto r : on_path_rsus)
-                            if (r == cid) { already_added = true; break; }
-                        if (!already_added)
-                        {
-                            on_path_rsus.push_back(cid);
-                            // Find the vehicle that sends TO this RSU
-                            for (uint32_t sender = 0; sender < N_Vehicles; sender++)
-                            {
-                                if ((delta_at_controller_inst + fid)
-                                        ->delta_fi_inst[sender].delta_values[cid] > 0.0)
-                                {
-                                    rsu_to_sender[cid] = sender;
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    double w = (delta_at_controller_inst + fid)
+                                   ->delta_fi_inst[v].delta_values[rsu];
+                    if (w > best_w) { best_w = w; best_eaves = v; }
                 }
             }
+            rsu_to_sender[rsu] = best_eaves;
+
+            // Legitimate hop = highest outgoing delta weight FROM this RSU
+            // excluding the eavesdropper vehicle.
+            uint32_t legit_hop = (rsu + 1 < N_Vehicles + N_RSUs)
+                                 ? rsu + 1 : N_Vehicles; // fallback: next RSU
+            double   legit_w   = 0.0;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+            {
+                for (uint32_t n = 0; n < (uint32_t)total_size; n++)
+                {
+                    if (n == best_eaves) continue;
+                    double w = (delta_at_controller_inst + fid)
+                                   ->delta_fi_inst[rsu].delta_values[n];
+                    if (w > legit_w) { legit_w = w; legit_hop = n; }
+                }
+            }
+            passive_hf_rsu_to_legitimate_hop[rsu] = legit_hop;
+
+            std::cout << "[HF SCALE] RSU " << rsu
+                      << " eavesdropper=" << best_eaves
+                      << " legit_hop=" << legit_hop << std::endl;
         }
     }
     std::cout << "[HF SCALE] Found " << on_path_rsus.size()
@@ -460,6 +494,30 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
         std::cout << "[HF SCALE] WARNING: No on-path RSUs found in proposed_routing_tables."
                   << " Has run_optimization / run_proposed_RL fired yet?" << std::endl;
         return;
+    }
+
+    // Sort on_path_rsus by total incoming traffic load (descending)
+    // so num_to_compromise selects the MOST ACTIVE RSUs, not lowest-indexed ones.
+    // Without this, RSUs 200-212 (lowest indices) are always selected regardless
+    // of whether any vehicles are actually nearby and routing through them.
+    if (!routing_test)
+    {
+        std::sort(on_path_rsus.begin(), on_path_rsus.end(),
+            [](uint32_t a, uint32_t b)
+            {
+                double load_a = 0.0, load_b = 0.0;
+                for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+                {
+                    for (uint32_t v = 0; v < N_Vehicles; v++)
+                    {
+                        load_a += (delta_at_controller_inst + fid)
+                                      ->delta_fi_inst[v].delta_values[a];
+                        load_b += (delta_at_controller_inst + fid)
+                                      ->delta_fi_inst[v].delta_values[b];
+                    }
+                }
+                return load_a > load_b; // descending: highest load first
+            });
     }
 
     // ── Step 2: calculate how many to compromise ──────────────────────────────
