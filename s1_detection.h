@@ -27,6 +27,7 @@
 #include <iostream>
 #include <cmath>
 #include <fstream>
+#include <vector>
 #include "ns3/simulator.h"
 
 using namespace ns3;
@@ -58,14 +59,15 @@ double s1_k = 3.0;
 double s1_beta = 0.9;
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
-double s1_delta_bar[300] = {0.0};   // δ̄_r(t): mobility-adjusted baseline per RSU
-double s1_sigma2[300]    = {0.0};   // σ²_r(t): EWMA variance per RSU
+// Sized dynamically at runtime by s1_init_state(N_RSUs) — no hardcoded ceiling.
+std::vector<double>   s1_delta_bar;     // δ̄_r(t): mobility-adjusted baseline per RSU
+std::vector<double>   s1_sigma2;        // σ²_r(t): EWMA variance per RSU
 
 // Per-RSU observed-delay accumulators for the EWMA input δ_r(t) (Eq. 3.12).
 // Accumulated inside s1_detect_packet() for every valid packet; drained
 // and reset at each s1_update_baseline() call site in routing.cc.
-double   s1_rsu_obs_sum[300]   = {0.0};
-uint32_t s1_rsu_obs_count[300] = {0};
+std::vector<double>   s1_rsu_obs_sum;
+std::vector<uint32_t> s1_rsu_obs_count;
 
 // =========================================================================
 // s1_update_baseline():
@@ -173,18 +175,32 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 }
 
 // =========================================================================
+// s1_init_state():
+// Allocates and zero-initialises all per-RSU S1 vectors to exactly n_rsus
+// entries. Must be called once after N_RSUs is finalised (i.e. from
+// initialise_stub_attack_state() in routing.cc), before any detection or
+// baseline-update calls.
+// =========================================================================
+inline void s1_init_state(uint32_t n_rsus)
+{
+    s1_delta_bar.assign(n_rsus, 0.0);
+    s1_sigma2.assign(n_rsus, 0.0);
+    s1_rsu_obs_sum.assign(n_rsus, 0.0);
+    s1_rsu_obs_count.assign(n_rsus, 0);
+    cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs." << endl;
+}
+
+// =========================================================================
 // s1_reset_state():
-// Resets all per-RSU S1 baseline and variance to zero for a fresh run.
+// Zeros all per-RSU S1 state without reallocating (for mid-run resets).
+// Requires s1_init_state() to have been called first.
 // =========================================================================
 inline void s1_reset_state()
 {
-    for (int r = 0; r < 300; r++)
-    {
-        s1_delta_bar[r]    = 0.0;
-        s1_sigma2[r]       = 0.0;
-        s1_rsu_obs_sum[r]  = 0.0;
-        s1_rsu_obs_count[r] = 0;
-    }
+    std::fill(s1_delta_bar.begin(),     s1_delta_bar.end(),     0.0);
+    std::fill(s1_sigma2.begin(),        s1_sigma2.end(),        0.0);
+    std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
+    std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
     cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
 }
 

@@ -115375,7 +115375,7 @@ void initialise_stub_attack_state()
 	tap_reset_state(total_size);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
-	s1_reset_state();
+	s1_init_state(N_RSUs);
 
 
 	switch (active_attack_variant)
