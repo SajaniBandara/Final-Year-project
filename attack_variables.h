@@ -9,10 +9,20 @@
 
    This means Attack 1 (control plane) and Attack 2 (data plane) must remain
    mutually exclusive in every simulation run. Concretely:
-   1. RSU must never be marked malicious for Attack 1 (only the controller is compromised).
-   2. Attack 1's and Attack 2's master switches must never both be true at once.
-   3. Hard stop: if you find yourself needing to mark an RSU malicious for Attack 1,
-      that is a sign you are violating the assumption!
+
+   1. selective_delay_malicious_nodes[] (the runtime DP attack flag) must
+      NEVER be set true for an RSU in Attack 1. The RSU is not an attacker —
+      it is a benign node obeying a poisoned FlowMod installed by a
+      compromised controller.
+
+   2. is_malicious_node[0][rsu_node_id] (the ground-truth metrics array) IS
+      intentionally set true for RSUs whose assigned controller is compromised
+      (in declare_attackers()). This is correct — those RSUs are the affected
+      nodes that detectors must identify, even though the RSU itself is unaware.
+      Do NOT confuse this with selective_delay_malicious_nodes[].
+
+   3. Attack 1's and Attack 2's master switches (present_selective_delay_cp_attack
+      and present_selective_delay_attack_nodes) must never both be true at once.
    ========================================================================= */
 
 // Selective Time Delay Attack Variables (Attack 2)
