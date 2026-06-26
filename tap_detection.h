@@ -152,6 +152,7 @@ inline void calculate_tap_security_metrics()
 	tap_previous_cumulative_mit += tap_current_mitigation_ms;
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;
+	(void)cycle; // computed for symmetry with write_tap_csv(); not used in this function
 	cout << "[TAP][SECURITY] Variant 1 | MCC=" << tap_current_MCC
 		 << " DR=" << (tap_current_DR * 100.0) << "% FPR=" << (tap_current_FPR * 100.0) << "% TP=" << tap_TP
 		 << " FP=" << tap_FP << " TN=" << tap_TN << " FN=" << tap_FN << endl;

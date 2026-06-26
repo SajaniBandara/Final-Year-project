@@ -143402,7 +143402,7 @@ if (architecture == 3 && N_Vehicles > 0)
   Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
+  AnimationInterface anim("/home/nipuni/ns-allinone-3.35/ns-3.35/routing.xml");  
   anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
   // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
   // builds custom raw packets (manual WifiMacHeader + custom tags in the

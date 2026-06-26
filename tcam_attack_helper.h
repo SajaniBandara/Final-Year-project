@@ -1,6 +1,10 @@
 #ifndef TCAM_ATTACK_HELPER_H
 #define TCAM_ATTACK_HELPER_H
 
+// MobiGuard blockchain event writer — S3/S4 anomaly detection + CSV output.
+// Included here so every TCAM install/snapshot automatically logs blockchain events.
+#include "bc_blockchain_helper.h"
+
 // The following globals are defined in routing.cc and used here:
 extern double   simTime;
 extern int      active_attack_variant;
@@ -203,6 +207,10 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
               << " -> " << dip << ":" << dst_port
               << " t=" << e.install_time << "s" << std::endl;
 
+    // MobiGuard: log FlowMod event to bc_flowmod_log.csv + emit [BC-FLOWMOD] line.
+    // Bridge tails this CSV and calls LogFlowMod() on-chain in real time.
+    bc_log_flowmod(node_id, actual_fid, src_ip, dst_ip, src_port, dst_port, false);
+
     // Kick off the per-second snapshot loop the very first time any entry is installed.
     if (first_ever)
         Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
@@ -291,6 +299,10 @@ inline void tcam_snapshot_dump()
     }
     snap_f.close();
     occ_f.close();
+
+    // MobiGuard: check S4 (TCAM exhaustion) for all RSUs once per second.
+    // Writes penalty rows to bc_trust_updates.csv when rule count > 80% capacity.
+    bc_check_s4();
 
     if (now + 1.0 <= simTime)
         Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
@@ -406,6 +418,10 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
               << " " << sip << ":" << src_port
               << " -> " << dip << ":" << dst_port
               << " t=" << e.install_time << "s" << std::endl;
+
+    // MobiGuard: log malicious FlowMod to bc_flowmod_log.csv (is_malicious=1).
+    // Bridge calls MarkFlowModUnauthorized() + triggers S3 rate counter.
+    bc_log_flowmod(node_id, visible_fid, src_ip, dst_ip, src_port, dst_port, true);
 }
 
 // ── Change 5+7: self-rescheduling DP attacker tick (per-node) ─────────────
