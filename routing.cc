@@ -117875,17 +117875,30 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 
 	// --- MOBIGUARD S1/S2 detection metrics ---
-	// S1 baseline update: use current vehicle count as density proxy.
-	// In SUMO runs with actual density tracking, replace N_Vehicles with
-	// the per-RSU active vehicle count from the mobility module.
-	// Mean speed default 14 m/s ≈ 50 km/h; in full SUMO runs this would
-	// read from the SUMO TraCI interface per-RSU.
+	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
+	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
+	// zone when linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, which matches the
+	// d_max_dsrc = 270 m coverage radius used by the routing engine.
 	for (uint32_t _r = 0; _r < N_RSUs; _r++)
 	{
-		s1_update_baseline(_r,
-		                   (double)N_Vehicles,   // ρ(t): active vehicle count
-		                   14.0,                 // v̄(t): mean speed m/s (50 km/h approx)
-		                   s1_delta0);           // observed baseline as starting point
+		uint32_t rsu_sim_idx = N_Vehicles + _r;
+
+		uint32_t rho_count = 0;
+		double   speed_sum = 0.0;
+		for (uint32_t _v = 0; _v < (uint32_t)N_Vehicles; _v++)
+		{
+			if (rsu_sim_idx < linklifetimeMatrix_dsrc[_v].size() &&
+			    linklifetimeMatrix_dsrc[_v][rsu_sim_idx] > 0.0)
+			{
+				rho_count++;
+				Vector vel = (routing_data_at_nodes_inst + _v)->velocity;
+				speed_sum += std::sqrt(vel.x * vel.x + vel.y * vel.y);
+			}
+		}
+		double rho_t   = (double)rho_count;
+		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
+
+		s1_update_baseline(_r, rho_t, v_bar_t, s1_delta0);
 	}
 	Simulator::Schedule(Seconds(0.000130), s1_write_csv);
 	Simulator::Schedule(Seconds(0.000140), s2_write_csv);
