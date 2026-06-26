@@ -151,8 +151,6 @@ inline void calculate_tap_security_metrics()
 	if (tap_current_mitigation_ms <= 0.0 && tap_TP > 0)
 		tap_current_mitigation_ms = 50.0;
 	tap_previous_cumulative_mit += tap_current_mitigation_ms;
-	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
-	               (data_gathering_cycle_number - 1.0) : 1.0;
 	cout << "[TAP][SECURITY] Variant 1 | MCC=" << tap_current_MCC
 		 << " DR=" << (tap_current_DR * 100.0) << "% FPR=" << (tap_current_FPR * 100.0) << "% TP=" << tap_TP
 		 << " FP=" << tap_FP << " TN=" << tap_TN << " FN=" << tap_FN << endl;
@@ -169,7 +167,7 @@ inline void write_tap_csv()
 	               (data_gathering_cycle_number - 1.0) : 1.0;
 	string filename;
 	int attack_num = active_attack_variant + 1;
-	filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + ".csv";
+	filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + ".csv";
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);

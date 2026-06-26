@@ -419,7 +419,8 @@ inline void fade_save_metrics()
 
     // Append row to fade_metrics.csv (append so repeated runs accumulate)
     // Check if file exists BEFORE opening — once ofstream opens it, it always exists.
-    std::string fade_metrics_path = "fade_metrics" + g_sim_tag + ".csv";
+    std::system("mkdir -p results_routing");
+    std::string fade_metrics_path = "results_routing/fade_metrics" + g_sim_tag + ".csv";
     bool write_header = false;
     {
         std::ifstream check(fade_metrics_path);

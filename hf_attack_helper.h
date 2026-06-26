@@ -128,7 +128,7 @@ inline void export_hf_event_log()
     if (it != variant_to_label.end()) mode = it->second;
 
     const std::string base_dir =
-        "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string path = base_dir + "hf_events_" + mode + "_" +
                        std::to_string(attack_percentage) + ".csv";
 
@@ -258,8 +258,8 @@ inline void hf_reapply_dp_after_clear()
     if (active_attack_variant != 5 && active_attack_variant != 7) return;
     for (auto const& kv : passive_hf_rsu_to_eavesdropper)
     {
-        uint32_t rsu_node   = kv.first;
-        uint32_t eaves_node = kv.second;
+        uint32_t rsu_node = kv.first;
+        (void)kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
             // DP trigger uses malicious-node flag — no delta write needed here.

@@ -88,6 +88,7 @@ SYNC_FILES = [
     "hf_attack_helper.h",
     "efade_detection.h",
     "optimization_lifetime.py",
+    "tcam_detection.h",
 ]
 
 # Result CSV patterns expected after all runs complete.

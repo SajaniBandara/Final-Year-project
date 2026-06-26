@@ -91,6 +91,10 @@ SYNC_FILES = [
     "hf_attack_helper.h",
     "efade_detection.h",
     "optimization_lifetime.py",
+    "optimization.py",
+    "tcam_detection.h",
+    "tcam_attack_helper.h",
+    
 ]
 
 
