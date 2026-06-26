@@ -143153,14 +143153,11 @@ if (architecture == 3 && N_Vehicles > 0)
 			// Phase 4 / D5: Populate is_safety_critical_flow[] once after flow setup.
 			// Proposal Signature S1 (Eq. 3.4): "Priority(p) = HIGH" is a load-bearing
 			// conjunction — attacks must only delay safety-critical packets.
-			// Even-indexed flow IDs are designated safety-critical (collision-avoidance /
-			// BSM-equivalent); odd-indexed are best-effort. For SUMO runs with real
-			// heterogeneous flows, replace this modulo rule with a lookup against the
-			// flow's registered QoS class. is_safety_critical_flow is indexed by flow_id
-			// (0 to 2*flows-1) and read by calculate_unified_selective_delay() and
-			// schedule_unified_selective_delay_attack() at every forwarding decision.
+			// Flow IDs 0..(flows-1) are safety-critical (collision-avoidance / BSM-equivalent);
+			// flow IDs flows..(2*flows-1) are best-effort. The split is explicit rather than
+			// inferred from ID parity, matching the thesis's two-tier QoS model directly.
 			for (uint32_t _f = 0; _f < (uint32_t)(2 * flows); _f++) {
-			    is_safety_critical_flow[_f] = (_f % 2 == 0);
+			    is_safety_critical_flow[_f] = (_f < (uint32_t)flows);
 			    cout << "[FLOW-PRIORITY] flow_id=" << _f
 			         << " is_safety_critical=" << is_safety_critical_flow[_f] << endl;
 			}
