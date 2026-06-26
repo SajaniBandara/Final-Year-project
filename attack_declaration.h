@@ -161,12 +161,15 @@ inline void declare_attackers()
 
     if (present_selective_delay_cp_attack == true && N_Controllers > 1)
     {
-        uint32_t max_compromisable = N_Controllers - 1;
+        // At p=100% the thesis (§3503) specifies all controllers are compromised.
+        // Below 100%, always leave at least one controller honest.
+        uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers
+                                                                 : N_Controllers - 1;
         uint32_t step;
         if (attack_percentage < 10)       step = 0;
         else if (attack_percentage < 35)  step = 1;
         else if (attack_percentage < 67)  step = 2;
-        else                                step = 3;
+        else                              step = 3;
 
         uint32_t num_to_compromise = (step * max_compromisable) / 3;
         if (num_to_compromise > max_compromisable) num_to_compromise = max_compromisable;
