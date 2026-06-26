@@ -120,20 +120,25 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     if (!s1_detection_active) return false;
     if (rsu_idx >= (uint32_t)N_RSUs) return false;
 
-    // Accumulate observed hop-delay for δ_r(t) (Eq. 3.12/3.13), before the SC
-    // guard so the EWMA baseline tracks all traffic at this RSU, not only SC.
-    if (packet_delay_s > 0.0)
-    {
-        s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
-        s1_rsu_obs_count[rsu_idx] += 1;
-    }
-
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4)
     if (!is_safety_crit) return false;
 
     double delta_bar = s1_delta_bar[rsu_idx];
     double sigma     = std::sqrt(s1_sigma2[rsu_idx]);
     double threshold = delta_bar + s1_k * sigma;
+
+    // Accumulate observed hop-delay for δ_r(t) (Eq. 3.12/3.13) only when
+    // the delay appears benign (within the current threshold). This prevents
+    // attack-delayed packets from pulling the EWMA baseline upward and
+    // progressively suppressing future detections. During cold-start
+    // (delta_bar == 0 before the first s1_update_baseline() tick) all
+    // positive delays are accumulated unconditionally to seed the baseline.
+    bool cold_start = (delta_bar == 0.0);
+    if (packet_delay_s > 0.0 && (cold_start || packet_delay_s <= threshold))
+    {
+        s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
+        s1_rsu_obs_count[rsu_idx] += 1;
+    }
 
     cout << "[S1] RSU_idx=" << rsu_idx
          << " node=" << current_hop
