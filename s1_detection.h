@@ -37,25 +37,37 @@ using namespace std;
 // S1 per-RSU state — mobility-adjusted baseline and EWMA variance
 // =========================================================================
 
-// Baseline intercept δ₀ (static propagation baseline, seconds).
-// Calibrated from benign (0% attack) SUMO traces via least-squares regression.
-// Initial value: 2 ms — typical DSRC propagation + MAC overhead at zero load.
+// ── S1 parameters — ALL VALUES ARE INITIAL CANDIDATES, NOT VALIDATED FINALS ──
+// The thesis marks δ₀, α_ρ, α_v as pending least-squares regression against
+// benign SUMO mobility traces, and β, k as pending grid-search validation
+// (thesis §3473–3479, §3485). Results produced with these values are
+// preliminary. Update each constant once the corresponding calibration or
+// grid-search sweep has been completed.
+
+// δ₀ — baseline intercept (seconds). Eq. 3.11.
+// Pending: least-squares regression on benign (0% attack) SUMO traces.
+// Initial estimate: 2 ms — typical DSRC propagation + MAC overhead at zero load.
 double s1_delta0 = 0.002;
 
-// Density sensitivity coefficient α_ρ (s per vehicle). Eq. 3.11.
-// Initial: 0.0001 s/vehicle (0.1 ms per additional vehicle).
+// α_ρ — density sensitivity coefficient (s per vehicle). Eq. 3.11.
+// Pending: regression calibration against SUMO density traces.
+// Initial estimate: 0.0001 s/vehicle (0.1 ms per additional vehicle in RSU zone).
 double s1_alpha_rho = 0.0001;
 
-// Speed sensitivity coefficient α_v (s²/m). Eq. 3.11.
-// Initial: 0.05.
+// α_v — speed sensitivity coefficient (s²/m). Eq. 3.11.
+// Pending: regression calibration against SUMO speed traces.
+// Initial estimate: 0.05.
 double s1_alpha_v = 0.05;
 
-// Standard-deviation multiplier k for the S1 threshold (Eq. 3.14).
-// Initial candidate k=3 (three-sigma rule) per proposal §3485.
+// k — standard-deviation multiplier for the S1 detection threshold. Eq. 3.14.
+// Thesis §3485: [tbd — initial candidate k=3, three-sigma rule].
+// Pending: grid search over {1.5, 2.0, 2.5, 3.0} to maximise MCC at 0% attack.
 double s1_k = 3.0;
 
-// EWMA forgetting factor β ∈ (0,1) for the variance estimator (Eq. 3.12).
-// Initial: 0.9.
+// β — EWMA forgetting factor ∈ (0,1) for the variance estimator. Eq. 3.12.
+// Thesis §3473–3479: [tbd — candidates {0.7, 0.8, 0.9, 0.95}].
+// Pending: grid search selecting β for fastest stable σ² convergence within
+// the 9 s minimum RSU zone residence window.
 double s1_beta = 0.9;
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
