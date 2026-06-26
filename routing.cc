@@ -120383,7 +120383,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						if (present_active_hf_attack &&
 							active_hf_malicious_nodes[current_hop] &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
-							flow_id == hf_target_flow_id &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
 						    uint32_t active_eaves = active_hf_eavesdropper_index;
@@ -120435,7 +120434,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							passive_hf_malicious_nodes[current_hop] &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
-							flow_id == hf_target_flow_id &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
                             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
@@ -123137,8 +123135,11 @@ void initialize_flow_counters()
 			uint32_t eaves_node = kv.second;
 			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
 			{
-				(delta_at_controller_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-				(delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+				{
+					(delta_at_controller_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+					(delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				}
 			}
 		}
 	}
@@ -123150,7 +123151,8 @@ void initialize_flow_counters()
 			uint32_t eaves_node = kv.second;
 			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
 			{
-				(delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+					(delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
 			}
 		}
 	}

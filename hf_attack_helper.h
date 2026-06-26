@@ -262,7 +262,8 @@ inline void hf_reapply_dp_after_clear()
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            (delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+                (delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
         }
     }
 }
@@ -284,9 +285,12 @@ inline void hf_reapply_cp_after_clear()
         uint32_t eaves_node = kv.second;
         if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
         {
-            (delta_at_controller_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-            (delta_at_nodes_inst+g_declare_flow_id)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
-            std::cout << "[CP REAPPLY] wrote CTRL+NODES[" << rsu_node << "][" << eaves_node << "]=0.5" << std::endl;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+            {
+                (delta_at_controller_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+                (delta_at_nodes_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+            }
+            std::cout << "[CP REAPPLY] wrote CTRL+NODES[" << rsu_node << "][" << eaves_node << "]=0.5 (all flows)" << std::endl;
         }
     }
 }
@@ -426,64 +430,51 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
     }
     else
     {
-        // SUMO mode: use eFADE's pre-configured path for flow_id_to_attack.
-        //
-        // delta_at_nodes_inst changes every cycle as vehicles move in SUMO.
-        // Scanning it at t=attack_start_time (t=10s) finds completely different
-        // RSUs than eFADE locked in at t=1.080s — so the attack targets nodes
-        // eFADE never monitors, leaving attacked=0 forever.
-        //
-        // fade_flow_config[flow_id_to_attack] is populated by fade_configure_all_flows
-        // at t=1.080s and is stable for the rest of the simulation. Using it here
-        // guarantees the attacked RSUs are exactly the ones eFADE is monitoring.
-        //
-        // hf_attack_helper.h is included after efade_detection.h in routing.cc
-        // (line 120509 vs 114831), so fade_flow_config is visible here.
-        auto cfg_it = fade_flow_config.find(flow_id_to_attack);
-        if (cfg_it != fade_flow_config.end() && cfg_it->second.configured)
+        // SUMO mode: compromise attack_percentage% of ALL RSUs in the network.
+        // Scan delta_at_controller_inst (not nodes_inst) because clear_delta_at_nodes()
+        // fires at the same time as this function (t=attack_start_time) and wipes
+        // delta_at_nodes_inst to zero — making any scan of nodes_inst return nothing.
+        // delta_at_controller_inst is written by run_proposed_RL and never cleared
+        // by clear_delta_at_nodes, so it always holds valid routing weights here.
+        for (uint32_t rsu = N_Vehicles; rsu < N_Vehicles + N_RSUs; rsu++)
         {
-            FadeFlowConfig const &fcfg = cfg_it->second;
-            for (uint32_t i = 0; i < fcfg.path_len; i++)
+            on_path_rsus.push_back(rsu);
+
+            // Eavesdropper = vehicle with highest delta weight pointing TO this RSU
+            // across any flow (i.e. a nearby vehicle that sends through this RSU).
+            uint32_t best_eaves = rsu - N_Vehicles; // fallback: vehicle with same index
+            double   best_w     = 0.0;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
             {
-                uint32_t node = fcfg.path_nodes[i];
-                if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
+                for (uint32_t v = 0; v < N_Vehicles; v++)
                 {
-                    on_path_rsus.push_back(node);
-                    // Eavesdropper = nearby vehicle with highest delta weight from this RSU,
-                    // excluding the flow's source and destination so it is a true third party.
-                    uint32_t best_eaves = fcfg.source; // safe fallback
-                    double   best_w     = 0.0;
-                    for (uint32_t n = 0; n < (uint32_t)total_size; n++)
-                    {
-                        if (n == fcfg.source)      continue;
-                        if (n == fcfg.destination) continue;
-                        if (n >= N_Vehicles)       continue; // must be a vehicle
-                        double w = (delta_at_nodes_inst + flow_id_to_attack)
-                                       ->delta_fi_inst[node].delta_values[n];
-                        if (w > best_w) { best_w = w; best_eaves = n; }
-                    }
-                    rsu_to_sender[node] = best_eaves;
-                    // Record the legitimate next hop (highest delta weight excluding eavesdropper)
-                    // so fade_forwarded can be seeded with both destinations.
-                    uint32_t legit_hop = fcfg.destination; // safe fallback
-                    double   legit_w   = 0.0;
-                    for (uint32_t n = 0; n < (uint32_t)total_size; n++)
-                    {
-                        if (n == best_eaves) continue;
-                        double w = (delta_at_nodes_inst + flow_id_to_attack)
-                                       ->delta_fi_inst[node].delta_values[n];
-                        if (w > legit_w) { legit_w = w; legit_hop = n; }
-                    }
-                    passive_hf_rsu_to_legitimate_hop[node] = legit_hop;
+                    double w = (delta_at_controller_inst + fid)
+                                   ->delta_fi_inst[v].delta_values[rsu];
+                    if (w > best_w) { best_w = w; best_eaves = v; }
                 }
             }
-        }
-        else
-        {
-            std::cout << "[HF SCALE] WARNING: eFADE path for flow "
-                      << flow_id_to_attack
-                      << " not yet configured — has fade_configure_all_flows fired?"
-                      << std::endl;
+            rsu_to_sender[rsu] = best_eaves;
+
+            // Legitimate hop = highest outgoing delta weight FROM this RSU
+            // excluding the eavesdropper vehicle.
+            uint32_t legit_hop = (rsu + 1 < N_Vehicles + N_RSUs)
+                                 ? rsu + 1 : N_Vehicles; // fallback: next RSU
+            double   legit_w   = 0.0;
+            for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+            {
+                for (uint32_t n = 0; n < (uint32_t)total_size; n++)
+                {
+                    if (n == best_eaves) continue;
+                    double w = (delta_at_controller_inst + fid)
+                                   ->delta_fi_inst[rsu].delta_values[n];
+                    if (w > legit_w) { legit_w = w; legit_hop = n; }
+                }
+            }
+            passive_hf_rsu_to_legitimate_hop[rsu] = legit_hop;
+
+            std::cout << "[HF SCALE] RSU " << rsu
+                      << " eavesdropper=" << best_eaves
+                      << " legit_hop=" << legit_hop << std::endl;
         }
     }
     std::cout << "[HF SCALE] Found " << on_path_rsus.size()
@@ -494,6 +485,30 @@ inline void hf_declare_malicious_rsus(uint32_t flow_id_to_attack,
         std::cout << "[HF SCALE] WARNING: No on-path RSUs found in proposed_routing_tables."
                   << " Has run_optimization / run_proposed_RL fired yet?" << std::endl;
         return;
+    }
+
+    // Sort on_path_rsus by total incoming traffic load (descending)
+    // so num_to_compromise selects the MOST ACTIVE RSUs, not lowest-indexed ones.
+    // Without this, RSUs 200-212 (lowest indices) are always selected regardless
+    // of whether any vehicles are actually nearby and routing through them.
+    if (!routing_test)
+    {
+        std::sort(on_path_rsus.begin(), on_path_rsus.end(),
+            [](uint32_t a, uint32_t b)
+            {
+                double load_a = 0.0, load_b = 0.0;
+                for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+                {
+                    for (uint32_t v = 0; v < N_Vehicles; v++)
+                    {
+                        load_a += (delta_at_controller_inst + fid)
+                                      ->delta_fi_inst[v].delta_values[a];
+                        load_b += (delta_at_controller_inst + fid)
+                                      ->delta_fi_inst[v].delta_values[b];
+                    }
+                }
+                return load_a > load_b; // descending: highest load first
+            });
     }
 
     // ── Step 2: calculate how many to compromise ──────────────────────────────
