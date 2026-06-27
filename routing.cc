@@ -114842,8 +114842,9 @@ void initialise_stub_attack_state()
     }
 
 
-	// Initialize TAP detector state globally for all attack variants
-	tap_reset_state(total_size);
+	// TAP is the DP baseline detector — only initialise for Attack 2 (variant 1)
+	if (active_attack_variant == 1)
+		tap_reset_state(total_size);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);

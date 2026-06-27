@@ -85,7 +85,12 @@ SYNC_FILES = [
     "tap_detection.h",
     "s1_detection.h",
     "s2_detection.h",
+    "tcam_detection.h",
+    "tcam_attack_helper.h",
+    "efade_detection.h",
+    "hf_attack_helper.h",
     "optimization_lifetime.py",
+    "optimization.py",
 ]
 
 # Result CSV patterns expected after all runs complete.
