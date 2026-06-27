@@ -107,14 +107,14 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
              << " sender node " << sender_sim_index
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
-        if (active_attack_variant == 1 &&
+        if (active_attack_variant >= 0 &&
             sender_sim_index < (uint32_t)total_size &&
-            !is_detected_node[1][sender_sim_index])
+            !is_detected_node[active_attack_variant][sender_sim_index])
         {
-            record_detection_event(1, sender_sim_index);
+            record_detection_event(active_attack_variant, sender_sim_index);
             cout << "[S2] record_detection_event fired for node "
-                 << sender_sim_index << " variant=1 at t="
-                 << Simulator::Now().GetSeconds() << "s" << endl;
+                 << sender_sim_index << " variant=" << active_attack_variant
+                 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;
     }

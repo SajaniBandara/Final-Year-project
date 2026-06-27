@@ -114700,9 +114700,9 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 //   s1_detect_packet()  (s1_detection.h) — hop-delay = t_recv − t_claimed
 //   s2_detect_packet()  (s2_detection.h) — hop-delay = t_recv − t_claimed
 //   tap_run_detection() (tap_detection.h) — PPAT = t_claimed
-bool s1_detection_active = true;     // master enable for S1 — read by s1_detection.h
-bool s2_detection_active = true;     // master enable for S2 — read by s2_detection.h
-bool tap_detection_active = true;    // master enable for TAP — read by tap_detection.h
+bool s1_detection_active = false;    // master enable for S1 — read by s1_detection.h
+bool s2_detection_active = false;    // master enable for S2 — read by s2_detection.h
+bool tap_detection_active = false;   // master enable for TAP — read by tap_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -114846,9 +114846,7 @@ void initialise_stub_attack_state()
     }
 
 
-	// TAP is the DP baseline detector — only initialise for Attack 2 (variant 1)
-	if (active_attack_variant == 1)
-		tap_reset_state(total_size);
+	tap_reset_state(total_size);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
@@ -117347,15 +117345,9 @@ void calculate_performance_evaluation_metrics()
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
-	// --- TAP baseline metrics (only for Attack 2 — Data Plane) ---
-	// TAP (Arsalan & Rehman FIT 2018) is a DP detector. Computing its metrics
-	// for Attack 1 (CP / compromised controller) is methodologically invalid
-	// and would produce meaningless TP/FP counts — fixes deviation C5/C6.
-	if (active_attack_variant == 1)
-	{
-		Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
-		Simulator::Schedule(Seconds(0.000120), write_tap_csv);
-	}
+	// --- TAP baseline metrics ---
+	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
+	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 
 	// --- MOBIGUARD S1/S2 detection metrics ---
 	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
@@ -120757,12 +120749,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// eFADE: record inbound packet receipt at this node
 				fade_received[fid][current_hop].insert(packet_ID);
 
-				// === SIGNATURE S2 DETECTION (MOBIGUARD — Attack 2 Data Plane) ===
+				// === SIGNATURE S2 DETECTION (MOBIGUARD) ===
 				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
-				// Implemented in s2_detection.h: s2_detect_packet().
-				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
-				// Guard: S2 is the Attack 2 (DP) detector — do not run for other variants.
-				if (active_attack_variant == 1)
+				// Controlled solely by s2_detection_active.
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					s2_detect_packet(sender_sim_index,
@@ -120774,14 +120763,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				}
 				// === END SIGNATURE S2 DETECTION ===
 
-				// === SIGNATURE S1 DETECTION (MOBIGUARD — Attack 1 Control Plane) ===
+				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
 				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
-				// Implemented in s1_detection.h: s1_detect_packet().
-				// RSU index = current_hop − N_Vehicles (only fires if current_hop is an RSU).
-				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
-				// Guard: S1 is the Attack 1 (CP) detector — do not run for other variants.
-				if (active_attack_variant == 0 &&
-				    current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				// Only runs when current_hop is an RSU. Controlled solely by s1_detection_active.
+				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
@@ -120803,15 +120788,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === END SIGNATURE S1 DETECTION ===
 
 				// === TAP BASELINE DETECTION ===
-				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-				// OnReceivedEmergencyPacket logic. The TAP paper targets emergency
-				// (safety-critical) packets only — applying it to best-effort traffic
-				// would inflate false positives. Gate on is_safety_critical_flow[fid].
-				// TAP is a Data Plane detector — only valid for Attack 2 (variant 1).
-				// Running it for Attack 1 (CP) is methodologically invalid: the threat
-				// model is a compromised controller, not a delaying vehicle, and TAP's
-				// signal-propagation timing model cannot observe that plane.
-				if (is_safety_critical_flow[fid] && active_attack_variant == 1)
+				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1.
+				// Only on safety-critical flows. Controlled solely by tap_detection_active.
+				if (is_safety_critical_flow[fid])
 				{
 					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
 				}

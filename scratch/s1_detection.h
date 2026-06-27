@@ -183,14 +183,15 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // on the sending RSU under the compromised controller — recording
         // current_hop would produce a FP (benign receiver) and FN (malicious
         // sender missed), corrupting TP/FP/TN/FN counts.
-        if (active_attack_variant == 0 &&
+        if (active_attack_variant >= 0 &&
             sender_node_id < (uint32_t)total_size &&
-            !is_detected_node[0][sender_node_id])
+            !is_detected_node[active_attack_variant][sender_node_id])
         {
-            record_detection_event(0, sender_node_id);
+            record_detection_event(active_attack_variant, sender_node_id);
             cout << "[S1] record_detection_event fired for sender node "
                  << sender_node_id << " (detected at RSU " << current_hop
-                 << ") variant=0 at t=" << Simulator::Now().GetSeconds() << "s" << endl;
+                 << ") variant=" << active_attack_variant
+                 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;
     }
@@ -213,7 +214,8 @@ inline void s1_init_state(uint32_t n_rsus)
     s1_sigma2.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
-    cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs." << endl;
+    if (s1_detection_active)
+        cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs." << endl;
 }
 
 // =========================================================================
@@ -227,7 +229,8 @@ inline void s1_reset_state()
     std::fill(s1_sigma2.begin(),        s1_sigma2.end(),        0.0);
     std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
     std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
-    cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
+    if (s1_detection_active)
+        cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
 }
 
 #endif // S1_DETECTION_H
