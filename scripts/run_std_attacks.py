@@ -7,12 +7,12 @@ as concurrent subprocesses so every combination finishes in the time of the
 longest single run instead of serially.
 
 Result CSVs written by the simulation:
-  results_routing/MOBIGUARD_Attack1_<pct>.csv  — Attack 1 (CP), MOBIGUARD S1 detector
-  results_routing/MOBIGUARD_Attack2_<pct>.csv  — Attack 2 (DP), MOBIGUARD S2 detector
-  results_routing/TAP_Attack2_<pct>.csv        — Attack 2 (DP), TAP baseline detector
+  results_routing/MOBIGUARD_Attack1_<pct>[_d<X>ms].csv  — Attack 1 (CP), MOBIGUARD S1 detector
+  results_routing/MOBIGUARD_Attack2_<pct>[_d<X>ms].csv  — Attack 2 (DP), MOBIGUARD S2 detector
+  results_routing/TAP_Attack2_<pct>[_d<X>ms].csv        — Attack 2 (DP), TAP baseline detector
 
 Per-run logs (stdout + stderr):
-  logs/A<N>_pct<P>_seed<S>.log
+  logs/A<N>_pct<P>[_d<X>ms]_seed<S>.log
 
 Usage examples:
   # Run all 12 combinations (both attacks × 6 percentages) in parallel:
@@ -23,6 +23,15 @@ Usage examples:
 
   # Run only Attack 1 at 40%:
   python3 scripts/run_std_attacks.py --attack 1 --percentage 40
+
+  # Sweep a fixed delay as an independent variable (threshold validation experiment):
+  python3 scripts/run_std_attacks.py --delay 40 55 60 80 100 200
+
+  # Shorthand for the full default delay sweep set:
+  python3 scripts/run_std_attacks.py --delay-sweep
+
+  # Combine delay sweep with a specific attack/percentage:
+  python3 scripts/run_std_attacks.py --attack 2 --percentage 40 --delay 40 55 60 80 100
 
   # Use a different RNG seed / run index:
   python3 scripts/run_std_attacks.py --seed 2 --sim-run 3
@@ -35,7 +44,6 @@ Usage examples:
 """
 
 import argparse
-import glob
 import os
 import shutil
 import subprocess
@@ -63,17 +71,20 @@ ATTACKS = [
     {"attack_number": 2, "label": "Attack2_DP"},
 ]
 
+# Default delay sweep for --delay-sweep (ms). Chosen to straddle the S1/S2
+# detection thresholds: S2 Δ_max = 50 ms, S1 baseline ~2 ms + 3σ.
+DELAY_SWEEP_MS = [40, 50, 55, 60, 80, 100, 150, 200]
+
 # Fixed topology / mobility parameters shared across all runs.
-# Matches run_attack2_sweep.sh and the thesis simulation table.
 FIXED_PARAMS = {
-    "routing_test":     "false",
-    "N_Vehicles":       200,
-    "N_RSUs":           64,
-    "N_Controllers":    4,
+    "routing_test":      "false",
+    "N_Vehicles":        200,
+    "N_RSUs":            64,
+    "N_Controllers":     4,
     "mobility_scenario": 0,
-    "maxspeed":         150,
+    "maxspeed":          150,
     "use_sumo_mobility": 1,
-    "architecture":     3,
+    "architecture":      3,
 }
 
 # Headers to copy from PROJECT_DIR to SCRATCH_DIR before a build.
@@ -85,23 +96,23 @@ SYNC_FILES = [
     "tap_detection.h",
     "s1_detection.h",
     "s2_detection.h",
-    "hf_attack_helper.h",
-    "efade_detection.h",
-    "optimization_lifetime.py",
     "tcam_detection.h",
+    "tcam_attack_helper.h",
+    "efade_detection.h",
+    "hf_attack_helper.h",
+    "optimization_lifetime.py",
+    "optimization.py",
 ]
-
-# Result CSV patterns expected after all runs complete.
-EXPECTED_RESULTS = (
-    [f"MOBIGUARD_Attack1_{p}.csv" for p in ATTACK_PERCENTAGES] +
-    [f"MOBIGUARD_Attack2_{p}.csv" for p in ATTACK_PERCENTAGES] +
-    [f"TAP_Attack2_{p}.csv"       for p in ATTACK_PERCENTAGES]
-)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def delay_suffix(delay_ms: int | None) -> str:
+    """Return the filename suffix for a fixed delay, e.g. '_d80ms', or '' if none."""
+    return f"_d{delay_ms}ms" if delay_ms is not None else ""
+
 
 def sync_files() -> None:
     """Copy the latest project headers and routing.cc into NS-3 scratch."""
@@ -119,11 +130,7 @@ def sync_files() -> None:
 def build_simulation() -> bool:
     """Run ./waf build. Returns True on success."""
     print("\n── Building NS-3 simulation ──")
-    result = subprocess.run(
-        ["./waf", "build"],
-        cwd=NS3_DIR,
-        text=True,
-    )
+    result = subprocess.run(["./waf", "build"], cwd=NS3_DIR, text=True)
     if result.returncode != 0:
         print("ERROR: Build failed. Fix compilation errors before running.")
         return False
@@ -131,38 +138,43 @@ def build_simulation() -> bool:
     return True
 
 
-def clean_results(attack: int | None, percentage: int | None) -> None:
+def clean_results(attack: int | None, percentage: int | None,
+                  delays: list[int | None]) -> None:
     """Remove old result CSVs that match the requested scope."""
-    patterns = []
-    attacks  = [attack] if attack else [1, 2]
-    percs    = [percentage] if percentage is not None else ATTACK_PERCENTAGES
-
-    for a in attacks:
-        for p in percs:
-            if a == 1:
-                patterns.append(RESULTS_DIR / f"MOBIGUARD_Attack1_{p}.csv")
-            else:
-                patterns.append(RESULTS_DIR / f"MOBIGUARD_Attack2_{p}.csv")
-                patterns.append(RESULTS_DIR / f"TAP_Attack2_{p}.csv")
+    attacks = [attack] if attack else [1, 2]
+    percs   = [percentage] if percentage is not None else ATTACK_PERCENTAGES
 
     removed = 0
-    for f in patterns:
-        if f.exists():
-            f.unlink()
-            removed += 1
+    for a in attacks:
+        for p in percs:
+            for d in delays:
+                sfx = delay_suffix(d)
+                candidates = []
+                if a == 1:
+                    candidates.append(RESULTS_DIR / f"MOBIGUARD_Attack1_{p}{sfx}.csv")
+                else:
+                    candidates.append(RESULTS_DIR / f"MOBIGUARD_Attack2_{p}{sfx}.csv")
+                    candidates.append(RESULTS_DIR / f"TAP_Attack2_{p}{sfx}.csv")
+                for f in candidates:
+                    if f.exists():
+                        f.unlink()
+                        removed += 1
     if removed:
         print(f"── Removed {removed} old result file(s) ──\n")
 
 
 def build_waf_command(attack_number: int, attack_percentage: int,
-                      sim_time: int, seed: int, sim_run: int) -> list[str]:
+                      sim_time: int, seed: int, sim_run: int,
+                      delay_ms: int | None) -> list[str]:
     """Construct the full ./waf --run command for one simulation run."""
     params = dict(FIXED_PARAMS)
-    params["simTime"]          = sim_time
-    params["attack_number"]    = attack_number
+    params["simTime"]           = sim_time
+    params["attack_number"]     = attack_number
     params["attack_percentage"] = attack_percentage
-    params["sim_seed"]         = seed
-    params["sim_run"]          = sim_run
+    params["sim_seed"]          = seed
+    params["sim_run"]           = sim_run
+    if delay_ms is not None:
+        params["attack_delay_ms"] = delay_ms
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
     return ["./waf", "--run", f"scratch/routing {param_str}"]
@@ -170,21 +182,22 @@ def build_waf_command(attack_number: int, attack_percentage: int,
 
 def run_one(attack_number: int, attack_percentage: int,
             sim_time: int, seed: int, sim_run: int,
-            log_path: Path) -> dict:
-    """
-    Execute a single simulation run.
-    Returns a result dict with label, returncode, elapsed time, and log path.
-    """
-    label = f"A{attack_number}_pct{attack_percentage}"
-    cmd   = build_waf_command(attack_number, attack_percentage, sim_time, seed, sim_run)
+            delay_ms: int | None, log_path: Path) -> dict:
+    """Execute a single simulation run."""
+    sfx   = delay_suffix(delay_ms)
+    label = f"A{attack_number}_pct{attack_percentage}{sfx}"
+    cmd   = build_waf_command(attack_number, attack_percentage,
+                               sim_time, seed, sim_run, delay_ms)
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     start = datetime.now()
     print(f"  [{label}] started  {start.strftime('%H:%M:%S')}  →  {log_path.name}")
 
     with open(log_path, "w") as logf:
+        logf.flush()
         logf.write(f"# Command: {' '.join(cmd)}\n")
         logf.write(f"# Started: {start.isoformat()}\n\n")
+        logf.flush()
         proc = subprocess.run(
             cmd,
             cwd=NS3_DIR,
@@ -199,36 +212,42 @@ def run_one(attack_number: int, attack_percentage: int,
     print(f"  [{label}] {status:<6}  {elapsed:5.0f}s  →  {log_path.name}")
 
     return {
-        "label":            label,
-        "attack_number":    attack_number,
+        "label":             label,
+        "attack_number":     attack_number,
         "attack_percentage": attack_percentage,
-        "returncode":       proc.returncode,
-        "elapsed_s":        elapsed,
-        "log":              log_path,
-        "ok":               ok,
+        "delay_ms":          delay_ms,
+        "returncode":        proc.returncode,
+        "elapsed_s":         elapsed,
+        "log":               log_path,
+        "ok":                ok,
     }
 
 
-def check_results(scope_attacks: list[int], scope_percs: list[int]) -> None:
+def check_results(scope_attacks: list[int], scope_percs: list[int],
+                  scope_delays: list[int | None]) -> None:
     """Print a table showing which expected result CSVs were produced."""
     print("\n── Result files ──")
     all_ok = True
-    for a in scope_attacks:
-        for p in scope_percs:
-            files = []
-            if a == 1:
-                files = [RESULTS_DIR / f"MOBIGUARD_Attack1_{p}.csv"]
-            else:
-                files = [
-                    RESULTS_DIR / f"MOBIGUARD_Attack2_{p}.csv",
-                    RESULTS_DIR / f"TAP_Attack2_{p}.csv",
-                ]
-            for f in files:
-                exists = f.exists() and f.stat().st_size > 0
-                mark   = "✓" if exists else "✗ MISSING"
-                print(f"  {mark:<10}  {f.name}")
-                if not exists:
-                    all_ok = False
+    for d in scope_delays:
+        sfx = delay_suffix(d)
+        if d is not None:
+            print(f"  delay={d}ms:")
+        for a in scope_attacks:
+            for p in scope_percs:
+                files = []
+                if a == 1:
+                    files = [RESULTS_DIR / f"MOBIGUARD_Attack1_{p}{sfx}.csv"]
+                else:
+                    files = [
+                        RESULTS_DIR / f"MOBIGUARD_Attack2_{p}{sfx}.csv",
+                        RESULTS_DIR / f"TAP_Attack2_{p}{sfx}.csv",
+                    ]
+                for f in files:
+                    exists = f.exists() and f.stat().st_size > 0
+                    mark   = "✓" if exists else "✗ MISSING"
+                    print(f"  {mark:<10}  {f.name}")
+                    if not exists:
+                        all_ok = False
     if all_ok:
         print("\n  All expected result files present.")
     else:
@@ -263,6 +282,22 @@ def main() -> None:
         help="Run only this attack percentage (default: all six).",
     )
     parser.add_argument(
+        "--delay", type=int, nargs="+", default=None, metavar="MS",
+        help=(
+            "Fix the attack delay to one or more specific values in ms, treating "
+            "delay as an independent variable. Each value becomes a separate set of "
+            "runs with result files named MOBIGUARD_Attack1_<pct>_d<X>ms.csv etc. "
+            "Omit to use the default random range (60–300 ms)."
+        ),
+    )
+    parser.add_argument(
+        "--delay-sweep", action="store_true",
+        help=(
+            f"Sweep the full default delay set {DELAY_SWEEP_MS} ms. "
+            "Shorthand for --delay " + " ".join(map(str, DELAY_SWEEP_MS)) + "."
+        ),
+    )
+    parser.add_argument(
         "--sim-time", type=int, default=40,
         help="Simulation duration in seconds (default: 40 for quick testing; use 300 for thesis runs).",
     )
@@ -290,27 +325,41 @@ def main() -> None:
     scope_attacks = [args.attack] if args.attack else [a["attack_number"] for a in ATTACKS]
     scope_percs   = [args.percentage] if args.percentage is not None else ATTACK_PERCENTAGES
 
+    if args.delay_sweep:
+        scope_delays = DELAY_SWEEP_MS
+    elif args.delay:
+        scope_delays = args.delay
+    else:
+        scope_delays = [None]   # None = random range (default behaviour)
+
     if args.clean:
-        clean_results(args.attack, args.percentage)
+        clean_results(args.attack, args.percentage, scope_delays)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # ── Build run list ───────────────────────────────────────────────────────
     runs = [
         {
-            "attack_number":    a,
+            "attack_number":     a,
             "attack_percentage": p,
-            "log": LOGS_DIR / f"A{a}_pct{p}_seed{args.seed}.log",
+            "delay_ms":          d,
+            "log": LOGS_DIR / (
+                f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}.log"
+            ),
         }
         for a in scope_attacks
         for p in scope_percs
+        for d in scope_delays
     ]
 
     total = len(runs)
+    delay_desc = (
+        f"delays={scope_delays}ms" if scope_delays != [None] else "delay=random"
+    )
     print(
         f"\n── Launching {total} run(s)  "
         f"[attacks={scope_attacks}  percentages={scope_percs}  "
-        f"simTime={args.sim_time}s  seed={args.seed}  "
+        f"{delay_desc}  simTime={args.sim_time}s  seed={args.seed}  "
         f"workers={min(args.workers, total)}] ──\n"
     )
 
@@ -327,6 +376,7 @@ def main() -> None:
                 args.sim_time,
                 args.seed,
                 args.sim_run,
+                r["delay_ms"],
                 r["log"],
             ): r
             for r in runs
@@ -346,7 +396,7 @@ def main() -> None:
             print(f"    {r['label']}  (returncode={r['returncode']})")
             print(f"      log → {r['log']}")
 
-    check_results(scope_attacks, scope_percs)
+    check_results(scope_attacks, scope_percs, scope_delays)
 
     sys.exit(0 if not failed else 1)
 

@@ -120,6 +120,9 @@ int attack_percentage = 0;
 // Set in main() after cmd.Parse() so parallel runs never collide on
 // optimization_link_lifetime_data.csv / link_lifetime_solution.csv.
 std::string g_sim_tag;
+// Suffix appended to every result CSV filename to encode the delay used,
+// e.g. "_d80ms". Set in main() after cmd.Parse() from attack_delay_ms.
+std::string g_delay_suffix;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
 double simTime = 300; // Proposal simulation table: "each run lasts 300 s"
@@ -114856,8 +114859,9 @@ void initialise_stub_attack_state()
     }
 
 
-	// Initialize TAP detector state globally for all attack variants
-	tap_reset_state(total_size);
+	// TAP is the DP baseline detector — only initialise for Attack 2 (variant 1)
+	if (active_attack_variant == 1)
+		tap_reset_state(total_size);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
@@ -114880,9 +114884,8 @@ void initialise_stub_attack_state()
             // injecting the malicious delay.
             Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
-            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, delay range [" 
-                 << attack1_min_delay_seconds * 1000.0
-                 << "-" << attack1_max_delay_seconds * 1000.0 << "]ms" << endl;
+            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, fixed delay="
+                 << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
             if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
         }
@@ -117107,7 +117110,8 @@ void write_security_metrics_csv()
 	{
 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
 		           + to_string(attack_id)
-		           + "_" + to_string(attack_percentage) + ".csv";
+		           + "_" + to_string(attack_percentage)
+		           + g_delay_suffix + ".csv";
 	}
 
 	fout.open(filename, ios::out|ios::app);
@@ -117213,7 +117217,7 @@ void fade_write_per_cycle_csv(std::string dir)
 			else if (attack_percentage <= 60)  pct = 60;
 			else if (attack_percentage <= 80)  pct = 80;
 			else                               pct = 100;
-			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + ".csv";
+			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + ".csv";
 		}
 
 		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
@@ -120291,8 +120295,6 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							selective_delay_malicious_nodes[current_hop],
 							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_min_delay_seconds,
-							attack2_max_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected,
 							current_hop,
@@ -120764,7 +120766,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
 				// Implemented in s2_detection.h: s2_detect_packet().
 				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
-				if(active_attack_variant==1)
+				// Guard: S2 is the Attack 2 (DP) detector — do not run for other variants.
+				if (active_attack_variant == 1)
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					s2_detect_packet(sender_sim_index,
@@ -120781,7 +120784,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// Implemented in s1_detection.h: s1_detect_packet().
 				// RSU index = current_hop − N_Vehicles (only fires if current_hop is an RSU).
 				// Only fires on safety-critical flows (Priority(p) = HIGH conjunction).
-				if (active_attack_variant==0 &&current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				// Guard: S1 is the Attack 1 (CP) detector — do not run for other variants.
+				if (active_attack_variant == 0 &&
+				    current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
 				{
 					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
 					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
@@ -123337,8 +123342,6 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							selective_delay_malicious_nodes[source],
 							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
 							attack_percentage,
-							attack2_min_delay_seconds,
-							attack2_max_delay_seconds,
 							present_selective_delay_cp_attack,
 							injected_cp,
 							source, packet_id, fid,
@@ -140715,21 +140718,38 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
 
-    // Attack delay range CLI overrides (default 50–150 ms per proposal §1517–1519)
-    cmd.AddValue("attack1_min_delay_ms", "Attack 1 CP: min injected delay (ms, default 50)",
-                 attack1_min_delay_seconds);
-    cmd.AddValue("attack1_max_delay_ms", "Attack 1 CP: max injected delay (ms, default 150)",
-                 attack1_max_delay_seconds);
-    cmd.AddValue("attack2_min_delay_ms", "Attack 2 DP: min injected delay (ms, default 50)",
-                 attack2_min_delay_seconds);
-    cmd.AddValue("attack2_max_delay_ms", "Attack 2 DP: max injected delay (ms, default 150)",
-                 attack2_max_delay_seconds);
+    // Single deterministic attack delay for both CP (Attack 1) and DP (Attack 2).
+    // Original implementation drew from Uniform(60–300 ms); replaced with a fixed
+    // CLI value so delay is an explicit independent variable in sweep experiments.
+    cmd.AddValue("attack_delay_ms",
+                 "Fixed attack delay in ms for both CP and DP attacks (default 80ms; "
+                 "original range was Uniform(60–300ms))",
+                 attack_delay_ms);
 
     cmd.Parse (argc, argv);
 
+    // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
+    // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
+    // and the suffix would be misleading, so g_delay_suffix stays empty for those.
+    if (attack_number == 1 || attack_number == 2)
+    {
+        g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
+
+        // Log the configured delay so every simulation log file has a clear record of what
+        // was injected. Original implementation drew from Uniform(60–300 ms) — lower bound
+        // was 10 ms above S2_DELTA_MAX=50 ms (Eq. 3.5) to guarantee S2 always fires;
+        // upper bound matched the handoff jitter window. The current fixed value should
+        // stay within that same range (60–300 ms) for experiments that replicate the
+        // original threat model, or be swept below 50 ms to probe the S2 detection boundary.
+        cout << "[ATTACK DELAY] Configured delay = " << attack_delay_ms << " ms"
+             << "  |  original random range (CP & DP): 50–300 ms (handoff jitter window)"
+             << "  |  S2 delta_max threshold = 50 ms"
+             << "  |  above S2 threshold: " << (attack_delay_ms > 50.0 ? "YES (S2 should fire)" : "NO  (S2 will NOT fire — below threshold)")
+             << endl;
+    }
+
     // Phase 1 / D1: Must be called BEFORE any ns-3 random variable is created or used.
-    // Controls GetBooleanWithProbability(), the Attack 2 dp_delay_rng, and the
-    // Attack 1 cp_delay_rng — all three are seeded by this single call.
+    // Controls GetBooleanWithProbability() and any stochastic draws in the simulation.
     ns3::RngSeedManager::SetSeed(sim_seed);
     ns3::RngSeedManager::SetRun(sim_run);
     cout << "[RNG] Seed=" << sim_seed << " Run=" << sim_run
@@ -142567,7 +142587,8 @@ if (architecture == 3 && N_Vehicles > 0)
 			// (legacy path). Using active_attack_variant means every variant —
 			// including those that never set attack_number — gets a distinct tag.
 			g_sim_tag = "_V" + std::to_string(active_attack_variant)
-			          + "_pct" + std::to_string(attack_percentage);
+			          + "_pct" + std::to_string(attack_percentage)
+			          + g_delay_suffix;
 			
 			if (routing_test) {
 			    hardcode_test_network_attackers();

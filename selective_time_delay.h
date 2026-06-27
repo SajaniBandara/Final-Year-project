@@ -13,8 +13,8 @@ extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 
 // Unified Receiver Delay Calculator
 //
-// attack2_min_delay, attack2_max_delay — per-packet variable delay bounds for
-//   Attack 2 (Data Plane). Thesis §1255: "intentional, variable lags".
+// attack_delay_ms (global, CLI: --attack_delay_ms) — single deterministic delay
+//   used by both CP and DP attacks. Default 80 ms; original range was 60–300 ms.
 // is_safety_critical — both attacks only delay HIGH-priority safety-critical
 //   packets per S1 (Eq. 3.4) and S2 (Eq. 3.5). Best-effort falls through.
 inline double calculate_unified_selective_delay(
@@ -22,8 +22,6 @@ inline double calculate_unified_selective_delay(
     bool is_malicious_dp,
     bool is_first_attempt,
     double attack_percentage,
-    double attack2_min_delay,
-    double attack2_max_delay,
     bool present_selective_delay_cp,
     double injected_delay_cp,
     uint32_t current_hop,
@@ -37,14 +35,7 @@ inline double calculate_unified_selective_delay(
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
-        // Draw a fresh variable delay per packet (thesis §1255).
-        // Static RNG seeded by RngSeedManager in main() — fully reproducible
-        // given fixed sim_seed + sim_run (Phase 1 / D1 fix).
-        static Ptr<UniformRandomVariable> dp_delay_rng = nullptr;
-        if (!dp_delay_rng) {
-            dp_delay_rng = CreateObject<UniformRandomVariable>();
-        }
-        double actual_delay = dp_delay_rng->GetValue(attack2_min_delay, attack2_max_delay);
+        double actual_delay = attack_delay_ms / 1000.0;
 
         cout << attack_tag() << " ③ "
              << (current_hop < (uint32_t)N_Vehicles ? "Malicious Vehicle" : "Malicious RSU")
@@ -52,10 +43,8 @@ inline double calculate_unified_selective_delay(
              << ") intercepting packet ID " << packet_id
              << " for flow " << flow_id
              << " [SAFETY-CRITICAL] at t=" << Simulator::Now().GetSeconds() << "s" << endl;
-        cout << attack_tag() << " ④ Buffering — injecting variable delay of "
-             << actual_delay * 1000.0 << "ms (range ["
-             << attack2_min_delay * 1000.0 << "–"
-             << attack2_max_delay * 1000.0 << "ms])" << endl;
+        cout << attack_tag() << " ④ Buffering — injecting fixed delay of "
+             << actual_delay * 1000.0 << "ms" << endl;
         cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
              << Simulator::Now().GetSeconds() + actual_delay
              << "s (delay=" << actual_delay * 1000.0 << "ms)" << endl;
@@ -88,8 +77,6 @@ inline bool schedule_unified_selective_delay_attack(
     bool is_malicious_dp,
     bool is_first_attempt,
     double attack_percentage,
-    double attack2_min_delay,
-    double attack2_max_delay,
     bool present_selective_delay_cp,
     double injected_delay_cp,
     uint32_t source,
@@ -99,18 +86,12 @@ inline bool schedule_unified_selective_delay_attack(
     Func func,
     Args... args)
 {
-
     // Attack 2: Data Plane Delay
     // Guard: is_safety_critical enforces Signature S2 / Equation 3.5.
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
-        // Reproducible variable draw (Phase 3/D4 + Phase 1/D1).
-        static Ptr<UniformRandomVariable> dp_sched_rng = nullptr;
-        if (!dp_sched_rng) {
-            dp_sched_rng = CreateObject<UniformRandomVariable>();
-        }
-        double actual_delay = dp_sched_rng->GetValue(attack2_min_delay, attack2_max_delay);
+        double actual_delay = attack_delay_ms / 1000.0;
 
         cout << attack_tag() << " ③ "
              << (source < (uint32_t)N_Vehicles ? "Malicious Vehicle" : "Malicious RSU")
@@ -118,10 +99,8 @@ inline bool schedule_unified_selective_delay_attack(
              << ") intercepting packet ID " << packet_ID
              << " for flow " << fid
              << " [SAFETY-CRITICAL] at t=" << Simulator::Now().GetSeconds() << "s" << endl;
-        cout << attack_tag() << " ④ Buffering — injecting variable delay of "
-             << actual_delay * 1000.0 << "ms (range ["
-             << attack2_min_delay * 1000.0 << "–"
-             << attack2_max_delay * 1000.0 << "ms])" << endl;
+        cout << attack_tag() << " ④ Buffering — injecting fixed delay of "
+             << actual_delay * 1000.0 << "ms" << endl;
         cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
              << Simulator::Now().GetSeconds() + actual_delay
              << "s (delay=" << actual_delay * 1000.0 << "ms)" << endl;
