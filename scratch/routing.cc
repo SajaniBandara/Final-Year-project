@@ -114703,6 +114703,10 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 bool s1_detection_active = false;    // master enable for S1 — read by s1_detection.h
 bool s2_detection_active = false;    // master enable for S2 — read by s2_detection.h
 bool tap_detection_active = false;   // master enable for TAP — read by tap_detection.h
+bool s5_detection_active = false;    // master enable for S5 (Active HF CP)  — read by s5_detection.h
+bool s6_detection_active = false;    // master enable for S6 (Active HF DP)  — read by s6_detection.h
+bool s7_detection_active = false;    // master enable for S7 (Passive HF CP) — read by s7_detection.h
+bool s8_detection_active = false;    // master enable for S8 (Passive HF DP) — read by s8_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -114822,6 +114826,10 @@ void cp_attack_tick();                                             // Change 6
 void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
+#include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
+#include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
+#include "s7_detection.h"           // S7 (Passive HF CP) MOBIGUARD detection — Signature S7, Eq. sig_s7
+#include "s8_detection.h"           // S8 (Passive HF DP) MOBIGUARD detection — Signature S8, Eq. sig_s8
 
 // Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
 // included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
@@ -120704,6 +120712,17 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         fade_eavesdrop_counter++;
                     }
                 }
+                // === SIGNATURE S7/S8 DETECTION (MOBIGUARD) ===
+                // S7: Passive HF CP — Eq. sig_s7: d/dt Vol(d',t)>ε_vol ∧ ∄FM ∧ ML-DSA-87=1 ∧ b_hop=⊥
+                // S8: Passive HF DP — Eq. sig_s8: BatchVerify=1 ∧ ML-DSA-87=1 ∧ b_hop=⊥
+                // Controlled solely by s7_detection_active / s8_detection_active.
+                {
+                    uint32_t _s78_prev = tagmodified_routing.Getprevious_senderId();
+                    uint32_t _s78_base = fid & 0xFFFFu;
+                    s7_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
+                    s8_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
+                }
+                // === END SIGNATURE S7/S8 DETECTION ===
                 // Drop it here — Vehicle B is not a legitimate hop,
                 // do NOT forward it further or mark delivery
                 return;  // exit MacRx for this packet
@@ -120739,6 +120758,18 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                             fade_eavesdrop_counter++;
                         }
                     }
+                    // === SIGNATURE S5/S6 DETECTION (MOBIGUARD) ===
+                    // S5: Active HF CP — Eq. sig_s5: d'∉P(s,d) ∧ FlowMod(CP) ∧ ML-DSA-87=0 ∧ b_hop=⊥
+                    // S6: Active HF DP — Eq. sig_s6: DUP(msg_id,W) ∧ ML-DSA-87=0 ∧ b_hop=⊥
+                    // Controlled solely by s5_detection_active / s6_detection_active.
+                    {
+                        uint32_t _s56_prev = tagmodified_routing.Getprevious_senderId();
+                        uint32_t _s56_base = fid & 0xFFFFu;
+                        s5_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        s6_log_recv(fid, packet_ID, current_hop);   // log d' for DUP check
+                        s6_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                    }
+                    // === END SIGNATURE S5/S6 DETECTION ===
                 }
             }
 
@@ -120748,6 +120779,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 				// eFADE: record inbound packet receipt at this node
 				fade_received[fid][current_hop].insert(packet_ID);
+
+				// S6: log this delivery for cross-destination duplication detection.
+				// Uses (fid & 0xFFFFu) as key so the legitimate copy (clean fid) and
+				// the eavesdropper copy (fid | 0xDEAD0000) map to the same entry.
+				s6_log_recv(fid, packet_ID, current_hop);
 
 				// === SIGNATURE S2 DETECTION (MOBIGUARD) ===
 				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
