@@ -140738,26 +140738,6 @@ int main(int argc, char *argv[])
 
     cmd.Parse (argc, argv);
 
-    // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
-    // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
-    // and the suffix would be misleading, so g_delay_suffix stays empty for those.
-    if (attack_number == 1 || attack_number == 2)
-    {
-        g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
-
-        // Log the configured delay so every simulation log file has a clear record of what
-        // was injected. Original implementation drew from Uniform(60–300 ms) — lower bound
-        // was 10 ms above S2_DELTA_MAX=50 ms (Eq. 3.5) to guarantee S2 always fires;
-        // upper bound matched the handoff jitter window. The current fixed value should
-        // stay within that same range (60–300 ms) for experiments that replicate the
-        // original threat model, or be swept below 50 ms to probe the S2 detection boundary.
-        cout << "[ATTACK DELAY] Configured delay = " << attack_delay_ms << " ms"
-             << "  |  original random range (CP & DP): 50–300 ms (handoff jitter window)"
-             << "  |  S2 delta_max threshold = 50 ms"
-             << "  |  above S2 threshold: " << (attack_delay_ms > 50.0 ? "YES (S2 should fire)" : "NO  (S2 will NOT fire — below threshold)")
-             << endl;
-    }
-
     // Phase 1 / D1: Must be called BEFORE any ns-3 random variable is created or used.
     // Controls GetBooleanWithProbability() and any stochastic draws in the simulation.
     ns3::RngSeedManager::SetSeed(sim_seed);
@@ -140784,6 +140764,27 @@ int main(int argc, char *argv[])
     {
         attack_number = attack_number_cli;
         attack_number_explicitly_set = true;
+    }
+
+    // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
+    // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
+    // and the suffix would be misleading, so g_delay_suffix stays empty for those.
+    // NOTE: this check must come AFTER attack_number_cli is transferred to attack_number above.
+    if (attack_number == 1 || attack_number == 2)
+    {
+        g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
+
+        // Log the configured delay so every simulation log file has a clear record of what
+        // was injected. Original implementation drew from Uniform(60–300 ms) — lower bound
+        // was 10 ms above S2_DELTA_MAX=50 ms (Eq. 3.5) to guarantee S2 always fires;
+        // upper bound matched the handoff jitter window. The current fixed value should
+        // stay within that same range (60–300 ms) for experiments that replicate the
+        // original threat model, or be swept below 50 ms to probe the S2 detection boundary.
+        cout << "[ATTACK DELAY] Configured delay = " << attack_delay_ms << " ms"
+             << "  |  original random range (CP & DP): 50–300 ms (handoff jitter window)"
+             << "  |  S2 delta_max threshold = 50 ms"
+             << "  |  above S2 threshold: " << (attack_delay_ms > 50.0 ? "YES (S2 should fire)" : "NO  (S2 will NOT fire — below threshold)")
+             << endl;
     }
     
     if (routing_test == true)
