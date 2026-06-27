@@ -29,17 +29,9 @@
 // Placed in a separate header for modularity.
 
 // Array that maps whether each node is currently acting as a selective delay attacker
-bool selective_delay_malicious_nodes[total_size]; 
+bool selective_delay_malicious_nodes[total_size];
 
 bool present_selective_delay_attack_nodes = false;
-// Variable delay bounds for Attack 2 (Data Plane).
-// Range spans the handoff jitter window defined in §1319–1327 (50–300 ms).
-// Lower bound 0.060 s sits 10 ms above S2_DELTA_MAX (50 ms) so every attack
-// packet strictly exceeds the detection threshold under the thesis's Eq. 3.5
-// strict '>' comparison — fixes deviation B2 (min_delay = Δ_max boundary case).
-// Thesis §1255: "intentional, variable lags" — fixes deviation D4.
-double attack2_min_delay_seconds = 0.060; // 60 ms — 10 ms above S2_DELTA_MAX
-double attack2_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1319–1327
 
 // Selective Time Delay Attack Variables (Attack 1 — Control Plane)
 // The RSU itself is never marked malicious for this attack; only the
@@ -50,15 +42,20 @@ double attack2_max_delay_seconds = 0.300; // 300 ms — full handoff jitter wind
 // unless this attack is genuinely active for the current run.
 // Per the threat model, this flag and Attack 2's
 // present_selective_delay_attack_nodes must never both be true at once.
-bool   present_selective_delay_cp_attack = false;
-// Variable delay range spanning the handoff jitter window (§1319–1327:
-// legitimate handoff latencies of 50–300 ms).
-// Fixed 80 ms constant replaced with variable range per thesis §1255
-// ("intentional, variable lags") — fixes deviation D3.
-// Note: selective_delay_cp_target_rsu removed (was dead code — reapply_cp_selective_delay
-// iterates ALL RSUs under compromised controllers, not a single hardcoded one).
-double attack1_min_delay_seconds = 0.060; // 60 ms — above S1 baseline (~2 ms + 3σ) ensuring detection
-double attack1_max_delay_seconds = 0.300; // 300 ms — full handoff jitter window per §1319–1327
+bool present_selective_delay_cp_attack = false;
+
+// Single deterministic attack delay used by both CP (Attack 1) and DP (Attack 2).
+// Pass via --attack_delay_ms=<value> at runtime to treat delay as an independent
+// variable in threshold-validation experiments.
+//
+// Both attacks use the same range per the proposal (§1319–1327): legitimate handoff
+// latencies in the SDVN are 50–300 ms (handoff jitter window at 80–120 km/h).
+// An adversary injects delays within this window so the attack is statistically
+// indistinguishable from legitimate jitter. The original implementation drew from
+// Uniform(50–300 ms) for both CP and DP. The thesis specifically uses 80 ms as the
+// DP example delay (§3817). This default (80 ms) is above S2_DELTA_MAX=50 ms, so
+// Signature S2 (Eq. 3.5) fires. Set via --attack_delay_ms at runtime.
+double attack_delay_ms = 80.0; // default 80 ms (thesis example value); set via --attack_delay_ms
 
 // Top-level attack-type selector, mirroring the supervisor's reference
 // numbering convention (attack_number 1, 2, 3, ...). This is DISTINCT from
