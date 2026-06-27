@@ -11,9 +11,9 @@ parser.add_argument('--tag', default='', help='Run tag appended to CSV filenames
 args = parser.parse_args()
 TAG = args.tag
 
-SCRATCH          = Path(os.environ.get("NS3_SCRATCH_DIR", Path(__file__).resolve().parent))
-INPUT_CSV        = SCRATCH / ("optimization_link_lifetime_data" + TAG + ".csv")
-OUTPUT_CSV       = SCRATCH / ("link_lifetime_solution"          + TAG + ".csv")
+SCRATCH          = "/home/user/ns-allinone-3.35/ns-3.35/scratch/"
+INPUT_CSV        = SCRATCH + "optimization_link_lifetime_data" + TAG + ".csv"
+OUTPUT_CSV       = SCRATCH + "link_lifetime_solution"          + TAG + ".csv"
 
 STATIONARY_LIFETIME = 100.0
 EPSILON = 1e-9
@@ -129,7 +129,6 @@ try:
                 # Unbounded or unexpected — treat as stable
                 lifetime.append(STATIONARY_LIFETIME)
 
-    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_CSV, 'w', encoding='UTF8') as csvfile:
         writer = csv.writer(csvfile, delimiter=',', quotechar='"',
                             quoting=csv.QUOTE_MINIMAL)
