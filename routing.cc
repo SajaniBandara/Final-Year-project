@@ -114737,6 +114737,7 @@ double delta_max_s2 = 0.050;
 // 50ms threshold per Equation 3.6 — half of 100ms safety bound
 bool s2_detection_active = true;
 bool tap_detection_active = true; // enable/disable TAP detection
+bool fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7); // HF variants only
 // enable/disable S2 detection
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -117171,6 +117172,7 @@ void write_security_metrics_csv()
 // ============================================================
 void fade_write_per_cycle_csv(std::string dir)
 {
+	if (!fade_detection_active) return;
 	if (!dir.empty() && dir.back() != '/' && dir.back() != '\\')
 	{
 		dir += "/";
@@ -120722,9 +120724,16 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
             {
                 if (kv.second == current_hop) { is_eavesdropper_node = true; break; }
             }
+            // Guard: only treat as a hidden duplicate if it came FROM a malicious RSU.
+            // Eavesdropper vehicles also act as legitimate relay nodes; without this
+            // check, any packet passing through them as a relay is incorrectly dropped.
+            uint32_t prev_sender_check = tagmodified_routing.Getprevious_senderId();
+            bool from_malicious_rsu = (prev_sender_check < (uint32_t)total_size &&
+                                       passive_hf_malicious_nodes[prev_sender_check]);
             if (present_passive_hf_attack &&
                 is_eavesdropper_node &&
-                current_hop != destination)
+                current_hop != destination &&
+                from_malicious_rsu)
             {
                 cout << attack_tag() << " ⑥ Vehicle B (node " << current_hop
                      << ") RECEIVED hidden duplicate of packet ID " << packet_ID
@@ -120742,7 +120751,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                 // RSU index.  A genuine hidden duplicate is therefore any packet
                 // arriving at the eavesdropper whose previous sender is a malicious
                 // node.  This is per-packet reliable and needs no global staging slot.
-                uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+                uint32_t prev_sender = prev_sender_check;
                 if (prev_sender < (uint32_t)total_size &&
                     passive_hf_malicious_nodes[prev_sender])
                 {
@@ -143038,16 +143047,19 @@ fade_csv << "FlowID,"
 // NS-3 3.35 Simulator::Schedule cannot accept lambdas — must be a plain function.
 // seed_routing_test_tables is defined as a free function below and called via pointer.
 Simulator::Schedule(Seconds(1.060), &seed_routing_test_tables);
-Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
-// Re-walk delta_at_nodes_inst 0.5s before attack fires so both eFADE's
-// monitored path and the attack's RSU target reflect current vehicle positions.
-// Uses fade_reconfigure_all_flows (not fade_configure_all_flows) so the
-// configured=true early-return in fade_configure_flow is bypassed.
-if (attack_start_time > 2.0)
-    Simulator::Schedule(Seconds(attack_start_time - 0.5), &fade_reconfigure_all_flows);
+if (fade_detection_active)
+{
+    Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
+    // Re-walk delta_at_nodes_inst 0.5s before attack fires so both eFADE's
+    // monitored path and the attack's RSU target reflect current vehicle positions.
+    // Uses fade_reconfigure_all_flows (not fade_configure_all_flows) so the
+    // configured=true early-return in fade_configure_flow is bypassed.
+    if (attack_start_time > 2.0)
+        Simulator::Schedule(Seconds(attack_start_time - 0.5), &fade_reconfigure_all_flows);
 
-// Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
-Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
+    // Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
+    Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
+}
 
 
   Simulator::Run();
@@ -143056,26 +143068,28 @@ Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 // =====================================================
 // SAVE FADE RESULTS
 // =====================================================
-for (auto &entry : fade_flow_config)
+if (fade_detection_active)
 {
-    uint32_t            flow_id = entry.first;
-    FadeDetectionResult &res    = fade_results[flow_id];
+    for (auto &entry : fade_flow_config)
+    {
+        uint32_t            flow_id = entry.first;
+        FadeDetectionResult &res    = fade_results[flow_id];
 
-    fade_csv << flow_id                << ","
-             << res.anomaly_type       << ","
-             << res.detected           << ","
-             << res.detection_time     << ","
-             << res.loc_from           << ","
-             << res.loc_to             << ","
-             << res.duplicating_node
-             << std::endl;
+        fade_csv << flow_id                << ","
+                 << res.anomaly_type       << ","
+                 << res.detected           << ","
+                 << res.detection_time     << ","
+                 << res.loc_from           << ","
+                 << res.loc_to             << ","
+                 << res.duplicating_node
+                 << std::endl;
+    }
+
+    fade_csv.close();
+
+    // ── FADE: write final metrics row for this run ───────────────────────────────
+    fade_save_metrics();
 }
-
-fade_csv.close();
-
-
-// ── FADE: write final metrics row for this run ───────────────────────────────
-fade_save_metrics();
 
 // write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
 // and is called once per data-gathering cycle — no post-simulation call needed.

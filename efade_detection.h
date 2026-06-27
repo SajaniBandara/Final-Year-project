@@ -466,13 +466,7 @@ inline void fade_detect_anomaly()
     for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
         fade_configure_flow(fid);
 
-	 if (active_attack_variant < 4 || active_attack_variant > 7)
-    {
-        fade_received.clear();
-        fade_forwarded.clear();
-        Simulator::Schedule(Seconds(FADE_EPOCH_SEC), &fade_detect_anomaly);
-        return;
-    }
+    if (!fade_detection_active) return; // safety net — scheduling already gated at startup
 
     for (auto &entry : fade_flow_config)
     {
