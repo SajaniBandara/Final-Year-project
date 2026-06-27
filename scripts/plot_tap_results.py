@@ -13,7 +13,7 @@ Usage:
     python3 plot_tap_results.py
 
 CSV files must be in:
-    /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
+    /home/user/ns-allinone-3.35/ns-3.35/results_routing/
 
 CSV column order (columns are 0-indexed):
     0:  cycle
@@ -44,7 +44,7 @@ import scipy.stats as stats
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-RESULTS_DIR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+RESULTS_DIR = "/home/user/ns-allinone-3.35/ns-3.35/results_routing"
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")

@@ -128,7 +128,7 @@ inline void export_hf_event_log()
     if (it != variant_to_label.end()) mode = it->second;
 
     const std::string base_dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/user/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string path = base_dir + "hf_events_" + mode + "_" +
                        std::to_string(attack_percentage) + ".csv";
 
