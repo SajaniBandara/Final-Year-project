@@ -70,7 +70,7 @@ If you already have a mobility trace (`mobility_urban_150.tcl`) and NS-3 is inst
 
 ```bash
 # Sync project files to NS-3 scratch, build, then run all 12 combinations
-python3 scripts/run_std_attacks.py --build
+python3 scripts/run_std_attacks.py --build --delay 80
 
 # Results appear in:
 #   ~/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack1_<pct>_d80ms.csv
@@ -140,6 +140,16 @@ python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_truck.trips.xml 
   --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 55555
 ```
 
+Verify trip counts (expected: car=100, others=25 each):
+
+```bash
+for f in trips_car.trips.xml trips_bus.trips.xml trips_lorry.trips.xml trips_van.trips.xml trips_truck.trips.xml; do
+  echo "$f: $(grep -c '<trip ' $f)"
+done
+```
+
+> `randomTrips.py` may generate N±1 trips per file due to period rounding — counts of 24 or 26 instead of 25 are acceptable.
+
 ### Step 4.4 — Set maxSpeed and run SUMO
 
 ```bash
@@ -148,8 +158,9 @@ for f in trips_car.trips.xml trips_bus.trips.xml trips_lorry.trips.xml trips_van
   sed -i '/<vType /s/\/>/maxSpeed="41.67"\/>/' "$f"
 done
 
-# Verify 200 vehicles inserted, zero stuck, zero teleports
-sumo -c osm.sumocfg 2>&1 | tee sumo_run.log
+# Run SUMO, emit FCD (Floating Car Data) output needed by traceExporter (step 4.5)
+# and verify 200 vehicles inserted, zero stuck, zero teleports
+sumo -c osm.sumocfg --fcd-output fcd_output.xml 2>&1 | tee sumo_run.log
 grep "Inserted\|Waiting\|Teleporting" sumo_run.log
 ```
 
@@ -430,7 +441,7 @@ total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4
 logs/A<attack>_pct<percentage>_d<delay>ms_seed<seed>.log
 ```
 
-Each log begins with:
+Each log includes this line early in NS-3 startup output:
 ```
 [ATTACK DELAY] Configured delay = 80 ms  |  original random range (CP & DP): 50–300 ms  |  S2 delta_max threshold = 50 ms  |  above S2 threshold: YES (S2 should fire)
 ```
@@ -472,7 +483,7 @@ Pass any flag as `--flag=value` inside `./waf --run "scratch/routing ..."`.
 
 | Flag | Default | Description |
 |---|---|---|
-| `attack_number` | 1 | Primary attack selector: 1=CP Delay, 2=DP Delay, 3=TCAM-CP, 4=TCAM-DP, 5–8=HF variants |
+| `attack_number` | 1 | Primary attack selector: 1=CP Delay, 2=DP Delay, 3=TCAM-CP, 4=TCAM-DP, 5–8=HF variants. The C++ initializer is 1, but the dispatcher only fires when `--attack_number` is **explicitly passed**; without it, `active_attack_variant=-1` (baseline) governs |
 | `active_attack_variant` | -1 | Legacy direct selector (-1=baseline, 0–7=attack variants). Superseded by `attack_number` for new runs |
 | `attack_percentage` | 0 | Attacker proportion 0–100%. 0=baseline (no attack) |
 | `attack_delay_ms` | 80.0 | Fixed attack delay in ms for both CP and DP attacks. Original range was Uniform(50–300 ms). Only meaningful for `attack_number` 1 or 2 |
@@ -583,10 +594,10 @@ If the delay is below 50 ms, either raise `--attack_delay_ms` or this is an inte
 
 ### Old result CSVs mixing with new
 
-Always clean before a fresh sweep:
+Always clean before a fresh sweep. Pass `--delay 80` so `--clean` matches the `_d80ms` suffix in existing filenames:
 
 ```bash
-python3 scripts/run_std_attacks.py --clean --build
+python3 scripts/run_std_attacks.py --clean --build --delay 80
 ```
 
 Or manually:
