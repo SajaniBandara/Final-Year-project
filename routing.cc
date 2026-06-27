@@ -114737,7 +114737,7 @@ double delta_max_s2 = 0.050;
 // 50ms threshold per Equation 3.6 — half of 100ms safety bound
 bool s2_detection_active = true;
 bool tap_detection_active = true; // enable/disable TAP detection
-bool fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7); // HF variants only
+bool fade_detection_active = true; // enable/disable FADE detection
 // enable/disable S2 detection
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -143047,19 +143047,16 @@ fade_csv << "FlowID,"
 // NS-3 3.35 Simulator::Schedule cannot accept lambdas — must be a plain function.
 // seed_routing_test_tables is defined as a free function below and called via pointer.
 Simulator::Schedule(Seconds(1.060), &seed_routing_test_tables);
-if (fade_detection_active)
-{
-    Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
-    // Re-walk delta_at_nodes_inst 0.5s before attack fires so both eFADE's
-    // monitored path and the attack's RSU target reflect current vehicle positions.
-    // Uses fade_reconfigure_all_flows (not fade_configure_all_flows) so the
-    // configured=true early-return in fade_configure_flow is bypassed.
-    if (attack_start_time > 2.0)
-        Simulator::Schedule(Seconds(attack_start_time - 0.5), &fade_reconfigure_all_flows);
+Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
+// Re-walk delta_at_nodes_inst 0.5s before attack fires so both eFADE's
+// monitored path and the attack's RSU target reflect current vehicle positions.
+// Uses fade_reconfigure_all_flows (not fade_configure_all_flows) so the
+// configured=true early-return in fade_configure_flow is bypassed.
+if (attack_start_time > 2.0)
+    Simulator::Schedule(Seconds(attack_start_time - 0.5), &fade_reconfigure_all_flows);
 
-    // Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
-    Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
-}
+// Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
+Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 
 
   Simulator::Run();
