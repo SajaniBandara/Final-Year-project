@@ -86,10 +86,19 @@ FIXED_PARAMS = {
 
 def sync_files() -> None:
     print("── Syncing project files to NS-3 scratch ──")
+    routing_dir = SCRATCH_DIR / "routing"
+    routing_dir.mkdir(parents=True, exist_ok=True)
     for src in sorted((PROJECT_DIR / "scratch").iterdir()):
-        if src.is_file():
-            shutil.copy2(src, SCRATCH_DIR / src.name)
-            print(f"  copied  {src.name}")
+        if not src.is_file():
+            continue
+        if src.name == "routing.cc":
+            # Must go into scratch/routing/ so waf builds it as the 'routing' program.
+            # Placing it at scratch/routing.cc would create a second conflicting target.
+            dest = routing_dir / "routing.cc"
+        else:
+            dest = SCRATCH_DIR / src.name
+        shutil.copy2(src, dest)
+        print(f"  copied  {src.name}  →  {dest.relative_to(SCRATCH_DIR.parent)}")
 
 
 def build_simulation() -> bool:
