@@ -25,29 +25,30 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 
 ```
 Final-Year-project/
-├── routing.cc                  # Main NS-3 simulation — routing, attacks, SUMO integration
-├── attack_variables.h          # Global attack state (delay value, malicious node arrays)
-├── attack_declaration.h        # Attack arming — declare_attack_states(), declare_attackers()
-├── selective_time_delay.h      # Delay injection logic for CP (Attack 1) and DP (Attack 2)
-├── s1_detection.h              # MOBIGUARD Signature S1 — mobility-adjusted EWMA detector
-├── s2_detection.h              # MOBIGUARD Signature S2 — hop-delay threshold detector
-├── tap_detection.h             # TAP baseline detector (Attack 2 only)
-├── tcam_detection.h            # MOBIGUARD Signatures S3/S4 — TCAM exhaustion detector
-├── tcam_attack_helper.h        # TCAM attack injection helpers (Attacks 3 & 4)
-├── efade_detection.h           # eFADE detector (Attacks 5–8, Hidden Forwarding)
-├── hf_attack_helper.h          # Hidden Forwarding attack helpers (Attacks 5–8)
-├── optimization.py             # Link-lifetime route optimization helper
-├── optimization_lifetime.py    # Per-run lifetime optimization (reads tagged CSV from NS-3)
+├── scratch/                         # NS-3 simulation payload — copy this folder to ns-3.35/scratch/
+│   ├── routing.cc                   # Main NS-3 simulation — routing, attacks, SUMO integration
+│   ├── attack_variables.h           # Global attack state (delay value, malicious node arrays)
+│   ├── attack_declaration.h         # Attack arming — declare_attack_states(), declare_attackers()
+│   ├── selective_time_delay.h       # Delay injection logic for CP (Attack 1) and DP (Attack 2)
+│   ├── s1_detection.h               # MOBIGUARD Signature S1 — mobility-adjusted EWMA detector
+│   ├── s2_detection.h               # MOBIGUARD Signature S2 — hop-delay threshold detector
+│   ├── tap_detection.h              # TAP baseline detector (Attack 2 only)
+│   ├── tcam_detection.h             # MOBIGUARD Signatures S3/S4 — TCAM exhaustion detector
+│   ├── tcam_attack_helper.h         # TCAM attack injection helpers (Attacks 3 & 4)
+│   ├── efade_detection.h            # eFADE detector (Attacks 5–8, Hidden Forwarding)
+│   ├── hf_attack_helper.h           # Hidden Forwarding attack helpers (Attacks 5–8)
+│   ├── optimization.py              # Link-lifetime route optimization helper
+│   └── optimization_lifetime.py     # Per-run lifetime optimization (reads tagged CSV from NS-3)
 ├── scripts/
-│   ├── run_std_attacks.py      # Parallel experiment launcher — main entry point
-│   └── run_attack2_sweep.sh    # Legacy shell sweep (superseded by run_std_attacks.py)
-├── mobility/                   # SUMO-exported NS-2 mobility traces (.tcl files)
-├── sumo_sim/                   # SUMO scenario folders (net, trips, sumocfg)
-├── logs/                       # Per-run simulation logs (auto-created by launcher)
+│   ├── run_std_attacks.py           # Parallel experiment launcher — main entry point
+│   └── run_attack2_sweep.sh         # Legacy shell sweep (superseded by run_std_attacks.py)
+├── mobility/                        # SUMO-exported NS-2 mobility traces (.tcl files)
+├── sumo_sim/                        # SUMO scenario folders (net, trips, sumocfg)
+├── logs/                            # Per-run simulation logs (auto-created by launcher)
 ├── docs/
-│   └── main (10).tex           # Thesis document
+│   └── main (10).tex                # Thesis document
 └── output/
-    └── tap/                    # TAP result plots
+    └── tap/                         # TAP result plots
 ```
 
 ---
@@ -198,26 +199,10 @@ python3 scripts/run_std_attacks.py --build
 ```
 
 What this does internally:
-1. Copies all source files from the project directory to `~/ns-allinone-3.35/ns-3.35/scratch/`
+1. Copies all files from `scratch/` in the project repo to `~/ns-allinone-3.35/ns-3.35/scratch/`
 2. Runs `./waf build`
 
-**Files synced to scratch on every `--build`:**
-
-| File | Role |
-|---|---|
-| `routing.cc` | Main simulation |
-| `attack_declaration.h` | Attack arming |
-| `attack_variables.h` | Attack state globals |
-| `selective_time_delay.h` | Delay injection |
-| `s1_detection.h` | Signature S1 detector |
-| `s2_detection.h` | Signature S2 detector |
-| `tap_detection.h` | TAP baseline detector |
-| `tcam_detection.h` | Signatures S3/S4 detector |
-| `tcam_attack_helper.h` | TCAM attack helpers |
-| `efade_detection.h` | eFADE detector |
-| `hf_attack_helper.h` | Hidden Forwarding helpers |
-| `optimization_lifetime.py` | Optimization script (per-run tagged) |
-| `optimization.py` | Optimization helper |
+Every file inside `scratch/` is synced automatically — no explicit list to maintain.
 
 To build manually without the launcher:
 
