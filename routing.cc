@@ -131,24 +131,6 @@ uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
 uint32_t large=50000;
 
-static std::string lifetime_algorithm_tag()
-{
-	switch(routing_algorithm)
-	{
-		case(0): return "_ECMP";
-		case(1): return "_RR";
-		case(2): return "_QRSDN";
-		case(3): return "_RLMR";
-		case(5): return "_DCMR";
-		default: return "";
-	}
-}
-
-static std::string lifetime_csv_tag()
-{
-	return lifetime_algorithm_tag() + g_sim_tag;
-}
-
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
 double data_transmission_frequency = 1.0;
@@ -112961,15 +112943,20 @@ void write_csv()
 
 void write_csv_status_lifetime()
 {
-	static const std::string SCR = "scratch/";
-	std::string ll_data = SCR + "optimization_link_lifetime_data" + lifetime_csv_tag() + ".csv";
+	static const std::string SCR = "/home/user/ns-allinone-3.35/ns-3.35/scratch/";
+	std::string ll_data;
+	switch(routing_algorithm)
+	{
+		case(0): ll_data = SCR + "optimization_link_lifetime_data_ECMP"  + g_sim_tag + ".csv"; break;
+		case(1): ll_data = SCR + "optimization_link_lifetime_data_RR"    + g_sim_tag + ".csv"; break;
+		case(2): ll_data = SCR + "optimization_link_lifetime_data_QRSDN" + g_sim_tag + ".csv"; break;
+		case(3): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		case(5): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		default: ll_data = SCR + "optimization_link_lifetime_data"        + g_sim_tag + ".csv"; break;
+	}
 	fstream fout;
 	fout.open(ll_data, ios::out|ios::trunc);
-	if (!fout.is_open())
-	{
-		cout << "ERROR: could not open link lifetime input CSV " << ll_data << endl;
-		return;
-	}
+
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -114713,9 +114700,9 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 //   s1_detect_packet()  (s1_detection.h) — hop-delay = t_recv − t_claimed
 //   s2_detect_packet()  (s2_detection.h) — hop-delay = t_recv − t_claimed
 //   tap_run_detection() (tap_detection.h) — PPAT = t_claimed
-bool s1_detection_active = false;     // master enable for S1 — read by s1_detection.h
-bool s2_detection_active = false;     // master enable for S2 — read by s2_detection.h
-bool tap_detection_active = false;    // master enable for TAP — read by tap_detection.h
+bool s1_detection_active = true;     // master enable for S1 — read by s1_detection.h
+bool s2_detection_active = true;     // master enable for S2 — read by s2_detection.h
+bool tap_detection_active = true;    // master enable for TAP — read by tap_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -117774,14 +117761,18 @@ void optimize_subsequent()
 void optimize_link_lifetime()
 {
 	//generate optimization solution for predicting link lifetimes
-	std::string filename = "scratch/optimization_lifetime.py";
-	std::string command = "python3 " + filename + " --tag=" + lifetime_csv_tag();
-	int status = system(command.c_str());
-	if (status != 0)
+	std::string filename;
+	switch(routing_algorithm)
 	{
-		cout << "ERROR: link lifetime optimizer failed with status " << status
-		     << " command: " << command << endl;
+		case(0): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";  break;
+		case(1): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";    break;
+		case(2): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py"; break;
+		case(3): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		case(5): filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		default: filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";        break;
 	}
+	std::string command = "python3 " + filename + " --tag=" + g_sim_tag;
+	system(command.c_str());
 }
 
 void optimize_first_time()
@@ -117939,15 +117930,19 @@ void convert_link_lifetimes()
 void read_lifetime_from_csv()
 {
     cout<<"reading lifetime from csv at"<<Now().GetSeconds()<<endl;
-    static const std::string SCR = "scratch/";
-    std::string ll_sol = SCR + "link_lifetime_solution" + lifetime_csv_tag() + ".csv";
+    static const std::string SCR = "/home/user/ns-allinone-3.35/ns-3.35/scratch/";
+    std::string ll_sol;
+    switch(routing_algorithm)
+    {
+    	case(0): ll_sol = SCR + "link_lifetime_solution_ECMP"  + g_sim_tag + ".csv"; break;
+    	case(1): ll_sol = SCR + "link_lifetime_solution_RR"    + g_sim_tag + ".csv"; break;
+    	case(2): ll_sol = SCR + "link_lifetime_solution_QRSDN" + g_sim_tag + ".csv"; break;
+    	case(3): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	case(5): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	default: ll_sol = SCR + "link_lifetime_solution"        + g_sim_tag + ".csv"; break;
+    }
     fstream fin;
     fin.open(ll_sol, ios::in);
-    if (!fin.is_open())
-    {
-        cout << "ERROR: could not open link lifetime solution CSV " << ll_sol << endl;
-        return;
-    }
     
     vector<string> row;
     string line;

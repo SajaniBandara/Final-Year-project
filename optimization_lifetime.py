@@ -2,8 +2,6 @@ import argparse
 import gurobipy as gp
 from gurobipy import GRB
 import csv
-import os
-from pathlib import Path
 import time
 
 parser = argparse.ArgumentParser()
