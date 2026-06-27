@@ -87,24 +87,6 @@ FIXED_PARAMS = {
     "architecture":      3,
 }
 
-# Headers to copy from PROJECT_DIR to SCRATCH_DIR before a build.
-SYNC_FILES = [
-    "routing.cc",
-    "attack_declaration.h",
-    "attack_variables.h",
-    "selective_time_delay.h",
-    "tap_detection.h",
-    "s1_detection.h",
-    "s2_detection.h",
-    "tcam_detection.h",
-    "tcam_attack_helper.h",
-    "efade_detection.h",
-    "hf_attack_helper.h",
-    "optimization_lifetime.py",
-    "optimization.py",
-]
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -115,16 +97,12 @@ def delay_suffix(delay_ms: int | None) -> str:
 
 
 def sync_files() -> None:
-    """Copy the latest project headers and routing.cc into NS-3 scratch."""
+    """Copy all files from scratch/ into NS-3 scratch."""
     print("── Syncing project files to NS-3 scratch ──")
-    for name in SYNC_FILES:
-        src = PROJECT_DIR / "scratch" / name
-        dst = SCRATCH_DIR / name
-        if not src.exists():
-            print(f"  WARNING: {src} not found — skipping")
-            continue
-        shutil.copy2(src, dst)
-        print(f"  copied  {name}")
+    for src in sorted((PROJECT_DIR / "scratch").iterdir()):
+        if src.is_file():
+            shutil.copy2(src, SCRATCH_DIR / src.name)
+            print(f"  copied  {src.name}")
 
 
 def build_simulation() -> bool:
