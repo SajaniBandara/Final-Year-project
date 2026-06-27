@@ -1,3 +1,7 @@
+# Log Files
+logs/
+*.log
+
 # Simulation Output Files
 routing.xml
 

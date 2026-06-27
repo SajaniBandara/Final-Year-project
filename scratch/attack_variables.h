@@ -9,20 +9,29 @@
 
    This means Attack 1 (control plane) and Attack 2 (data plane) must remain
    mutually exclusive in every simulation run. Concretely:
-   1. RSU must never be marked malicious for Attack 1 (only the controller is compromised).
-   2. Attack 1's and Attack 2's master switches must never both be true at once.
-   3. Hard stop: if you find yourself needing to mark an RSU malicious for Attack 1,
-      that is a sign you are violating the assumption!
+
+   1. selective_delay_malicious_nodes[] (the runtime DP attack flag) must
+      NEVER be set true for an RSU in Attack 1. The RSU is not an attacker —
+      it is a benign node obeying a poisoned FlowMod installed by a
+      compromised controller.
+
+   2. is_malicious_node[0][rsu_node_id] (the ground-truth metrics array) IS
+      intentionally set true for RSUs whose assigned controller is compromised
+      (in declare_attackers()). This is correct — those RSUs are the affected
+      nodes that detectors must identify, even though the RSU itself is unaware.
+      Do NOT confuse this with selective_delay_malicious_nodes[].
+
+   3. Attack 1's and Attack 2's master switches (present_selective_delay_cp_attack
+      and present_selective_delay_attack_nodes) must never both be true at once.
    ========================================================================= */
 
 // Selective Time Delay Attack Variables (Attack 2)
 // Placed in a separate header for modularity.
 
 // Array that maps whether each node is currently acting as a selective delay attacker
-bool selective_delay_malicious_nodes[total_size]; 
+bool selective_delay_malicious_nodes[total_size];
 
 bool present_selective_delay_attack_nodes = false;
-double attack2_delay_seconds = 0.080; // 80ms injected delay
 
 // Selective Time Delay Attack Variables (Attack 1 — Control Plane)
 // The RSU itself is never marked malicious for this attack; only the
@@ -33,10 +42,20 @@ double attack2_delay_seconds = 0.080; // 80ms injected delay
 // unless this attack is genuinely active for the current run.
 // Per the threat model, this flag and Attack 2's
 // present_selective_delay_attack_nodes must never both be true at once.
-bool   present_selective_delay_cp_attack = false;
-double attack1_min_delay_seconds = 0.080;
-double attack1_max_delay_seconds = 0.080;
-uint32_t selective_delay_cp_target_rsu = 2; // which RSU's table the controller poisons
+bool present_selective_delay_cp_attack = false;
+
+// Single deterministic attack delay used by both CP (Attack 1) and DP (Attack 2).
+// Pass via --attack_delay_ms=<value> at runtime to treat delay as an independent
+// variable in threshold-validation experiments.
+//
+// Both attacks use the same range per the proposal (§1319–1327): legitimate handoff
+// latencies in the SDVN are 50–300 ms (handoff jitter window at 80–120 km/h).
+// An adversary injects delays within this window so the attack is statistically
+// indistinguishable from legitimate jitter. The original implementation drew from
+// Uniform(50–300 ms) for both CP and DP. The thesis specifically uses 80 ms as the
+// DP example delay (§3817). This default (80 ms) is above S2_DELTA_MAX=50 ms, so
+// Signature S2 (Eq. 3.5) fires. Set via --attack_delay_ms at runtime.
+double attack_delay_ms = 80.0; // default 80 ms (thesis example value); set via --attack_delay_ms
 
 // Top-level attack-type selector, mirroring the supervisor's reference
 // numbering convention (attack_number 1, 2, 3, ...). This is DISTINCT from

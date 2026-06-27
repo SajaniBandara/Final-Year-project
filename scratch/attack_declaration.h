@@ -60,6 +60,15 @@ extern double attack_start_time;
 // initialise_stub_attack_state()'s job in routing.cc.
 inline void declare_attack_states()
 {
+    // IMPORTANT: when attack_number_explicitly_set is false (legacy path where
+    // --active_attack_variant is passed directly without --attack_number),
+    // declare_attack_states() returns early and active_attack_variant is used
+    // as-is. The declare_attackers() fallback below re-derives present_* flags
+    // from active_attack_variant for this case. This path exists for backward
+    // compatibility with scripts that predate the attack_number CLI parameter.
+    // New experiment runs should always pass --attack_number; direct use of
+    // --active_attack_variant without --attack_number bypasses the mutual-
+    // exclusion reset and is not recommended.
     if (!attack_number_explicitly_set)
     {
         cout << "[declare_attack_states] attack_number not explicitly set — "
@@ -171,14 +180,17 @@ inline void declare_attackers()
         controller_compromised[c] = false; // reset every run
     }
 
-    if (present_selective_delay_cp_attack == true && N_Controllers > 1)
+    if (present_selective_delay_cp_attack == true)
     {
-        uint32_t max_compromisable = N_Controllers - 1;
+        // At p=100% the thesis (§3503) specifies all controllers are compromised.
+        // Below 100%, always leave at least one controller honest.
+        uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers
+                                                                 : N_Controllers - 1;
         uint32_t step;
         if (attack_percentage < 10)       step = 0;
-        else if (attack_percentage < 35)  step = 1;
-        else if (attack_percentage < 67)  step = 2;
-        else                                step = 3;
+        else if (attack_percentage < 33)  step = 1;
+        else if (attack_percentage < 66)  step = 2;
+        else                              step = 3;
 
         uint32_t num_to_compromise = (step * max_compromisable) / 3;
         if (num_to_compromise > max_compromisable) num_to_compromise = max_compromisable;
@@ -192,6 +204,29 @@ inline void declare_attackers()
             cout << attack_tag() << " [ATTACK1] declare_attackers(): attack_percentage="
                  << attack_percentage << "% -> " << num_to_compromise << " of "
                  << N_Controllers << " controllers compromised." << endl;
+        }
+    }
+
+    // Ground truth: mark all RSUs whose owning controller is compromised as
+    // Attack 1 (variant index 0) malicious actors, and record onset at
+    // attack_start_time. This is the SINGLE authoritative write for variant 0 —
+    // do NOT call record_attack_onset() again elsewhere for variant 0, as doing
+    // so would overwrite t_onset[] with a later timestamp and break the
+    // mitigation-latency metric Lmit = t_quarantine - t_onset (proposal metrics
+    // section). Fixes deviation D6 (is_malicious_node[0] ground truth not set
+    // in SUMO path) and deviation D2 (t_onset[] overwritten every second).
+    if (present_selective_delay_cp_attack) {
+        for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++) {
+            uint32_t ctrl = rsu_controller_assignment[r];
+            if (controller_compromised[ctrl]) {
+                uint32_t rsu_node_id = N_Vehicles + r;
+                is_malicious_node[0][rsu_node_id] = true;
+                t_onset[rsu_node_id] = attack_start_time;
+                cout << attack_tag()
+                     << " [ATTACK1] Ground truth: RSU node " << rsu_node_id
+                     << " (rsu index " << r << ") marked malicious via compromised controller "
+                     << ctrl << ", onset=" << attack_start_time << "s" << endl;
+            }
         }
     }
 }
@@ -210,7 +245,6 @@ inline void reapply_cp_selective_delay()
     for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
     {
         uint32_t owning_controller = rsu_controller_assignment[r];
-        cout << "[DEBUG] reapply_cp_selective_delay r=" << r << " owning_ctrl=" << owning_controller << " compromised=" << controller_compromised[owning_controller] << endl;
         if (!controller_compromised[owning_controller]) continue;
         // already used in routing.cc's own rsu_controller_assignment[]
         // call sites (e.g. RSU_dataunicast_alone,
@@ -225,12 +259,17 @@ inline void reapply_cp_selective_delay()
             uint32_t current_next_hop = find_next_hop(src, dst, rsu_node_id);
             if (current_next_hop == large) continue;
 
-            double variable_delay = attack1_min_delay_seconds +
-                ((double)(rand() % 1000) / 1000.0) *
-                (attack1_max_delay_seconds - attack1_min_delay_seconds);
+            // Use the single CLI-controlled delay value (--attack_delay_ms).
+            // Original implementation drew from Uniform(60 ms, 300 ms); replaced
+            // with a fixed value so delay is an explicit independent variable.
+            double variable_delay = attack_delay_ms / 1000.0;
 
             update_route_malicious(rsu_node_id, dst, current_next_hop, variable_delay);
-            record_attack_onset(0, rsu_node_id); // Ground truth marker for metrics
+            // NOTE: record_attack_onset(0, rsu_node_id) is intentionally NOT called
+            // here. Ground-truth onset recording for variant 0 is performed once in
+            // declare_attackers() at attack_start_time. Calling it here would
+            // overwrite t_onset[] on every 1-second tick, breaking the mitigation-
+            // latency metric Lmit = t_quarantine - t_onset (deviation D2 fix).
         }
     }
 

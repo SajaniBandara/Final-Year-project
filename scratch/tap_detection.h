@@ -110,7 +110,6 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 inline void calculate_tap_security_metrics()
 {
 	if (!tap_detection_active) return;
-	// if (Simulator::Now().GetSeconds() < attack_start_time) return;
 
 	tap_TP = tap_FP = tap_TN = tap_FN = 0;
 	for (int n = 0; n < total_size; n++)
@@ -150,8 +149,6 @@ inline void calculate_tap_security_metrics()
 	if (tap_current_mitigation_ms <= 0.0 && tap_TP > 0)
 		tap_current_mitigation_ms = 50.0;
 	tap_previous_cumulative_mit += tap_current_mitigation_ms;
-	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
-	               (data_gathering_cycle_number - 1.0) : 1.0;
 	cout << "[TAP][SECURITY] Variant 1 | MCC=" << tap_current_MCC
 		 << " DR=" << (tap_current_DR * 100.0) << "% FPR=" << (tap_current_FPR * 100.0) << "% TP=" << tap_TP
 		 << " FP=" << tap_FP << " TN=" << tap_TN << " FN=" << tap_FN << endl;
@@ -161,13 +158,13 @@ inline void calculate_tap_security_metrics()
 // Function 5: write_tap_csv
 inline void write_tap_csv()
 {
-	// if (Simulator::Now().GetSeconds() < attack_start_time) return;
+	if (!tap_detection_active) return;
 
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;
 	string filename;
 	int attack_num = active_attack_variant + 1;
-	filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + ".csv";
+	filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + g_delay_suffix + ".csv";
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
@@ -203,7 +200,8 @@ inline void tap_reset_state(int total_size_val)
 	tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
 	tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
 	tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
-	cout << "[TAP] All TAP state reset and ready for simulation run." << endl;
+	if (tap_detection_active)
+		cout << "[TAP] All TAP state reset and ready for simulation run." << endl;
 }
 
 // Function 7: tap_process_packet
