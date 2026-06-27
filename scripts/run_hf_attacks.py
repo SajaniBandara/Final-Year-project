@@ -105,7 +105,7 @@ SYNC_FILES = [
 def sync_files() -> None:
     print("── Syncing project files to NS-3 scratch ──")
     for name in SYNC_FILES:
-        src = PROJECT_DIR / name
+        src = PROJECT_DIR / "scratch" / name
         dst = SCRATCH_DIR / name
         if not src.exists():
             print(f"  WARNING: {src} not found — skipping")
