@@ -419,13 +419,15 @@ inline void fade_save_metrics()
 
     // Append row to fade_metrics.csv (append so repeated runs accumulate)
     // Check if file exists BEFORE opening — once ofstream opens it, it always exists.
+    std::system("mkdir -p results_routing");
+    std::string fade_metrics_path = "results_routing/fade_metrics" + g_sim_tag + ".csv";
     bool write_header = false;
     {
-        std::ifstream check("fade_metrics.csv");
+        std::ifstream check(fade_metrics_path);
         write_header = !check.good();
     }
     std::ofstream mfile;
-    mfile.open("fade_metrics.csv", std::ios::out | std::ios::app);
+    mfile.open(fade_metrics_path, std::ios::out | std::ios::app);
     if (write_header)
         mfile << "attack_variant,attack_percentage,"
               << "total_flows,pdr,pir,tp,fp,tn,fn,mcc\n";

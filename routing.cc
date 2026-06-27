@@ -112956,6 +112956,7 @@ void write_csv_status_lifetime()
 	}
 	fstream fout;
 	fout.open(ll_data, ios::out|ios::trunc);
+
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -123102,8 +123103,8 @@ void initialize_flow_counters()
 	{
 		for (auto const& kv : passive_hf_rsu_to_eavesdropper)
 		{
-			uint32_t rsu_node   = kv.first;
-			uint32_t eaves_node = kv.second;
+			uint32_t rsu_node = kv.first;
+      		(void)kv.second; // eaves_node unused — DP trigger uses malicious-node flag
 			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
 			{
 				// DP trigger uses malicious-node flag — no delta write needed here.
@@ -142235,7 +142236,8 @@ if (architecture == 3 && N_Vehicles > 0)
 
     // Controller's CSMA IP (interface 1 = CSMA, loopback is 0)
     Ptr<Ipv4> ctrl_ipv4 = controller_Node.Get(0)->GetObject<Ipv4>();
-    Ipv4Address ctrl_csma_ip = ctrl_ipv4->GetAddress(1, 0).GetLocal();
+	cout << "[DEBUG] Controller 0 CSMA IP: "
+         << ctrl_ipv4->GetAddress(1, 0).GetLocal() << endl;
 
     // 1. Vehicles: default route via RSU's WiFi IP (interface 1)
     for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++)
@@ -143033,7 +143035,8 @@ if (architecture == 3 && N_Vehicles > 0)
 // =====================================================
 // FADE CSV INITIALIZATION
 // =====================================================
-fade_csv.open("fade_results.csv");
+std::system("mkdir -p results_routing");
+fade_csv.open("results_routing/fade_results" + g_sim_tag + ".csv");
 fade_csv << "FlowID,"
          << "AnomalyType,"
          << "Detected,"
@@ -143109,4 +143112,3 @@ fade_save_metrics();
   //apb.SetFinish();
   return 0;  
 }
-
