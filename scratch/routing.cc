@@ -117402,6 +117402,10 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
 	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 
+	// §7.5 — LSTM feature accumulator reset + volume window tick (eq:lstm_features)
+	Simulator::Schedule(Seconds(0.000130), crypto_reset_lstm_accumulators);
+	Simulator::Schedule(Seconds(0.000131), volume_tick);
+
 	// --- MOBIGUARD S1/S2 detection metrics ---
 	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
 	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
@@ -117772,6 +117776,20 @@ void transmit_solution()
 
 void transmit_delta_values()
 {
+	// §7.4 — FlowMod pre-installation audit: log → endorse → commit (eq:rsu_endorsement)
+	{
+		uint32_t fid = 0;
+		for (uint32_t rsu = N_Vehicles; rsu < (uint32_t)(N_Vehicles + N_RSUs); rsu++) {
+			uint8_t params[4]; memcpy(params, &rsu, 4);
+			flowmod_endorse(rsu, fid, params, 4);
+		}
+		FlowModEndorsement& e = g_flowmod_endorsements[fid];
+		bc_log_flowmod(e, N_Vehicles);
+		if (!bc_commit_flowmod(e) && N_RSUs > 0) {
+			ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
+		}
+	}
+
 	//read_csv();
 	//After getting the solution, unicast the solution to the nodes.
 	for (uint32_t u=0; u<(uint32_t)var; u++)
@@ -120823,6 +120841,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         s5_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
                         s6_log_recv(fid, packet_ID, current_hop);   // log d' for DUP check
                         s6_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        // §7.4 — Controller trust penalty for unauthorized FlowMod (eq:ctrl_trust)
+                        if (_s56_prev < (uint32_t)total_size && _s56_prev >= N_Vehicles) {
+                            ctrl_trust_update_negative(rsu_controller_assignment[_s56_prev]);
+                        }
                     }
                     // === END SIGNATURE S5/S6 DETECTION ===
                 }
@@ -120862,6 +120884,23 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					stark_update_meta(prev_sender, packet_ID, sig_ok, hop_ok);
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
+
+				// §7.6 — Witness log + duplication alert + msg-id cache + volume tracking
+				{
+					uint8_t pkt_hash[64] = {};
+					uint32_t buf3[3] = {fid, packet_ID, current_hop};
+					sha3_512_hash(reinterpret_cast<const uint8_t*>(buf3), 12, pkt_hash);
+					uint32_t _w_prev = tagmodified_routing.Getprevious_senderId();
+					witness_log_packet(current_hop, pkt_hash, destination,
+					                   ns3::Simulator::Now().GetSeconds());
+					if (witness_check_duplication(current_hop, pkt_hash, destination)) {
+						witness_submit_duplication_alert(current_hop, _w_prev,
+						                                 packet_ID, destination, current_hop);
+					}
+					check_msg_duplication(pkt_hash, destination);
+					volume_record_delivery(destination);
+				}
+				// === END §7.6 WITNESS / VOLUME ===
 
 				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
 				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
