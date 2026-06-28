@@ -114739,7 +114739,7 @@ bool s5_detection_active = false;    // master enable for S5 (Active HF CP)  —
 bool s6_detection_active = false;    // master enable for S6 (Active HF DP)  — read by s6_detection.h
 bool s7_detection_active = false;    // master enable for S7 (Passive HF CP) — read by s7_detection.h
 bool s8_detection_active = false;    // master enable for S8 (Passive HF DP) — read by s8_detection.h
-bool fade_detection_active = true;   // master enable for FADE — read by efade_detection.h
+bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
