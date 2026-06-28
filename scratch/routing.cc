@@ -120370,6 +120370,9 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// timestamp below is.
 						record_claimed_forward_timestamp(current_hop, packet_id);
 
+						// §7.2 — ML-DSA-87 sign outgoing packet
+						mldsa87_sign(current_hop, packet_id, hop, flow_id);
+
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
@@ -120850,6 +120853,15 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					                 fid);
 				}
 				// === END SIGNATURE S2 DETECTION ===
+
+				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
+				{
+					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+					bool sig_ok = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					bool hop_ok = stark_verify_hop(current_hop, prev_sender, destination);
+					stark_update_meta(prev_sender, packet_ID, sig_ok, hop_ok);
+				}
+				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
 
 				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
 				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
