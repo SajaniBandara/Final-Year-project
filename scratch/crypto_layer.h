@@ -83,6 +83,7 @@ struct PacketCryptoMeta {
     uint8_t  hmac_tag[64]     = {};
     double   sign_timestamp   = 0.0;
     uint32_t signed_next_hop  = (uint32_t)-1;  // intended next hop at sign time
+    uint32_t signed_zone_id   = 0;             // zone_id at sign time (rsu_controller_assignment changes)
     bool     sig_valid        = false;
     bool     stark_timing_ok  = false;
     bool     stark_hop_ok     = false;
@@ -215,6 +216,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     }
     meta.sign_timestamp  = inp.timestamp;
     meta.signed_next_hop = next_hop;
+    meta.signed_zone_id  = inp.zone_id;
     meta.sig_valid = true;
     return true;
 }
@@ -226,6 +228,14 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     if (claimed_signer >= (uint32_t)total_size) return false;
     auto it = g_packet_crypto.find({claimed_signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) return false;
+
+    // Broadcast MAC: every node in range overhears every packet. Only the
+    // intended next hop can produce a matching digest (next_hop is embedded
+    // in the signed message). Skip OQS_SIG_verify and don't count overheard
+    // packets in sig_valid_rate — they would always fail and dilute the metric.
+    if (it->second.signed_next_hop != (uint32_t)-1 && next_hop != it->second.signed_next_hop)
+        return false;
+
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
 
@@ -234,7 +244,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     inp.node_id   = claimed_signer;
     inp.next_hop  = next_hop;
     inp.seq       = seq;
-    inp.zone_id   = crypto_zone_id(claimed_signer);
+    inp.zone_id   = it->second.signed_zone_id;  // use stored value — rsu_controller_assignment changes
     inp.timestamp = it->second.sign_timestamp;
 
     uint8_t digest[64];
