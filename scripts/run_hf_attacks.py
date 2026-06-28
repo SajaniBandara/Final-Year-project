@@ -88,14 +88,25 @@ def sync_files() -> None:
     print("── Syncing project files to NS-3 scratch ──")
     routing_dir = SCRATCH_DIR / "routing"
     routing_dir.mkdir(parents=True, exist_ok=True)
+
+    # A stale scratch/routing.cc (from before routing.cc was moved into
+    # scratch/routing/) creates a second program also named 'routing', which
+    # collides with the subdir target and breaks the build. Remove it.
+    stale = SCRATCH_DIR / "routing.cc"
+    if stale.exists():
+        stale.unlink()
+        print(f"  removed stale  {stale.relative_to(SCRATCH_DIR.parent)}")
+
     for src in sorted((PROJECT_DIR / "scratch").iterdir()):
         if not src.is_file():
             continue
-        if src.name == "routing.cc":
-            # Must go into scratch/routing/ so waf builds it as the 'routing' program.
-            # Placing it at scratch/routing.cc would create a second conflicting target.
-            dest = routing_dir / "routing.cc"
+        if src.name == "routing.cc" or src.suffix == ".h":
+            # routing.cc builds as the 'routing' program from scratch/routing/.
+            # Its #include "..." project headers must sit in the same directory,
+            # because waf only adds the program's own dir to the include path.
+            dest = routing_dir / src.name
         else:
+            # .py helpers are loaded by routing.cc via hardcoded scratch/ paths.
             dest = SCRATCH_DIR / src.name
         shutil.copy2(src, dest)
         print(f"  copied  {src.name}  →  {dest.relative_to(SCRATCH_DIR.parent)}")
@@ -136,7 +147,9 @@ def build_waf_command(attack_number: int, attack_percentage: int,
     params["sim_run"]           = sim_run
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
-    return ["./waf", "--run", f"scratch/routing {param_str}"]
+    # routing.cc lives in scratch/routing/, so waf registers the program as
+    # 'scratch/routing/routing' (not 'scratch/routing').
+    return ["./waf", "--run", f"scratch/routing/routing {param_str}"]
 
 
 def run_one(attack_number: int, attack_percentage: int,
