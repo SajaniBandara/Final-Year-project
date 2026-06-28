@@ -114866,6 +114866,7 @@ void record_detection_event(int v, int n); // defined at ~line 115476; forward-d
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
 #include "s7_detection.h"           // S7 (Passive HF CP) MOBIGUARD detection — Signature S7, Eq. sig_s7
 #include "s8_detection.h"           // S8 (Passive HF DP) MOBIGUARD detection — Signature S8, Eq. sig_s8
+#include "lstm_logger.h"            // LSTM training data logger — per-RSU per-cycle CSV writer
 
 // Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
 // included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
@@ -117469,6 +117470,8 @@ void calculate_performance_evaluation_metrics()
 		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
 		s1_rsu_obs_sum[_r]   = 0.0;
 		s1_rsu_obs_count[_r] = 0;
+		lstm_log_rsu_cycle(_r, rsu_sim_idx, Simulator::Now().GetSeconds(),
+		                   obs_delay, rho_t, v_bar_t);
 	}
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -140870,6 +140873,9 @@ int main(int argc, char *argv[])
                  "Fixed attack delay in ms for both CP and DP attacks (default 80ms; "
                  "original range was Uniform(60–300ms))",
                  attack_delay_ms);
+    cmd.AddValue("training",
+                 "1 = write LSTM training CSV (one file per RSU per run) to lstm_training/",
+                 training);
 
     cmd.Parse (argc, argv);
 
@@ -142735,7 +142741,8 @@ if (architecture == 3 && N_Vehicles > 0)
 			g_sim_tag = "_V" + std::to_string(active_attack_variant)
 			          + "_pct" + std::to_string(attack_percentage)
 			          + g_delay_suffix;
-			
+			lstm_logger_init(active_attack_variant, attack_percentage, sim_seed);
+
 			if (routing_test) {
 			    hardcode_test_network_attackers();
 			}
