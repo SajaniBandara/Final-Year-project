@@ -351,43 +351,9 @@ inline void fade_save_metrics()
     uint32_t tn = pp_tn_global;
     uint32_t fn = pp_fn_global;
 
-    // True end-to-end PDR across the whole simulation:
-    //   total delivered = sum of destination_counter[fid] over active flows
-    //   total scheduled = f_size * number_of_data_cycles per active flow
-    // data_gathering_cycle_number starts at 1 and increments each cycle,
-    // so after Simulator::Run() it equals (num_cycles + 1); num_cycles = it - 1.
-    // uint32_t num_cycles = (uint32_t)(data_gathering_cycle_number - 1.0);
-    // if (num_cycles == 0) num_cycles = 1; // guard
-	uint32_t num_cycles = (uint32_t)(Simulator::Now().GetSeconds() / data_transmission_period);
-	if (num_cycles == 0) num_cycles = 1; // guard
-    uint32_t g_total_delivered = 0;
-    uint32_t g_total_scheduled = 0;
-    for (auto &entry2 : fade_flow_config)
-    {
-        uint32_t fid2 = entry2.first;
-        if (!entry2.second.configured) continue;
-        if (!fade_is_flow_active(fid2)) continue;
-        uint32_t fsz = (demanding_flow_struct_nodes_inst + fid2)->f_size;
-        if (fsz == 0) fsz = routing_test ? 3 : flow_size;
-        g_total_delivered += destination_counter[fid2];
-        g_total_scheduled += fsz * num_cycles;
-        cout << "[PDR DEBUG] flow=" << fid2
-             << " fsz=" << fsz
-             << " destination_counter=" << destination_counter[fid2]
-             << " running_g_total_delivered=" << g_total_delivered
-             << " running_g_total_scheduled=" << g_total_scheduled
-             << endl;
-    }
-    cout << "[PDR DEBUG TOTAL] g_total_delivered=" << g_total_delivered
-         << " g_total_scheduled=" << g_total_scheduled
-         << " num_cycles=" << num_cycles
-         << " Now=" << Simulator::Now().GetSeconds() << "s"
-         << " data_transmission_period=" << data_transmission_period
-         << endl;
-    double pdr = (g_total_scheduled > 0)
-        ? 100.0 * (double)g_total_delivered / (double)g_total_scheduled
-        : 0.0;
-    if (pdr > 100.0) pdr = 100.0;
+    // PDR: use the same globals as TAP (computed each cycle by
+    // calculate_average_packet_delivery_ratio_routing in routing.cc).
+    double pdr = average_packet_delivery_ratio_dsrc * 100.0;
 
     // PIR = fraction of intentionally-scheduled hidden duplicates that were
     // successfully received by the eavesdropper.
@@ -468,13 +434,12 @@ inline void fade_detect_anomaly()
     for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
         fade_configure_flow(fid);
 
-	 if (active_attack_variant < 4 || active_attack_variant > 7)
+    if (!fade_detection_active)
     {
-        fade_received.clear();
-        fade_forwarded.clear();
         Simulator::Schedule(Seconds(FADE_EPOCH_SEC), &fade_detect_anomaly);
         return;
     }
+
 
     for (auto &entry : fade_flow_config)
     {

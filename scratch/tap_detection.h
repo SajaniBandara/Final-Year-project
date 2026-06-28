@@ -164,7 +164,7 @@ inline void write_tap_csv()
 	               (data_gathering_cycle_number - 1.0) : 1.0;
 	string filename;
 	int attack_num = active_attack_variant + 1;
-	filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + g_delay_suffix + ".csv";
+	filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack" + std::to_string(attack_num) + "_" + std::to_string(attack_percentage) + g_delay_suffix + ".csv";
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
