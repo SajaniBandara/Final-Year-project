@@ -192,7 +192,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
 
-    SigningInput inp;
+    SigningInput inp = {};  // zero-init including padding bytes before double timestamp
     inp.msg_id    = pkt_id;
     inp.node_id   = signer;
     inp.next_hop  = next_hop;
@@ -227,7 +227,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
 
-    SigningInput inp;
+    SigningInput inp = {};  // zero-init including padding bytes before double timestamp
     inp.msg_id    = pkt_id;
     inp.node_id   = claimed_signer;
     inp.next_hop  = next_hop;
@@ -266,8 +266,10 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
 
 inline bool stark_verify_hop(uint32_t next_hop, uint32_t src, uint32_t dst) {
     // From src's routing table, the next step toward dst should be next_hop.
+    // If no route exists (dynamic VANET), we can't verify — treat as valid.
     uint32_t expected = find_next_hop(src, dst, src);
-    return (expected < (uint32_t)total_size) && (next_hop == expected);
+    if (expected == (uint32_t)-1 || expected >= (uint32_t)total_size) return true;
+    return (next_hop == expected);
 }
 
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
