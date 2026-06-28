@@ -280,7 +280,7 @@ def main() -> None:
             "Fix the attack delay to one or more specific values in ms, treating "
             "delay as an independent variable. Each value becomes a separate set of "
             "runs with result files named MOBIGUARD_Attack1_<pct>_d<X>ms.csv etc. "
-            "Omit to use the default random range (60–300 ms)."
+            "Default: 80 ms (matches the C++ attack_delay_ms default)."
         ),
     )
     parser.add_argument(
@@ -323,7 +323,7 @@ def main() -> None:
     elif args.delay:
         scope_delays = args.delay
     else:
-        scope_delays = [None]   # None = random range (default behaviour)
+        scope_delays = [80]   # matches C++ default attack_delay_ms=80ms so filenames are consistent
 
     if args.clean:
         clean_results(args.attack, args.percentage, scope_delays)
