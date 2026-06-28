@@ -212,6 +212,12 @@ cd ~/ns-allinone-3.35/ns-3.35
 ./waf build 2>&1 | grep -i error
 ```
 
+> **Note:** A manual `./waf build` compiles the code but does **not** copy the `.py` helper scripts. If you skip `--build`, run this once to copy them:
+> ```bash
+> cp ~/ns3_g13/g13_project_repo/Final-Year-project/scratch/*.py \
+>    ~/ns-allinone-3.35/ns-3.35/scratch/
+> ```
+
 ---
 
 ## 6. Running Experiments
@@ -284,6 +290,8 @@ python3 scripts/run_std_attacks.py --build --clean --sim-time 300 --delay 80
 ```
 
 ### 6.7 — Running a single variant directly via waf
+
+> **Prerequisites:** Run `python3 scripts/run_std_attacks.py --build` at least once before using manual `./waf` commands. This syncs `optimization.py` and `optimization_lifetime.py` to the NS3 scratch directory — without them the simulation aborts mid-run with "Solution not found" and all FADE/MOBIGUARD result files will be empty. The `.py` files stay in place after that; you only need to re-sync if they change.
 
 **Attack 1 — Control Plane (CP) Selective Time Delay:**
 
