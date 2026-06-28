@@ -120916,7 +120916,12 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
 					bool timing_ok = (t_fwd_claimed > 0.0) &&
 					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
-					stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+					// Only update STARK meta for the intended recipient.
+					// Broadcast MAC causes all nearby nodes to call MacRx; mldsa87_verify
+					// already returns false for overheard packets (wrong next_hop in digest),
+					// so gate the STARK counters on sig_ok to avoid broadcast noise.
+					if (sig_ok)
+						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
 
