@@ -25,7 +25,7 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 
 ```
 Final-Year-project/
-├── scratch/                         # NS-3 simulation payload — copy this folder to ns-3.35/scratch/
+├── scratch/                         # NS-3 simulation payload — synced to ns-3.35/scratch/routing/ by launchers
 │   ├── routing.cc                   # Main NS-3 simulation — routing, attacks, SUMO integration
 │   ├── attack_variables.h           # Global attack state (delay value, malicious node arrays)
 │   ├── attack_declaration.h         # Attack arming — declare_attack_states(), declare_attackers()
@@ -40,7 +40,8 @@ Final-Year-project/
 │   ├── optimization.py              # Link-lifetime route optimization helper
 │   └── optimization_lifetime.py     # Per-run lifetime optimization (reads tagged CSV from NS-3)
 ├── scripts/
-│   ├── run_std_attacks.py           # Parallel experiment launcher — main entry point
+│   ├── run_std_attacks.py           # Parallel launcher for Attacks 1–4 (Selective Time Delay & TCAM)
+│   ├── run_hf_attacks.py            # Parallel launcher for Attacks 5–8 (Hidden Forwarding)
 │   └── run_attack2_sweep.sh         # Legacy shell sweep (superseded by run_std_attacks.py)
 ├── mobility/                        # SUMO-exported NS-2 mobility traces (.tcl files)
 ├── sumo_sim/                        # SUMO scenario folders (net, trips, sumocfg)
@@ -199,7 +200,7 @@ python3 scripts/run_std_attacks.py --build
 ```
 
 What this does internally:
-1. Copies all files from `scratch/` in the project repo to `~/ns-allinone-3.35/ns-3.35/scratch/`
+1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
 2. Runs `./waf build`
 
 Every file inside `scratch/` is synced automatically — no explicit list to maintain.
@@ -225,7 +226,7 @@ python3 scripts/run_std_attacks.py --delay 80
 
 Runs 12 simulations concurrently: Attack 1 and Attack 2 × {0, 20, 40, 60, 80, 100}% with an 80 ms attack delay. Result files are tagged `_d80ms`.
 
-> **Tag behaviour:** For Attacks 1 and 2, the `_d<X>ms` tag **always appears** in result filenames — even without `--delay` — because `attack_delay_ms` defaults to 80 ms. Passing `--delay 60` changes the tag to `_d60ms` and also changes the injected delay. For Attacks 3–8 (TCAM, Hidden Forwarding), the tag never appears and `--delay` has no effect on filenames or behaviour.
+> **Tag behaviour:** For Attacks 1 and 2, the `_d<X>ms` tag appears in result filenames when `--delay` is passed to the launcher. Omitting `--delay` produces no tag. For Attacks 3–8 (TCAM, Hidden Forwarding), the tag never appears and `--delay` has no effect on filenames or behaviour.
 
 ### 6.2 — Rebuild then run
 
@@ -288,7 +289,7 @@ python3 scripts/run_std_attacks.py --build --clean --sim-time 300 --delay 80
 
 ```bash
 cd ~/ns-allinone-3.35/ns-3.35
-./waf --run "scratch/routing \
+./waf --run "scratch/routing/routing \
   --routing_test=false \
   --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
   --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 \
@@ -302,7 +303,7 @@ cd ~/ns-allinone-3.35/ns-3.35
 
 ```bash
 cd ~/ns-allinone-3.35/ns-3.35
-./waf --run "scratch/routing \
+./waf --run "scratch/routing/routing \
   --routing_test=false \
   --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
   --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 \
@@ -384,11 +385,11 @@ t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
 
 Implements the Timing Attack Prevention (TAP) protocol from Arsalan & Rehman (FIT 2018). Computes the expected signal propagation time from sender to receiver using physical distance, and flags nodes whose claimed forwarding timestamp deviates from the physics-derived expectation beyond `TAP_MARGIN`.
 
-> TAP is **only active for Attack 2** (`active_attack_variant == 1`). It is not applicable to Attack 1 (CP) because the threat model is a compromised controller, not a delaying vehicle, and TAP's signal-propagation model cannot observe the control plane.
+> TAP is **only active for Attack 2** (`--attack_number=2`). It is not applicable to Attack 1 (CP) because the threat model is a compromised controller, not a delaying vehicle, and TAP's signal-propagation model cannot observe the control plane.
 
 ### MOBIGUARD Signatures S3/S4 — TCAM Exhaustion (Attacks 3 & 4)
 
-Active only for `active_attack_variant ∈ {2, 3}`. Metrics are appended as extra columns in the MOBIGUARD CSV for those variants and are absent for Attacks 1 and 2.
+Active only for `--attack_number=3` or `--attack_number=4`. Metrics are appended as extra columns in the MOBIGUARD CSV for those variants and are absent for Attacks 1 and 2.
 
 ---
 
@@ -426,16 +427,17 @@ total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4
 logs/A<attack>_pct<percentage>_d<delay>ms_seed<seed>.log
 ```
 
-Each log includes this line early in NS-3 startup output:
+For Attack 1 and Attack 2 runs, each log includes this line early in NS-3 startup output:
 ```
 [ATTACK DELAY] Configured delay = 80 ms  |  original random range (CP & DP): 50–300 ms  |  S2 delta_max threshold = 50 ms  |  above S2 threshold: YES (S2 should fire)
 ```
+This line is absent for baseline runs (`attack_number` not explicitly passed) and for Attacks 3–8.
 
 ---
 
 ## 10. CLI Reference
 
-Pass any flag as `--flag=value` inside `./waf --run "scratch/routing ..."`.
+Pass any flag as `--flag=value` inside `./waf --run "scratch/routing/routing ..."`.
 
 ### Topology
 
@@ -468,8 +470,8 @@ Pass any flag as `--flag=value` inside `./waf --run "scratch/routing ..."`.
 
 | Flag | Default | Description |
 |---|---|---|
-| `attack_number` | 1 | Primary attack selector: 1=CP Delay, 2=DP Delay, 3=TCAM-CP, 4=TCAM-DP, 5–8=HF variants. The C++ initializer is 1, but the dispatcher only fires when `--attack_number` is **explicitly passed**; without it, `active_attack_variant=-1` (baseline) governs |
-| `active_attack_variant` | -1 | Legacy direct selector (-1=baseline, 0–7=attack variants). Superseded by `attack_number` for new runs |
+| `attack_number` | — | Attack selector: 1=CP Delay, 2=DP Delay, 3=TCAM-CP, 4=TCAM-DP, 5–8=HF variants. Must be **explicitly passed**; omitting it runs baseline (no attack). |
+| `active_attack_variant` | -1 | Legacy direct selector (-1=baseline, 0–7=attack variants). Superseded by `--attack_number` — do not use for new runs. |
 | `attack_percentage` | 0 | Attacker proportion 0–100%. 0=baseline (no attack) |
 | `attack_delay_ms` | 80.0 | Fixed attack delay in ms for both CP and DP attacks. Original range was Uniform(50–300 ms). Only meaningful for `attack_number` 1 or 2 |
 | `attack_start_time` | 10.0 | Seconds before the attack arms. 10 s gives S1's EWMA time to converge on a benign baseline |
@@ -549,7 +551,7 @@ Run under gdb:
 
 ```bash
 cd ~/ns-allinone-3.35/ns-3.35
-./waf --run "scratch/routing --attack_number=2 --attack_percentage=40" --gdb
+./waf --run "scratch/routing/routing --attack_number=2 --attack_percentage=40" --gdb
 # In gdb: run  →  bt
 ```
 

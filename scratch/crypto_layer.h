@@ -119,6 +119,10 @@ std::map<uint32_t, FlowModEndorsement> g_flowmod_endorsements;
 struct StarkTimingProof { uint8_t commitment[64] = {}; bool valid = false; };
 struct BatchVerifyResult { bool passed; uint32_t n_verified; double elapsed_s; };
 
+// Verification outcome counters — for sig_valid_rate metric
+static uint32_t g_verify_attempts = 0;
+static uint32_t g_verify_passed   = 0;
+
 struct WitnessLogEntry {
     uint8_t  pkt_hash[64] = {};
     uint32_t dst;
@@ -239,6 +243,8 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
                               it->second.sig, it->second.sig_len,
                               g_node_keys[claimed_signer].pk) == OQS_SUCCESS;
     it->second.sig_valid = ok;
+    g_verify_attempts++;
+    if (ok) g_verify_passed++;
     return ok;
 }
 
@@ -259,10 +265,9 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
 }
 
 inline bool stark_verify_hop(uint32_t next_hop, uint32_t src, uint32_t dst) {
-    uint32_t expected = find_next_hop(src, dst, next_hop);
-    return (expected != (uint32_t)-1)
-        && (expected < (uint32_t)total_size)
-        && (next_hop == expected);
+    // From src's routing table, the next step toward dst should be next_hop.
+    uint32_t expected = find_next_hop(src, dst, src);
+    return (expected < (uint32_t)total_size) && (next_hop == expected);
 }
 
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,

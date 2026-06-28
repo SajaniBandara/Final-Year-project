@@ -117178,9 +117178,8 @@ void write_security_metrics_csv()
 	}
 
 	// Phase 5 — crypto metric aggregates
-	uint32_t _sig_total = 0, _sig_ok = 0;
-	for (auto& kv : g_packet_crypto) { _sig_total++; if (kv.second.sig_valid) _sig_ok++; }
-	double sig_valid_rate = (_sig_total > 0) ? (double)_sig_ok / _sig_total : 1.0;
+	double sig_valid_rate = (g_verify_attempts > 0)
+	                        ? (double)g_verify_passed / g_verify_attempts : 1.0;
 
 	double _trust_sum = 0.0;
 	for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) _trust_sum += g_trust_score[_i];
@@ -120910,9 +120909,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
 				{
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
-					bool sig_ok = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
-					bool hop_ok = stark_verify_hop(current_hop, prev_sender, destination);
-					stark_update_meta(prev_sender, packet_ID, sig_ok, hop_ok);
+					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, destination);
+					// Timing ok: compare claimed forward timestamp against S2 threshold
+					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
+					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					bool timing_ok = (t_fwd_claimed > 0.0) &&
+					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
+					stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
 
@@ -120924,7 +120928,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					uint32_t _w_prev = tagmodified_routing.Getprevious_senderId();
 					witness_log_packet(current_hop, pkt_hash, destination,
 					                   ns3::Simulator::Now().GetSeconds());
-					if (witness_check_duplication(current_hop, pkt_hash, destination)) {
+					// Only fire duplication alert during HF attack variants (S5-S8).
+					// Flow destinations change during routing updates causing false positives
+					// in non-HF scenarios.
+					if ((present_active_hf_attack || present_passive_hf_attack) &&
+					    witness_check_duplication(current_hop, pkt_hash, destination)) {
 						witness_submit_duplication_alert(current_hop, _w_prev,
 						                                 packet_ID, destination, current_hop);
 					}
@@ -140899,13 +140907,19 @@ int main(int argc, char *argv[])
     {
         attack_number = attack_number_cli;
         attack_number_explicitly_set = true;
+        // Sync active_attack_variant immediately so all topology/position/dispatch
+        // checks below (which run before declare_attack_states() at line ~142737)
+        // see the correct variant. Mapping: active_attack_variant = attack_number - 1.
+        active_attack_variant = attack_number - 1;
     }
 
     // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
     // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
     // and the suffix would be misleading, so g_delay_suffix stays empty for those.
     // NOTE: this check must come AFTER attack_number_cli is transferred to attack_number above.
-    if (attack_number == 1 || attack_number == 2)
+    // Guard with attack_number_explicitly_set so the default value of 1 does not trigger
+    // this block for baseline runs (active_attack_variant=-1) that never pass --attack_number.
+    if ((attack_number == 1 || attack_number == 2) && attack_number_explicitly_set)
     {
         g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
 
