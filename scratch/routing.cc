@@ -120910,7 +120910,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				{
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
 					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
-					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, destination);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;

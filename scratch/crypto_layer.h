@@ -82,6 +82,7 @@ struct PacketCryptoMeta {
     uint8_t  msg_digest[64]   = {};
     uint8_t  hmac_tag[64]     = {};
     double   sign_timestamp   = 0.0;
+    uint32_t signed_next_hop  = (uint32_t)-1;  // intended next hop at sign time
     bool     sig_valid        = false;
     bool     stark_timing_ok  = false;
     bool     stark_hop_ok     = false;
@@ -212,7 +213,8 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
         meta.sig_len = 0;
         return false;
     }
-    meta.sign_timestamp = inp.timestamp;
+    meta.sign_timestamp  = inp.timestamp;
+    meta.signed_next_hop = next_hop;
     meta.sig_valid = true;
     return true;
 }
@@ -264,12 +266,16 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
     return proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
 }
 
-inline bool stark_verify_hop(uint32_t next_hop, uint32_t src, uint32_t dst) {
-    // From src's routing table, the next step toward dst should be next_hop.
-    // If no route exists (dynamic VANET), we can't verify — treat as valid.
-    uint32_t expected = find_next_hop(src, dst, src);
-    if (expected == (uint32_t)-1 || expected >= (uint32_t)total_size) return true;
-    return (next_hop == expected);
+// Verify that current_hop is the node the sender intended as its next hop
+// (embedded in the signature at sign time). Re-running find_next_hop at
+// verification time is unreliable in a dynamic VANET because routing tables
+// change between send and receive. Using the signed_next_hop eliminates
+// false positives from routing churn while still catching misdirected packets.
+inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt_id) {
+    auto it = g_packet_crypto.find({signer, pkt_id});
+    if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
+        return true;  // no signing record — can't verify, assume valid
+    return current_hop == it->second.signed_next_hop;
 }
 
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
