@@ -740,8 +740,8 @@ inline void hf_init_attack6_dp(uint32_t flow_id,
             Seconds(attack_start_time),
             &hf_declare_malicious_rsus_trampoline);
         std::cout << "[HF ATTACK6 DP] SUMO: will compromise "
-                  << attack_percentage << "% of on-path RSUs at t="
-                  << attack_start_time << "s [DP — RSU local tables]" << std::endl;
+                  << attack_percentage << "% of on-path RSUs + relay vehicles at t="
+                  << attack_start_time << "s [DP — node local tables]" << std::endl;
     }
 }
 
@@ -804,8 +804,8 @@ inline void hf_init_attack8_dp(uint32_t flow_id,
             Seconds(attack_start_time),
             &hf_declare_malicious_rsus_trampoline);
         std::cout << "[HF ATTACK8 DP] SUMO: will compromise "
-                  << attack_percentage << "% of on-path RSUs at t="
-                  << attack_start_time << "s [DP — RSU local tables; passive copy]" << std::endl;
+                  << attack_percentage << "% of on-path RSUs + relay vehicles at t="
+                  << attack_start_time << "s [DP — node local tables; passive copy]" << std::endl;
     }
 }
 
