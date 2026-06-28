@@ -6802,6 +6802,38 @@ void CustomDataUnicastTag_Routing::SetdestinationId(uint32_t destination_id)
 	m_destinationId = destination_id;
 }
 
+// CryptoAnchorTag — carries SHA3-512(ML-DSA-87 sig) reference + HMAC tag per packet.
+// 129 bytes: 64 (sig_hash) + 64 (hmac_tag) + 1 (flags).
+// bit0=sig_valid, bit1=stark_timing_ok, bit2=stark_hop_ok
+class CryptoAnchorTag : public Tag {
+public:
+    static TypeId GetTypeId(void) {
+        static TypeId tid = TypeId("CryptoAnchorTag")
+            .SetParent<Tag>().AddConstructor<CryptoAnchorTag>();
+        return tid;
+    }
+    TypeId GetInstanceTypeId(void) const override { return GetTypeId(); }
+    uint32_t GetSerializedSize(void) const override { return 129; }
+    void Serialize(TagBuffer i) const override {
+        i.Write(m_sig_hash, 64); i.Write(m_hmac_tag, 64); i.WriteU8(m_flags);
+    }
+    void Deserialize(TagBuffer i) override {
+        i.Read(m_sig_hash, 64); i.Read(m_hmac_tag, 64); m_flags = i.ReadU8();
+    }
+    void Print(std::ostream& os) const override { os << "CryptoAnchorTag"; }
+    void SetSigHash(const uint8_t* h)  { memcpy(m_sig_hash, h, 64); }
+    void SetHmacTag(const uint8_t* h)  { memcpy(m_hmac_tag, h, 64); }
+    void SetFlags(uint8_t f)           { m_flags = f; }
+    const uint8_t* GetSigHash() const  { return m_sig_hash; }
+    uint8_t GetFlags() const           { return m_flags; }
+    CryptoAnchorTag() : m_flags(0) {
+        memset(m_sig_hash, 0, 64); memset(m_hmac_tag, 0, 64);
+    }
+private:
+    uint8_t m_sig_hash[64];
+    uint8_t m_hmac_tag[64];
+    uint8_t m_flags;
+};
 
 class CustomFlowDataUplinkTag1 : public Tag {
 public:
@@ -114826,6 +114858,9 @@ void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
 void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
+#include "crypto_layer.h"
+#include "dkg_setup.h"
+#include "blockchain_sim.h"
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
@@ -114856,6 +114891,14 @@ void initialise_stub_attack_state()
 
 
 	tap_reset_state(total_size);
+
+	// Crypto layer initialization — must run before any packet forwarding
+	trust_init_all();
+	Simulator::Schedule(Seconds(0.0),             &dkg_run_ceremony);
+	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &update_T_ref_recurring);
+	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
+	Simulator::Schedule(Seconds(0.050),           &crypto_batch_verify_tick);
+	Simulator::Schedule(Seconds(5.0),             &crypto_evict_old_entries_recurring);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
@@ -140736,6 +140779,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
+    crypto_register_cli_params(cmd);
 
     // Single deterministic attack delay for both CP (Attack 1) and DP (Attack 2).
     // Original implementation drew from Uniform(60–300 ms); replaced with a fixed
@@ -143101,6 +143145,7 @@ if (attack_start_time > 2.0)
 Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 
 
+  OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
   Simulator::Run();
   export_tcam_snapshot_baseline();
 
