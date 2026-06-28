@@ -117160,7 +117160,9 @@ void write_security_metrics_csv()
 		if (active_attack_variant == 2 || active_attack_variant == 3)
 			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
-		fout << "\n";
+		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
+			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117174,6 +117176,26 @@ void write_security_metrics_csv()
 			active_vehicles
 		);
 	}
+
+	// Phase 5 — crypto metric aggregates
+	uint32_t _sig_total = 0, _sig_ok = 0;
+	for (auto& kv : g_packet_crypto) { _sig_total++; if (kv.second.sig_valid) _sig_ok++; }
+	double sig_valid_rate = (_sig_total > 0) ? (double)_sig_ok / _sig_total : 1.0;
+
+	double _trust_sum = 0.0;
+	for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) _trust_sum += g_trust_score[_i];
+	double avg_trust_score = _trust_sum / (double)total_size;
+
+	uint32_t _stark_t_fail = 0, _stark_h_fail = 0;
+	for (auto& kv : g_lstm_stark_counts) { _stark_t_fail += kv.second.first; _stark_h_fail += kv.second.second; }
+
+	uint32_t _fm_total = 0, _fm_committed = 0;
+	for (auto& kv : g_flowmod_endorsements) { _fm_total++; if (kv.second.committed) _fm_committed++; }
+	double flowmod_endorsement_rate = (_fm_total > 0) ? (double)_fm_committed / _fm_total : 1.0;
+
+	uint32_t _da_count = 0, _nfa_count = 0;
+	for (auto& kv : g_witness_alert_pool)
+		for (auto& al : kv.second) { if (al.alert_type == 0) _da_count++; else _nfa_count++; }
 
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
@@ -117194,7 +117216,16 @@ void write_security_metrics_csv()
 		 << sec_FN[selected_variant];
 	if (active_attack_variant == 2 || active_attack_variant == 3)
 		fout << TcamDetectionCsvColumns(tcam_metrics);
-	fout << "\n";
+	fout << ", " << sig_valid_rate
+		 << ", " << avg_trust_score
+		 << ", " << _stark_t_fail
+		 << ", " << _stark_h_fail
+		 << ", " << flowmod_endorsement_rate
+		 << ", " << g_rsu_chain.size()
+		 << ", " << g_global_chain.size()
+		 << ", " << _da_count
+		 << ", " << _nfa_count
+		 << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
