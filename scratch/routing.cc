@@ -120920,8 +120920,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// Broadcast MAC causes all nearby nodes to call MacRx; mldsa87_verify
 					// already returns false for overheard packets (wrong next_hop in digest),
 					// so gate the STARK counters on sig_ok to avoid broadcast noise.
-					if (sig_ok)
+					if (sig_ok) {
 						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+						// β_w NFA alert: valid sig but delay exceeded S2 threshold
+						if (t_fwd_claimed > 0.0 && !timing_ok) {
+							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
+							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
+						}
+					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
 
