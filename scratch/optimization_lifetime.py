@@ -9,7 +9,7 @@ parser.add_argument('--tag', default='', help='Run tag appended to CSV filenames
 args = parser.parse_args()
 TAG = args.tag
 
-SCRATCH          = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/"
+SCRATCH          = "/home/nipuni/ns-allinone-3.35/ns-3.35/scratch/"
 INPUT_CSV        = SCRATCH + "optimization_link_lifetime_data" + TAG + ".csv"
 OUTPUT_CSV       = SCRATCH + "link_lifetime_solution"          + TAG + ".csv"
 
