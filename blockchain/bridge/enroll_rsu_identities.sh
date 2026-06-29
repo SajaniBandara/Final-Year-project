@@ -14,6 +14,7 @@ set -e
 
 STAGE=${1:-stage1}
 BRIDGE_DIR="$(cd "$(dirname "$0")" && pwd)"
+export PATH="$BRIDGE_DIR/../fabric-samples/bin:$PATH"
 WALLET_DIR="$BRIDGE_DIR/wallet"
 FABRIC_DIR="$BRIDGE_DIR/../fabric-samples/test-network"
 CA_URL="https://localhost:7054"

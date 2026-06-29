@@ -15,7 +15,7 @@
 const path   = require('path');
 const fs     = require('fs');
 const grpc   = require('@grpc/grpc-js');
-const { connect, hash: sdkHash } = require('@hyperledger/fabric-gateway');
+const { connect, hash: sdkHash, signers } = require('@hyperledger/fabric-gateway');
 const crypto = require('crypto');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,16 +98,13 @@ async function getContract(identityName) {
 
     const { certificate, privateKey } = loadIdentity(identityName);
 
-    const signer = crypto.createPrivateKey(privateKey);
+    const privateKeyObj = crypto.createPrivateKey(privateKey);
+    const signer = signers.newPrivateKeySigner(privateKeyObj);
 
     const gateway = connect({
         client: grpcClient,
         identity: { mspId: MSP_ID, credentials: Buffer.from(certificate) },
-        signer: async (msg) => {
-            const sign = crypto.createSign('SHA256');
-            sign.update(msg);
-            return sign.sign(signer);
-        },
+        signer,
         hash: sdkHash.sha256,
     });
 
@@ -128,7 +125,7 @@ async function getContract(identityName) {
 async function submit(identityName, fnName, ...args) {
     const contract = await getContract(identityName);
     const result = await contract.submitTransaction(fnName, ...args.map(String));
-    return result.length ? result.toString('utf8') : '';
+    return result.length ? Buffer.from(result).toString('utf8') : '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +135,7 @@ async function submit(identityName, fnName, ...args) {
 async function evaluate(identityName, fnName, ...args) {
     const contract = await getContract(identityName);
     const result = await contract.evaluateTransaction(fnName, ...args.map(String));
-    return result.length ? result.toString('utf8') : '';
+    return result.length ? Buffer.from(result).toString('utf8') : '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

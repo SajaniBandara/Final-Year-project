@@ -51,8 +51,8 @@ ok "Network down, volumes pruned."
 # =============================================================================
 # STEP 2 — bring network up with CouchDB
 # =============================================================================
-log "Starting network with CouchDB..."
-./network.sh up -s couchdb 2>&1 | tail -10
+log "Starting network with CouchDB and Certificate Authorities..."
+./network.sh up -s couchdb -ca 2>&1 | tail -10
 ok "Network is up."
 
 # =============================================================================
