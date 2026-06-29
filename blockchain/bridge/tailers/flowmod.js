@@ -42,12 +42,15 @@ function identityFor(nodeId) {
     return identityMap[nodeId] || 'admin';
 }
 
+function utcNow() { return new Date().toISOString().replace('T',' ').slice(0,23) + ' UTC'; }
+
 async function handleRow(row) {
     const rsuId       = row.rsu_id;
     const hash        = row.flow_mod_hash;
     const timestampMs = row.recv_timestamp_ms;
     const isMalicious = parseInt(row.is_malicious) === 1;
     const identity    = identityFor(parseInt(rsuId));
+    const wallTime    = utcNow();
 
     // ── Step 1: LogFlowMod (first sighting of this hash from this RSU) ────────
     if (!seenHashes[hash]) {
@@ -58,10 +61,10 @@ async function handleRow(row) {
         seenHashes[hash].add(rsuId);
         try {
             await fc.submit(identity, 'LogFlowMod', rsuId, hash, timestampMs);
-            console.log(`[BRIDGE→BC] LogFlowMod rsu=${rsuId} hash=${hash.slice(0,12)}... → status:200`);
+            console.log(`[${wallTime}] [FLOWMOD] LOGGED    rsu=${rsuId}  hash=${hash}  sim_t=${timestampMs}ms  ledger=COMMITTED`);
         } catch (err) {
             // Chaincode returns error if hash already exists (duplicate log from same RSU).
-            console.warn(`[BRIDGE→BC] LogFlowMod rsu=${rsuId} hash=${hash.slice(0,12)}... → ${err.message}`);
+            console.warn(`[${wallTime}] [FLOWMOD] DUPLICATE rsu=${rsuId}  hash=${hash}  → ${err.message}`);
         }
     }
 
@@ -70,9 +73,9 @@ async function handleRow(row) {
     if (seenHashes[hash].size === 2) {
         try {
             await fc.submit(identity, 'EndorseFlowMod', hash, rsuId);
-            console.log(`[BRIDGE→BC] EndorseFlowMod hash=${hash.slice(0,12)}... endorser=${rsuId} → status:200 (quorum reached)`);
+            console.log(`[${wallTime}] [FLOWMOD] ENDORSED   rsu=${rsuId}  hash=${hash}  quorum=REACHED (f+1=2 Eq.3.41)  ledger=COMMITTED`);
         } catch (err) {
-            console.warn(`[BRIDGE→BC] EndorseFlowMod hash=${hash.slice(0,12)}... → ${err.message}`);
+            console.warn(`[${wallTime}] [FLOWMOD] ENDORSE_FAIL hash=${hash}  → ${err.message}`);
         }
     }
 
@@ -80,9 +83,18 @@ async function handleRow(row) {
     if (isMalicious) {
         try {
             await fc.submit(identity, 'MarkFlowModUnauthorized', hash);
-            console.log(`[BRIDGE→BC] MarkFlowModUnauthorized hash=${hash.slice(0,12)}... → status:200 ⚠ MALICIOUS`);
+            console.log('');
+            console.log(`  ╔══════════════════════════════════════════════════════════════╗`);
+            console.log(`  ║  ⚠  MALICIOUS FLOWMOD DETECTED & FLAGGED ON LEDGER          ║`);
+            console.log(`  ║     time   : ${wallTime}                   ║`);
+            console.log(`  ║     rsu    : ${String(rsuId).padEnd(8)}                                        ║`);
+            console.log(`  ║     hash   : ${hash}  ║`);
+            console.log(`  ║     action : MarkFlowModUnauthorized (Eq.3.44)               ║`);
+            console.log(`  ║     ledger : COMMITTED                                       ║`);
+            console.log(`  ╚══════════════════════════════════════════════════════════════╝`);
+            console.log('');
         } catch (err) {
-            console.warn(`[BRIDGE→BC] MarkFlowModUnauthorized → ${err.message}`);
+            console.warn(`[${wallTime}] [FLOWMOD] UNAUTHORIZED_FAIL hash=${hash}  → ${err.message}`);
         }
     }
 }

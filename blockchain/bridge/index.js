@@ -182,17 +182,59 @@ async function main() {
         process.exit(0);
     });
 
-    // 6. Keep-alive ping: every 30s query all trust scores for a health snapshot
+    // 6. Keep-alive health snapshot: every 30s query all RSU trust scores
+    //    and print a structured evidence table for supervisor verification.
     setInterval(async () => {
         try {
-            const raw    = await fc.evaluate('admin', 'QueryPeerSelection');
-            const result = JSON.parse(raw);
-            const nActive  = result.activePeers.length;
-            const nDemoted = result.demotedClients.length;
-            const nRemoved = result.removedNodes.length;
-            console.log(`[BRIDGE][HEALTH] active=${nActive} demoted=${nDemoted} removed=${nRemoved}`);
+            const wallTime = new Date().toISOString().replace('T',' ').slice(0,23) + ' UTC';
+            const raw      = await fc.evaluate('admin', 'QueryPeerSelection');
+            const result   = JSON.parse(raw);
+            const nActive  = result.activePeers  ? result.activePeers.length  : '?';
+            const nDemoted = result.demotedClients? result.demotedClients.length: '?';
+            const nRemoved = result.removedNodes  ? result.removedNodes.length  : '?';
+
+            console.log('');
+            console.log(`  ┌─────────────────────────────────────────────────────────────┐`);
+            console.log(`  │  BLOCKCHAIN STATUS SNAPSHOT  —  ${wallTime}  │`);
+            console.log(`  ├──────────────┬────────────┬───────────┬─────────────────────┤`);
+            console.log(`  │  RSU ID      │  SCORE     │  STATUS   │  ASSIGNED CTRL      │`);
+            console.log(`  ├──────────────┼────────────┼───────────┼─────────────────────┤`);
+
+            // Query each RSU in this stage
+            for (const rsu of config.rsus) {
+                const id       = rsu.id;
+                const nodeId   = String(rsu.node_id);
+                const identity = identityMap[rsu.node_id] || 'admin';
+
+                let score  = '?????';
+                let status = 'UNKNOWN  ';
+                let ctrl   = '?';
+
+                try {
+                    const tRaw   = await fc.evaluate(identity, 'QueryTrust', nodeId);
+                    const trust  = JSON.parse(tRaw);
+                    score = String(trust.score).padStart(5);
+                    if (trust.score >= 3000)      status = 'ACTIVE   ';
+                    else if (trust.score >= 1000) status = 'DEMOTED  ';
+                    else                          status = 'REMOVED  ';
+                } catch (_) {}
+
+                try {
+                    const aRaw = await fc.evaluate(identity, 'QueryControllerAssignment', id);
+                    const asgn = JSON.parse(aRaw);
+                    ctrl = asgn.controllerId;
+                } catch (_) {}
+
+                console.log(`  │  ${id.padEnd(12)}│  ${score}     │  ${status}│  ${ctrl.padEnd(20)} │`);
+            }
+
+            console.log(`  ├──────────────┴────────────┴───────────┴─────────────────────┤`);
+            console.log(`  │  Network: active=${nActive}  demoted=${nDemoted}  removed=${nRemoved}                           │`);
+            console.log(`  └─────────────────────────────────────────────────────────────┘`);
+            console.log('');
+
         } catch (err) {
-            // Non-fatal
+            // Non-fatal — just skip this snapshot cycle
         }
     }, 30_000);
 }

@@ -32,23 +32,24 @@ function identityFor(nodeId) { return identityMap[nodeId] || 'admin'; }
 // Track lifecycle state per RSU to avoid redundant removal warnings.
 const lifecycleState = {}; // nodeId → 'active' | 'demoted' | 'removed'
 
+function utcNow() { return new Date().toISOString().replace('T',' ').slice(0,23) + ' UTC'; }
+
 async function handleRow(row) {
     const rsuId       = row.rsu_id;
-    const success     = parseInt(row.success) === 1; // always 0 for S3/S4
+    const success     = parseInt(row.success) === 1;
     const timestampMs = row.timestamp_ms;
     const reason      = row.reason;     // 'S3' or 'S4'
     const ruleCount   = row.rule_count;
     const rate        = row.rate_per_s;
     const identity    = identityFor(parseInt(rsuId));
+    const wallTime    = utcNow();
 
-    // If node is already removed, chaincode will reject writes.
-    // Don't flood bridge logs with repeated 500 errors.
     if (lifecycleState[rsuId] === 'removed') {
-        console.log(`[BRIDGE→BC] UpdateTrust rsu=${rsuId} reason=${reason} → SKIPPED (already removed)`);
+        console.log(`[${wallTime}] [TRUST]   SKIPPED    rsu=${rsuId}  reason=already_removed`);
         return;
     }
 
-    // ── Step 1: UpdateTrust (apply penalty) ──────────────────────────────────
+    // ── Step 1: UpdateTrust (apply penalty) ─────────────────────────────────────
     let updateOk = false;
     try {
         await fc.submit(identity, 'UpdateTrust', rsuId, String(success), timestampMs);
@@ -56,59 +57,72 @@ async function handleRow(row) {
     } catch (err) {
         const msg = err.message || '';
         if (msg.includes('removed from the system')) {
-            // Chaincode returned status:500 — node was just permanently removed.
             lifecycleState[rsuId] = 'removed';
-            console.log(`[BRIDGE→BC] UpdateTrust rsu=${rsuId} reason=${reason} → status:500 ⛔ NODE REMOVED (writes permanently blocked)`);
+            console.log(`[${wallTime}] [TRUST]   REMOVED    rsu=${rsuId}  reason=${reason}  ⛔ NODE PERMANENTLY REMOVED (writes blocked)`);
         } else {
-            console.warn(`[BRIDGE→BC] UpdateTrust rsu=${rsuId} → ERROR: ${msg}`);
+            console.warn(`[${wallTime}] [TRUST]   ERROR      rsu=${rsuId}  → ${msg}`);
         }
         return;
     }
 
-    // ── Step 2: QueryTrust — read new score ─────────────────────────────────
+    // ── Step 2: QueryTrust ──────────────────────────────────────────────────────
     let score = '?';
     try {
         const raw   = await fc.evaluate(identity, 'QueryTrust', rsuId);
         const trust = JSON.parse(raw);
         score = trust.score;
     } catch (err) {
-        console.warn(`[BRIDGE→BC] QueryTrust rsu=${rsuId} → ${err.message}`);
+        console.warn(`[${wallTime}] [TRUST]   QUERY_ERR  rsu=${rsuId}  → ${err.message}`);
     }
 
-    console.log(`[BRIDGE→BC] UpdateTrust rsu=${rsuId} reason=${reason} rules=${ruleCount} rate=${rate}/s → status:200 score=${score}`);
+    console.log(`[${wallTime}] [TRUST]   PENALTY    rsu=${rsuId}  reason=${reason}  rules=${ruleCount}  rate=${rate}/s  new_score=${score}  ledger=COMMITTED`);
 
-    // ── Step 3: IsActivePeer — check for lifecycle transition ────────────────
+    // ── Step 3: IsActivePeer ─────────────────────────────────────────────────────
     try {
         const raw    = await fc.evaluate(identity, 'IsActivePeer', rsuId);
         const active = raw.trim() === 'true';
 
         if (!active && lifecycleState[rsuId] !== 'demoted' && lifecycleState[rsuId] !== 'removed') {
             lifecycleState[rsuId] = 'demoted';
-            console.log(`[BRIDGE→BC] IsActivePeer rsu=${rsuId} → false  🔶 DEMOTED (score=${score} < T_demote=3000)`);
-            console.log(`[BRIDGE→BC]   Bridge will exclude rsu=${rsuId} from --peerAddresses on future endorsements`);
 
-            // Also log quarantine record for audit
+            console.log('');
+            console.log(`  ╔══════════════════════════════════════════════════════════════╗`);
+            console.log(`  ║  🟠  RSU DEMOTED  —  TRUST THRESHOLD BREACH DETECTED              ║`);
+            console.log(`  ║     time      : ${wallTime}                ║`);
+            console.log(`  ║     rsu       : ${String(rsuId).padEnd(56)} ║`);
+            console.log(`  ║     score     : ${String(score).padEnd(5)}  (T_demote = 3000)                       ║`);
+            console.log(`  ║     action    : RSU excluded from endorsement peers            ║`);
+            console.log(`  ║     on-chain  : IsActivePeer=false  (Eq.3.47)                 ║`);
+            console.log(`  ╚══════════════════════════════════════════════════════════════╝`);
+            console.log('');
+
             try {
                 const qRaw    = await fc.evaluate(identity, 'GetQuarantineRecord', rsuId);
                 const qRecord = JSON.parse(qRaw);
-                console.log(`[BRIDGE→BC]   QuarantineRecord: status=${qRecord.status} demotedAt=${qRecord.demotedAt}`);
+                console.log(`[${wallTime}] [QUARANTINE] rsu=${rsuId}  status=${qRecord.status}  demotedAt=${qRecord.demotedAt}`);
             } catch (_) {}
 
         } else if (active && lifecycleState[rsuId] === 'demoted') {
-            // Score recovered above T_demote (manual LiftQuarantine was called)
             lifecycleState[rsuId] = 'active';
-            console.log(`[BRIDGE→BC] IsActivePeer rsu=${rsuId} → true  ✅ REINSTATED`);
+            console.log(`[${wallTime}] [TRUST]   REINSTATED rsu=${rsuId}  score=${score}  IsActivePeer=true  ✅`);
         }
 
-        // Check removal threshold explicitly (score < 1000 while demoted)
         if (typeof score === 'number' && score < 1000 && lifecycleState[rsuId] === 'demoted') {
             lifecycleState[rsuId] = 'removed';
-            console.log(`[BRIDGE→BC] IsActivePeer rsu=${rsuId} → false  ⛔ REMOVED (score=${score} < T_remove=1000)`);
-            console.log(`[BRIDGE→BC]   Node rsu=${rsuId} permanently ejected — all future writes will be blocked`);
+            console.log('');
+            console.log(`  ╔══════════════════════════════════════════════════════════════╗`);
+            console.log(`  ║  ⛔  RSU PERMANENTLY REMOVED FROM NETWORK                       ║`);
+            console.log(`  ║     time      : ${wallTime}                ║`);
+            console.log(`  ║     rsu       : ${String(rsuId).padEnd(56)} ║`);
+            console.log(`  ║     score     : ${String(score).padEnd(5)}  (T_remove = 1000)                       ║`);
+            console.log(`  ║     action    : All future writes from this RSU blocked         ║`);
+            console.log(`  ║     on-chain  : Quarantine status=removed  (Eq.3.48)            ║`);
+            console.log(`  ╚══════════════════════════════════════════════════════════════╝`);
+            console.log('');
         }
 
     } catch (err) {
-        console.warn(`[BRIDGE→BC] IsActivePeer rsu=${rsuId} → ${err.message}`);
+        console.warn(`[${wallTime}] [TRUST]   PEER_ERR   rsu=${rsuId}  → ${err.message}`);
     }
 }
 
