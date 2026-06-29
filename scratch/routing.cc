@@ -114660,6 +114660,26 @@ double current_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double current_mitigation_latency                  = 0.0;
 double average_mitigation_latency                  = 0.0;
 
+// M7: Safety-Critical Threshold Violation Rate (TVR) — Eq. tvr
+// Counts safety-critical (HIGH-priority) packets whose per-hop forwarding
+// delay δ_p(v,r,t) exceeds Δ_max at any RSU receive point.
+// Numerator/denominator are running totals (never reset during a run),
+// matching the cumulative-ratio convention used for PDR.
+uint64_t g_tvr_crit_total  = 0;   // distinct safety-critical RSU-hop observations
+uint64_t g_tvr_violated    = 0;   // of those: hop_delay > Δ_max (S2_DELTA_MAX)
+double   current_TVR       = 0.0;
+double   average_TVR       = 0.0;
+double   g_tvr_cumulative  = 0.0;
+
+// M8: Unauthorized Copy Rate (UCR) — Eq. ucr
+// Numerator: fade_eavesdrop_counter (distinct (flow,pkt) received at any
+// unauthorized destination, already maintained by MacRx via
+// fade_eavesdropped_packets dedup set in efade_detection.h).
+// Denominator: total packets across all active flows (same as PDR).
+double   current_UCR       = 0.0;
+double   average_UCR       = 0.0;
+double   g_ucr_cumulative  = 0.0;
+
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
 #include "attack_variables.h"
@@ -117094,6 +117114,65 @@ void calculate_mitigation_latency_metric()
               << 1000.0 * average_mitigation_latency << " ms" << std::endl;
 }
 
+// ============================================================
+// M7: Safety-Critical Threshold Violation Rate (TVR)
+// TVR = |{p ∈ P_crit : δ_p(v,r,t) > Δ_max}| / |P_crit|
+// Counters g_tvr_crit_total / g_tvr_violated are incremented
+// inside MacRx at every RSU receive point (see TVR block above).
+// Δ_max = S2_DELTA_MAX = 50 ms (s2_detection.h).
+// ============================================================
+void calculate_tvr_metric()
+{
+    double denom = (g_tvr_crit_total > 0) ? (double)g_tvr_crit_total : 1.0;
+    current_TVR = (double)g_tvr_violated / denom;
+
+    g_tvr_cumulative += current_TVR;
+    double cycle = data_gathering_cycle_number - 1.0;
+    if (cycle < 1.0) cycle = 1.0;
+    average_TVR = g_tvr_cumulative / cycle;
+
+    std::cout << "[SECURITY] TVR=" << 100.0 * current_TVR << "%"
+              << "  (violated=" << g_tvr_violated
+              << " / crit_obs=" << g_tvr_crit_total << ")"
+              << "  avg=" << 100.0 * average_TVR << "%" << std::endl;
+}
+
+// ============================================================
+// M8: Unauthorized Copy Rate (UCR)
+// UCR = |{p ∈ P_total : ∃d'∉P(s,d), p∈R(d',W)}| / |P_total|
+// Numerator  : fade_eavesdrop_counter — distinct (flow,pkt) pairs
+//              confirmed received at an unauthorized destination,
+//              deduplicated via fade_eavesdropped_packets set in
+//              efade_detection.h.  Covers all four HF variants
+//              (active 5/6 via active_hf block; passive 7/8 via
+//              passive_hf block) without double-counting.
+// Denominator: total packets across all active flows — same loop
+//              used by PDR, so UCR and PDR share the same base.
+// ============================================================
+void calculate_ucr_metric()
+{
+    uint32_t total_pkts = 0;
+    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+    {
+        uint32_t f_size = (demanding_flow_struct_nodes_inst + fid)->f_size;
+        if (f_size > 0)
+            total_pkts += f_size;
+    }
+
+    uint64_t ucr_num = (uint64_t)fade_eavesdrop_counter;
+    current_UCR = (total_pkts > 0) ? ((double)ucr_num / (double)total_pkts) : 0.0;
+
+    g_ucr_cumulative += current_UCR;
+    double cycle = data_gathering_cycle_number - 1.0;
+    if (cycle < 1.0) cycle = 1.0;
+    average_UCR = g_ucr_cumulative / cycle;
+
+    std::cout << "[SECURITY] UCR=" << 100.0 * current_UCR << "%"
+              << "  (eavesdropped=" << ucr_num
+              << " / total_sent=" << total_pkts << ")"
+              << "  avg=" << 100.0 * average_UCR << "%" << std::endl;
+}
+
 static const int TCAM_HW_SIZE = 256;
 #include "tcam_detection.h"
 void write_security_metrics_csv()
@@ -117162,7 +117241,8 @@ void write_security_metrics_csv()
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
 		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
-			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
+			 << "\n# cur_TVR%, avg_TVR%, cur_UCR%, avg_UCR%\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117225,6 +117305,11 @@ void write_security_metrics_csv()
 		 << ", " << g_global_chain.size()
 		 << ", " << _da_count
 		 << ", " << _nfa_count
+		 // M7 TVR (%) and M8 UCR (%) — appended as the final two column pairs
+		 << ", " << (current_TVR * 100.0)
+		 << ", " << (average_TVR  * 100.0)
+		 << ", " << (current_UCR * 100.0)
+		 << ", " << (average_UCR  * 100.0)
 		 << "\n";
 
 	fout.close();
@@ -117353,7 +117438,11 @@ void fade_write_per_cycle_csv(std::string dir)
 		     << tn << ", "
 		     << fn << ", "
 		     << cur_pir << ", "
-		     << avg_pir << "\n";
+		     << avg_pir << ", "
+		     << (current_TVR * 100.0) << ", "
+		     << (average_TVR  * 100.0) << ", "
+		     << (current_UCR * 100.0) << ", "
+		     << (average_UCR  * 100.0) << "\n";
 		fout.close();
 	}
 
@@ -117426,6 +117515,9 @@ void calculate_performance_evaluation_metrics()
 	// Scheduled after existing writes to avoid timing conflicts
 	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
+	// M7 TVR and M8 UCR — fire after mitigation latency, before CSV write
+	Simulator::Schedule(Seconds(0.000091), calculate_tvr_metric);
+	Simulator::Schedule(Seconds(0.000092), calculate_ucr_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
@@ -120945,6 +121037,18 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					if (t_fwd_by_sender > 0.0)
 					{
 						double packet_delay_s = Now().GetSeconds() - t_fwd_by_sender;
+
+						// M7 TVR — Eq. tvr: count safety-critical packets and
+						// threshold violations at this RSU receive point.
+						// S2_DELTA_MAX (0.050 s = 50 ms) is the Δ_max used
+						// identically for S1/S2 detection; defined in s2_detection.h.
+						if (is_safety_critical_flow[fid])
+						{
+							g_tvr_crit_total++;
+							if (packet_delay_s > S2_DELTA_MAX)
+								g_tvr_violated++;
+						}
+
 						uint32_t rsu_idx = current_hop - N_Vehicles;
 						s1_detect_packet(rsu_idx,
 						                 packet_delay_s,
