@@ -34,7 +34,7 @@ void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
-// Supervisor demo: flip to true for rich per-operation output proving every
+// flip to true for rich per-operation output proving every
 // cryptographic component is executing with real liboqs/OpenSSL values.
 // High-frequency per-packet ops are gated on this flag.
 // Low-frequency high-importance events (DKG, quarantine, failures, blockchain
