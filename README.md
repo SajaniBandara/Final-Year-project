@@ -19,6 +19,8 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 11. [Node Architecture](#11-node-architecture)
 12. [Troubleshooting](#12-troubleshooting)
 
+> **New to this project?** Read Sections 2 and 2.1 first — the cryptographic layer added in v2 requires two extra dependencies (`liboqs` and `libssl-dev`) that must be installed before the first build.
+
 ---
 
 ## 1. Project Structure
@@ -37,6 +39,13 @@ Final-Year-project/
 │   ├── tcam_attack_helper.h         # TCAM attack injection helpers (Attacks 3 & 4)
 │   ├── efade_detection.h            # eFADE detector (Attacks 5–8, Hidden Forwarding)
 │   ├── hf_attack_helper.h           # Hidden Forwarding attack helpers (Attacks 5–8)
+│   ├── s5_detection.h               # MOBIGUARD Signature S5 — Active HF Control Plane detector
+│   ├── s6_detection.h               # MOBIGUARD Signature S6 — Active HF Data Plane detector
+│   ├── s7_detection.h               # MOBIGUARD Signature S7 — Passive HF Control Plane detector
+│   ├── s8_detection.h               # MOBIGUARD Signature S8 — Passive HF Data Plane detector
+│   ├── crypto_layer.h               # Hybrid crypto integrity layer (ML-DSA-87 + HMAC-SHA3-512)
+│   ├── blockchain_sim.h             # In-memory blockchain stubs (audit log, DKG, FlowMod commits)
+│   ├── dkg_setup.h                  # Distributed Key Generation ceremony (one-time at t=0)
 │   ├── optimization.py              # Link-lifetime route optimization helper
 │   └── optimization_lifetime.py     # Per-run lifetime optimization (reads tagged CSV from NS-3)
 ├── scripts/
@@ -63,10 +72,71 @@ Final-Year-project/
 | NetAnim | 3.109 | bundled with ns-allinone |
 | SUMO | any recent | `sudo apt install sumo sumo-tools` |
 | Python | 3.8+ | for launcher and optimization scripts |
+| OpenSSL | 3.x+ | `sudo apt install libssl-dev` — provides `EVP_sha3_512()` and `HMAC()` |
+| liboqs | 0.10+ | must be **built from source** — see §2.1 below |
+
+### 2.1 — Crypto dependency setup (first-time only)
+
+These steps are required once per machine before you can build the simulation. The cryptographic layer (`crypto_layer.h`) uses real post-quantum cryptography via liboqs (ML-DSA-87) and OpenSSL (SHA3-512).
+
+**Step 1 — Install OpenSSL development headers:**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libssl-dev cmake git build-essential
+```
+
+**Step 2 — Build and install liboqs (Open Quantum Safe library):**
+
+```bash
+git clone --depth 1 https://github.com/open-quantum-safe/liboqs.git ~/liboqs
+cd ~/liboqs && mkdir build && cd build
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DBUILD_SHARED_LIBS=ON \
+      -DOQS_BUILD_ONLY_LIB=ON ..
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+```
+
+Verify the installation:
+
+```bash
+ls /usr/local/include/oqs/oqs.h    # should exist
+ls /usr/local/lib/liboqs.so        # should exist
+```
+
+**Step 3 — Create the NS-3 wscript to link against crypto libraries:**
+
+NS-3's waf build system needs a `wscript` file in the scratch subdirectory to know which external libraries to link. Create this file once, after your first `--build` run (which creates the `scratch/routing/` directory):
+
+```bash
+# First sync creates the directory:
+python3 scripts/run_std_attacks.py --build
+
+# Then write the wscript:
+cat > ~/ns-allinone-3.35/ns-3.35/scratch/routing/wscript << 'EOF'
+import os
+
+def build(bld):
+    obj = bld.create_ns3_program('routing', bld.env['NS3_ENABLED_MODULES'])
+    obj.source  = ['routing.cc']
+    obj.lib     = ['oqs', 'ssl', 'crypto']
+    obj.libpath = ['/usr/local/lib']
+    obj.rpath   = ['/usr/local/lib']
+EOF
+
+# Rebuild with the wscript in place:
+python3 scripts/run_std_attacks.py --build
+```
+
+> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns-allinone-3.35/ns-3.35`.
 
 ---
 
 ## 3. Quick Start
+
+**Prerequisites:** NS-3 3.35 installed, `mobility_urban_150.tcl` available, and crypto dependencies set up per §2.1 (liboqs + wscript). If this is your first time on a new machine, do §2.1 before anything below.
 
 If you already have a mobility trace (`mobility_urban_150.tcl`) and NS-3 is installed, the fastest way to run both attack variants across all six percentages in parallel:
 
@@ -193,6 +263,8 @@ grep -o '\$ns_ at [0-9.]*' /home/user/mobility/mobility_urban_150.tcl \
 
 ## 5. Building the Simulation
 
+> **First-time build?** Complete Section 2.1 (liboqs + wscript setup) before running `--build` for the first time, otherwise the linker will fail with "cannot find -loqs".
+
 The `--build` flag on the launcher handles syncing and building in one step:
 
 ```bash
@@ -203,7 +275,7 @@ What this does internally:
 1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
 2. Runs `./waf build`
 
-Every file inside `scratch/` is synced automatically — no explicit list to maintain.
+Every file inside `scratch/` is synced automatically — no explicit list to maintain. The `scratch/routing/wscript` is **not** synced — create it once manually as described in §2.1.
 
 To build manually without the launcher:
 
@@ -214,8 +286,7 @@ cd ~/ns-allinone-3.35/ns-3.35
 
 > **Note:** A manual `./waf build` compiles the code but does **not** copy the `.py` helper scripts. If you skip `--build`, run this once to copy them:
 > ```bash
-> cp ~/ns3_g13/g13_project_repo/Final-Year-project/scratch/*.py \
->    ~/ns-allinone-3.35/ns-3.35/scratch/
+> cp <path-to-this-repo>/scratch/*.py ~/ns-allinone-3.35/ns-3.35/scratch/
 > ```
 
 ---
@@ -542,6 +613,36 @@ RSU-to-controller assignment: each RSU is assigned to its nearest controller by 
 ---
 
 ## 12. Troubleshooting
+
+### Build error: "cannot find -loqs" or "oqs/oqs.h: No such file"
+
+liboqs is not installed or was not installed to `/usr/local`. Re-run the liboqs build from §2.1. Then confirm:
+
+```bash
+ls /usr/local/include/oqs/oqs.h    # header must exist
+ls /usr/local/lib/liboqs.so        # shared lib must exist
+sudo ldconfig                      # refresh linker cache
+```
+
+Also confirm that `scratch/routing/wscript` exists in the NS-3 tree (§2.1 Step 3). Without it, waf does not pass `-loqs -lssl -lcrypto` to the linker.
+
+### Build error: "EVP_sha3_512 undeclared" or "HMAC undeclared"
+
+OpenSSL development headers are not installed. Run:
+
+```bash
+sudo apt-get install libssl-dev
+```
+
+Verify by checking that `/usr/include/openssl/evp.h` exists.
+
+### Launcher fails: "No such file or directory: .../ns3_g13/..."
+
+The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns3_g13/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
+
+```python
+NS3_DIR = Path.home() / "ns-allinone-3.35/ns-3.35"   # personal laptop
+```
 
 ### Build error: "not declared in this scope"
 
