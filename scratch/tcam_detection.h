@@ -93,8 +93,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
         const double E_lambda_l   = 0.8 + 1.2 * (vehicle_density / (double)N_Vehicles);
         const double lambda_hat_a = lambda_fm - E_lambda_l;
 
-        // 6. S3: excess FlowMod rate AND high TCAM utilisation (both required)
-        const bool flag_s3 = (lambda_hat_a > lambda_fm_thresh) && (tcam_util > tcam_util_thresh);
+        // 6. S3: excess FlowMod rate AND unauthorised entries present (eq:sig_s3)
+        const bool flag_s3 = (lambda_hat_a > lambda_fm_thresh) && (malicious_count > 0);
 
         // 7. S4: high PACKET_IN rate AND high TCAM utilisation (both required)
         const bool flag_s4 = (lambda_pi > lambda_pi_thresh) && (tcam_util > tcam_util_thresh);
@@ -109,8 +109,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
         metrics.total_lambda_fm += lambda_fm;
         metrics.total_lambda_pi += lambda_pi;
         metrics.total_malicious += malicious_count;
-        if (flag_s3) ++metrics.s3_fired_count;
-        if (flag_s4) ++metrics.s4_fired_count;
+        if (flag_s3) { ++metrics.s3_fired_count; record_detection_event(2, node_id); }
+        if (flag_s4) { ++metrics.s4_fired_count; record_detection_event(3, node_id); }
     }
 
     metrics.avg_tcam_util = (N_RSUs > 0) ? (util_sum / N_RSUs) : 0.0;

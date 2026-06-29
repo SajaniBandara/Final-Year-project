@@ -259,16 +259,10 @@ inline void reapply_cp_selective_delay()
             uint32_t current_next_hop = find_next_hop(src, dst, rsu_node_id);
             if (current_next_hop == large) continue;
 
-            // Phase 3 / D3: replace rand()-based draw with a reproducible ns-3
-            // UniformRandomVariable so results are fully determined by sim_seed
-            // + sim_run (set via RngSeedManager in main()). The static pointer
-            // is initialised once; ns-3's single-threaded model makes this safe.
-            static Ptr<UniformRandomVariable> cp_delay_rng = nullptr;
-            if (!cp_delay_rng) {
-                cp_delay_rng = CreateObject<UniformRandomVariable>();
-            }
-            double variable_delay = cp_delay_rng->GetValue(attack1_min_delay_seconds,
-                                                           attack1_max_delay_seconds);
+            // Use the single CLI-controlled delay value (--attack_delay_ms).
+            // Original implementation drew from Uniform(60 ms, 300 ms); replaced
+            // with a fixed value so delay is an explicit independent variable.
+            double variable_delay = attack_delay_ms / 1000.0;
 
             update_route_malicious(rsu_node_id, dst, current_next_hop, variable_delay);
             // NOTE: record_attack_onset(0, rsu_node_id) is intentionally NOT called

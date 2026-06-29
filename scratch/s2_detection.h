@@ -80,12 +80,10 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
     bool delay_exceeds = (hop_delay > S2_DELTA_MAX);
 
-    // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥
-    // Simulation proxy: a node that buffered the packet beyond Δ_max cannot
-    // produce a valid STARK timing proof that it forwarded on time, so proof
-    // failure is deterministically derived from the delay measurement.
-    // In deployed MOBIGUARD this is STARK.Verify(π_delay(u)) == false.
-    bool zkp_proof_fails = delay_exceeds;
+    // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥  (eq:stark_delay_verify)
+    StarkTimingProof proof = stark_prove_timing(t_fwd_by_sender, t_recv_now,
+                                                (uint32_t)packet_id);
+    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_by_sender, t_recv_now);
 
     cout << "[S2] sender=" << sender_sim_index
          << " receiver=" << current_hop
@@ -107,14 +105,14 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
              << " sender node " << sender_sim_index
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
-        if (active_attack_variant == 1 &&
+        if (active_attack_variant >= 0 &&
             sender_sim_index < (uint32_t)total_size &&
-            !is_detected_node[1][sender_sim_index])
+            !is_detected_node[active_attack_variant][sender_sim_index])
         {
-            record_detection_event(1, sender_sim_index);
+            record_detection_event(active_attack_variant, sender_sim_index);
             cout << "[S2] record_detection_event fired for node "
-                 << sender_sim_index << " variant=1 at t="
-                 << Simulator::Now().GetSeconds() << "s" << endl;
+                 << sender_sim_index << " variant=" << active_attack_variant
+                 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;
     }

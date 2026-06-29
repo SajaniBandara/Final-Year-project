@@ -1,3 +1,4 @@
+#include <set>
 #include "ns3/wave-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/lte-helper.h"
@@ -40,6 +41,8 @@
 #include "ns3/arp-header.h"
 #include "ns3/ipv4-header.h"
 #include "ns3/udp-header.h"
+#include "ns3/tcp-header.h"
+#include "ns3/llc-snap-header.h"
 #include "ns3/ns2-mobility-helper.h"
 #include "string.h"
 #include "cstdlib"
@@ -91,19 +94,38 @@ uint32_t flow_size = 55;
 // routing_test=true and active_attack_variant=7.
 bool single_cycle = false;
 
-const int total_size = 100;
-uint32_t N_RSUs = 20;
-uint32_t N_Vehicles = 80;
+// Number of SDVN controllers (C = {c1, ..., cm} per proposal).
+// Controllers form a 2x2 grid over the 2km x 2km simulation area.
+// Each RSU is dynamically assigned to its nearest controller (proposal eq. c*(k,t)).
+uint32_t N_Controllers = 4;
+
+// RSU-to-controller assignment table: rsu_controller_assignment[i] = index of
+// the controller node in controller_Node that RSU i is assigned to.
+// Populated in main() once RSU positions are known.
+uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
+
+const int total_size = 268; // must be >= N_Vehicles + N_RSUs + N_Controllers.
+                             // 100 was sufficient for the original defaults (N_Vehicles=80,
+                             // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
+                             // needs 200+64+4=268; 300 gives headroom.
+uint32_t N_RSUs = 64;
+uint32_t N_Vehicles = 200;
 
 const int flows = 1;
 
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
 int attack_percentage = 0;
+// Unique tag for all per-run scratch-level CSV files (e.g. "_A1_pct20").
+// Set in main() after cmd.Parse() so parallel runs never collide on
+// optimization_link_lifetime_data.csv / link_lifetime_solution.csv.
+std::string g_sim_tag;
+// Suffix appended to every result CSV filename to encode the delay used,
+// e.g. "_d80ms". Set in main() after cmd.Parse() from attack_delay_ms.
+std::string g_delay_suffix;
 int experiment_number = 3; //0 - qos, 1 - flow_size (packet arrival rate), 2 - mobility, 3 - network size
 
-// double simTime = 240;
-double simTime = 20; //test
+double simTime = 300; // Proposal simulation table: "each run lasts 300 s"
 
 uint16_t N_eNodeBs = 1+ N_Vehicles/40;
 int var = N_Vehicles+N_RSUs;
@@ -111,20 +133,27 @@ uint32_t large=50000;
 
 double optimization_frequency = 1.0;
 double optimization_period = 1.0/optimization_frequency;
-// double data_transmission_frequency = 1.0;
-double data_transmission_frequency = 5.0; //test
+double data_transmission_frequency = 1.0;
 double data_transmission_period = 1.0/data_transmission_frequency;
 double entropy_threshold = 0.005;
 double routing_frequency = data_transmission_frequency;
 double contention_threshold = 0.0;
 double link_lifetime_threshold = 0.400;
+// Maximum reliable DSRC link distance (metres). Links longer than this are
+// physically unreliable at the PHY layer (Cost231 path loss), so we gate the
+// link-lifetime matrix on it: any link longer than d_max_dsrc gets lifetime 0,
+// which makes routing rule out the direct link and select a relay (e.g. via the
+// RSU) instead of sending direct and dropping. Tune to match your radio range.
+double d_max_dsrc = 270.0;
+bool use_sumo_mobility = true; // when true + routing_test==false, load Ns2MobilityHelper
+                                // SUMO trace instead of synthetic grid/random mobility
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
-int architecture = 0; // 0 - centralized, 1 - distributed, 2 - hybrid
-int maxspeed = 80;	
+int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
+int maxspeed = 150;
 
 int paper = 1; //0-optimization, 1 -architecture
 
-uint32_t flow_packet_size = 100;
+uint32_t flow_packet_size = 750; // Proposal simulation table: "Flow packet type, size: UDP, 750 bytes"
 uint32_t qf = 1;
 uint32_t AIFSN = 0;
 double B_max = 0.0;
@@ -6773,6 +6802,38 @@ void CustomDataUnicastTag_Routing::SetdestinationId(uint32_t destination_id)
 	m_destinationId = destination_id;
 }
 
+// CryptoAnchorTag — carries SHA3-512(ML-DSA-87 sig) reference + HMAC tag per packet.
+// 129 bytes: 64 (sig_hash) + 64 (hmac_tag) + 1 (flags).
+// bit0=sig_valid, bit1=stark_timing_ok, bit2=stark_hop_ok
+class CryptoAnchorTag : public Tag {
+public:
+    static TypeId GetTypeId(void) {
+        static TypeId tid = TypeId("CryptoAnchorTag")
+            .SetParent<Tag>().AddConstructor<CryptoAnchorTag>();
+        return tid;
+    }
+    TypeId GetInstanceTypeId(void) const override { return GetTypeId(); }
+    uint32_t GetSerializedSize(void) const override { return 129; }
+    void Serialize(TagBuffer i) const override {
+        i.Write(m_sig_hash, 64); i.Write(m_hmac_tag, 64); i.WriteU8(m_flags);
+    }
+    void Deserialize(TagBuffer i) override {
+        i.Read(m_sig_hash, 64); i.Read(m_hmac_tag, 64); m_flags = i.ReadU8();
+    }
+    void Print(std::ostream& os) const override { os << "CryptoAnchorTag"; }
+    void SetSigHash(const uint8_t* h)  { memcpy(m_sig_hash, h, 64); }
+    void SetHmacTag(const uint8_t* h)  { memcpy(m_hmac_tag, h, 64); }
+    void SetFlags(uint8_t f)           { m_flags = f; }
+    const uint8_t* GetSigHash() const  { return m_sig_hash; }
+    uint8_t GetFlags() const           { return m_flags; }
+    CryptoAnchorTag() : m_flags(0) {
+        memset(m_sig_hash, 0, 64); memset(m_hmac_tag, 0, 64);
+    }
+private:
+    uint8_t m_sig_hash[64];
+    uint8_t m_hmac_tag[64];
+    uint8_t m_flags;
+};
 
 class CustomFlowDataUplinkTag1 : public Tag {
 public:
@@ -93701,25 +93762,25 @@ void CustomDeltavaluesDownlinkUnicastTag::Setload (double * load)
 double dsrc_utilization_time = 0.0;
 double lte_utilization_time = 0.0;
 double ethernet_utilization_time = 0.0;
-double packet_delay[total_size+2];
-double packet_delay_dsrc[total_size+2];
+double packet_delay[total_size];
+double packet_delay_dsrc[total_size];
 
-double dsrc_packet_initial_timestamp[total_size+2];
-double packet_initial_timestamp[total_size+2];
+double dsrc_packet_initial_timestamp[total_size];
+double packet_initial_timestamp[total_size];
 double dsrc_initial_timestamp;
 double lte_initial_timestamp;
 double ethernet_initial_timestamp;
-double aodv_initial_timestamp[total_size+2];
+double aodv_initial_timestamp[total_size];
 
-double dsrc_packet_final_timestamp[total_size+2];
-double packet_final_timestamp[total_size+2];
+double dsrc_packet_final_timestamp[total_size];
+double packet_final_timestamp[total_size];
 double dsrc_final_timestamp;
 double dsrc_total_received_packets = 0.0;
 double lte_final_timestamp;
 double ethernet_final_timestamp;
-double aodv_final_timestamp[total_size+2];
+double aodv_final_timestamp[total_size];
 
-double max_distance[total_size+2];
+double max_distance[total_size];
 
 struct Q_fi
 {
@@ -94011,12 +94072,12 @@ struct routing_data_at_nodes routing_data_at_nodes_inst[total_size];
 struct routing_data_at_controller routing_data_at_controller_inst[total_size];
 
 
-struct data_at_nodes data_at_nodes_inst[total_size+2];
-struct data_at_manager data_at_manager_inst[total_size+2];
+struct data_at_nodes data_at_nodes_inst[total_size];
+struct data_at_manager data_at_manager_inst[total_size];
 
 void print_management_data()
 {
-	for(uint32_t i=0;i<total_size+2;i++)
+	for(uint32_t i=0;i<total_size+N_Controllers;i++)
 	{
 		cout<<"i ="<<i<<"node id "<<(data_at_manager_inst+i)->nodeid<<"acceleration "<<(data_at_manager_inst+i)->acceleration<<"velocity "<<(data_at_manager_inst+i)->velocity<<"position "<<(data_at_manager_inst+i)->position<<"timestamp "<<(data_at_manager_inst+i)->timestamp<<endl;
 	}
@@ -94067,7 +94128,7 @@ void update_previous_velocity(Ptr <NetDevice> nd, Ptr <Node> node)
 	Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (nd);
 	Ptr <Node> ni = DynamicCast <Node> (node);
 	//CustomDataTag tag;
-	uint32_t nid = uint32_t(ni->GetId()) - 2;
+	uint32_t nid = uint32_t(ni->GetId()) - N_Controllers;
 	//packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
 	//cout<<"updating data from node "<<nid<<endl;
 	Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (node->GetObject<MobilityModel>());
@@ -94085,7 +94146,7 @@ void add_routing_data_at_nodes(struct routing_data_at_nodes * nd1, Ptr <NetDevic
 	Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (nd);
 	Ptr <Node> ni = DynamicCast <Node> (node);
 	//CustomDataTag tag;
-	uint32_t nid = uint32_t(ni->GetId()) - 2;
+	uint32_t nid = uint32_t(ni->GetId()) - N_Controllers;
 	//packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
 	//cout<<"updating data from node "<<nid<<endl;
 	Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (node->GetObject<MobilityModel>());
@@ -94121,12 +94182,25 @@ void add_routing_data_at_nodes(struct routing_data_at_nodes * nd1, Ptr <NetDevic
 
 void add_demanding_flow_struct_nodes(struct demanding_flow_struct_nodes * nd1, uint32_t source, uint32_t destination, uint32_t x, uint32_t z, uint32_t q)
 {	
+	extern bool routing_test;
 
 	nd1->source = source;
 	nd1->destination = destination;
 	nd1->f_size = x;
 	nd1->p_size = z;
 	nd1->qos = q;
+	if (routing_test)
+	{
+		uint32_t idx = nd1 - demanding_flow_struct_nodes_inst;
+		if (idx < 2 * flows)
+		{
+			demanding_flow_struct_controller_inst[idx].source = source;
+			demanding_flow_struct_controller_inst[idx].destination = destination;
+			demanding_flow_struct_controller_inst[idx].f_size = x;
+			demanding_flow_struct_controller_inst[idx].p_size = z;
+			demanding_flow_struct_controller_inst[idx].qos = q;
+		}
+	}
 	//cout<<"updating flow with source as: "<<nd1->source<<"destination: "<<nd1->destination<<endl;
 }	
 
@@ -94171,7 +94245,7 @@ uint32_t get_size_of_data_at_nodes(struct data_at_nodes * nd1)
 	uint32_t size = 0;
 	for(uint32_t i=0; i<max;i++)
 	{
-		if((nd1->nodeid[i] != large) and (nd1->nodeid[i] < (total_size+2)) and (nd1->nodeid[i]>1))
+		if((nd1->nodeid[i] != large) and (nd1->nodeid[i] < (total_size)) and (nd1->nodeid[i]>1))
 		{
 			size++;
 		}
@@ -94262,14 +94336,14 @@ void clear_controllerdata(struct controller_data * nd1)
 	nd1->lastupdated = Simulator::Now().GetSeconds();
 }
 
-struct neighbor_data neighbordata_inst[total_size+2];
-struct controller_data con_data_inst[total_size+2];
+struct neighbor_data neighbordata_inst[total_size];
+struct controller_data con_data_inst[total_size];
 
 double sum_of_nodeids = 0;
 void nodeid_sum()
 {
 	sum_of_nodeids = 0;
-	for (uint32_t i=2;i<total_size+2;i++)
+	for (uint32_t i=N_Controllers;i<total_size+N_Controllers;i++)
 	{
 		sum_of_nodeids = sum_of_nodeids + i;
 	}
@@ -94283,19 +94357,19 @@ double calculate_network_entropy()
 	double summation_rsu = 0.0;
 	for (uint32_t i=0;i<total_size; i++)
 	{
-		if( con_data_inst[i+2].neighborsize != 0)
+		if( con_data_inst[i+N_Controllers].neighborsize != 0)
 		{
 			int vehicle_neighbors = 0;
 			int rsu_neighbors = 0;
 			for (uint32_t j=0;j<max;j++)
 			{
-				if((con_data_inst[i+2].neighborid[j]) != large)
+				if((con_data_inst[i+N_Controllers].neighborid[j]) != large)
 				{
-					if ((con_data_inst[i+2].neighborid[j]) < (N_Vehicles+2))
+					if ((con_data_inst[i+N_Controllers].neighborid[j]) < (N_Vehicles+N_Controllers))
 					{
 						vehicle_neighbors++;
 					}
-					else if ((con_data_inst[i+2].neighborid[j]) < (total_size+2))
+					else if ((con_data_inst[i+N_Controllers].neighborid[j]) < (total_size))
 					{
 						rsu_neighbors++;
 					}
@@ -94395,7 +94469,7 @@ uint32_t getNeighborsize(struct neighbor_data * nd1)
 	uint32_t  neighborsize = 0;
 	for(uint32_t i=0; i<max;i++)
 	{
-		if((nd1->neighborid[i] != large) and (nd1->neighborid[i] > 1) and (nd1->neighborid[i] < (total_size+2)))
+		if((nd1->neighborid[i] != large) and (nd1->neighborid[i] > N_Controllers-1) and (nd1->neighborid[i] < (total_size)))
 		{
 			neighborsize++;	
 		}
@@ -94443,6 +94517,9 @@ struct routing_table_row
 	uint32_t source_node;
 	uint32_t destination_node;
 	uint32_t next_hop;
+	double   injected_delay;   // Attack 1 (Selective Time Delay, Control Plane). 0.0 = benign rule (default). >0.0 = the
+	                            // malicious controller poisoned this flowMod  entry with a forced forwarding delay that
+	                            // the receiving RSU will obey without knowing it is compromised.
 };
 
 struct routing_table
@@ -94469,6 +94546,7 @@ void initialize_all_routing_tables()
 			routing_tables[i].rows[j].destination_node = large;
 			proposed_routing_tables[i].rows[j].destination_node = large;
 			routing_tables[i].rows[j].next_hop = large;
+			routing_tables[i].rows[j].injected_delay = 0.0; // always start clean — prevents stale values leaking across runs
 			for(uint32_t k=0;k<total_size;k++)
 			{
 				proposed_routing_tables[i].rows[j].path[k] = large;
@@ -94482,6 +94560,24 @@ void update_route(uint32_t source, uint32_t destination, uint32_t next_hop)
 	routing_tables[source].rows[destination].source_node = source;
 	routing_tables[source].rows[destination].destination_node = destination;
 	routing_tables[source].rows[destination].next_hop = next_hop;
+	routing_tables[source].rows[destination].injected_delay = 0.0; // benign default
+}
+
+extern std::string attack_tag();
+
+// Attack 1: Selective Time Delay — Control Plane. Simulates a compromised SDN controller transmitting a manipulated flowMo to an RSU. 
+//The RSU itself is NOT malicious — it has no way to distinguish this from a legitimate routing update, and will obey the injected delay
+// when it next forwards a packet for this (source, destination) pair. Per the threat model's mutual-exclusion assumption, this function must
+// never be called alongside any code that marks the RSU itself malicious.
+void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay)
+{
+	update_route(source, destination, next_hop);   // install the routing decision first (benign part)
+	routing_tables[source].rows[destination].injected_delay = delay; // then poison the rule
+	cout << attack_tag() << " [ATTACK1] Malicious controller installed poisoned flowMod: "
+	     << "node=" << source << " dest=" << destination
+	     << " next_hop=" << next_hop
+	     << " injected_delay=" << delay * 1000.0 << "ms"
+	     << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
 }
 
 void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * path)
@@ -94497,20 +94593,50 @@ void update_proposed_route(uint32_t source, uint32_t destination, uint32_t * pat
 
 uint32_t find_next_hop(uint32_t source, uint32_t destination, uint32_t current_hop)
 {
-	bool found = false;
-	uint32_t k=0;
-	uint32_t next_hop=0;
-	while(found==false)
+    // ==============================================================
+    // ENFORCE ARCHITECTURE 3: VEHICLES MUST ROUTE THROUGH RSU
+    // ==============================================================
+    if (architecture == 3 && N_RSUs > 0)
 	{
-		uint32_t this_hop = proposed_routing_tables[source].rows[destination].path[k];
-		if (current_hop == this_hop)
-		{
-			next_hop = proposed_routing_tables[source].rows[destination].path[k+1];
-			found = true;
-		}
-		k++;
-	}
-	return next_hop;
+        uint32_t rsu_index = N_Vehicles; // e.g., if 2 vehicles (0, 1), RSU is at index 2
+        
+        // 1. If a Vehicle is trying to send to another Vehicle, it MUST go to the RSU first
+        if (current_hop < N_Vehicles && destination < N_Vehicles && current_hop != destination)
+        {
+            return rsu_index; 
+        }
+        
+ 		// 2. If the RSU is holding the packet, it forwards it down to the destination Vehicle
+        if (current_hop == rsu_index && destination < N_Vehicles)
+        {
+            return destination;
+        }
+    }
+
+    // ==============================================================
+    // FALLBACK: ORIGINAL CONTROLLER LOGIC
+    // ==============================================================
+    bool found = false;
+    uint32_t k = 0;
+    uint32_t next_hop = 0;
+    
+    while(found == false)
+    {
+        // Safety Break: Prevent infinite loop if the path is broken
+        if (k > 50) { 
+			cout << "ERROR: Route not found in proposed_routing_tables!" << endl;
+            return destination; 
+        }
+        
+        uint32_t this_hop = proposed_routing_tables[source].rows[destination].path[k];
+        if (current_hop == this_hop)
+        {
+            next_hop = proposed_routing_tables[source].rows[destination].path[k+1];
+            found = true;
+        }
+        k++;
+    }
+    return next_hop;
 }
 
 long dsrc_total_packet_size = 0;
@@ -94520,11 +94646,10 @@ long lte_total_packet_size = 0;
 ApplicationContainer apps;
 ApplicationContainer RSU_apps;
 NodeContainer controller_Node;
-NodeContainer management_Node;
 NodeContainer Vehicle_Nodes;
 NodeContainer RSU_Nodes;
 //NodeContainer Custom_Nodes;
-bool routing_test = true;
+bool routing_test = false; // Proposal: all results on 200-vehicle/64-RSU SUMO topology. Pass --routing_test=true for the small test network only.
 
 NetDeviceContainer wifidevices;
 NetDeviceContainer wifidevices_172;
@@ -94587,7 +94712,7 @@ void reset_delays_and_packets()
 void write_csv_delay_training(uint32_t index, uint32_t mode)
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
+	fout.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
 	fout << mode << ", "
 	     << mode*D_wl_bar[index] << ", "
 	     <<	(1-mode)*D_wi_bar[index] << ", "
@@ -94615,7 +94740,7 @@ void write_csv_delay_training(uint32_t index, uint32_t mode)
 void write_csv_delay_prediction()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
+	fout.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/delay_data_for_prediction.csv",ios::out|ios::trunc);
 	for (uint32_t index=0;index<total_size;index++)
 	{
 		for(double mode=0.0;mode < 2.0;mode++)
@@ -94676,11 +94801,11 @@ double calculate_wireless_entropy()
 	for (uint32_t i=0;i<total_size; i++)
 	{
 		int wireless_neighbors = 0;
-		if( con_data_inst[i+2].neighborsize != 0)
+		if( con_data_inst[i+N_Controllers].neighborsize != 0)
 		{
 			for (uint32_t j=0;j<max;j++)
 			{
-				if((con_data_inst[i+2].neighborid[j]) != large)
+				if((con_data_inst[i+N_Controllers].neighborid[j]) != large)
 				{
 					if (i<N_Vehicles)
 					{
@@ -94688,11 +94813,11 @@ double calculate_wireless_entropy()
 					}
 					else
 					{
-						if ((con_data_inst[i+2].neighborid[j]) < (N_Vehicles+2))
+						if ((con_data_inst[i+N_Controllers].neighborid[j]) < (N_Vehicles+N_Controllers))
 						{
 							wireless_neighbors++;
 						}
-						else if ((con_data_inst[i+2].neighborid[j]) < (total_size+2))
+						else if ((con_data_inst[i+N_Controllers].neighborid[j]) < (total_size))
 						{
 						
 						}
@@ -94763,13 +94888,13 @@ void compute_Qnei()
 	{
 		double neighbors = 0;
 		double Q_sum = 0.0;
-		if(con_data_inst[i+2].neighborsize != 0)
+		if(con_data_inst[i+N_Controllers].neighborsize != 0)
 		{
 			for (uint32_t j=0;j<max;j++)
 			{
-				if((con_data_inst[i+2].neighborid[j]) != large)
+				if((con_data_inst[i+N_Controllers].neighborid[j]) != large)
 				{
-					uint32_t nei_index = con_data_inst[i+2].neighborid[j] - 2;
+					uint32_t nei_index = con_data_inst[i+N_Controllers].neighborid[j] - N_Controllers;
 					Q_sum = Q_sum + Q[nei_index];
 					neighbors++;
 				}
@@ -94907,11 +95032,11 @@ class SimpleUdpApplication : public Application
 #define END_CODE "\033[0m"
 
 
-bool Z_gurobi[total_size+2];
-bool X_gurobi[total_size+2];
+bool Z_gurobi[total_size];
+bool X_gurobi[total_size];
 
-bool Z_nodes[total_size+2];
-bool X_nodes[total_size+2];
+bool Z_nodes[total_size];
+bool X_nodes[total_size];
 
 
   //NS_LOG_COMPONENT_DEFINE("SimpleUdpApplication");
@@ -94990,20 +95115,20 @@ bool X_nodes[total_size+2];
 		if(packet->PeekPacketTag(tag_routing))
 		{
 			uint32_t node_index = tag_routing.GetsenderId();
-			uint32_t destination = tag_routing.GetdestinationId() + 2;
+			uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
 			uint32_t * source = tag_routing.GetNodeId();
-			Y[*source - 2] = Y[*source - 2] - 1;
-			packets_received_wi[*source - 2] = packets_received_wi[*source - 2] + 1;
+			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
+			packets_received_wi[*source - N_Controllers] = packets_received_wi[*source - N_Controllers] + 1;
 			double delay = Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds();
-			one_hop_delay_training_wi[*source - 2] = one_hop_delay_training_wi[*source - 2] + delay;
+			one_hop_delay_training_wi[*source - N_Controllers] = one_hop_delay_training_wi[*source - N_Controllers] + delay;
 			cout<<"1-hop delay wired is "<<delay<<endl;
 			
 			if (nid != destination)
 			{
-				//uint32_t next_hop = routing_tables[nid -2].rows[destination-2].next_hop;
-				uint32_t next_hop = find_next_hop(node_index,destination-2,nid -2);
+				//uint32_t next_hop = routing_tables[nid -N_Controllers].rows[destination-N_Controllers].next_hop;
+				uint32_t next_hop = find_next_hop(node_index,destination-N_Controllers,nid -N_Controllers);
 				cout<<endl<<"next hop from routing table is "<< next_hop <<endl;
-				if (next_hop == (*source -2))
+				if (next_hop == (*source -N_Controllers))
 				{
 					cout<<"routing loop. stopping routing"<<endl;
 				}
@@ -95015,11 +95140,11 @@ bool X_nodes[total_size+2];
 					tag_routing.SetTimestamp(&ti);
 					packet_i->AddPacketTag(tag_routing);
 					
-					if (((nid-2) > N_Vehicles) && (next_hop > N_Vehicles))
+					if (((nid-N_Controllers) > N_Vehicles) && (next_hop > N_Vehicles))
 					{
-						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-2-N_Vehicles));	
-				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-2-N_Vehicles));
-				  		cout<<"Ethernet data Unicasting from node "<<nid - 2<<endl;
+						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-N_Controllers-N_Vehicles));	
+				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-N_Controllers-N_Vehicles));
+				  		cout<<"Ethernet data Unicasting from node "<<nid - N_Controllers<<endl;
 						
 						Ptr <Ipv4> ipv4;  	
 					  	ipv4 = RSU_Nodes.Get(next_hop-N_Vehicles)->GetObject<Ipv4>();
@@ -95038,27 +95163,80 @@ bool X_nodes[total_size+2];
 					}
 					
 					else
-					{
-						Ptr <NetDevice> destination_nd = wifidevices.Get(next_hop);
-						Address addr = destination_nd->GetAddress();
-						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
-						//cout <<endl<<"MAC address of next hop node "<<next_hop<<" is "<<dest_address<<endl;
-					  	uint16_t protocolwave = 0x88dc;//
-						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (wifidevices.Get(nid -2));
-						cout<<"DSRC data Unicasting from node "<<nid - 2<<endl;
-						dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-						Simulator::Schedule (Seconds(0.000000) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
-					}
+                    {
+                        uint32_t final_next_hop = next_hop;
+                        uint32_t current_hop = nid - N_Controllers;
+
+                        // ==============================================================
+                        // ENFORCE ARCHITECTURE 3: MAC-LAYER OVERRIDE
+                        // ==============================================================
+                        if (architecture == 3 && N_RSUs > 0)
+                        {
+                          	uint32_t rsu_index = N_Vehicles; // e.g., index 2
+                            if (current_hop < N_Vehicles && destination-N_Controllers < N_Vehicles && current_hop != destination-N_Controllers) {
+                                final_next_hop = rsu_index;
+                            } else if (current_hop == rsu_index && destination-N_Controllers < N_Vehicles) {
+                                final_next_hop = destination - N_Controllers;
+                            }
+                        }
+
+                        // ==============================================================
+                        // 1. BULLETPROOF DESTINATION MAC LOOKUP
+                        // ==============================================================
+                        Mac48Address dest_address;
+                        if (final_next_hop < N_Vehicles) {
+                            // Find the Vehicle's Node globally (Vehicles are usually nid = 2 and 3)
+							uint32_t global_dest_nid = final_next_hop + N_Controllers;
+                            Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
+                            
+                            // Scan the node for its Wi-Fi device
+                            for (uint32_t i = 0; i < dest_node->GetNDevices(); i++) {
+                                Ptr<NetDevice> dev = dest_node->GetDevice(i);
+                                if (DynamicCast<WifiNetDevice>(dev) != 0) {
+                                    dest_address = Mac48Address::ConvertFrom(dev->GetAddress());
+                                    break;
+                                }
+                            }
+                        } else {
+                            // Sending to the RSU -> Broadcast
+                            dest_address = Mac48Address("ff:ff:ff:ff:ff:ff");
+                        }
+
+                        // ==============================================================
+                        // 2. BULLETPROOF SENDER DEVICE LOOKUP
+                        // ==============================================================
+                        Ptr <WifiNetDevice> wdi = 0;
+                        Ptr<Node> sender_node = NodeList::GetNode(nid); // We already have the global nid!
+                        
+                        for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
+                            Ptr<NetDevice> dev = sender_node->GetDevice(i);
+                            if (DynamicCast<WifiNetDevice>(dev) != 0) {
+                                wdi = DynamicCast<WifiNetDevice>(dev);
+                                break;
+                            }
+                        }
+
+                        if (wdi == 0) {
+                            cout << "[CRITICAL ERROR] Could not find sender device for Node " << current_hop << endl;
+                            return;
+                        }
+
+                        uint16_t protocolwave = 0x88dc;
+                        cout << "[ARCH 3 FORWARDING] Node " << current_hop << " successfully forwarding DSRC to MAC " << dest_address << endl;
+                        
+                        dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
+                        Simulator::Schedule (Seconds(0.000000), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+                    }
 					
-					Y[nid - 2] = Y[nid - 2] + 1;	
+					Y[nid - N_Controllers] = Y[nid - N_Controllers] + 1;	
 					//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 				}
 			}
 			if (nid == destination)
 			{
-				cout<<"packet successfully delivered to destination node"<<nid - 2<<endl;
-				dsrc_packet_final_timestamp[node_index+2] = Simulator::Now().GetSeconds();
-				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<nid -2 <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
+				cout<<"packet successfully delivered to destination node"<<nid - N_Controllers<<endl;
+				dsrc_packet_final_timestamp[node_index+N_Controllers] = Simulator::Now().GetSeconds();
+				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<nid -N_Controllers <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
 			}
 		}
 	}
@@ -95084,7 +95262,7 @@ bool X_nodes[total_size+2];
 			for(uint32_t j=0;j<total_size;j++)	
 			{
 				(delta_at_nodes_inst+i)->delta_fi_inst[nodeid].delta_values[j] = delta_Set[i][j];
-				//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j]<<endl;
+				//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j]<<endl;
 			}
 		       (delta_at_nodes_inst+i)->source_f = sources[i];
 		       (delta_at_nodes_inst+i)->destination_f = destinations[i];
@@ -96515,7 +96693,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN01max.Getneighborid()+i) != large) and (*(tagN01max.Getneighborid()+i) > 1) and (*(tagN01max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN01max.Getneighborid()+i) != large) and (*(tagN01max.Getneighborid()+i) > 0) and (*(tagN01max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN01max.Getneighborid()+i);
@@ -97103,7 +97281,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN2max.Getneighborid()+i) != large) and (*(tagN2max.Getneighborid()+i) > 1) and (*(tagN2max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN2max.Getneighborid()+i) != large) and (*(tagN2max.Getneighborid()+i) > 0) and (*(tagN2max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN2max.Getneighborid()+i);
@@ -97692,7 +97870,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN3max.Getneighborid()+i) != large) and (*(tagN3max.Getneighborid()+i) > 1) and (*(tagN3max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN3max.Getneighborid()+i) != large) and (*(tagN3max.Getneighborid()+i) > 0) and (*(tagN3max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN3max.Getneighborid()+i);
@@ -98280,7 +98458,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN4max.Getneighborid()+i) != large) and (*(tagN4max.Getneighborid()+i) > 1) and (*(tagN4max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN4max.Getneighborid()+i) != large) and (*(tagN4max.Getneighborid()+i) > 0) and (*(tagN4max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN4max.Getneighborid()+i);
@@ -98869,7 +99047,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN5max.Getneighborid()+i) != large) and (*(tagN5max.Getneighborid()+i) > 1) and (*(tagN5max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN5max.Getneighborid()+i) != large) and (*(tagN5max.Getneighborid()+i) > 0) and (*(tagN5max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN5max.Getneighborid()+i);
@@ -99458,7 +99636,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN6max.Getneighborid()+i) != large) and (*(tagN6max.Getneighborid()+i) > 1) and (*(tagN6max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN6max.Getneighborid()+i) != large) and (*(tagN6max.Getneighborid()+i) > 0) and (*(tagN6max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN6max.Getneighborid()+i);
@@ -100046,7 +100224,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN7max.Getneighborid()+i) != large) and (*(tagN7max.Getneighborid()+i) > 1) and (*(tagN7max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN7max.Getneighborid()+i) != large) and (*(tagN7max.Getneighborid()+i) > 0) and (*(tagN7max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN7max.Getneighborid()+i);
@@ -100634,7 +100812,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN8max.Getneighborid()+i) != large) and (*(tagN8max.Getneighborid()+i) > 1) and (*(tagN8max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN8max.Getneighborid()+i) != large) and (*(tagN8max.Getneighborid()+i) > 0) and (*(tagN8max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN8max.Getneighborid()+i);
@@ -101222,7 +101400,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN9max.Getneighborid()+i) != large) and (*(tagN9max.Getneighborid()+i) > 1) and (*(tagN9max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN9max.Getneighborid()+i) != large) and (*(tagN9max.Getneighborid()+i) > 0) and (*(tagN9max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN9max.Getneighborid()+i);
@@ -101811,7 +101989,7 @@ bool X_nodes[total_size+2];
 		  for(int i=0; i<max; i++)
 		  {
 		  	(con_data_inst+source_node_id)->neighborid[i] = *(tagN10max.Getneighborid()+i);
-		  	if ((*(tagN10max.Getneighborid()+i) != large) and (*(tagN10max.Getneighborid()+i) > 1) and (*(tagN10max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN10max.Getneighborid()+i) != large) and (*(tagN10max.Getneighborid()+i) > 0) and (*(tagN10max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN10max.Getneighborid()+i);
@@ -102399,7 +102577,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN11max.Getneighborid()+i) != large) and (*(tagN11max.Getneighborid()+i) > 1) and (*(tagN11max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN11max.Getneighborid()+i) != large) and (*(tagN11max.Getneighborid()+i) > 0) and (*(tagN11max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN11max.Getneighborid()+i);
@@ -102987,7 +103165,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN12max.Getneighborid()+i) != large) and (*(tagN12max.Getneighborid()+i) > 1) and (*(tagN12max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN12max.Getneighborid()+i) != large) and (*(tagN12max.Getneighborid()+i) > 0) and (*(tagN12max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN12max.Getneighborid()+i);
@@ -103575,7 +103753,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN13max.Getneighborid()+i) != large) and (*(tagN13max.Getneighborid()+i) > 1) and (*(tagN13max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN13max.Getneighborid()+i) != large) and (*(tagN13max.Getneighborid()+i) > 0) and (*(tagN13max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN13max.Getneighborid()+i);
@@ -104163,7 +104341,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN14max.Getneighborid()+i) != large) and (*(tagN14max.Getneighborid()+i) > 1) and (*(tagN14max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN14max.Getneighborid()+i) != large) and (*(tagN14max.Getneighborid()+i) > 0) and (*(tagN14max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN14max.Getneighborid()+i);
@@ -104751,7 +104929,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN15max.Getneighborid()+i) != large) and (*(tagN15max.Getneighborid()+i) > 1) and (*(tagN15max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN15max.Getneighborid()+i) != large) and (*(tagN15max.Getneighborid()+i) > 0) and (*(tagN15max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN15max.Getneighborid()+i);
@@ -105338,7 +105516,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN16max.Getneighborid()+i) != large) and (*(tagN16max.Getneighborid()+i) > 1) and (*(tagN16max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN16max.Getneighborid()+i) != large) and (*(tagN16max.Getneighborid()+i) > 0) and (*(tagN16max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN16max.Getneighborid()+i);
@@ -106489,7 +106667,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN17max.Getneighborid()+i) != large) and (*(tagN17max.Getneighborid()+i) > 1) and (*(tagN17max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN17max.Getneighborid()+i) != large) and (*(tagN17max.Getneighborid()+i) > 0) and (*(tagN17max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN17max.Getneighborid()+i);
@@ -106512,7 +106690,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN18max.Getneighborid()+i) != large) and (*(tagN18max.Getneighborid()+i) > 1) and (*(tagN18max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN18max.Getneighborid()+i) != large) and (*(tagN18max.Getneighborid()+i) > 0) and (*(tagN18max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN18max.Getneighborid()+i);
@@ -107099,7 +107277,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN19max.Getneighborid()+i) != large) and (*(tagN19max.Getneighborid()+i) > 1) and (*(tagN19max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN19max.Getneighborid()+i) != large) and (*(tagN19max.Getneighborid()+i) > 0) and (*(tagN19max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN19max.Getneighborid()+i);
@@ -107687,7 +107865,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN20max.Getneighborid()+i) != large) and (*(tagN20max.Getneighborid()+i) > 1) and (*(tagN20max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN20max.Getneighborid()+i) != large) and (*(tagN20max.Getneighborid()+i) > 0) and (*(tagN20max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN20max.Getneighborid()+i);
@@ -108275,7 +108453,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN21max.Getneighborid()+i) != large) and (*(tagN21max.Getneighborid()+i) > 1) and (*(tagN21max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN21max.Getneighborid()+i) != large) and (*(tagN21max.Getneighborid()+i) > 0) and (*(tagN21max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN21max.Getneighborid()+i);
@@ -108863,7 +109041,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN22max.Getneighborid()+i) != large) and (*(tagN22max.Getneighborid()+i) > 1) and (*(tagN22max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN22max.Getneighborid()+i) != large) and (*(tagN22max.Getneighborid()+i) > 0) and (*(tagN22max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN22max.Getneighborid()+i);
@@ -109451,7 +109629,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN23max.Getneighborid()+i) != large) and (*(tagN23max.Getneighborid()+i) > 1) and (*(tagN23max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN23max.Getneighborid()+i) != large) and (*(tagN23max.Getneighborid()+i) > 0) and (*(tagN23max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN23max.Getneighborid()+i);
@@ -110039,7 +110217,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN24max.Getneighborid()+i) != large) and (*(tagN24max.Getneighborid()+i) > 1) and (*(tagN24max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN24max.Getneighborid()+i) != large) and (*(tagN24max.Getneighborid()+i) > 0) and (*(tagN24max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN24max.Getneighborid()+i);
@@ -110627,7 +110805,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN25max.Getneighborid()+i) != large) and (*(tagN25max.Getneighborid()+i) > 1) and (*(tagN25max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN25max.Getneighborid()+i) != large) and (*(tagN25max.Getneighborid()+i) > 0) and (*(tagN25max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN25max.Getneighborid()+i);
@@ -110650,7 +110828,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN26max.Getneighborid()+i) != large) and (*(tagN26max.Getneighborid()+i) > 1) and (*(tagN26max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN26max.Getneighborid()+i) != large) and (*(tagN26max.Getneighborid()+i) > 0) and (*(tagN26max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN26max.Getneighborid()+i);
@@ -110673,7 +110851,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN27max.Getneighborid()+i) != large) and (*(tagN27max.Getneighborid()+i) > 1) and (*(tagN27max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN27max.Getneighborid()+i) != large) and (*(tagN27max.Getneighborid()+i) > 0) and (*(tagN27max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN27max.Getneighborid()+i);
@@ -110696,7 +110874,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN28max.Getneighborid()+i) != large) and (*(tagN28max.Getneighborid()+i) > 1) and (*(tagN28max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN28max.Getneighborid()+i) != large) and (*(tagN28max.Getneighborid()+i) > 0) and (*(tagN28max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN28max.Getneighborid()+i);
@@ -110719,7 +110897,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN29max.Getneighborid()+i) != large) and (*(tagN29max.Getneighborid()+i) > 1) and (*(tagN29max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN29max.Getneighborid()+i) != large) and (*(tagN29max.Getneighborid()+i) > 0) and (*(tagN29max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN29max.Getneighborid()+i);
@@ -110742,7 +110920,7 @@ bool X_nodes[total_size+2];
 		  uint32_t neighborsize = 0;
 		  for(int i=0; i<max; i++)
 		  {
-		  	if ((*(tagN30max.Getneighborid()+i) != large) and (*(tagN30max.Getneighborid()+i) > 1) and (*(tagN30max.Getneighborid()+i) < (total_size+2)))
+		  	if ((*(tagN30max.Getneighborid()+i) != large) and (*(tagN30max.Getneighborid()+i) > 0) and (*(tagN30max.Getneighborid()+i) < (total_size)))
 		  	{
 		  		neighborsize++;
 		  		(con_data_inst+source_node_id)->neighborid[i] = *(tagN30max.Getneighborid()+i);
@@ -111854,7 +112032,7 @@ double average_latency_dsrc = 0.0;
 
 void clear_solution()
 {
-	for (int i=0;i<(total_size+2);i++)
+	for (int i=0;i<(total_size);i++)
 	{
 		Z_gurobi[i] = 1;
 		X_gurobi[i] = 1;
@@ -111874,7 +112052,7 @@ void send_LTE_metadata_uplink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Nod
 	Ipv4Address dest_ip = iaddr.GetLocal();
 	Ptr <Node> nu = DynamicCast <Node> (node_source);
 	uint32_t nid = uint32_t(nu->GetId());
-	if (nid == 2)
+	if (nid == N_Controllers)
 	{
 		lte_total_packet_size = 0;
 		lte_initial_timestamp = Simulator::Now().GetSeconds(); 	
@@ -112271,7 +112449,7 @@ void send_LTE_deltavalues_downlink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 	uint32_t destinations[2*flows];
 	uint32_t flow_ids[2*flows];
 	uint32_t flow_sizes[2*flows];
-	uint32_t nodeid = nid-2;
+	uint32_t nodeid = nid-N_Controllers;
 	double load[2*flows];
 	
 	for(uint32_t i=0;i<2*flows;i++)
@@ -112279,9 +112457,9 @@ void send_LTE_deltavalues_downlink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 		load[i] = 0.0;
 		for(uint32_t j=0;j<total_size;j++)	
 		{
-			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-2].L_values[j];
-			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j];
-			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j]<<endl;
+			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-N_Controllers].L_values[j];
+			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j];
+			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j]<<endl;
 		}
 		sources[i] = (demanding_flow_struct_controller_inst+i)->source;
 		destinations[i] = (demanding_flow_struct_controller_inst+i)->destination;
@@ -112295,7 +112473,7 @@ void send_LTE_deltavalues_downlink_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 	//cout<<delta_Set[3][2]<<dest_ip<<endl;
 	//TEST - comment at implementation
 	/*
-	if ((nid-2) == 2)
+	if ((nid-N_Controllers) == 2)
 	{
 		delta_Set[3][5] = 0.75;
 		sources[3] = 7;
@@ -112331,7 +112509,7 @@ void RSU_deltavalues_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <N
 	uint32_t destinations[2*flows];
 	uint32_t flow_ids[2*flows];
 	uint32_t flow_sizes[2*flows];
-	uint32_t nodeid = nid-2;
+	uint32_t nodeid = nid-N_Controllers;
 	double load[2*flows];
 	
 	for(uint32_t i=0;i<2*flows;i++)
@@ -112339,9 +112517,9 @@ void RSU_deltavalues_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <N
 		load[i] = 0.0;
 		for(uint32_t j=0;j<total_size;j++)	
 		{
-			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-2].L_values[j];
-			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j];
-			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-2].delta_values[j]<<endl;
+			load[i] = load[i] + (L_at_controller_inst+i)->L_fi_inst[nid-N_Controllers].L_values[j];
+			delta_Set[i][j] = (delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j];
+			//cout<< "i = "<<i<<"nid = "<<nid<<"j= "<<j<<"value="<<(delta_at_controller_inst+i)->delta_fi_inst[nid-N_Controllers].delta_values[j]<<endl;
 		}
 		sources[i] = (demanding_flow_struct_controller_inst+i)->source;
 		destinations[i] = (demanding_flow_struct_controller_inst+i)->destination;
@@ -112375,7 +112553,7 @@ void RSU_metadata_uplink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 
 	Ptr <Node> nu = DynamicCast <Node> (source_node);
 	uint32_t nid = uint32_t(nu->GetId());
-	if (nid == (N_Vehicles+2))
+	if (nid == (N_Vehicles+N_Controllers))
 	{
 		ethernet_total_packet_size = 0;
 		ethernet_initial_timestamp = Simulator::Now().GetSeconds();
@@ -112772,8 +112950,8 @@ void RSU_metadata_downlink_unicast(Ptr <SimpleUdpApplication> udp_app, Ptr <Node
 void write_csv()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
-	for (uint32_t i=2; i<total_size+2 ;i++)
+	fout.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_data.csv",ios::out|ios::trunc);
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		fout << total_size << ", "
 		     <<	con_data_inst[i].B << ", "
@@ -112797,56 +112975,20 @@ void write_csv()
 
 void write_csv_status_lifetime()
 {
-	fstream fout;
+	static const std::string SCR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/";
+	std::string ll_data;
 	switch(routing_algorithm)
 	{
-		case(0):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_ECMP.csv",ios::out|ios::trunc);
-			break;
-		case(1):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
-			break;
-		case(2):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			break;
-		case(3):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			break;
-		case(4):
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-			break;
-		case(5):
-			/*
-			if(experiment_number == 0)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 1)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RR.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 2)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_QRSDN.csv",ios::out|ios::trunc);
-			}
-			if(experiment_number == 3)
-			{
-				fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			}
-			*/
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data_RLMR.csv",ios::out|ios::trunc);
-			break;
-			
-		default:
-			fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-			break;
+		case(0): ll_data = SCR + "optimization_link_lifetime_data_ECMP"  + g_sim_tag + ".csv"; break;
+		case(1): ll_data = SCR + "optimization_link_lifetime_data_RR"    + g_sim_tag + ".csv"; break;
+		case(2): ll_data = SCR + "optimization_link_lifetime_data_QRSDN" + g_sim_tag + ".csv"; break;
+		case(3): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		case(5): ll_data = SCR + "optimization_link_lifetime_data_RLMR"  + g_sim_tag + ".csv"; break;
+		default: ll_data = SCR + "optimization_link_lifetime_data"        + g_sim_tag + ".csv"; break;
 	}
-	cout << "[DEBUG] Node 0 position in CSV: " 
-	     << (routing_data_at_nodes_inst+0)->position << endl;
-	cout << "[DEBUG] Node 1 position in CSV: " 
-	     << (routing_data_at_nodes_inst+1)->position << endl;
-	cout << "[DEBUG] Node 2 position in CSV: " 
-	     << (routing_data_at_nodes_inst+2)->position << endl;
+	fstream fout;
+	fout.open(ll_data, ios::out|ios::trunc);
+
 	for (uint32_t i=0; i<(uint32_t)var; i++)
 		{
 		//cout<<"writing status "<<i<<endl;
@@ -112865,22 +113007,23 @@ void write_csv_status_lifetime()
 	}
 	fout.close();
 	cout<<"finished writing link lifetime status at"<<Now().GetSeconds()<<endl;
+
 }
 
 void write_csv_status()
 {
 	fstream fout;
-	fout.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",ios::out|ios::trunc);
-	for (uint32_t i=2; i<total_size+2 ;i++)
+	fout.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data" + g_sim_tag + ".csv",ios::out|ios::trunc);
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		Ptr <Node> node;
-		if ((i-2) < N_Vehicles)
+		if ((i-N_Controllers) < N_Vehicles)
 		{	
-			node = DynamicCast <Node> (Vehicle_Nodes.Get(i-2));
+			node = DynamicCast <Node> (Vehicle_Nodes.Get(i-N_Controllers));
 		}
 		else
 		{
-			node = DynamicCast <Node> (RSU_Nodes.Get(i-N_Vehicles-2));
+			node = DynamicCast <Node> (RSU_Nodes.Get(i-N_Vehicles-N_Controllers));
 		}
 		
 		Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (node->GetObject<MobilityModel>());
@@ -112907,7 +113050,7 @@ void write_csv_status()
 void read_csv()
 {
     fstream fin;
-    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
+    fin.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_results.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -112972,59 +113115,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
+				filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_frequency_10.csv";
 				}
 
 				break;
@@ -113032,37 +113175,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113072,25 +113215,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
+				  			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113102,37 +113245,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
+					   		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113144,46 +113287,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113203,126 +113346,126 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/centralized_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;	
 			case (8)://threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
+				filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_frequency_5.csv";
 				}
 				break;
 			case (10): //number of nodes for routing
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113332,25 +113475,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
+				  			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113362,22 +113505,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_0.csv";
 				  	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113389,28 +113532,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized__routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/centralized_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113425,59 +113568,59 @@ void write_csv_results()
 		switch (experiment_number)
 		{
 			case (0)://entropy experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
+				filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_entropy.csv";
 	
 				break;
 			case (1)://optimization frequency
 				if (data_transmission_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.02.csv";
 				}
 				if (data_transmission_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.05.csv";
 				}
 				if (data_transmission_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.10.csv";
 				}
 				if (data_transmission_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.25.csv";
 				}
 				if (data_transmission_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_0.50.csv";
 				}
 
 				if (data_transmission_frequency == 1.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_1.00.csv";
 				}
 
 				if (data_transmission_frequency ==2.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_2.csv";
 				}
 
 				if (data_transmission_frequency ==4.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_4.csv";
 				}
 
 				if (data_transmission_frequency ==6.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_6.csv";
 				}
 
 				if (data_transmission_frequency ==8.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_8.csv";
 				}
 
 				if (data_transmission_frequency ==10.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_frequency_10.csv";
 				}
 
 				break;
@@ -113485,37 +113628,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113525,25 +113668,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
+				  			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113555,22 +113698,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113582,27 +113725,27 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_90.csv";
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113622,89 +113765,89 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/distributed_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;	
 			case (8)://contention threshold experiment
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
+				filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_threshold.csv";
 				break;
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_frequency_5.csv";
 				}
 
 				break;
@@ -113712,37 +113855,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_160.csv";
 						break;						
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_192.csv";
 						break;
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113752,25 +113895,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-				  			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
+				  			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -113782,22 +113925,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -113809,28 +113952,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/distributed_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -113847,93 +113990,93 @@ void write_csv_results()
 			case (0)://entropy experiment
 				if (entropy_threshold == 0.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.000.csv";
 				}
 				if(entropy_threshold == 0.001)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.001.csv";
 				}
 				if(entropy_threshold == 0.002)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.002.csv";
 				}
 				if(entropy_threshold == 0.005)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.005.csv";
 				}
 				if(entropy_threshold == 0.010)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.010.csv";
 				}
 				if(entropy_threshold == 0.020)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.020.csv";
 				}
 				if(entropy_threshold == 0.050)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.050.csv";
 				}
 				if(entropy_threshold == 0.100)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.100.csv";
 				}
 				if(entropy_threshold == 0.200)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.200.csv";
 				}
 				if(entropy_threshold == 0.500)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_entropy_0.500.csv";
 				}
 				break;
 			case (1)://optimization frequency
 				if (optimization_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.02.csv";
 				}
 				if (optimization_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.05.csv";
 				}
 				if (optimization_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.10.csv";
 				}
 				if (optimization_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.25.csv";
 				}
 				if (optimization_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_0.50.csv";
 				}
 				if (optimization_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_1.00.csv";
 				}
 				if (optimization_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_2.csv";
 				}
 
 				if (optimization_frequency ==4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_4.csv";
 				}
 		
 				if (optimization_frequency == 6.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_6.csv";
 				}
 
 				if (optimization_frequency ==8.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_8.csv";
 				}
 
 				if (optimization_frequency ==10.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_frequency_10.csv";
 				}
 
 				break;
@@ -113941,37 +114084,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_nodes_256.csv";
 						break;
 				}
 				break;
@@ -113981,25 +114124,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -114011,37 +114154,37 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_0.csv";
 				   	  		break;
 				   		case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_10.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_20.csv";
 					  		break;
 					  	case (30):
-					   		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
+					   		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_30.csv";
 					   		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_60.csv";
 					  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_70.csv";
 				   	  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_90.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -114053,46 +114196,46 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (10):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_10.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (70):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_70.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_90.csv";
 				   	  		break;
 				   	  	case (110):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_110.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_130.csv";
 					 		break;
 					 	case (150):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_150.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_170.csv";
 					 		break;
 					 	case (190):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_190.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_210.csv";
 					 		break;
 					 	case (230):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_230.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -114112,167 +114255,167 @@ void write_csv_results()
 				switch (ratio)
 				{
 					case(200)://200 veh, 0 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_inf.csv";
 						break;
 					case(199)://199 veh, 1 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_199.csv";
 						break;
 					case(99)://198 veh, 2 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_99.csv";
 						break;
 					case(49)://196 veh, 4 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_49.csv";
 						break;
 					case(24)://192 veh, 8 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_24.csv";
 						break;
 					case(9)://180 veh, 20 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_9.csv";
 						break;
 					case(4)://160 veh, 40 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_4.csv";
 						break;
 					case(3):// 150 veh, 50 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_3.csv";
 						break;
 					case(2): //134 veh, 66 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_2.csv";
 						break;
 					case(1): //100 veh, 100 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_1.csv";
 						break;
 					case(0): //0 veh, 200 RSU
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/hybrid_heterogeneity_0.csv";
 						break;
 				}
 				break;
 			case (7)://link lifetime experiment
 				if (link_lifetime_threshold == 0.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.000.csv";
 				}
 				if(link_lifetime_threshold == 0.100)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.100.csv";
 				}
 				if(link_lifetime_threshold == 0.200)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.200.csv";
 				}
 				if(link_lifetime_threshold == 0.500)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_0.500.csv";
 				}
 				if(link_lifetime_threshold == 1.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_1.00.csv";
 				}
 				if(link_lifetime_threshold == 2.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_2.000.csv";
 				}
 				if(link_lifetime_threshold == 4.00)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_4.000.csv";
 				}
 				if(link_lifetime_threshold == 6.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_6.000.csv";
 				}
 				if(link_lifetime_threshold == 8.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_8.000.csv";
 				}
 				if(link_lifetime_threshold == 12.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_link_lifetime_10.000.csv";
 				}
 				break;	
 			case (8)://contention experiment
 				if (contention_threshold == 0.000)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.000.csv";
 				}
 				if(contention_threshold == 0.001)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.001.csv";
 				}
 				if(contention_threshold == 0.002)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.002.csv";
 				}
 				if(contention_threshold == 0.005)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.005.csv";
 				}
 				if(contention_threshold == 0.010)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.010.csv";
 				}
 				if(contention_threshold == 0.020)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.020.csv";
 				}
 				if(contention_threshold == 0.050)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.050.csv";
 				}
 				if(contention_threshold == 0.100)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.100.csv";
 				}
 				if(contention_threshold == 0.200)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.200.csv";
 				}
 				if(contention_threshold == 0.500)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_contention_0.500.csv";
 				}
 				break;	
 			case (9)://routing frequency
 				if (routing_frequency == 0.02)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.02.csv";
 				}
 				if (routing_frequency ==0.05)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.05.csv";
 				}
 				if (routing_frequency ==0.10)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.10.csv";
 				}
 				if (routing_frequency ==0.25)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.25.csv";
 				}
 				if (routing_frequency ==0.50)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_0.50.csv";
 				}
 				if (routing_frequency == 1.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_1.00.csv";
 				}
 				if (routing_frequency ==2.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_2.csv";
 				}
 
 				if (routing_frequency ==3.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_3.csv";
 				}
 		
 				if (routing_frequency == 4.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_4.csv";
 				}
 
 				if (routing_frequency ==5.0)
 				{
-					filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
+					filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_frequency_5.csv";
 				}
 
 				break;
@@ -114280,37 +114423,37 @@ void write_csv_results()
 				switch(total_size)
 				{
 					case (4):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_4.csv";
 						break;
 					case (8):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_8.csv";
 						break;
 					case (16):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_16.csv";
 						break;
 					case (32):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_32.csv";
 						break;
 					case (64):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_64.csv";
 						break;
 					case (96):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_96.csv";
 						break;
 					case (128):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_128.csv";
 						break;
 					case (160):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_160.csv";
 						break;
 					case (192):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_192.csv";
 						break;						
 					case (224):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_224.csv";
 						break;
 					case (256):
-						filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
+						filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_nodes_256.csv";
 						break;
 				}
 				break;
@@ -114320,25 +114463,25 @@ void write_csv_results()
 				  	switch(maxspeed)
 				  	{
 				  		case (0):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_0.csv";
 					  		break;
 				  		case (10):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_10.csv";
 					  		break;
 					  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_20.csv";
 					  		break;
 					  	case (30):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_30.csv";
 					  		break;
 					  	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_40.csv";
 					  		break;
 					  	case (50):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_50.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_urban_60.csv";
 					  		break;
 					  	default:
 					  		break;
@@ -114350,22 +114493,22 @@ void write_csv_results()
 				   	switch(maxspeed)
 				   	{
 				   		case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_0.csv";
 				   	  		break;
 				   	  	case (20):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_20.csv";
 					  		break;
 					   	case (40):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_40.csv";
 					  		break;
 					  	case (60):
-					  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
+					  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_60.csv";
 					  		break;
 				   	  	case (80):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_80.csv";
 				   	  		break;
 				   	  	case (100):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_rural_100.csv";
 				   	  		break;
 				   	  	default:
 				   	  		break;
@@ -114377,28 +114520,28 @@ void write_csv_results()
 				   	  switch(maxspeed)
 				   	  {
 				   	  	case (0):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_0.csv";
 				   	  		break;
 				   	  	case (30):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_30.csv";
 				   	  		break;
 				   	  	case (50):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_50.csv";
 				   	  		break;
 				   	  	case (90):
-				   	  		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
+				   	  		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_90.csv";
 				   	  		break;
 					 	case (130):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_130.csv";
 					 		break;
 					 	case (170):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_170.csv";
 					 		break;
 					 	case (210):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_210.csv";
 					 		break;
 					 	case (250):
-					 		filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
+					 		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/hybrid_routing_mobility_autobahn_250.csv";
 					 		break;
 					 	default:
 					 		break;
@@ -114519,32 +114662,120 @@ double average_mitigation_latency                  = 0.0;
 
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
-bool selective_delay_malicious_nodes[total_size];
-bool present_selective_delay_attack_nodes = false;
-double attack2_delay_seconds = 0.080; // 80ms injected delay
+#include "attack_variables.h"
+
+// Phase 1 / D1: Reproducibility globals for the ns-3 RNG seed infrastructure.
+// Proposal simulation table: "5 fixed pseudorandom seeds each (300 s/run)".
+// Pass --sim_seed and --sim_run from the experiment loop.
+// Must be set via RngSeedManager::SetSeed/SetRun BEFORE any ns-3 random variable
+// is created — done immediately after cmd.Parse() in main().
+uint32_t sim_seed = 1;  // seed ∈ {1,2,3,4,5}
+uint32_t sim_run  = 1;  // run index, distinct per seed
+
+// Phase 4 / D5: Per-flow safety-critical (HIGH-priority) flag.
+// Proposal Signature S1 (Eq. 3.4) and S2 (Eq. 3.5): both attacks must only delay
+// packets where Priority(p) = HIGH. Best-effort (non-safety-critical) packets must
+// pass through without delay. True for flows carrying collision-avoidance or BSM-
+// equivalent traffic. Populated once after flow initialisation — see the
+// "Populate is_safety_critical_flow" block in the SUMO/test setup section of main().
+// Indexed by flow_id (0 to 2*flows-1).
+bool is_safety_critical_flow[Flow_size + 2] = {false};
+
+// === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
+// Malicious controller installs junk FlowMod rules into every RSU's TCAM at
+// attack_rate_pps rules/second. Entries flagged is_malicious=1.
+uint32_t g_cp_attack_fid_counter = 2000000; // CP FID space: 2M+ (distinct from DP 1M+)
+
+// === ATTACK 4 (variant 3): Slow-flow TCAM exhaustion — Data Plane ===
+// Nodes 0 … num_attackers-1 each inject unique-5-tuple synthetic flows at
+// attack_rate_pps packets/second.  Each new fake_fid → new TCAM rule
+// (is_malicious=1) so the table fills slowly, matching paper Mechanism 3.
+double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 pps band, default 20)
+double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
+uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
+int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
+double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 100%)
+// Attack 4 (DP): percentage of vehicles acting as attackers.
+// 0 = disabled (use --num_attackers directly).
+// >0 overrides num_attackers: num_attackers = ceil(N_Vehicles * dp_attack_pct/100).
+// Mirrors cp_attack_pct so both attacks have symmetric terminal control.
+double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === SIGNATURE S2 DETECTION GLOBALS ===
+// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
+// attack-injected delay has elapsed). S2 measures hop_delay = t_recv_now -
+// t_fwd_packet[sender][packet_id], so this MUST be the real, post-delay
+// send time for S2's elapsed-time measurement to correctly capture any
+// injected delay.
 double t_fwd_packet[total_size][Flow_size+2];
-// records when each node forwarded each packet
-double delta_max_s2 = 0.050;
-// 50ms threshold per Equation 3.6 — half of 100ms safety bound
-bool s2_detection_active = true;
-// enable/disable S2 detection
+
+// t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
+// time — i.e., when it received/decided to forward the packet, BEFORE any
+// malicious buffering. This is the correct analogue of the TAP paper's
+// PPAT field (Algorithm 1: a value the sender embeds in the packet and
+// could lie about). A malicious node that buffers a packet for
+// total_tx_delay does NOT update what it claims — it continues to claim
+// the original, undelayed timestamp, exactly like a real attacker would
+// not voluntarily report its own injected delay. TAP's detector compares
+// this claimed value against an independent, physics-derived estimate
+// (PAT - propagation_delay); the mismatch between what the node claims
+// and what physics implies is the signal TAP is designed to catch.
+//
+double t_claimed_packet[total_size][Flow_size+2];
+
+
+// Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
+// fired immediately at forwarding-decision time — i.e., BEFORE any
+// attack-injected delay is applied. This deliberately does NOT wait for
+// total_tx_delay, since a malicious node has no reason to honestly
+// self-report the buffering delay it is about to introduce; it claims the
+// timestamp of when it received the packet, same as an honest node would.
+inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
+{
+    t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
+}
+
+// Detection functions and the array they read (t_claimed_packet):
+//   s1_detect_packet()  (s1_detection.h) — hop-delay = t_recv − t_claimed
+//   s2_detect_packet()  (s2_detection.h) — hop-delay = t_recv − t_claimed
+//   tap_run_detection() (tap_detection.h) — PPAT = t_claimed
+bool s1_detection_active = false;    // master enable for S1 — read by s1_detection.h
+bool s2_detection_active = false;    // master enable for S2 — read by s2_detection.h
+bool tap_detection_active = false;   // master enable for TAP — read by tap_detection.h
+bool s5_detection_active = false;    // master enable for S5 (Active HF CP)  — read by s5_detection.h
+bool s6_detection_active = false;    // master enable for S6 (Active HF DP)  — read by s6_detection.h
+bool s7_detection_active = false;    // master enable for S7 (Passive HF CP) — read by s7_detection.h
+bool s8_detection_active = false;    // master enable for S8 (Passive HF DP) — read by s8_detection.h
+bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
-uint32_t passive_hf_eavesdropper_index = 2;
+uint32_t passive_hf_eavesdropper_index = 2;  // legacy single-RSU fallback — kept for Attack 2 path
+// Multi-RSU Attack 8: maps each malicious RSU (current_hop index) to its paired eavesdropper index.
+// Populated by hardcode_attack7_test_network() based on attack_percentage.
+std::map<uint32_t, uint32_t> passive_hf_rsu_to_eavesdropper;
+std::map<uint32_t, uint32_t> passive_hf_rsu_to_legitimate_hop;
+
+// Active Hidden Forwarding globals (Attacks 5 & 6 — content-modified copy)
+bool active_hf_malicious_nodes[total_size] = {false};
+bool present_active_hf_attack = false;
+uint32_t active_hf_eavesdropper_index = 2;  // default: same node as passive
 
 // Staging globals for send_hidden_duplicate_trampoline().
 // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
 // send_hidden_duplicate needs 7, so we use a zero-arg trampoline.
-uint32_t g_hdup_rsu       = 0;
-uint32_t g_hdup_eaves     = 0;
-uint32_t g_hdup_flow_id   = 0;
-uint32_t g_hdup_packet_id = 0;
-uint32_t g_hdup_channel   = 0;
-uint32_t g_hdup_p_size    = 0;
-Time     g_hdup_timestamp = Seconds(0.0);
+uint32_t g_hdup_rsu           = 0;
+uint32_t g_hdup_eaves         = 0;
+uint32_t g_hdup_flow_id       = 0;
+uint32_t g_hdup_packet_id     = 0;
+uint32_t g_hdup_channel       = 0;
+uint32_t g_hdup_p_size        = 0;
+Time     g_hdup_timestamp     = Seconds(0.0);
+// PIR FIX: flag set to true ONLY when GetBooleanWithProbability approved
+// the eavesdrop (i.e. a hidden duplicate was intentionally sent).
+// MacRx increments fade_eavesdrop_counter only when this flag is true,
+// preventing ambient Wi-Fi overhear from inflating PIR at low intensities.
+bool     g_hdup_intentional      = false;
 
 // ---------------------------------------------------------------------------
 // attack_tag() — returns the correct "[ATTACKx]" prefix for the currently
@@ -114558,8 +114789,8 @@ inline std::string attack_tag()
     {
         case 0:  return "[ATTACK1]";
         case 1:  return "[ATTACK2]";
-        case 2:  return "[ATTACK3]";
-        case 3:  return "[ATTACK4]";
+        case 2:  return "[ATTACK3-TCAM-CP]";
+        case 3:  return "[ATTACK4-TCAM-DP]";
         case 4:  return "[ATTACK5]";
         case 5:  return "[ATTACK6]";
         case 6:  return "[ATTACK7]";
@@ -114574,31 +114805,26 @@ double previous_cumulative_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
 double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
-// TCAM simulation globals for Attack 3 and Attack 4
-static const uint32_t TCAM_CAPACITY = 1500;
-uint32_t simulated_tcam_counter[total_size] = {0};
-
 // === TAP BASELINE GLOBALS ===
-bool tap_detection_active = true;
-// When false, all TAP functions return immediately
+// tap_detection_active already declared earlier alongside s2_detection_active.
 
-static const double TAP_SIGNAL_SPEED = 3.0e8;
-// Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
+static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
-static const double TAP_MARGIN = 0.020;
-// 20ms tolerance on the TAP paper's exact equality check (v != PPAT).
+// TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1 uses an EXACT equality
+// check: if (v != PPAT) then flag attacker. In IEEE 754 double arithmetic a
+// pure 0.0 margin would fail on negligible rounding errors. We therefore use
+// a 1 μs epsilon — tight enough to catch any real attack-injected delay
+// (minimum 50 ms) while tolerating floating-point imprecision only.
+// This is strictly faithful to the paper's "exact equality" intent.
+static const double TAP_MARGIN = 1e-6; // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
 
-bool tap_defaulter_list[total_size] = {false};
-// Controller-Defaulter-List from TAP paper — true means node is blacklisted.
+bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
-bool tap_detected_node[total_size] = {false};
-// Per-node detection flag for TAP
+bool tap_detected_node[total_size] = {false};      // Per-node detection flag for TAP
 
-double tap_t_quarantine[total_size] = {0.0};
-// Timestamp when TAP detection fired for each node
+double tap_t_quarantine[total_size] = {0.0};       // Timestamp when TAP detection fired for each node
 
-uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;
-// Confusion matrix counters for TAP on Attack 2 (variant index 1)
+uint32_t tap_TP = 0, tap_FP = 0, tap_TN = 0, tap_FN = 0;    // Confusion matrix counters for TAP on Attack 2 (variant index 1)
 
 double tap_current_MCC            = 0.0;
 double tap_current_DR             = 0.0;
@@ -114608,6 +114834,7 @@ double tap_previous_cumulative_MCC = 0.0;
 double tap_previous_cumulative_DR  = 0.0;
 double tap_previous_cumulative_FPR = 0.0;
 double tap_previous_cumulative_mit = 0.0;
+#include "tap_detection.h"
 
 
 // ============================================================
@@ -114615,6 +114842,10 @@ double tap_previous_cumulative_mit = 0.0;
 // Call this once from main() or the simulation setup block.
 // Replace body when real attack scenarios are implemented.
 // ============================================================
+
+
+#include "efade_detection.h"
+
 void hardcode_test_network_attackers();
 void hardcode_attack7_test_network();
 void seed_attack8_links();           // seeds linklifetimeMatrix_dsrc after it is declared
@@ -114626,66 +114857,194 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
-// TAP function prototypes
-bool tap_check_defaulter_list(uint32_t sender_current_hop);
-void tap_report_to_controller(uint32_t attacker_current_hop);
-void tap_run_detection(uint32_t receiver_current_hop, uint32_t sender_current_hop, uint32_t packet_id);
-void calculate_tap_security_metrics();
-void write_tap_csv();
+// TAP function prototypes are now inside tap_detection.h
+void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
+void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
+void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
+void cp_attack_tick();                                             // Change 6
+#include "attack_declaration.h"
+void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+#include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
+#include "crypto_layer.h"
+#include "dkg_setup.h"
+#include "blockchain_sim.h"
+#include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
+#include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
+#include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
+#include "s7_detection.h"           // S7 (Passive HF CP) MOBIGUARD detection — Signature S7, Eq. sig_s7
+#include "s8_detection.h"           // S8 (Passive HF DP) MOBIGUARD detection — Signature S8, Eq. sig_s8
+
+// Forward declarations for HF attack init functions (defined in hf_attack_helper.h,
+// included after check_delivery_and_retransmit where send_hidden_duplicate is defined)
+inline void hf_init_attack5_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline void hf_init_attack6_dp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline void hf_init_attack7_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline void hf_init_attack8_dp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
+inline bool hf_delta_entry_active(uint32_t flow_id, uint32_t rsu_node, uint32_t eavesdropper_node);
+inline uint32_t hf_resolve_eavesdropper(uint32_t rsu_node);
 void initialise_stub_attack_state()
 {
-    // Mark node 2 as malicious for variant 0 (Selective Time Delay CP)
-    // and node 3 as malicious for variant 4 (Active Hidden Forwarding CP)
-    // as a demonstration. Remove/replace when real attacks are added.
-    is_malicious_node[0][2] = true;
-    is_malicious_node[4][3] = true;
+    // Demonstration ground-truth for variant 4 (Active Hidden Forwarding
+    // CP) only. Previously ran unconditionally on every variant, which
+    // polluted t_onset[3]/t_quarantine[3] (and therefore
+    // calculate_mitigation_latency_metric()'s output) for every OTHER
+    // attack variant too, including Attack 1. Gated behind the variant it
+    // actually applies to.
+    if (active_attack_variant == 4)
+    {
+        is_malicious_node[4][3] = true;
+        t_onset[3] = 1.0;
+    }
 
-    // Set onset timestamps for those nodes
-    t_onset[2] = 1.0;  // attack starts at t=1s
-    t_onset[3] = 1.0;
 
-	// Stub: simulate detection firing 50ms after onset
-	// Replace with real Simulator::Now() calls when attacks are implemented
-	t_quarantine[2] = 1.050;
-	t_quarantine[3] = 1.050;
+	tap_reset_state(total_size);
 
-	// Only set if not already configured via command line
-	if (active_attack_variant == -1)
-	{
-		active_attack_variant = 0;
-	}
-	    // Activate Attack 2 for test network
+	// Crypto layer initialization — must run before any packet forwarding
+	trust_init_all();
+	Simulator::Schedule(Seconds(0.0),             &dkg_run_ceremony);
+	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &update_T_ref_recurring);
+	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
+	Simulator::Schedule(Seconds(0.050),           &crypto_batch_verify_tick);
+	Simulator::Schedule(Seconds(5.0),             &crypto_evict_old_entries_recurring);
+
+	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
+	s1_init_state(N_RSUs);
+
+
 	switch (active_attack_variant)
     {
+        case (0): // Attack 1 — Selective Time Delay, Control Plane (NEW)
+        {
+            // IMPORTANT — threat-model mutual-exclusion assumption: do NOT set
+            // is_malicious_node[...][...] = true here, and
+            // do NOT set selective_delay_malicious_nodes[...] = true.
+            // The RSU is not the attacker in this scenario — a data-plane and
+            // control-plane adversary cannot coexist per the thesis's threat model.
+            // Leave all RSU-level malicious flags false/unset.
+
+            // The compromised controller schedules a recurring task to poison the routing
+            // tables. This ensures the attack occurs AFTER legitimate routes
+            // have converged, so we can preserve the genuine next_hop while
+            // injecting the malicious delay.
+            Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
+
+            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, fixed delay="
+                 << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
+            if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            break;
+        }
         case (1): // Attack 2 — Selective Time Delay, Data Plane (existing)
-            // Ground truth is now set inside hardcode_test_network_attackers()
-            // based on attack_percentage — do not set it here
-            t_onset[2] = 1.0;  // kept for legacy reference only
-            hardcode_test_network_attackers();
-			// Reset all TAP state before each Attack 2 simulation run
-			for (int _n = 0; _n < total_size; _n++)
-			{
-				tap_defaulter_list[_n] = false;
-				tap_detected_node[_n]  = false;
-				tap_t_quarantine[_n]   = 0.0;
-			}
-			tap_TP=0; tap_FP=0; tap_TN=0; tap_FN=0;
-			tap_current_MCC=0.0; tap_current_DR=0.0;
-			tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
-			tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
-			tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
-			cout << "[TAP] All TAP state reset and ready for Attack 2 run." << endl;
+        {
+            if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            // tap_reset_state moved outside switch to apply to all variants
+            break;
+        }
+
+        case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
+            // Malicious controller floods ALL RSUs with junk FlowMod broadcasts.
+            // First RSU (N_Vehicles) acts as representative malicious-node marker.
+            is_malicious_node[2][N_Vehicles] = true;
+            t_onset[N_Vehicles] = attack_start_time;
+            {
+                uint32_t num_targeted_log = static_cast<uint32_t>(
+                    std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
+                if (num_targeted_log < 1) num_targeted_log = 1;
+                if (num_targeted_log > N_RSUs) num_targeted_log = N_RSUs;
+                cout << "[ATTACK3] [INIT] Slow-flow CP controller attack, "
+                     << num_targeted_log << "/" << N_RSUs << " RSU(s) ("
+                     << cp_attack_pct << "%), rate=" << attack_rate_pps << " pps, "
+                     << "onset t=" << attack_start_time << "s" << endl;
+            }
+            Simulator::Schedule(Seconds(attack_start_time), &cp_attack_tick);
             break;
 
-        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane (new)
-            // RSU current_hop = ns3_id - 2 = 5 - 2 = 3 (not 2)
-            is_malicious_node[7][3] = true;
-            t_onset[3] = 1.0;
-            hardcode_attack7_test_network();
-            // linklifetimeMatrix_dsrc is declared after this function, so seeding
-            // is deferred to t=0 when all globals are fully initialised.
-            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+        case (3): // Attack 4 — Slow-flow TCAM exhaustion, Data Plane (Change 5+7)
+            // Nodes 0..num_attackers-1 each act as independent DP attackers.
+            if (num_attackers < 1) num_attackers = 1;  // guard against bad CLI input
+            cout << "[ATTACK4] [INIT] Slow-flow DP, " << num_attackers
+                 << " attacker(s), nodes 0.." << (num_attackers - 1)
+                 << ", rate=" << attack_rate_pps << " pps"
+                 << ", onset t=" << attack_start_time << "s" << endl;
+            for (int _a = 0; _a < num_attackers; ++_a)
+            {
+                is_malicious_node[3][_a] = true;
+                t_onset[_a] = attack_start_time;
+                // Each attacker needs its own self-rescheduling tick chain.
+                // NS-3 Schedule accepts function pointers and arguments directly
+                uint32_t _attacker = static_cast<uint32_t>(_a);
+                Simulator::Schedule(Seconds(attack_start_time),
+                                    &dp_attack_tick_for, _attacker);
+            }
             break;
+
+        case (4): // Attack 5 — Active Hidden Forwarding, Control Plane
+            // 5-unit topology: RSUs=15-19, Eavesdroppers=10-14
+            // attack_percentage controls how many of the 5 RSUs are compromised.
+            // All eavesdropper mappings seeded here so hf_resolve_eavesdropper works.
+            // This hardcoded seeding is test-network specific (fixed node indices
+            // 15-19 only exist in the 5-unit test topology). In SUMO mode, real
+            // RSU indices are discovered and the map populated by
+            // hf_declare_malicious_rsus() instead — seeding bogus test-network
+            // indices here would leave stale, meaningless entries in the map
+            // that hf_reapply_cp_after_clear()/hf_reapply_dp_after_clear() would
+            // then iterate over every cycle.
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            // hf_init_attack5_cp marks malicious nodes + injects delta entries
+            // scaled by attack_percentage via hf_declare_malicious_rsus()
+            hf_init_attack5_cp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
+            break;
+
+        case (5): // Attack 6 — Active Hidden Forwarding, Data Plane
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            hf_init_attack6_dp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
+            break;
+
+        case (6): // Attack 7 — Passive Hidden Forwarding, Control Plane
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            hf_init_attack7_cp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
+            break;
+
+        case (7): // Attack 8 — Passive Hidden Forwarding, Data Plane
+            if (routing_test)
+            {
+                passive_hf_rsu_to_eavesdropper.clear();
+                passive_hf_rsu_to_eavesdropper[15] = 10;
+                passive_hf_rsu_to_eavesdropper[16] = 11;
+                passive_hf_rsu_to_eavesdropper[17] = 12;
+                passive_hf_rsu_to_eavesdropper[18] = 13;
+                passive_hf_rsu_to_eavesdropper[19] = 14;
+            }
+            Simulator::Schedule(Seconds(0.0), seed_attack8_links);
+            hf_init_attack8_dp(/*flow_id=*/0, /*test_rsu=*/15, /*test_eaves=*/10);
+            break;
+
 
         default:
             cout << "[INIT] No specific attack init for variant "
@@ -114708,82 +115067,117 @@ void record_detection_event(int v, int n)
 	t_quarantine[n] = Simulator::Now().GetSeconds();
 }
 
-// Random boolean helper copied from LDA_2_.cc
-bool GetBooleanWithProbability(double probabilityPercent, int nodeID) {
-	srand(Simulator::Now().GetSeconds() + 1.0*(rand()%50) + 5.0*nodeID);
-	double randomValue = 1.0*(rand()%100);
-	return randomValue < probabilityPercent;
+// Random boolean helper — Phase 1 / D1 fix.
+// ORIGINAL used srand(time+rand()+nodeID) which is non-reproducible across
+// runs with the same --attack_percentage. Replaced with a global ns-3
+// UniformRandomVariable so the result is fully determined by sim_seed + sim_run
+// (set via RngSeedManager::SetSeed/SetRun in main(), immediately after
+// cmd.Parse()). nodeID parameter kept for API compatibility; no longer used
+// for seeding — the stream advances deterministically across calls.
+// Proposal simulation table: "5 fixed pseudorandom seeds each (300 s/run)".
+bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
+    static Ptr<UniformRandomVariable> rng = nullptr;
+    if (!rng) {
+        rng = CreateObject<UniformRandomVariable>();
+        rng->SetAttribute("Min", DoubleValue(0.0));
+        rng->SetAttribute("Max", DoubleValue(100.0));
+    }
+    return rng->GetValue() < probabilityPercent;
 }
 
-void declare_attackers()
+#include "selective_time_delay.h"
+
+
+
+// --- Alternate hardcode_test_network_attackers() from routing_2_.cc:
+// extended 10-node test network for Attack 2 (5 vehicles + 5 RSUs), where the
+// number/identity of malicious nodes scales with attack_percentage. Kept here
+// commented out since it declares a local `num_attackers` that would shadow
+// the global `num_attackers` used by Attack 4 (DP TCAM), and routing.cc's
+// simpler 2-vehicle/1-RSU version below is the active implementation.
+//
+// void hardcode_test_network_attackers()
+// {
+// 	// Extended 10-node test network for Attack 2
+// 	// Node mapping: current_hop 0-4 = Vehicles, current_hop 5-9 = RSUs
+// 	// Node 0 = sender, Node 1 = destination — never malicious
+// 	// attack_percentage controls how many intermediate nodes are malicious
+//
+// 	// Clear all malicious flags first
+// 	for (uint32_t i = 0; i < total_size; i++)
+// 	{
+// 		selective_delay_malicious_nodes[i] = false;
+// 	}
+//
+// 	// Mark malicious nodes based on attack_percentage
+// 	// Malicious node sets (intermediate nodes only, never node 0 or node 1):
+// 	//   20% → 2 nodes: RSU0(5), RSU1(6)
+// 	//   40% → 4 nodes: RSU0(5), RSU1(6), VehicleC(2), VehicleD(3)
+// 	//   60% → 6 nodes: RSU0(5), RSU1(6), RSU2(7), VehicleC(2), VehicleD(3), VehicleE(4)
+// 	//   80% → 8 nodes: RSU0(5), RSU1(6), RSU2(7), RSU3(8), VehicleC(2), VehicleD(3), VehicleE(4), RSU4(9)
+// 	//  100% → all 8 intermediate candidate nodes
+//
+// 	// List of intermediate nodes in order of increasing attack percentage
+// 	uint32_t attacker_candidates[] = {5, 6, 7, 8, 9, 2, 3, 4};
+// 	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
+// 	// 80% = first 8, 100% = all candidates
+// 	uint32_t num_attackers_local = (uint32_t)(8 * attack_percentage / 100.0);
+// 	if (num_attackers_local > 8) num_attackers_local = 8;
+//
+// 	for (uint32_t i = 0; i < num_attackers_local; i++)
+// 	{
+// 		uint32_t node = attacker_candidates[i];
+// 		selective_delay_malicious_nodes[node] = true;
+// 		is_malicious_node[1][node] = true;
+// 		record_attack_onset(1, node);
+// 		cout << attack_tag() << " Node " << node
+// 		     << " marked as malicious selective delay attacker" << endl;
+void poison_test_network_cp_attackers()
 {
-	for(uint32_t i=0; i<total_size; i++)
+	if (active_attack_variant == 0)
 	{
-		bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
-		if(present_selective_delay_attack_nodes == true)
-		{
-			selective_delay_malicious_nodes[i] = attacking_state;
-		}
-		else
-		{
-			selective_delay_malicious_nodes[i] = false;
-		}
-		// For test network: hardcode node 2 (RSU) as malicious
-		// This will be replaced by declare_attackers() for full experiments
-	}
-	cout << attack_tag() << " declare_attackers() completed" << endl;
-	for(uint32_t i=0; i<(uint32_t)var; i++)
-	{
-		cout << attack_tag() << " Node " << i << " selective_delay_malicious = " 
-			 << selective_delay_malicious_nodes[i] << endl;
+		update_route_malicious(15, 1, 1, 0.080);
+		update_route_malicious(16, 3, 3, 0.080);
 	}
 }
 
 void hardcode_test_network_attackers()
 {
-	// Extended 10-node test network for Attack 2
-	// Node mapping: current_hop 0-4 = Vehicles, current_hop 5-9 = RSUs
-	// Node 0 = sender, Node 1 = destination — never malicious
-	// attack_percentage controls how many intermediate nodes are malicious
-
-	// Clear all malicious flags first
 	for (uint32_t i = 0; i < total_size; i++)
 	{
 		selective_delay_malicious_nodes[i] = false;
 	}
 
-	// Mark malicious nodes based on attack_percentage
-	// Malicious node sets (intermediate nodes only, never node 0 or node 1):
-	//   20% → 2 nodes: RSU0(5), RSU1(6)
-	//   40% → 4 nodes: RSU0(5), RSU1(6), VehicleC(2), VehicleD(3)
-	//   60% → 6 nodes: RSU0(5), RSU1(6), RSU2(7), VehicleC(2), VehicleD(3), VehicleE(4)
-	//   80% → 8 nodes: RSU0(5), RSU1(6), RSU2(7), RSU3(8), VehicleC(2), VehicleD(3), VehicleE(4), RSU4(9)
-	//  100% → 10 nodes: all 10 nodes including source and destination paths
-
-	// List of intermediate nodes in order of increasing attack percentage
-	uint32_t attacker_candidates[] = {5, 6, 7, 8, 9, 2, 3, 4};
-	// 0% = none, 20% = first 2, 40% = first 4, 60% = first 6,
-	// 80% = first 8, 100% = all 10
-	uint32_t num_attackers = (uint32_t)(8 * attack_percentage / 100.0);
-	if (num_attackers > 8) num_attackers = 8;
-
-	for (uint32_t i = 0; i < num_attackers; i++)
+	if (active_attack_variant == 1)
 	{
-		uint32_t node = attacker_candidates[i];
-		selective_delay_malicious_nodes[node] = true;
-		is_malicious_node[1][node] = true;
-		record_attack_onset(1, node);
-		cout << attack_tag() << " Node " << node
-		     << " marked as malicious selective delay attacker" << endl;
+		selective_delay_malicious_nodes[15] = true; // RSU0 is the attacker
+		selective_delay_malicious_nodes[16] = true; // RSU1 is the attacker
+        is_malicious_node[1][15] = true; // Explicitly flag for TP/FN metrics
+        is_malicious_node[1][16] = true; // Explicitly flag for TP/FN metrics
+		present_selective_delay_attack_nodes = true;
+		
+		cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
+		cout << attack_tag() << " ① Node 15 and 16 (RSUs) marked as malicious selective delay attackers" << endl;
+		cout << attack_tag() << " ① Attack 2 scenario active on 5-unit topology" << endl;
+		
+		// Record attack onset for metric M4
+		record_attack_onset(1, 15);   
+		record_attack_onset(1, 16);   
 	}
-
-	present_selective_delay_attack_nodes = (num_attackers > 0);
-
-	cout << attack_tag() << " Attack 2 extended test network: "
-	     << num_attackers << " malicious nodes out of 10 ("
-	     << attack_percentage << "%)" << endl;
-	cout << attack_tag() << " Traffic path: Vehicle A(0) -> RSU0(5) -> "
-	     << "RSU1(6) -> RSU2(7) -> Vehicle B(1)" << endl;
+	else if (active_attack_variant == 0)
+	{
+		present_selective_delay_cp_attack = true;
+		
+		// Explicitly map RSU 15 and 16 as the malicious actors for metrics evaluation
+		is_malicious_node[0][15] = true; 
+		is_malicious_node[0][16] = true; 
+		
+		cout << attack_tag() << " ① Test network attackers hardcoded" << endl;
+		cout << attack_tag() << " ① Attack 1 (Control Plane) scenario active on 5-unit topology" << endl;
+		
+		// We must poison the routes AFTER seed_routing_test_tables runs at t=1.060
+		Simulator::Schedule(Seconds(1.070), &poison_test_network_cp_attackers);
+	}
 }
 
 void hardcode_attack7_test_network()
@@ -114802,6 +115196,16 @@ void hardcode_attack7_test_network()
     }
     present_selective_delay_attack_nodes = false;
     attack_percentage = 0;
+
+    // Reset eFADE/PIR metric accumulators for this run (ported from
+    // routing_2_.cc, applies to all Hidden Forwarding variants 4-7)
+    fade_eavesdrop_counter   = 0;
+    fade_eavesdropped_packets.clear();
+    g_total_copies_scheduled = 0;
+    g_hdup_intentional       = false;
+    fade_cum_pdr = 0.0; fade_cum_pir = 0.0; fade_cum_mcc = 0.0;
+    fade_cum_dr  = 0.0; fade_cum_fpr = 0.0;
+    fade_prev_eavesdrop = 0; fade_prev_copies = 0;
 
     // Test network topology for Attack 7 (Passive Hidden Forwarding - Data Plane):
     // Node 0 = Vehicle A  (sender)          at (300, 150, 0)
@@ -114850,16 +115254,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/ECMP_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114869,16 +115273,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114888,16 +115292,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/QR_SDN_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114907,16 +115311,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/RLMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114926,16 +115330,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/proposed_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114946,16 +115350,16 @@ void write_csv_results_routing()
 					switch(qf)
 					{
 						case(0):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_0.csv";
 							break;
 						case(1):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_1.csv";
 							break;
 						case(2):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_2.csv";
 							break;
 						case(3):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/qos/DCMR_qos_3.csv";
 							break;
 						default:
 							break;
@@ -114973,19 +115377,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/ECMP_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -114995,19 +115399,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115017,19 +115421,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/QRSDN_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115039,19 +115443,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/RLMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115062,19 +115466,19 @@ void write_csv_results_routing()
 					{
 						
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/Proposed_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115084,19 +115488,19 @@ void write_csv_results_routing()
 					switch(lambda)
 					{
 						case(10):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_10.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_20.csv";
 							break;
 						case(30):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_30.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_40.csv";
 							break;
 						case(47):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/flowsize/DCMR_flowsize_50.csv";
 							break;
 						default:
 							break;
@@ -115114,28 +115518,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/ECMP_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115145,28 +115549,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115176,28 +115580,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/QRSDN_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115207,28 +115611,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/RLMR_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115238,28 +115642,28 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(8):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_0.csv";
 							break;
 						case(20):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_20.csv";
 							break;
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_120.csv";
 							break;
 						case(140):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/Proposed_mobility_140.csv";
 							break;
 						default:
 							break;
@@ -115269,19 +115673,19 @@ void write_csv_results_routing()
 					switch(maxspeed)
 					{
 						case(40):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_40.csv";
 							break;
 						case(60):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_60.csv";
 							break;
 						case(80):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_80.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_100.csv";
 							break;
 						case(120):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/mobility/DCMR_mobility_120.csv";
 							break;
 						default:
 							break;
@@ -115298,22 +115702,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/ECMP_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115323,22 +115727,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115348,22 +115752,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/QRSDN_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115373,22 +115777,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/RLMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115398,22 +115802,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/Proposed_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115423,22 +115827,22 @@ void write_csv_results_routing()
 					switch(total_size)
 					{
 						case(150):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_150.csv";
 							break;
 						case(125):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_125.csv";
 							break;
 						case(100):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_100.csv";
 							break;
 						case(75):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_75.csv";
 							break;
 						case(50):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_50.csv";
 							break;
 						case(25):
-							filename = "/home/user/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
+							filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/nodesize/DCMR_nodes_25.csv";
 							break;
 						default:
 							break;
@@ -115496,11 +115900,60 @@ vector<vector<double>> delayMatrix_ethernet;
 // -----------------------------------------------------------------------
 void seed_attack8_links()
 {
+	 // This entire function seeds hardcoded link-lifetime values for the fixed
+	 // 5-unit TEST-NETWORK topology (nodes 0-19 specifically). In SUMO mode,
+	 // those same node indices belong to real vehicles/RSUs from the SUMO trace
+	 // with their own genuine positions — writing 999.0 "always in range" links
+	 // between them here would corrupt the real link-lifetime matrix. This was
+	 // previously masked because every call site only ever ran with
+	 // routing_test=true; guarding explicitly now that HF re-apply logic also
+	 // runs unconditionally in both modes.
+	 if (!routing_test) return;
+
+	 uint32_t n = (uint32_t)var;
+    if (linklifetimeMatrix_dsrc.size() < n)
+        linklifetimeMatrix_dsrc.assign(n, std::vector<double>(n, 0.0));
+
     auto safe_set = [](uint32_t a, uint32_t b, double v) {
         if (a < linklifetimeMatrix_dsrc.size() &&
             b < linklifetimeMatrix_dsrc[a].size())
             linklifetimeMatrix_dsrc[a][b] = v;
     };
+
+    // All Hidden Forwarding variants (4-7) now use the unified 5-unit topology.
+    // Node indices: Senders=0,2,4,6,8  Destinations=1,3,5,7,9
+    //               Eavesdroppers=10,11,12,13,14  RSUs=15,16,17,18,19
+    if (active_attack_variant == 0 ||
+        active_attack_variant == 1 ||
+        active_attack_variant == 4 ||
+        active_attack_variant == 5 ||
+        active_attack_variant == 6 ||
+        active_attack_variant == 7)
+    {
+        // Unit 0: VehA0(0) <-> RSU0(15) <-> VehB0(1), RSU0 <-> Eaves0(10)
+        safe_set(0,  15, 999.0); safe_set(15,  0, 999.0);
+        safe_set(15,  1, 999.0); safe_set( 1, 15, 999.0);
+        safe_set(15, 10, 999.0); safe_set(10, 15, 999.0);
+        // Unit 1: VehA1(2) <-> RSU1(16) <-> VehB1(3), RSU1 <-> Eaves1(11)
+        safe_set(2,  16, 999.0); safe_set(16,  2, 999.0);
+        safe_set(16,  3, 999.0); safe_set( 3, 16, 999.0);
+        safe_set(16, 11, 999.0); safe_set(11, 16, 999.0);
+        // Unit 2: VehA2(4) <-> RSU2(17) <-> VehB2(5), RSU2 <-> Eaves2(12)
+        safe_set(4,  17, 999.0); safe_set(17,  4, 999.0);
+        safe_set(17,  5, 999.0); safe_set( 5, 17, 999.0);
+        safe_set(17, 12, 999.0); safe_set(12, 17, 999.0);
+        // Unit 3: VehA3(6) <-> RSU3(18) <-> VehB3(7), RSU3 <-> Eaves3(13)
+        safe_set(6,  18, 999.0); safe_set(18,  6, 999.0);
+        safe_set(18,  7, 999.0); safe_set( 7, 18, 999.0);
+        safe_set(18, 13, 999.0); safe_set(13, 18, 999.0);
+        // Unit 4: VehA4(8) <-> RSU4(19) <-> VehB4(9), RSU4 <-> Eaves4(14)
+        safe_set(8,  19, 999.0); safe_set(19,  8, 999.0);
+        safe_set(19,  9, 999.0); safe_set( 9, 19, 999.0);
+        safe_set(19, 14, 999.0); safe_set(14, 19, 999.0);
+        cout << "[HF LINKS] Link-lifetime matrix seeded for 5-unit topology." << endl;
+        return;
+    }
+
     // Corrected indices: current_hop = ns3_id - 2
     // ns3 IDs: VehicleA=2, VehicleC=3, VehicleB=4, RSU=5
     // current_hop:    VehicleA=0,    VehicleC=1,    VehicleB=2, RSU=3
@@ -115638,7 +116091,7 @@ void dijkstra(vector<vector<double> > adjacencyMatrix,
     	uint32_t n = new_parents[source].size();	
     	uint32_t path[total_size];
     	path[0] = source;
-    	for (uint32_t i=1;i<total_size;i++)
+    	for (uint32_t i=N_Controllers;i<total_size;i++)
     	{
     		int sh = n-i+1;
     		if((sh) > 0)
@@ -115673,7 +116126,7 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 	vector<double> x;
 	/*
 	Vector source_position = data_at_manager_inst[source_node].position;
-	for (uint32_t index = 2; index < (total_size + 2); index++)
+	for (uint32_t index = N_Controllers; index < (total_size); index++)
 	{
 		double dis = get_length(source_position, data_at_manager_inst[index].position);
 		x.push_back(dis);
@@ -115681,26 +116134,26 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 	*/
 	Ptr <Node> reference_node;
 	Ptr <Node> other_node;
-	if ((source_node-2) < N_Vehicles)
+	if ((source_node-N_Controllers) < N_Vehicles)
 	{	
-		reference_node = DynamicCast <Node> (Vehicle_Nodes.Get(source_node-2));
+		reference_node = DynamicCast <Node> (Vehicle_Nodes.Get(source_node-N_Controllers));
 	}
 	else
 	{
-		reference_node = DynamicCast <Node> (RSU_Nodes.Get(source_node-N_Vehicles-2));
+		reference_node = DynamicCast <Node> (RSU_Nodes.Get(source_node-N_Vehicles-N_Controllers));
 	}
 	
 	Ptr<ConstantVelocityMobilityModel> mdl1 = DynamicCast <ConstantVelocityMobilityModel> (reference_node->GetObject<MobilityModel>());
         Vector posi_reference = mdl1->GetPosition();
-        for (uint32_t index = 2; index < (total_size + 2); index++)
+        for (uint32_t index = N_Controllers; index < ((uint32_t)var + N_Controllers); index++)
 	{
-		if ((index-2) < N_Vehicles)
+		if ((index-N_Controllers) < N_Vehicles)
 		{	
-			other_node = DynamicCast <Node> (Vehicle_Nodes.Get(index-2));
+			other_node = DynamicCast <Node> (Vehicle_Nodes.Get(index-N_Controllers));
 		}
 		else
 		{
-			other_node = DynamicCast <Node> (RSU_Nodes.Get(index-N_Vehicles-2));
+			other_node = DynamicCast <Node> (RSU_Nodes.Get(index-N_Vehicles-N_Controllers));
 		}
 		Ptr<ConstantVelocityMobilityModel> mdl2 = DynamicCast <ConstantVelocityMobilityModel> (other_node->GetObject<MobilityModel>());
         	Vector posi_other = mdl2->GetPosition();	
@@ -115714,9 +116167,10 @@ vector<double> calculate_distance_to_each_node(uint32_t source_node)
 void generate_adjacency_matrix()
 {
 	
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	{
-		node_distance[i] = calculate_distance_to_each_node(i+2);	
+		// node_distance[i] = calculate_distance_to_each_node(i+2);	
+		node_distance[i] = calculate_distance_to_each_node(i+N_Controllers);
 	}
 	
 	/*
@@ -115733,7 +116187,7 @@ void generate_adjacency_matrix()
 	*/
 	
 	vector<vector<double>> new_adjacencyMatrix;
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	//for(uint32_t i=0;i<9;i++)
 	{
 		new_adjacencyMatrix.push_back(node_distance[i]);
@@ -115813,7 +116267,7 @@ void update_stable(uint32_t flow_id, uint32_t current_hop)
 			
 			else
 			{
-				if((proposed_algo2_output_inst[flow_id].met[i] = false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
+				if((proposed_algo2_output_inst[flow_id].met[i] == false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
 				{
 					proposed_algo2_output_inst[flow_id].Y[i] = proposed_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					proposed_algo2_output_inst[flow_id].conn[i] = 1;
@@ -115835,7 +116289,7 @@ void run_stable_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + N_Controllers;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		proposed_algo2_output_inst[flow_id].met[i] = false;
@@ -115868,7 +116322,7 @@ void update_unstable(uint32_t flow_id, uint32_t current_hop)
 			else
 			{
 				double value = distance_algo2_output_inst[flow_id].D[current_hop] + adjacencyMatrix[current_hop][i];
-				if((distance_algo2_output_inst[flow_id].met[i] = false)||(distance_algo2_output_inst[flow_id].D[i] > value))
+				if((distance_algo2_output_inst[flow_id].met[i] == false)||(distance_algo2_output_inst[flow_id].D[i] > value))
 				{
 					distance_algo2_output_inst[flow_id].Y[i] = distance_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					distance_algo2_output_inst[flow_id].D[i] = value;
@@ -115887,7 +116341,7 @@ void run_distance_path_finding(uint32_t flow_id)
 {
 	uint32_t source = (demanding_flow_struct_controller_inst+flow_id)->source;
 	uint32_t destination =	(demanding_flow_struct_controller_inst+flow_id)->destination;
-	uint32_t active_nodes = N_Vehicles + N_RSUs + 2;
+	uint32_t active_nodes = N_Vehicles + N_RSUs + N_Controllers;
 	for(uint32_t i=0; i < active_nodes; i++)
 	{
 		distance_algo2_output_inst[flow_id].met[i] = false;
@@ -115937,7 +116391,11 @@ void filter_flows()
 		{
 			if (routing_test == true)
     			{
-    				if(flow_id ==1)
+    				// Previously: flow 1 (B->A) was unconditionally disabled (f_size=0),
+    				// forcing one-way traffic only. For attack testing that needs packets
+    				// in both directions, disable a flow only when it has no valid path
+    				// (mirrors the non-test branch below).
+    				if(proposed_algo2_output_inst[flow_id].paths == 0)
     				{
     					(demanding_flow_struct_controller_inst+flow_id)->f_size = 0;
     				}
@@ -116191,7 +116649,7 @@ void dijkstra_stable(uint32_t startVertex)
     	path[0] = source;
     	alternative_path[0] = source;
     	alternative_path[1] = startVertex;
-    	for (uint32_t i=1;i<total_size;i++)
+    	for (uint32_t i=N_Controllers;i<total_size;i++)
     	{
     		int sh = n-i+1;
     		if((sh) > 0)
@@ -116204,7 +116662,7 @@ void dijkstra_stable(uint32_t startVertex)
     			path[i] = large;
     		}
     	}
-    	for (uint32_t i=2;i<total_size;i++)
+    	for (uint32_t i=N_Controllers;i<total_size;i++)
     	{
 		alternative_path[i] = large;
     	}
@@ -116327,6 +116785,7 @@ void calculate_average_packet_delivery_ratio_routing()
 		if (f_size > 0)
 		{
 			flow_counter++;
+			total_packets = total_packets + f_size;  // only count active flows
 			for (uint32_t i=1; i<f_size+1;i++)
 			{
 				if (routing_packet_final_timestamp[fid][i] > routing_packet_initial_timestamp[fid][i])
@@ -116338,7 +116797,7 @@ void calculate_average_packet_delivery_ratio_routing()
 				//total_latency = total_latency + packet_delay_routing[fid][i];
 			}
 		}
-		total_packets = total_packets + f_size;
+		// total_packets moved inside if(f_size>0) — do NOT add here
 	}
 	//cout<<"PDR calculation: flow counter is "<<flow_counter<<" delivered packets is "<<delivered_packet_counter<<endl;
 	//total_latency = total_latency;
@@ -116531,7 +116990,12 @@ void calculate_security_detection_metrics()
         sec_TP[v] = 0; sec_FP[v] = 0;
         sec_TN[v] = 0; sec_FN[v] = 0;
 
-        for (int n = 0; n < total_size; n++)
+        int active_topology_nodes = total_size;
+        if (routing_test) {
+            active_topology_nodes = N_Vehicles + N_RSUs + N_Controllers;
+        }
+
+        for (int n = 0; n < active_topology_nodes; n++)
         {
             bool malicious = is_malicious_node[v][n];
             bool detected  = is_detected_node[v][n];
@@ -116637,6 +117101,8 @@ void calculate_mitigation_latency_metric()
               << 1000.0 * average_mitigation_latency << " ms" << std::endl;
 }
 
+static const int TCAM_HW_SIZE = 256;
+#include "tcam_detection.h"
 void write_security_metrics_csv()
 {
 	fstream fout;
@@ -116653,7 +117119,7 @@ void write_security_metrics_csv()
 	switch (active_attack_variant)
 	{
 		case (-1):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
+			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
 			break;
 		case (0):
 			attack_id = 1;
@@ -116686,33 +117152,57 @@ void write_security_metrics_csv()
 
 	if (active_attack_variant != -1)
 	{
-		switch (attack_percentage)
-		{
-			case (0):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
-				break;
-			case (20):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_20.csv";
-				break;
-			case (40):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_40.csv";
-				break;
-			case (60):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_60.csv";
-				break;
-			case (80):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_80.csv";
-				break;
-			case (100):
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_100.csv";
-				break;
-			default:
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack" + to_string(attack_id) + "_0.csv";
-				break;
-		}
+		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+		           + to_string(attack_id)
+		           + "_" + to_string(attack_percentage)
+		           + g_delay_suffix + ".csv";
 	}
 
 	fout.open(filename, ios::out|ios::app);
+
+	if (fout.tellp() == 0) {
+		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
+			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
+			 << "# TP, FP, TN, FN";
+		if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
+			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
+				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
+		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
+			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
+	}
+
+	TcamCycleMetrics tcam_metrics{};
+	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1) {
+		double active_vehicles = (double)N_Vehicles;
+		tcam_metrics = ComputeTcamDetection(
+			N_Vehicles, N_RSUs,
+			10.0,
+			15.0,
+			0.80,
+			active_vehicles
+		);
+	}
+
+	// Phase 5 — crypto metric aggregates
+	double sig_valid_rate = (g_verify_attempts > 0)
+	                        ? (double)g_verify_passed / g_verify_attempts : 1.0;
+
+	double _trust_sum = 0.0;
+	for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) _trust_sum += g_trust_score[_i];
+	double avg_trust_score = _trust_sum / (double)total_size;
+
+	uint32_t _stark_t_fail = 0, _stark_h_fail = 0;
+	for (auto& kv : g_lstm_stark_counts) { _stark_t_fail += kv.second.first; _stark_h_fail += kv.second.second; }
+
+	uint32_t _fm_total = 0, _fm_committed = 0;
+	for (auto& kv : g_flowmod_endorsements) { _fm_total++; if (kv.second.committed) _fm_committed++; }
+	double flowmod_endorsement_rate = (_fm_total > 0) ? (double)_fm_committed / _fm_total : 1.0;
+
+	uint32_t _da_count = 0, _nfa_count = 0;
+	for (auto& kv : g_witness_alert_pool)
+		for (auto& al : kv.second) { if (al.alert_type == 0) _da_count++; else _nfa_count++; }
+
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
@@ -116729,11 +117219,205 @@ void write_security_metrics_csv()
 		 << sec_TP[selected_variant] << ", "
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
-		 << sec_FN[selected_variant] << "\n";
+		 << sec_FN[selected_variant];
+	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
+		fout << TcamDetectionCsvColumns(tcam_metrics);
+	fout << ", " << sig_valid_rate
+		 << ", " << avg_trust_score
+		 << ", " << _stark_t_fail
+		 << ", " << _stark_h_fail
+		 << ", " << flowmod_endorsement_rate
+		 << ", " << g_rsu_chain.size()
+		 << ", " << g_global_chain.size()
+		 << ", " << _da_count
+		 << ", " << _nfa_count
+		 << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
 }
+
+// ============================================================
+// FADE per-cycle CSV writer. Mirrors write_security_metrics_csv() so FADE
+// output files share the SAME shape: one file per scenario
+// (FADE_baseline.csv / FADE_AttackN_PCT.csv), one row per cycle. The MOBIGUARD
+// columns are reproduced position-for-position; cur_PIR and avg_PIR are appended
+// as two trailing columns. FADE has no mitigation stage so those two columns
+// are always 0 (kept for positional compatibility).
+//   cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms,
+//   cur_MCC, avg_MCC, cur_DR%, avg_DR%, cur_FPR%, avg_FPR%,
+//   cur_mit_ms, avg_mit_ms, TP, FP, TN, FN, cur_PIR%, avg_PIR%
+// ============================================================
+void fade_write_per_cycle_csv(std::string dir)
+{
+	if (!fade_detection_active) return;
+	if (!dir.empty() && dir.back() != '/' && dir.back() != '\\')
+	{
+		dir += "/";
+	}
+
+	// 1. Original scenario-specific FADE file writing (using dynamic dir)
+	{
+		fstream fout;
+		string filename;
+		double cycle = data_gathering_cycle_number - 1.0;
+		if (cycle < 1.0)
+			cycle = 1.0;
+
+		int attack_id = 1;
+		switch (active_attack_variant)
+		{
+			case (-1): break;
+			case (0): attack_id = 1; break;
+			case (1): attack_id = 2; break;
+			case (2): attack_id = 3; break;
+			case (3): attack_id = 4; break;
+			case (4): attack_id = 5; break;
+			case (5): attack_id = 6; break;
+			case (6): attack_id = 7; break;
+			case (7): attack_id = 8; break;
+			default:  attack_id = 1; break;
+		}
+
+		if (active_attack_variant == -1)
+		{
+			filename = dir + "FADE_baseline.csv";
+		}
+		else
+		{
+			int pct = 0;
+			if      (attack_percentage <= 0)   pct = 0;
+			else if (attack_percentage <= 20)  pct = 20;
+			else if (attack_percentage <= 40)  pct = 40;
+			else if (attack_percentage <= 60)  pct = 60;
+			else if (attack_percentage <= 80)  pct = 80;
+			else                               pct = 100;
+			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + ".csv";
+		}
+
+		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
+		for (auto &entry : fade_flow_config)
+		{
+			uint32_t flow_id = entry.first;
+			if (!entry.second.configured) continue;
+			if (!fade_is_flow_active(flow_id)) continue;
+
+			bool attacked = fade_is_flow_attacked(flow_id);
+			bool detected = fade_results[flow_id].detected;
+			if ( attacked &&  detected) tp++;
+			if (!attacked &&  detected) fp++;
+			if (!attacked && !detected) tn++;
+			if ( attacked && !detected) fn++;
+		}
+
+		double cur_pdr = 100.0 * current_packet_delivery_ratio;
+
+		uint32_t d_eaves  = fade_eavesdrop_counter   - fade_prev_eavesdrop;
+		uint32_t d_copies = g_total_copies_scheduled - fade_prev_copies;
+		double cur_pir = (d_copies > 0)
+			? 100.0 * (double)d_eaves / (double)d_copies
+			: 0.0;
+		fade_prev_eavesdrop = fade_eavesdrop_counter;
+		fade_prev_copies    = g_total_copies_scheduled;
+
+		double dTP = (double)tp, dFP = (double)fp, dTN = (double)tn, dFN = (double)fn;
+		double dr_den  = dTP + dFN;
+		double cur_dr  = (dr_den  > 0.0) ? dTP / dr_den  : 0.0;
+		double fpr_den = dFP + dTN;
+		double cur_fpr = (fpr_den > 0.0) ? dFP / fpr_den : 0.0;
+		double eps = 1e-6;
+		double mcc_den = sqrt((dTP+dFP+eps)*(dTP+dFN+eps)*(dTN+dFP+eps)*(dTN+dFN+eps));
+		double cur_mcc = ((dTP*dTN) - (dFP*dFN)) / mcc_den;
+
+		fade_cum_pdr += cur_pdr;
+		fade_cum_pir += cur_pir;
+		fade_cum_mcc += cur_mcc;
+		fade_cum_dr  += cur_dr;
+		fade_cum_fpr += cur_fpr;
+		double avg_pdr = fade_cum_pdr / cycle;
+		double avg_pir = fade_cum_pir / cycle;
+		double avg_mcc = fade_cum_mcc / cycle;
+		double avg_dr  = fade_cum_dr  / cycle;
+		double avg_fpr = fade_cum_fpr / cycle;
+
+		fout.open(filename, ios::out | ios::app);
+		fout << (uint32_t)cycle << ", "
+		     << cur_pdr << ", "
+		     << avg_pdr << ", "
+		     << current_latency_routing * 1000.0 << ", "
+		     << average_latency_routing * 1000.0 << ", "
+		     << cur_mcc << ", "
+		     << avg_mcc << ", "
+		     << (cur_dr  * 100.0) << ", "
+		     << (avg_dr  * 100.0) << ", "
+		     << (cur_fpr * 100.0) << ", "
+		     << (avg_fpr * 100.0) << ", "
+		     << 0.0 << ", "
+		     << 0.0 << ", "
+		     << tp << ", "
+		     << fp << ", "
+		     << tn << ", "
+		     << fn << ", "
+		     << cur_pir << ", "
+		     << avg_pir << "\n";
+		fout.close();
+	}
+
+	// 2. New unified/per-cycle CSV file writing (routing_fade_per_cycle.csv)
+	{
+		double cycle = data_gathering_cycle_number - 1.0;
+		if (cycle < 1.0) cycle = 1.0;
+		
+		uint32_t cycle_id = (uint32_t)cycle;
+		uint32_t flow_level_tp = 0;
+		uint32_t flow_level_fp = 0;
+		uint32_t flow_level_tn = 0;
+		uint32_t flow_level_fn = 0;
+		uint32_t pp_level_tp = 0;
+		uint32_t pp_level_fp = 0;
+		uint32_t pp_level_tn = 0;
+		uint32_t pp_level_fn = 0;
+
+		if (routing_algorithm == 4 && active_attack_variant != -1)
+		{
+			for (auto &entry : fade_flow_config)
+			{
+				uint32_t flow_id = entry.first;
+				if (!entry.second.configured) continue;
+				if (!fade_is_flow_active(flow_id)) continue;
+
+				bool attacked = fade_is_flow_attacked(flow_id);
+				bool detected = fade_results[flow_id].detected;
+				if ( attacked &&  detected) flow_level_tp++;
+				if (!attacked &&  detected) flow_level_fp++;
+				if (!attacked && !detected) flow_level_tn++;
+				if ( attacked && !detected) flow_level_fn++;
+			}
+			
+			pp_level_tp = pp_tp_global;
+			pp_level_fp = pp_fp_global;
+			pp_level_tn = pp_tn_global;
+			pp_level_fn = pp_fn_global;
+		}
+
+		std::string filename = dir + "routing_fade_per_cycle.csv";
+		std::fstream fout;
+		fout.open(filename, std::ios::out | std::ios::app);
+		fout << cycle_id << ", "
+		     << flow_level_tp << ", "
+		     << flow_level_fp << ", "
+		     << flow_level_tn << ", "
+		     << flow_level_fn << ", "
+		     << pp_level_tp << ", "
+		     << pp_level_fp << ", "
+		     << pp_level_tn << ", "
+		     << pp_level_fn << "\n";
+		fout.close();
+
+		std::cout << "FADE per-cycle row written to " << filename << std::endl;
+	}
+}
+
 
 void calculate_performance_evaluation_metrics()
 {
@@ -116748,187 +117432,60 @@ void calculate_performance_evaluation_metrics()
 	// Scheduled after existing writes to avoid timing conflicts
 	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
-	Simulator::Schedule(Seconds(0.000100), write_security_metrics_csv);
+	// Write per-cycle row; fires after PDR/latency/security metrics are updated
+	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
-	// --- TAP baseline metrics (after MOBIGUARD to avoid timing conflicts) ---
+	// --- TAP baseline metrics ---
 	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
 	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
-}
 
+	// §7.5 — LSTM feature accumulator reset + volume window tick (eq:lstm_features)
+	Simulator::Schedule(Seconds(0.000130), crypto_reset_lstm_accumulators);
+	Simulator::Schedule(Seconds(0.000131), volume_tick);
 
-// === TAP BASELINE FUNCTIONS ===
-// Function 1: tap_check_defaulter_list
-bool tap_check_defaulter_list(uint32_t sender_current_hop)
-{
-	if (!tap_detection_active) return false;
-	if (sender_current_hop >= (uint32_t)total_size) return false;
-	if (tap_defaulter_list[sender_current_hop])
+	// --- MOBIGUARD S1/S2 detection metrics ---
+	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
+	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
+	// zone when linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, which matches the
+	// d_max_dsrc = 270 m coverage radius used by the routing engine.
+	for (uint32_t _r = 0; _r < N_RSUs; _r++)
 	{
-		cout << "[TAP] Packet from node " << sender_current_hop
-			 << " dropped — in Controller Defaulter List." << endl;
-		return true;
-	}
-	return false;
-}
+		uint32_t rsu_sim_idx = N_Vehicles + _r;
 
-// Function 2: tap_report_to_controller
-void tap_report_to_controller(uint32_t attacker_current_hop)
-{
-	if (attacker_current_hop >= (uint32_t)total_size) return;
-	if (tap_defaulter_list[attacker_current_hop]) return;
-	tap_defaulter_list[attacker_current_hop] = true;
-	cout << "[TAP] ATTACKER DETECTED: node " << attacker_current_hop
-		 << " reported to controller at t=" << Simulator::Now().GetSeconds() << "s" << endl;
-	cout << "[TAP] Controller Defaulter List updated — node " << attacker_current_hop
-		 << " blacklisted." << endl;
-	if (!tap_detected_node[attacker_current_hop])
-	{
-		tap_detected_node[attacker_current_hop] = true;
-		tap_t_quarantine[attacker_current_hop] = Simulator::Now().GetSeconds();
-		cout << "[TAP] Detection event recorded for node " << attacker_current_hop
-			 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
-	}
-}
-
-// Function 3: tap_run_detection
-void tap_run_detection(uint32_t receiver_current_hop,
-					   uint32_t sender_current_hop,
-					   uint32_t packet_id)
-{
-	if (!tap_detection_active) return;
-	if (sender_current_hop >= (uint32_t)total_size) return;
-	if (receiver_current_hop >= (uint32_t)total_size) return;
-	if (packet_id >= (uint32_t)(Flow_size+2)) return;
-
-	double PAT = Simulator::Now().GetSeconds();
-	double PPAT = t_fwd_packet[sender_current_hop][packet_id];
-	if (PPAT <= 0.0) return;
-
-	// Receiver position
-	Ptr<Node> rx_node = wifidevices.Get(receiver_current_hop)->GetNode();
-	Ptr<MobilityModel> rx_mob = rx_node->GetObject<MobilityModel>();
-	if (!rx_mob) return;
-	Vector rx_pos = rx_mob->GetPosition();
-
-	// Sender position (fallback to controller-stored position)
-	Vector tx_pos = routing_data_at_controller_inst[sender_current_hop].position;
-	if (tx_pos.x == 0.0 && tx_pos.y == 0.0 && tx_pos.z == 0.0)
-	{
-		Ptr<Node> tx_node = wifidevices.Get(sender_current_hop)->GetNode();
-		Ptr<MobilityModel> tx_mob = tx_node->GetObject<MobilityModel>();
-		if (!tx_mob) return;
-		tx_pos = tx_mob->GetPosition();
-	}
-
-	double dx = rx_pos.x - tx_pos.x;
-	double dy = rx_pos.y - tx_pos.y;
-	double dz = rx_pos.z - tx_pos.z;
-	double D = std::sqrt(dx*dx + dy*dy + dz*dz);
-	double delta = D / TAP_SIGNAL_SPEED;
-	double v = PAT - delta;
-
-	cout << "[TAP] Node " << receiver_current_hop << " received from " << sender_current_hop
-		 << ": D=" << D << "m PAT=" << PAT << "s ∂=" << (delta*1000.0) << "ms v=" << v
-		 << " PPAT=" << PPAT << "s" << endl;
-
-	if (std::abs(v - PPAT) > TAP_MARGIN)
-	{
-		cout << "[TAP] TIMING VIOLATION: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0
-			 << "ms exceeds TAP_MARGIN=" << TAP_MARGIN*1000.0 << "ms" << endl;
-		cout << "[TAP] v=" << v << "s PPAT=" << PPAT << "s difference=" << (std::abs(v-PPAT)*1000.0) << "ms" << endl;
-		tap_report_to_controller(sender_current_hop);
-	}
-	else
-	{
-		cout << "[TAP] No violation: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0
-			 << "ms within TAP_MARGIN=" << TAP_MARGIN*1000.0 << "ms" << endl;
-	}
-}
-
-// Function 4: calculate_tap_security_metrics
-void calculate_tap_security_metrics()
-{
-	tap_TP = tap_FP = tap_TN = tap_FN = 0;
-	for (int n = 0; n < total_size; n++)
-	{
-		bool malicious = is_malicious_node[1][n]; // Attack 2 is variant index 1
-		bool detected = tap_detected_node[n];
-		if (malicious && detected) tap_TP++;
-		if (!malicious && detected) tap_FP++;
-		if (!malicious && !detected) tap_TN++;
-		if (malicious && !detected) tap_FN++;
-	}
-	double TP = tap_TP, FP = tap_FP, TN = tap_TN, FN = tap_FN;
-	tap_current_DR = (TP + FN > 0.0) ? (TP / (TP + FN)) : 0.0;
-	tap_current_FPR = (FP + TN > 0.0) ? (FP / (FP + TN)) : 0.0;
-	double eps = 1e-6;
-	double num = (TP * TN) - (FP * FN);
-	double den = std::sqrt((TP + FP + eps) * (TP + FN + eps) * (TN + FP + eps) * (TN + FN + eps));
-	tap_current_MCC = den > 0.0 ? (num / den) : 0.0;
-	tap_previous_cumulative_MCC += tap_current_MCC;
-	tap_previous_cumulative_DR  += tap_current_DR;
-	tap_previous_cumulative_FPR += tap_current_FPR;
-
-	double total_latency = 0.0;
-	uint32_t valid_count = 0;
-	for (int n = 0; n < total_size; n++)
-	{
-		double effective_quarantine = tap_t_quarantine[n];
-		if (effective_quarantine <= 0.0 && tap_detected_node[n])
-			effective_quarantine = Simulator::Now().GetSeconds();
-		if (t_onset[n] > 0.0 && effective_quarantine > t_onset[n])
+		uint32_t rho_count = 0;
+		double   speed_sum = 0.0;
+		for (uint32_t _v = 0; _v < (uint32_t)N_Vehicles; _v++)
 		{
-			total_latency += effective_quarantine - t_onset[n];
-			valid_count++;
+			if (rsu_sim_idx < linklifetimeMatrix_dsrc[_v].size() &&
+			    linklifetimeMatrix_dsrc[_v][rsu_sim_idx] > 0.0)
+			{
+				rho_count++;
+				Vector vel = (routing_data_at_nodes_inst + _v)->velocity;
+				speed_sum += std::sqrt(vel.x * vel.x + vel.y * vel.y);
+			}
 		}
-	}
-	tap_current_mitigation_ms = valid_count > 0 ? (total_latency / valid_count) * 1000.0 : 0.0;
-	if (tap_current_mitigation_ms <= 0.0 && tap_TP > 0)
-		tap_current_mitigation_ms = 50.0;
-	tap_previous_cumulative_mit += tap_current_mitigation_ms;
-	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
-	               (data_gathering_cycle_number - 1.0) : 1.0;
-	cout << "[TAP][SECURITY] Variant 1 | MCC=" << tap_current_MCC
-		 << " DR=" << (tap_current_DR * 100.0) << "% FPR=" << (tap_current_FPR * 100.0) << "% TP=" << tap_TP
-		 << " FP=" << tap_FP << " TN=" << tap_TN << " FN=" << tap_FN << endl;
-	cout << "[TAP][SECURITY] Avg mitigation latency: " << tap_current_mitigation_ms << "ms" << endl;
-}
+		double rho_t   = (double)rho_count;
+		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
 
-// Function 5: write_tap_csv
-void write_tap_csv()
-{
-	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
-	               (data_gathering_cycle_number - 1.0) : 1.0;
-	string filename;
-	switch (attack_percentage)
+		// δ_r(t): use mean of observed hop-delays since the last update tick
+		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
+		double obs_delay = (s1_rsu_obs_count[_r] > 0)
+		                 ? (s1_rsu_obs_sum[_r] / (double)s1_rsu_obs_count[_r])
+		                 : s1_delta0;
+		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
+		s1_rsu_obs_sum[_r]   = 0.0;
+		s1_rsu_obs_count[_r] = 0;
+	}
+	// Resolve the results directory dynamically using the user or HOME environment variable
+	std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+	char* home_env = getenv("HOME");
+	if (home_env != nullptr)
 	{
-		case 0:  filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_0.csv"; break;
-		case 20: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_20.csv"; break;
-		case 40: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_40.csv"; break;
-		case 60: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_60.csv"; break;
-		case 80: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_80.csv"; break;
-		case 100:filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_100.csv"; break;
-		default: filename = "/home/user/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_0.csv"; break;
+		results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 	}
 
-	fstream fout;
-	fout.open(filename, ios::out | ios::app);
-	fout << (uint32_t)cycle << ", "
-		 << current_packet_delivery_ratio * 100.0 << ", "
-		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
-		 << current_latency_routing * 1000.0 << ", "
-		 << average_latency_routing * 1000.0 << ", "
-		 << tap_current_MCC << ", "
-		 << (tap_previous_cumulative_MCC / cycle) << ", "
-		 << tap_current_DR * 100.0 << ", "
-		 << (tap_previous_cumulative_DR / cycle) * 100.0 << ", "
-		 << tap_current_FPR * 100.0 << ", "
-		 << (tap_previous_cumulative_FPR / cycle) * 100.0 << ", "
-		 << tap_current_mitigation_ms << ", "
-		 << (tap_previous_cumulative_mit / cycle) << ", "
-		 << tap_TP << ", " << tap_FP << ", " << tap_TN << ", " << tap_FN << "\n";
-	fout.close();
-	cout << "[TAP] written to file successfully: " << filename << endl;
+	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
+	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv, results_dir);
 }
 
 
@@ -116937,7 +117494,7 @@ void write_tap_csv()
 void calculate_average_latency()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (packet_final_timestamp[i] > packet_initial_timestamp[i])
 		{
@@ -116957,7 +117514,7 @@ void calculate_average_latency()
 void calculate_packet_delivery_ratio()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (packet_final_timestamp[i] > packet_initial_timestamp[i])
 		{
@@ -116987,7 +117544,7 @@ void calculate_packet_delivery_ratio()
 void calculate_packet_delivery_ratio_dsrc()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117008,7 +117565,7 @@ void calculate_packet_delivery_ratio_dsrc()
 void calculate_packet_delivery_ratio_dsrc_hybrid()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117028,7 +117585,7 @@ void calculate_packet_delivery_ratio_dsrc_hybrid()
 void calculate_average_latency_hybrid()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117053,7 +117610,7 @@ void calculate_average_latency_hybrid()
 void calculate_average_latency_dsrc()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2; i<total_size+2;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers;i++)
 	{
 		if (dsrc_packet_final_timestamp[i] > dsrc_packet_initial_timestamp[i])
 		{
@@ -117074,7 +117631,7 @@ void calculate_average_latency_dsrc()
 void calculate_aodv_packet_delivery_ratio()
 {
 	double delivered_packets = 0.0;
-	for (uint32_t i=2; i< (total_size+2); i++)
+	for (uint32_t i=N_Controllers; i< (total_size); i++)
 	{
 		if (aodv_final_timestamp[i] > aodv_initial_timestamp[i])
 		{
@@ -117092,7 +117649,7 @@ void calculate_aodv_packet_delivery_ratio()
 void calculate_aodv_latency()
 {
 	double total_latency = 0.0;
-	for (uint32_t i=2;i<(total_size+2);i++)
+	for (uint32_t i=N_Controllers;i<(total_size);i++)
 	{
 		if (aodv_final_timestamp[i] > aodv_initial_timestamp[i])
 		{
@@ -117239,7 +117796,7 @@ void transmit_solution()
 	{
 		if (u < (N_Vehicles))
 		{
-			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
+			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
 			Simulator::Schedule(Seconds(0.002 + 0.000015*u),send_LTE_metadata_downlink_alone,udp_app,controller_Node.Get(0),Vehicle_Nodes.Get(u), u);
 		}
 		else
@@ -117248,7 +117805,7 @@ void transmit_solution()
 			//cout<<"index is "<<index;
 			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(index));	
 	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
-			Simulator::Schedule(Seconds(0.002 + 0.000015*u),RSU_metadata_downlink_unicast, udp_app, controller_Node.Get(0), nu);
+			Simulator::Schedule(Seconds(0.002 + 0.000015*u),RSU_metadata_downlink_unicast, udp_app, controller_Node.Get(rsu_controller_assignment[u]), nu);
 		}
 	}
 }
@@ -117256,13 +117813,27 @@ void transmit_solution()
 
 void transmit_delta_values()
 {
+	// §7.4 — FlowMod pre-installation audit: log → endorse → commit (eq:rsu_endorsement)
+	{
+		uint32_t fid = 0;
+		for (uint32_t rsu = N_Vehicles; rsu < (uint32_t)(N_Vehicles + N_RSUs); rsu++) {
+			uint8_t params[4]; memcpy(params, &rsu, 4);
+			flowmod_endorse(rsu, fid, params, 4);
+		}
+		FlowModEndorsement& e = g_flowmod_endorsements[fid];
+		bc_log_flowmod(e, N_Vehicles);
+		if (!bc_commit_flowmod(e) && N_RSUs > 0) {
+			ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
+		}
+	}
+
 	//read_csv();
 	//After getting the solution, unicast the solution to the nodes.
 	for (uint32_t u=0; u<(uint32_t)var; u++)
 	{
 		if (u < (N_Vehicles))
 		{
-			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
+			Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
 			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),send_LTE_deltavalues_downlink_alone,udp_app,controller_Node.Get(0),Vehicle_Nodes.Get(u), u);
         }
         else
@@ -117271,7 +117842,7 @@ void transmit_delta_values()
 //cout<<"index is "<<index;
 			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(index));	
 	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(0));
-			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),RSU_deltavalues_downlink_unicast, udp_app, controller_Node.Get(0), nu);
+			Simulator::Schedule(Seconds(0.000 + (0.000015*u)),RSU_deltavalues_downlink_unicast, udp_app, controller_Node.Get(rsu_controller_assignment[u]), nu);
         }
     }
 	cout<<"Transmitting delta values at"<<Now().GetSeconds()<<endl;
@@ -117281,7 +117852,7 @@ void transmit_delta_values()
 void optimize_subsequent()
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -117293,56 +117864,20 @@ void optimize_link_lifetime()
 	std::string filename;
 	switch(routing_algorithm)
 	{
-		case(0):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";
-			break;
-		case(1):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
-			break;
-		case(2):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			break;
-		case(3):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			break;
-		case(4):
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
-			break;
-		case(5):
-			/*
-			if(experiment_number == 0)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			}
-			if(experiment_number == 1)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";
-			}
-			if(experiment_number == 2)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py";
-			}
-			if(experiment_number == 3)
-			{
-				filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			}
-			*/
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";
-			
-			break;
-		default:
-			filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";
-			break;
-		
+		case(0): filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_ECMP.py";  break;
+		case(1): filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RR.py";    break;
+		case(2): filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_QRSDN.py"; break;
+		case(3): filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		case(5): filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
+		default: filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";        break;
 	}
-    	std::string command = "python3 ";
-    	command += filename;
-    	system(command.c_str());
+	std::string command = "python3 " + filename + " --tag=" + g_sim_tag;
+	system(command.c_str());
 }
 
 void optimize_first_time()
 {
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -117378,6 +117913,34 @@ void convert_link_lifetimes_dsrc()
 	}
 	linklifetimeMatrix_dsrc = new_adjacencyMatrix_dsrc;
 	//cout<<"link lifetime matrix converted"<<endl;
+
+	// === DSRC RANGE GATE ===
+	// Make routing reachability a clean function of radio range:
+	//   - a link within d_max_dsrc is usable (if the optimizer reported 0 for an
+	//     in-range link — e.g. vehicle<->RSU links — we floor it to a usable
+	//     value so the relay path can form);
+	//   - a link beyond d_max_dsrc is removed (lifetime 0) so routing won't pick
+	//     an unreliable direct link and will relay via the RSU instead.
+	// Positions come from routing_data_at_nodes_inst. Self-link (i==j) is left untouched.
+	double in_range_floor = link_lifetime_threshold + 1.0; // safely above threshold
+	for(uint32_t i=0;i<(uint32_t)var;i++)
+	{
+		for(uint32_t j=0;j<(uint32_t)var;j++)
+		{
+			if(i==j) continue;
+			double dist = get_length((routing_data_at_nodes_inst+i)->position,
+			                         (routing_data_at_nodes_inst+j)->position);
+			if(dist > d_max_dsrc)
+			{
+				linklifetimeMatrix_dsrc[i][j] = 0.0;
+			}
+			else if(linklifetimeMatrix_dsrc[i][j] <= link_lifetime_threshold)
+			{
+				// in range but optimizer reported it unusable: floor it
+				linklifetimeMatrix_dsrc[i][j] = in_range_floor;
+			}
+		}
+	}
 	
 	/*
 	for (uint32_t i=0;i<total_size;i++)
@@ -117466,51 +118029,20 @@ void convert_link_lifetimes()
 
 void read_lifetime_from_csv()
 {
-    fstream fin;
     cout<<"reading lifetime from csv at"<<Now().GetSeconds()<<endl;
+    static const std::string SCR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/";
+    std::string ll_sol;
     switch(routing_algorithm)
     {
-    	case(0):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_ECMP.csv", ios::in);
-    		break;
-    	case(1):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
-    		break;
-    	case(2):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		break;
-    	case(3):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		break;
-    	case(4):
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
-    		break;	
-    	case(5):
-    		/*
-    		if(experiment_number == 0)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		}
-    		if(experiment_number == 1)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RR.csv", ios::in);
-    		}
-    		if(experiment_number == 2)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_QRSDN.csv", ios::in);
-    		}
-    		if(experiment_number == 3)
-    		{
-    			fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		}
-    		*/
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution_RLMR.csv", ios::in);
-    		break;	
-    		
-    	default:
-    		fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv", ios::in);
-    		break;
+    	case(0): ll_sol = SCR + "link_lifetime_solution_ECMP"  + g_sim_tag + ".csv"; break;
+    	case(1): ll_sol = SCR + "link_lifetime_solution_RR"    + g_sim_tag + ".csv"; break;
+    	case(2): ll_sol = SCR + "link_lifetime_solution_QRSDN" + g_sim_tag + ".csv"; break;
+    	case(3): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	case(5): ll_sol = SCR + "link_lifetime_solution_RLMR"  + g_sim_tag + ".csv"; break;
+    	default: ll_sol = SCR + "link_lifetime_solution"        + g_sim_tag + ".csv"; break;
     }
+    fstream fin;
+    fin.open(ll_sol, ios::in);
     
     vector<string> row;
     string line;
@@ -119000,7 +119532,7 @@ void  run_optimization_link_lifetime()
 
 void  run_optimization_subsequent()
 {
-	for (uint32_t i=2;i<(total_size + 2);i++)
+	for (uint32_t i=N_Controllers;i<(total_size);i++)
 	{
 		refresh_controller_data(con_data_inst+i);
 	}
@@ -119070,7 +119602,7 @@ void  run_optimization_subsequent()
 void predict_DNN_link_lifetime()
 {
 	cout<<"predicting link lifetimes"<<endl;
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
+	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/DNN_link_stability.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -119079,7 +119611,7 @@ void predict_DNN_link_lifetime()
 void predict_DNN_delay()
 {
 	cout<<"predicting delay"<<endl;
-	std::string filename = "/home/user/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
+	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/DNN_delay.py";
     	std::string command = "python3 ";
     	command += filename;
     	system(command.c_str());
@@ -119103,11 +119635,11 @@ void  run_DNN_delay()
 void convert_delay()
 {
 	cout<<"converting delay"<<endl;
-	for(uint32_t i=0;i<(2*total_size);i=i+2)
+	for(uint32_t i=0;i<(2*(uint32_t)var);i=i+2)
 	{
 		vector<double> x_dsrc;
 		vector<double> x_ethernet;
-		for (uint32_t j = 0;j < total_size;j++)
+		for (uint32_t j = 0;j < (uint32_t)var;j++)
 		{
 			double dij_dsrc;
 			double dij_ethernet;
@@ -119132,7 +119664,7 @@ void convert_delay()
 	
 	vector<vector<double>> new_adjacencyMatrix_dsrc;
 	vector<vector<double>> new_adjacencyMatrix_ethernet;
-	for(uint32_t i=0;i<total_size;i++)
+	for(uint32_t i=0;i<(uint32_t)var;i++)
 	//for(uint32_t i=0;i<9;i++)
 	{
 		new_adjacencyMatrix_dsrc.push_back(delay_dsrc[i]);
@@ -119143,11 +119675,11 @@ void convert_delay()
 	cout<<"delay matrix converted"<<endl;
 	
 	
-	for (uint32_t i=0;i<total_size;i++)
+	for (uint32_t i=0;i<(uint32_t)var;i++)
 	//for (uint32_t i=0;i<9;i++)
 	{
 		
-		for (uint32_t j=0;j<total_size;j++)
+		for (uint32_t j=0;j<(uint32_t)var;j++)
 		//for (uint32_t j=0;j<9;j++)
 		{
 			cout<<"DSRC delay from source node"<<(i)<<"to node "<<(j)<<"is "<<delayMatrix_dsrc[i][j]<<endl;
@@ -119169,7 +119701,7 @@ void read_delay_from_csv()
 {
     fstream fin;
     cout<<"reading delay from csv"<<endl;
-    fin.open("/home/user/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
+    fin.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/delay_solution.csv", ios::in);
     vector<string> row;
     string line;
     string temp;
@@ -119237,11 +119769,11 @@ void calculate_dijkstra_stable_solution(uint32_t destination)
 void write_distance_metrics()
 {
 	fstream fout;
-	string filename = "/home/user/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
+	string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results/maximum_distance_results.csv";
 	fout.open(filename,ios::out|ios::app);
 	
 	fout << Simulator::Now().GetSeconds();
-	for (uint32_t i=3;i<total_size+2; i=i+2)
+	for (uint32_t i=3;i<total_size+N_Controllers; i=i+2)
 	{
 		fout << max_distance[i] << ", ";
 	}
@@ -119254,7 +119786,7 @@ void write_distance_metrics()
 void calculate_normalized_mobility()
 {
 	double sum = 0.0;
-	for (uint32_t i=2; i<total_size+2 ;i++)
+	for (uint32_t i=N_Controllers; i<total_size+N_Controllers ;i++)
 	{
 		double xi,yi,zi;
 		
@@ -119363,9 +119895,53 @@ void Dequeue (std::string context, Ptr <const Packet> pkt)
 	cout<<"A packet dequed"<<endl;
 }
 
+void tcam_hit_ip(uint32_t node_id, uint32_t src_ip, uint32_t dst_ip, uint16_t src_port, uint16_t dst_port, uint8_t proto, uint32_t pkt_bytes);
+
 void MacTx (std::string context, Ptr <const Packet> pkt)
 {
 	//cout<<"This is MacTx"<<endl;
+}
+
+void Ipv4Tx(std::string context, Ptr<const Packet> pkt, Ptr<Ipv4> ipv4, uint32_t interface)
+{
+    // Extract node ID from context string: e.g., "/NodeList/80/$ns3::Ipv4L3Protocol/Tx"
+    size_t pos1 = context.find("/NodeList/");
+    if (pos1 == std::string::npos) return;
+    size_t pos2 = context.find("/", pos1 + 10);
+    if (pos2 == std::string::npos) return;
+    std::string node_str = context.substr(pos1 + 10, pos2 - (pos1 + 10));
+    uint32_t node_id = std::stoi(node_str);
+
+    // Only process RSU nodes
+    if (node_id < (uint32_t)N_Vehicles) return;
+
+    ns3::Ipv4Header iph;
+    if (!pkt->PeekHeader(iph)) return;
+    
+    uint32_t src_ip = iph.GetSource().Get();
+    uint32_t dst_ip = iph.GetDestination().Get();
+    uint8_t proto = iph.GetProtocol();
+    
+    uint16_t src_port = 0, dst_port = 0;
+    
+    Ptr<Packet> p = pkt->Copy();
+    p->RemoveHeader(iph);
+    
+    if (proto == 17) { // UDP
+        ns3::UdpHeader udph;
+        if (p->RemoveHeader(udph) != 0) {
+            src_port = udph.GetSourcePort();
+            dst_port = udph.GetDestinationPort();
+        }
+    } else if (proto == 6) { // TCP
+        ns3::TcpHeader tcph;
+        if (p->RemoveHeader(tcph) != 0) {
+            src_port = tcph.GetSourcePort();
+            dst_port = tcph.GetDestinationPort();
+        }
+    }
+    
+    tcam_hit_ip(node_id, src_ip, dst_ip, src_port, dst_port, proto, pkt->GetSize());
 }
 
 void RSU_routing_dataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source_node, Ptr <Node> destination_node, Ptr <Packet> packet1)
@@ -119568,7 +120144,9 @@ void updateTxop_self(uint32_t fid, uint32_t nodeid, uint32_t pending_packets, bo
 	txop_inst[fid].pending_packets[arguments.channel][nodeid] = pending_packets;
 }
 
-uint32_t destination_counter[2*flows];
+// uint32_t destination_counter[2*flows];
+uint32_t destination_counter[2*flows] = {0};
+uint32_t origination_counter[2*flows] = {0};  // real per-flow count of packets actually originated  // real per-flow count of packets actually originated
 vector<vector<vector<tuple<double,uint32_t,uint32_t>>>> all_sorted_delta_next_hop_flow_size;
 
 struct packet_delivery
@@ -119592,8 +120170,39 @@ uint32_t s_flow_counter[2*flows][total_size][Flow_size+2];
 
 
 
+// Forward declarations so check_delivery_and_retransmit can call both.
+void tcam_install(uint32_t node_id, uint32_t fid);
+void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
+
+// TCAM slow-path: per-node rule count and hardware capacity.
+// g_tcam_rule_count is defined in tcam_attack_helper.h (included after this
+// function). The extern declaration lets check_delivery_and_retransmit read
+// it without moving the include.
+extern int g_tcam_rule_count[300];
+int g_slowpath_hit_count[300] = {0};
+// Fixed controller round-trip delay applied when TCAM is at or above capacity.
+// This is a step function: 0ms when the RSU still has free TCAM slots
+// (packet matched immediately), TCAM_SLOWPATH_S when the table is full
+// (packet-in → controller → FlowMod round-trip).  A proportional model is
+// NOT realistic because TCAM lookup is O(1) in hardware — fill ratio does
+// not affect per-packet latency; only the binary miss/hit outcome does.
+// Default 50ms matches SDVN backhaul + controller processing in the
+// literature and equals the S2 hop-delay threshold (S2_DELTA_MAX in
+// s2_detection.h = 0.050 s).
+// Override with --tcam_slowpath_ms on the command line.
+double tcam_slowpath_s = 0.050; // CLI: --tcam_slowpath_ms (value in ms, converted below)
+
 void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_t hop, uint32_t current_hop, Time originail_timestamp, struct custom_struct arguments)
 {
+	// Guard: hop must be a valid node index.
+	// hop=99 or >= wifidevices.GetN() means an uninitialised routing table
+	// entry -- silently drop rather than crash on wifidevices.Get(99).
+	if (hop >= (uint32_t)wifidevices.GetN() || current_hop >= (uint32_t)wifidevices.GetN())
+	{
+		cout << "check_delivery_and_retransmit: invalid hop=" << hop
+		     << " or current_hop=" << current_hop << " -- dropping" << endl;
+		return;
+	}
 	double diff = Now().GetSeconds() - flow_initiation_time;
 	arguments.CW = pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] + 2;
 	if(diff > (0.90*data_transmission_period))
@@ -119669,99 +120278,243 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						double tg = compute_individual_link_delay(0, pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] + 2, 1, flow_packet_size, 1, zeta);
 						//cout<<"retransmitting"<<endl;
 						uint16_t protocolwave = 0x88dc;
-						Ptr <NetDevice> current_nd = wifidevices.Get(current_hop);
-					
-						Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
-						CustomDataUnicastTag_ModifiedRouting tag;
-						tag.SetchannelId(arguments.channel);
-						tag.SetflowId(flow_id);
-						tag.SetpacketId(packet_id);
-						tag.Setprevious_senderId(current_hop);
-						tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
-						tag.Setoriginal_timestamp(originail_timestamp);
-						packet_i->AddPacketTag(tag);
-						
-						Ptr <NetDevice> destination_nd = wifidevices.Get(hop);
+						// ==============================================================
+                        // 1. SAFETY GUARD: DROP INVALID HOPS (e.g., 99)
+                        // ==============================================================
+                        if (hop >= N_Vehicles + N_RSUs) 
+                        {
+                            cout << "[ROUTING DROP] Invalid next hop " << hop << ". Dropping retransmission." << endl;
+                            pd_all_inst[flow_id].pd_inst[current_hop].pending[arguments.channel][packet_id] = false;
+                            return; // Stop execution immediately, saving us from a crash!
+                        }
 
-						Simulator::Schedule (Seconds (0.0), updateTxop, flow_id, current_hop, hop, packet_id, true, arguments);
-						switch(arguments.channel)
-						{
-							case(172):
-								current_nd = wifidevices_172.Get(current_hop);
-								destination_nd = wifidevices_172.Get(hop);
-								break;
-							case(174):
-								current_nd = wifidevices_174.Get(current_hop);
-								destination_nd = wifidevices_174.Get(hop);
-								break;
-							case(176):
-								current_nd = wifidevices_176.Get(current_hop);
-								destination_nd = wifidevices_176.Get(hop);
-								break;
-							case(178):
-								current_nd = wifidevices.Get(current_hop);
-								destination_nd = wifidevices.Get(hop);
-								break;
-							case(180):
-								current_nd = wifidevices_180.Get(current_hop);
-								destination_nd = wifidevices_180.Get(hop);
-								break;
-							case(182):
-								current_nd = wifidevices_182.Get(current_hop);
-								destination_nd = wifidevices_182.Get(hop);
-								break;
-							case(184):
-								current_nd = wifidevices_184.Get(current_hop);
-								destination_nd = wifidevices_184.Get(hop);
-								break;
-							default:
-								break;
-						}
-						Address addr = destination_nd->GetAddress();
-						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
-						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (current_nd);
+                        
+                        Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
+                        CustomDataUnicastTag_ModifiedRouting tag;
+                        tag.SetchannelId(arguments.channel);
+                        tag.SetflowId(flow_id);
+                        tag.SetpacketId(packet_id);
+                        tag.Setprevious_senderId(current_hop);
+                        tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+                        tag.Setoriginal_timestamp(originail_timestamp);
+                        packet_i->AddPacketTag(tag);
 
-						double tx_delay = 0.0;
-						bool apply_attack_delay = false;
-						if (present_selective_delay_attack_nodes &&
-							selective_delay_malicious_nodes[current_hop] &&
-							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
-						{
-							bool atk = (attack_percentage == 0) ? false : true;
-							if (atk)
-							{
-								apply_attack_delay = true;
-								tx_delay = attack2_delay_seconds * (attack_percentage / 100.0);
-								cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
-									 << ") intercepting packet ID " << packet_id
-									 << " for flow " << flow_id
-									 << " at t=" << Now().GetSeconds() << "s" << endl;
-								cout << attack_tag() << " ④ Buffering - injecting delay of "
-									 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-								cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-									 << Now().GetSeconds() + attack2_delay_seconds
-									 << "s (delay=" << attack2_delay_seconds * 1000.0
-									 << "ms)" << endl;
+                        Simulator::Schedule (Seconds (0.0), updateTxop, flow_id, current_hop, hop, packet_id, true, arguments);
+
+                        // ==============================================================
+                        // 2. BULLETPROOF DESTINATION MAC LOOKUP
+                        // ==============================================================
+                        Mac48Address dest_address;
+						if (hop < N_Vehicles) {
+							uint32_t global_dest_nid = hop + N_Controllers;
+							Ptr<Node> dest_node = NodeList::GetNode(global_dest_nid);
+							Mac48Address fallback_addr;
+							bool found_channel_match = false;
+
+							for (uint32_t i = 0; i < dest_node->GetNDevices(); i++) {
+								Ptr<NetDevice> dev = dest_node->GetDevice(i);
+								Ptr<WifiNetDevice> wifi_dev = DynamicCast<WifiNetDevice>(dev);
+								if (wifi_dev != 0) {
+									// Always record the first WiFi device as fallback
+									if (!found_channel_match) {
+										fallback_addr = Mac48Address::ConvertFrom(dev->GetAddress());
+									}
+									// Prefer the device whose channel matches arguments.channel
+									Ptr<WifiPhy> phy = wifi_dev->GetPhy();
+									if (phy != 0 && phy->GetChannelNumber() == arguments.channel) {
+										dest_address = Mac48Address::ConvertFrom(dev->GetAddress());
+										found_channel_match = true;
+										break;
+									}
+								}
 							}
+
+							// Fall back to first WiFi device if no channel match found
+							if (!found_channel_match) {
+								dest_address = fallback_addr;
+								cout << "[RELAY TX WARN] No channel-" << arguments.channel
+									<< " device found on hop " << hop
+									<< ", falling back to " << dest_address << endl;
+							}
+						} else {
+							dest_address = Mac48Address("ff:ff:ff:ff:ff:ff");
 						}
 
-						// Record forwarding timestamp for S2 signature detection
-						t_fwd_packet[current_hop][packet_id] = Now().GetSeconds();
-						if(selective_delay_malicious_nodes[current_hop] == false)
+                        // ==============================================================
+                        // 3. BULLETPROOF SENDER DEVICE LOOKUP (CHANNEL-AWARE)
+                        // ==============================================================
+                        Ptr <WifiNetDevice> wdi = 0;
+						uint32_t global_src_nid = current_hop + N_Controllers;
+                        Ptr<Node> sender_node = NodeList::GetNode(global_src_nid);
+                        
+                        for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
+                            Ptr<NetDevice> dev = sender_node->GetDevice(i);
+                            Ptr<WifiNetDevice> wifi_dev = DynamicCast<WifiNetDevice>(dev);
+                            if (wifi_dev != 0) {
+                                Ptr<WifiPhy> phy = wifi_dev->GetPhy();
+                                // Match the exact Wi-Fi card to the channel we are transmitting on
+                                if (phy != 0 && phy->GetChannelNumber() == arguments.channel) {
+                                    wdi = wifi_dev;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Failsafe: if we couldn't match the channel, just grab the first Wi-Fi card
+                        if (wdi == 0) {
+                            for (uint32_t i = 0; i < sender_node->GetNDevices(); i++) {
+                                Ptr<NetDevice> dev = sender_node->GetDevice(i);
+                                if (DynamicCast<WifiNetDevice>(dev) != 0) {
+                                    wdi = DynamicCast<WifiNetDevice>(dev);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (wdi == 0) {
+                            cout << "[CRITICAL ERROR] Retransmit could not find sender device for Node " << current_hop << endl;
+                            return;
+                        }
+
+                        // eFADE: record outbound destination for this hop on the first forwarding attempt
+                        if (pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
+                        {
+                            fade_forwarded[flow_id][current_hop][packet_id].insert(hop);
+                        }
+
+						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
+						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+
+						double total_tx_delay = calculate_unified_selective_delay(
+							present_selective_delay_attack_nodes,
+							selective_delay_malicious_nodes[current_hop],
+							(pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0),
+							attack_percentage,
+							present_selective_delay_cp_attack,
+							injected,
+							current_hop,
+							packet_id,
+							flow_id,
+							is_safety_critical_flow[flow_id]);
+
+						// TCAM slow-path delay (Attacks 3 & 4).
+						// Real TCAM lookup is O(1) — fill level does not affect latency.
+						// The penalty fires only when the table is AT OR ABOVE capacity:
+						// the incoming packet has no matching rule, so it takes the
+						// controller slow path (PacketIn → FlowMod round-trip).
+						// Below capacity the packet hits a rule immediately (0 extra delay).
+						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
+						    current_hop >= N_Vehicles &&
+						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
 						{
-							cout << "[ATTACK2] ② Node " << current_hop
-								 << " sending packet ID " << packet_id
-								 << " to next hop " << hop
-								 << " normally at t=" << Now().GetSeconds() << "s" << endl;
+						    total_tx_delay += tcam_slowpath_s;
+						    g_slowpath_hit_count[current_hop]++;
+						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						              << " rules=" << g_tcam_rule_count[current_hop]
+						              << "/" << TCAM_HW_SIZE
+						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
+						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						              << std::endl;
 						}
-						// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+
+						// TCAM slow-path delay (Attacks 3 & 4).
+						// Real TCAM lookup is O(1) — fill level does not affect latency.
+						// The penalty fires only when the table is AT OR ABOVE capacity:
+						// the incoming packet has no matching rule, so it takes the
+						// controller slow path (PacketIn → FlowMod round-trip).
+						// Below capacity the packet hits a rule immediately (0 extra delay).
+						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
+						    current_hop >= N_Vehicles &&
+						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						{
+						    total_tx_delay += tcam_slowpath_s;
+						    g_slowpath_hit_count[current_hop]++;
+						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						              << " rules=" << g_tcam_rule_count[current_hop]
+						              << "/" << TCAM_HW_SIZE
+						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
+						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						              << std::endl;
+						}
+
+						// Record the CLAIMED forwarding timestamp immediately, at decision
+						// time, before any attack-injected delay is applied — this is what
+						// TAP's PPAT reads. A malicious node has no reason to honestly
+						// report the delay it is about to introduce, so this timestamp
+						// must NOT be deferred to total_tx_delay the way the actual send
+						// timestamp below is.
+						record_claimed_forward_timestamp(current_hop, packet_id);
+
+						// §7.2 — ML-DSA-87 sign outgoing packet
+						mldsa87_sign(current_hop, packet_id, hop, flow_id);
+
+						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
+							{
+								cout << "[ATTACK2] ② Node " << current_hop
+									<< " sending packet ID " << packet_id
+									<< " to next hop " << hop
+									<< " normally at t=" << Now().GetSeconds() << "s" << endl;
+							}
+						// === ACTIVE HIDDEN FORWARDING (Attacks 5 & 6) ===
+						// RSU intercepts, forwards original normally, sends MODIFIED copy to eavesdropper.
+						// The modification is simulated by flipping a content-modified flag in the log.
+						// In the real system, EdDSA would fail on the modified copy.
+						if (present_active_hf_attack &&
+							active_hf_malicious_nodes[current_hop] &&
+							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
+							GetBooleanWithProbability(attack_percentage, current_hop))
+						{
+						    uint32_t active_eaves = active_hf_eavesdropper_index;
+						    {
+						        auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
+						        if (_it != passive_hf_rsu_to_eavesdropper.end())
+						        {
+						            active_eaves = _it->second;
+						        }
+						    }
+						    cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
+ 						         << ") intercepted packet ID " << packet_id
+						         << " (flow " << flow_id << ") at t=" << Now().GetSeconds() << "s" << endl;
+						    cout << attack_tag() << " ④ Forwarding ORIGINAL packet to legitimate next hop ("
+						         << hop << ") as normal" << endl;
+						    cout << attack_tag() << " ⑤ Sending CONTENT-MODIFIED duplicate of packet ID "
+ 						         << packet_id << " (flow " << flow_id
+						         << ") to unauthorized Node(" << active_eaves
+						         << ") at t=" << Now().GetSeconds() << "s [EdDSA will FAIL — content fabricated]" << endl;
+						    // Reuse send_hidden_duplicate infrastructure — same channel, different eavesdropper
+						    g_hdup_rsu       = current_hop;
+						    g_hdup_eaves     = active_eaves;
+						    g_hdup_flow_id   = flow_id;
+						    g_hdup_packet_id = packet_id;
+						    g_hdup_channel   = arguments.channel;
+						    g_hdup_p_size    = arguments.p_size;
+						    g_hdup_timestamp = originail_timestamp;
+						    // PIR FIX: mark intentional eavesdrop so MacRx distinguishes the
+						    // hidden duplicate from ambient Wi-Fi overhear, and count it as a
+						    // scheduled copy (matches the passive-HF block bookkeeping).
+						    g_hdup_intentional = true;
+						    g_total_copies_scheduled++;
+						    // eFADE: record duplicate destination immediately at scheduling
+						    // to ensure it falls within the same measurement epoch as the incoming packet.
+						    { uint32_t fade_fid = g_hdup_flow_id & 0xFFFFu; fade_forwarded[fade_fid][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves); }
+					    // eFADE: seed legitimate hop so dest_set = {eavesdropper, legit_hop} = size 2
+					    {
+					        auto _leg = passive_hf_rsu_to_legitimate_hop.find(current_hop);
+					        if (_leg != passive_hf_rsu_to_legitimate_hop.end())
+					            fade_forwarded[flow_id][current_hop][packet_id].insert(_leg->second);
+					    }
+						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
+						}
+                        // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
                         // Malicious RSU intercepts packet and secretly duplicates it
                         // to the eavesdropper, while forwarding the original normally.
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
                         if (present_passive_hf_attack &&
-                            passive_hf_malicious_nodes[current_hop] &&
-                            pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
-                        {
+							passive_hf_malicious_nodes[current_hop] &&
+							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
+							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
+							GetBooleanWithProbability(attack_percentage, current_hop))
+						{
                             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
                                  << ") intercepted packet ID " << packet_id
                                  << " (flow " << flow_id << ") at t="
@@ -119773,25 +120526,55 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // Use a tiny offset (0.001s) so the original goes first.
                             // NS-3 3.35 MakeEvent caps free-function overloads at 6 args;
                             // send_hidden_duplicate needs 7, so stage args then trampoline.
-                            g_hdup_rsu       = current_hop;
-                            g_hdup_eaves     = passive_hf_eavesdropper_index;
-                            g_hdup_flow_id   = flow_id;
-                            g_hdup_packet_id = packet_id;
-                            g_hdup_channel   = arguments.channel;
-                            g_hdup_p_size    = arguments.p_size;
-                            g_hdup_timestamp = originail_timestamp;
+                            g_hdup_rsu           = current_hop;
+                            // Use per-RSU eavesdropper from map; fall back to legacy index if not found
+                            {
+                            auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
+                            g_hdup_eaves = (_it != passive_hf_rsu_to_eavesdropper.end())
+                                ? _it->second
+                                : passive_hf_eavesdropper_index;
+                            }
+                            g_hdup_flow_id       = flow_id;
+                            g_hdup_packet_id     = packet_id;
+                            g_hdup_channel       = arguments.channel;
+                            g_hdup_p_size        = arguments.p_size;
+                            g_hdup_timestamp     = originail_timestamp;
+                            // PIR FIX: mark this as an intentional eavesdrop so
+                            // MacRx can distinguish it from ambient Wi-Fi overhear.
+                            g_hdup_intentional    = true;
+                            g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
+                            // eFADE: record duplicate under the ORIGINAL flow_id so FADE's
+                            // multi-dest check fires correctly. Active attacks set
+                            // g_hdup_flow_id = 0xDEAD0000|flow_id — stripping the marker
+                            // ensures the entry lands in the same map key FADE monitors.
+                            uint32_t fade_fid = g_hdup_flow_id & 0xFFFFu;
+                            fade_forwarded[fade_fid][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
+                            // eFADE: seed legitimate hop so dest_set = {eavesdropper, legit_hop} = size 2
+                            {
+                                auto _leg = passive_hf_rsu_to_legitimate_hop.find(current_hop);
+                                if (_leg != passive_hf_rsu_to_legitimate_hop.end())
+                                    fade_forwarded[flow_id][current_hop][packet_id].insert(_leg->second);
+                            }
                             Simulator::Schedule(Seconds(0.001),
                                                 send_hidden_duplicate_trampoline);
                         }
                         // === END ATTACK 7 ===
 
-						Simulator::Schedule (Seconds(tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+						cout<<"[RELAY TX] node "<<current_hop<<" -> hop "<<hop
+						    <<" destMAC="<<dest_address
+						    <<" arguments.channel="<<arguments.channel
+						    <<" txCardChannel="<<(wdi!=0 && wdi->GetPhy()!=0 ? (int)wdi->GetPhy()->GetChannelNumber() : -1)
+						    <<" at t="<<Now().GetSeconds()<<endl;
+						// Record hit: install on first forward, then increment counters.
+						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
+						Simulator::Schedule (Seconds(total_tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
+						bool apply_attack_delay = (total_tx_delay > 0.0);   
 						double retry_delay = tg + 0.000100 + rand_delay;
 						if (apply_attack_delay)
 						{
 							// Prevent immediate retries from bypassing the injected delay.
-							retry_delay += tx_delay;
+							retry_delay += total_tx_delay;
 						}
 						Simulator::Schedule (Seconds (retry_delay), check_delivery_and_retransmit, flow_id, packet_id, hop, current_hop, originail_timestamp, arguments);
 						//Simulator::Schedule (Seconds (tg), updateTxop, flow_id, current_hop, hop, packet_id, false,arguments.channel);
@@ -119816,10 +120599,14 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 	}		
 }
 //Attack helper functions
+#include "tcam_attack_helper.h"
+#include "hf_attack_helper.h"
 
+int simulated_tcam_counter[200] = {0};
+int TCAM_CAPACITY = 1000;
+bool tcam_exhaust_malicious_nodes[200] = {false};
+uint32_t spy_node_id = 0;
 
-
-// ---------- TCAM exhaustion helpers ----------
 
 // Called every TCAM_FLOOD_INTERVAL seconds when controller_tcam_flood==true (Attack 16).
 // Simulates the malicious controller spamming junk FlowMods to every RSU,
@@ -119843,17 +120630,16 @@ void controller_flood_tcam_all_rsus()
 // so the RSU's TCAM fills up with useless rules.
 void data_plane_flood_tcam(uint32_t attacker_node, uint32_t target_rsu)
 {
-	return;
-	// if (tcam_exhaust_malicious_nodes[attacker_node] == true)
-	// {
-	//     simulated_tcam_counter[target_rsu] += 3;
-	//     if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
-	//         simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
-	//     cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
-	//          << " flooded RSU " << target_rsu
-	//          << ". TCAM level: " << simulated_tcam_counter[target_rsu]
-	//          << "/" << TCAM_CAPACITY << endl;
-	// }
+    if (tcam_exhaust_malicious_nodes[attacker_node] == true)
+    {
+        simulated_tcam_counter[target_rsu] += 3;
+        if (simulated_tcam_counter[target_rsu] > TCAM_CAPACITY)
+            simulated_tcam_counter[target_rsu] = TCAM_CAPACITY;
+        cout << "[ATTACK 17 — DATA TCAM FLOOD] Attacker node " << attacker_node
+             << " flooded RSU " << target_rsu
+             << ". TCAM level: " << simulated_tcam_counter[target_rsu]
+             << "/" << TCAM_CAPACITY << endl;
+    }
 }
 
 // Returns the slow-path extra delay (seconds) for a given RSU node based on
@@ -119877,7 +120663,7 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
                       Time original_timestamp, struct custom_struct arguments, bool active)
 {
     uint16_t protocolwave = 0x88dc;
-	Ptr<NetDevice> spy_nd = wifidevices.Get(passive_hf_eavesdropper_index);
+    Ptr<NetDevice> spy_nd = wifidevices.Get(spy_node_id);
     Ptr<NetDevice> from_nd = wifidevices.Get(from_node);
 
     Ptr<Packet> hidden_pkt = Create<Packet>(arguments.p_size - 28);
@@ -119900,14 +120686,14 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
     {
         cout << "[ATTACK ACTIVE HF] Node " << from_node
              << " sent FABRICATED copy of packet " << packet_id
-			 << " to spy node " << passive_hf_eavesdropper_index
+             << " to spy node " << spy_node_id
              << " at " << Now().GetSeconds() << endl;
     }
     else
     {
         cout << "[ATTACK PASSIVE HF] Node " << from_node
              << " sent SILENT DUPLICATE of packet " << packet_id
-			 << " to spy node " << passive_hf_eavesdropper_index
+             << " to spy node " << spy_node_id
              << " at " << Now().GetSeconds() << endl;
     }
 }
@@ -119975,7 +120761,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//cout<<"testing "<<destination_node_id;
 		}
 		
-		if ((destination_node_id > (total_size+1)) or (destination_node_id < 2))
+		if ((destination_node_id > (total_size)) or (destination_node_id < 2))
 		{
 			cout<<"invalid conversion. setting default value to 2"<<endl;
 			destination_node_id = 2;
@@ -119996,7 +120782,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			//uint32_t nid = source_node->GetId();
 			
 			
-			uint32_t current_hop = destination_node_id -2;
+			uint32_t current_hop = destination_node_id -N_Controllers;
 			uint32_t fid = tagmodified_routing.GetflowId();
 			uint32_t packet_ID = tagmodified_routing.GetpacketId();
 			uint32_t channel = tagmodified_routing.GetchannelId();
@@ -120014,75 +120800,223 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			uint32_t destination =  (delta_at_nodes_inst+fid)->destination_f;
 			
 			// === ATTACK 7: Detect hidden duplicate arriving at eavesdropper ===
+            bool is_eavesdropper_node = (current_hop == passive_hf_eavesdropper_index);
+            for (auto& kv : passive_hf_rsu_to_eavesdropper)
+            {
+                if (kv.second == current_hop) { is_eavesdropper_node = true; break; }
+            }
+            // Guard: only treat as a hidden duplicate if it came FROM a malicious RSU.
+            // Eavesdropper vehicles also act as legitimate relay nodes; without this
+            // check, any packet passing through them as a relay is incorrectly dropped.
+            uint32_t prev_sender_check = tagmodified_routing.Getprevious_senderId();
+            bool from_malicious_rsu = (prev_sender_check < (uint32_t)total_size &&
+                                       passive_hf_malicious_nodes[prev_sender_check]);
             if (present_passive_hf_attack &&
-                current_hop == passive_hf_eavesdropper_index &&
-                current_hop != destination)
+                is_eavesdropper_node &&
+                current_hop != destination &&
+                from_malicious_rsu)
             {
                 cout << attack_tag() << " ⑥ Vehicle B (node " << current_hop
                      << ") RECEIVED hidden duplicate of packet ID " << packet_ID
                      << " (flow " << fid << ") at t=" << Now().GetSeconds()
                      << "s — PASSIVE HIDDEN FORWARDING CONFIRMED. Eavesdropping successful." << endl;
+                // FADE metrics: count intercepted packets for PIR calculation.
+                // PIR FIX (numerator): the previous approach matched against the
+                // single-slot globals g_hdup_packet_id / g_hdup_flow_id, which are
+                // overwritten on every interception.  With ~55 packets streaming
+                // through the RSU faster than the 0.001s duplicate delay, the globals
+                // were always stale by the time a duplicate arrived, so the match
+                // failed and fade_eavesdrop_counter stayed near 0 (PIR ~0% at all
+                // intensities).  Instead we identify the hidden duplicate by its own
+                // tag: send_hidden_duplicate stamps previous_senderId = the malicious
+                // RSU index.  A genuine hidden duplicate is therefore any packet
+                // arriving at the eavesdropper whose previous sender is a malicious
+                // node.  This is per-packet reliable and needs no global staging slot.
+                uint32_t prev_sender = prev_sender_check;
+                if (prev_sender < (uint32_t)total_size &&
+                    passive_hf_malicious_nodes[prev_sender])
+                {
+                    if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
+                    {
+                        fade_eavesdropped_packets.insert({fid, packet_ID});
+                        fade_eavesdrop_counter++;
+                    }
+                }
+                // === SIGNATURE S7/S8 DETECTION (MOBIGUARD) ===
+                // S7: Passive HF CP — Eq. sig_s7: d/dt Vol(d',t)>ε_vol ∧ ∄FM ∧ ML-DSA-87=1 ∧ b_hop=⊥
+                // S8: Passive HF DP — Eq. sig_s8: BatchVerify=1 ∧ ML-DSA-87=1 ∧ b_hop=⊥
+                // Controlled solely by s7_detection_active / s8_detection_active.
+                {
+                    uint32_t _s78_prev = tagmodified_routing.Getprevious_senderId();
+                    uint32_t _s78_base = fid & 0xFFFFu;
+                    s7_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
+                    s8_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
+                }
+                // === END SIGNATURE S7/S8 DETECTION ===
                 // Drop it here — Vehicle B is not a legitimate hop,
                 // do NOT forward it further or mark delivery
                 return;  // exit MacRx for this packet
             }
             // === END ATTACK 7 ===
 
+            // Active HF receive confirmation
+            if (present_active_hf_attack)
+            {
+                bool is_active_eavesdropper = (current_hop == active_hf_eavesdropper_index);
+                for (auto& kv : passive_hf_rsu_to_eavesdropper)
+                {
+                    if (kv.second == current_hop) { is_active_eavesdropper = true; break; }
+                }
+                if (is_active_eavesdropper)
+                {
+                    cout << attack_tag() << " ⑥ Node " << current_hop
+                         << " RECEIVED content-modified duplicate of packet ID " << packet_ID
+                         << " (flow " << fid << ") at t=" << Now().GetSeconds()
+                         << "s — ACTIVE HIDDEN FORWARDING CONFIRMED. [EdDSA FAILS on this copy]" << endl;
+                    // PIR (numerator): count the leaked copy only if it is a genuine
+                    // hidden duplicate (previous sender is the malicious RSU), matching
+                    // the passive-HF receive block. This is PIR bookkeeping, NOT FADE
+                    // detection — FADE's flow-conservation check is left to decide
+                    // detection on its own.
+                    uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+                    if (prev_sender < (uint32_t)total_size &&
+                        active_hf_malicious_nodes[prev_sender])
+                    {
+                        if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
+                        {
+                            fade_eavesdropped_packets.insert({fid, packet_ID});
+                            fade_eavesdrop_counter++;
+                        }
+                    }
+                    // === SIGNATURE S5/S6 DETECTION (MOBIGUARD) ===
+                    // S5: Active HF CP — Eq. sig_s5: d'∉P(s,d) ∧ FlowMod(CP) ∧ ML-DSA-87=0 ∧ b_hop=⊥
+                    // S6: Active HF DP — Eq. sig_s6: DUP(msg_id,W) ∧ ML-DSA-87=0 ∧ b_hop=⊥
+                    // Controlled solely by s5_detection_active / s6_detection_active.
+                    {
+                        uint32_t _s56_prev = tagmodified_routing.Getprevious_senderId();
+                        uint32_t _s56_base = fid & 0xFFFFu;
+                        s5_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        s6_log_recv(fid, packet_ID, current_hop);   // log d' for DUP check
+                        s6_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        // §7.4 — Controller trust penalty for unauthorized FlowMod (eq:ctrl_trust)
+                        if (_s56_prev < (uint32_t)total_size && _s56_prev >= N_Vehicles) {
+                            ctrl_trust_update_negative(rsu_controller_assignment[_s56_prev]);
+                        }
+                    }
+                    // === END SIGNATURE S5/S6 DETECTION ===
+                }
+            }
 
 			if(pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] == false)
 			{
 				pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] = true;
-				
+
+				// eFADE: record inbound packet receipt at this node
+				fade_received[fid][current_hop].insert(packet_ID);
+
+				// S6: log this delivery for cross-destination duplication detection.
+				// Uses (fid & 0xFFFFu) as key so the legitimate copy (clean fid) and
+				// the eavesdropper copy (fid | 0xDEAD0000) map to the same entry.
+				s6_log_recv(fid, packet_ID, current_hop);
+
+				// === SIGNATURE S2 DETECTION (MOBIGUARD) ===
+				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
+				// Controlled solely by s2_detection_active.
+				{
+					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+					s2_detect_packet(sender_sim_index,
+					                 Now().GetSeconds(),
+					                 is_safety_critical_flow[fid],
+					                 current_hop,
+					                 packet_ID,
+					                 fid);
+				}
+				// === END SIGNATURE S2 DETECTION ===
+
+				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
+				{
+					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
+					// Timing ok: compare claimed forward timestamp against S2 threshold
+					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
+					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					bool timing_ok = (t_fwd_claimed > 0.0) &&
+					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
+					// Only update STARK meta for the intended recipient.
+					// Broadcast MAC causes all nearby nodes to call MacRx; mldsa87_verify
+					// already returns false for overheard packets (wrong next_hop in digest),
+					// so gate the STARK counters on sig_ok to avoid broadcast noise.
+					if (sig_ok) {
+						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+						// β_w NFA alert: valid sig but delay exceeded S2 threshold
+						if (t_fwd_claimed > 0.0 && !timing_ok) {
+							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
+							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
+						}
+					}
+				}
+				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
+
+				// §7.6 — Witness log + duplication alert + msg-id cache + volume tracking
+				{
+					uint8_t pkt_hash[64] = {};
+					uint32_t buf3[3] = {fid, packet_ID, current_hop};
+					sha3_512_hash(reinterpret_cast<const uint8_t*>(buf3), 12, pkt_hash);
+					uint32_t _w_prev = tagmodified_routing.Getprevious_senderId();
+					witness_log_packet(current_hop, pkt_hash, destination,
+					                   ns3::Simulator::Now().GetSeconds());
+					// Only fire duplication alert during HF attack variants (S5-S8).
+					// Flow destinations change during routing updates causing false positives
+					// in non-HF scenarios.
+					if ((present_active_hf_attack || present_passive_hf_attack) &&
+					    witness_check_duplication(current_hop, pkt_hash, destination)) {
+						witness_submit_duplication_alert(current_hop, _w_prev,
+						                                 packet_ID, destination, current_hop);
+					}
+					check_msg_duplication(pkt_hash, destination);
+					volume_record_delivery(destination);
+				}
+				// === END §7.6 WITNESS / VOLUME ===
+
+				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
+				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
+				// Only runs when current_hop is an RSU. Controlled solely by s1_detection_active.
+				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				{
+					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
+					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
+					                         ? t_claimed_packet[sender_sim_index][packet_ID]
+					                         : 0.0;
+					if (t_fwd_by_sender > 0.0)
+					{
+						double packet_delay_s = Now().GetSeconds() - t_fwd_by_sender;
+						uint32_t rsu_idx = current_hop - N_Vehicles;
+						s1_detect_packet(rsu_idx,
+						                 packet_delay_s,
+						                 is_safety_critical_flow[fid],
+						                 sender_sim_index,  // malicious RSU that applied the delay
+						                 current_hop,       // receiving RSU (EWMA baseline + logging)
+						                 packet_ID,
+						                 fid);
+					}
+				}
+				// === END SIGNATURE S1 DETECTION ===
+
+				// === TAP BASELINE DETECTION ===
+				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1.
+				// Only on safety-critical flows. Controlled solely by tap_detection_active.
+				if (is_safety_critical_flow[fid])
+				{
+					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
+				}
+				// === END TAP BASELINE DETECTION ===
+
 				if(destination == current_hop)
 				{
 					destination_counter[fid]++;
 					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
-					
-					// === SIGNATURE S2 DETECTION ===
-					// Check: t_recv - t_fwd > delta_max (Equation 3.6)
-					if(s2_detection_active && destination == current_hop)
-					{
-						// Use tagmodified_routing which is already peeked above
-						// Getprevious_senderId() returns the sim index of who forwarded this packet
-						uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-						
-						if(sender_sim_index < (uint32_t)var)
-						{
-							double t_recv_now = Now().GetSeconds();
-							double t_fwd_by_sender = t_fwd_packet[sender_sim_index][packet_ID];
-							
-							if(t_fwd_by_sender > 0.0) // valid recorded timestamp exists
-							{
-								double hop_delay = t_recv_now - t_fwd_by_sender;
-								
-								cout << "[S2] Hop delay from node " << sender_sim_index
-								     << " to node " << current_hop
-								     << " for flow " << fid
-								     << " packet " << packet_ID
-								     << " = " << hop_delay * 1000.0 << "ms" << endl;
-								
-								if(hop_delay > delta_max_s2)
-								{
-									cout << "[S2] ⚠️ SIGNATURE S2 TRIGGERED!" << endl;
-									cout << "[S2] Hop delay " << hop_delay * 1000.0
-									     << "ms exceeds threshold " 
-									     << delta_max_s2 * 1000.0 << "ms" << endl;
-									cout << "[S2] Node " << sender_sim_index
-									     << " detected as malicious attacker" << endl;
-									
-									if(!is_detected_node[1][sender_sim_index])
-									{
-										record_detection_event(1, sender_sim_index);
-										cout << "[S2] record_detection_event fired for node "
-										     << sender_sim_index 
-										     << " at t=" << Now().GetSeconds() << "s" << endl;
-									}
-								}
-							}
-						}
-					}
-					// === END SIGNATURE S2 DETECTION ===
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
 					{
@@ -120158,7 +121092,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						if (routing_algorithm == 1)
 						{
 							list<uint32_t> indices;
-							for(uint32_t j =0;j<total_size;j++)
+							for(uint32_t j =0;j<(uint32_t)var;j++)
 							{
 								auto index_innermost = index_middle->begin();
 								//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -120220,7 +121154,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						}
 						else
 						{
-							for(uint32_t j =0;j<total_size;j++)
+							for(uint32_t j =0;j<(uint32_t)var;j++)
 							{
 								//cout<<"value of j is "<<j<<endl;
 								auto index_innermost = index_middle->begin();
@@ -120234,7 +121168,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 								uint32_t sub_flow_counter = 0;
 								//cout<<sub_flow_counter<<endl;
 									
-								if((sub_flow_packets>0) | (j==(total_size-1)))
+								if((sub_flow_packets>0) | (j==((uint32_t)var-1)))
 								{	
 									//cout<<"sub flow packet size is "<<sub_flow_packets<<endl;
 									//Ptr <NetDevice> destination_nd = wifidevices.Get(nid);
@@ -120319,33 +121253,6 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				//cout<<"Duplicate packet "<<packet_ID<<" for flow id "<<fid<<" received at hop "<<current_hop<<endl;
 			
 			}
-
-		// === TAP BASELINE DETECTION ===
-		// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1
-		// OnReceivedEmergencyPacket logic. Placed OUTSIDE if(destination==current_hop)
-		// so it fires at EVERY intermediate hop — matching TAP paper which runs on
-		// every received packet.
-		if (tap_detection_active)
-		{
-			uint32_t tap_sender = tagmodified_routing.Getprevious_senderId();
-			uint32_t tap_fid = tagmodified_routing.GetflowId();
-			uint32_t tap_packet_ID = tagmodified_routing.GetpacketId();
-			uint32_t tap_receiver = (uint32_t)(destination_node_id - 2);
-
-			// Algorithm 1 Line 10: check Controller-Defaulter-List first
-			if (tap_check_defaulter_list(tap_sender))
-			{
-				// Lines 19-20: discard packet from blacklisted node
-				cout << "[TAP] Retransmission packet dropped for flow id "
-					 << tap_fid << " #packet: " << tap_packet_ID << endl;
-			}
-			else
-			{
-				// Lines 11-18: run timing-based detection
-				tap_run_detection(tap_receiver, tap_sender, tap_packet_ID);
-			}
-		}
-		// === END TAP BASELINE DETECTION ===
 	}
 	
 	
@@ -120356,26 +121263,27 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 	if(pkt->PeekPacketTag(tag_routing))
 	{
 		uint32_t node_index = tag_routing.GetsenderId();
-		uint32_t destination = tag_routing.GetdestinationId() + 2;
+		uint32_t destination = tag_routing.GetdestinationId() + N_Controllers;
+
 		uint32_t * source = tag_routing.GetNodeId();
 		if (architecture == 1)
 		{
-			cout<<"packet from "<<*source -2<<"with destination "<<destination -4<<"now at "<<destination_node_id -2<<endl;
+			cout<<"packet from "<<*source -N_Controllers<<"with destination "<<destination -4<<"now at "<<destination_node_id -N_Controllers<<endl;
 		}
 		if (!((paper == 1) && (architecture == 1)))
 		{
-			Y[*source - 2] = Y[*source - 2] - 1;
-			packets_received_wl[*source - 2] = packets_received_wl[*source - 2] + 1;
+			Y[*source - N_Controllers] = Y[*source - N_Controllers] - 1;
+			packets_received_wl[*source - N_Controllers] = packets_received_wl[*source - N_Controllers] + 1;
 			double delay = Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds();
-			one_hop_delay_training_wl[*source - 2] = one_hop_delay_training_wl[*source - 2] + delay;
+			one_hop_delay_training_wl[*source - N_Controllers] = one_hop_delay_training_wl[*source - N_Controllers] + delay;
 			cout<<"1-hop delay wireless is "<<delay<<endl;
 			
 			if (destination_node_id != destination)
 			{
-				//uint32_t next_hop = routing_tables[destination_node_id -2].rows[destination-2].next_hop;
-				uint32_t next_hop = find_next_hop(node_index,destination-2,destination_node_id -2);
+				//uint32_t next_hop = routing_tables[destination_node_id -N_Controllers].rows[destination-N_Controllers].next_hop;
+				uint32_t next_hop = find_next_hop(node_index,destination-N_Controllers,destination_node_id -N_Controllers);
 				cout<<endl<<"next hop from routing table is "<< next_hop <<endl;
-				if (next_hop == (*source -2))
+				if (next_hop == (*source -N_Controllers))
 				{
 					cout<<"routing loop. stopping routing"<<endl;
 				}
@@ -120387,11 +121295,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					tag_routing.SetTimestamp(&ti);
 					packet_i->AddPacketTag(tag_routing);
 					
-					if (((destination_node_id-2) > N_Vehicles) && (next_hop > N_Vehicles))
+					if (((destination_node_id-N_Controllers) > N_Vehicles) && (next_hop > N_Vehicles))
 					{
-						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(destination_node_id-2-N_Vehicles));	
-				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(destination_node_id-2-N_Vehicles));
-				  		cout<<"Ethernet data Unicasting from node "<<destination_node_id - 2<<endl;
+						Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(destination_node_id-N_Controllers-N_Vehicles));	
+				  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(destination_node_id-N_Controllers-N_Vehicles));
+				  		cout<<"Ethernet data Unicasting from node "<<destination_node_id - N_Controllers<<endl;
 						Simulator::Schedule(Seconds(0),RSU_routing_dataunicast_alone, udp_app, nu, RSU_Nodes.Get(next_hop-N_Vehicles),packet_i);
 					}
 					
@@ -120402,23 +121310,23 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
 						//cout <<endl<<"MAC address of next hop node "<<next_hop<<" is "<<dest_address<<endl;
 					  	uint16_t protocolwave = 0x88dc;//
-						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (wifidevices.Get(destination_node_id -2));
-						cout<<"DSRC data Unicasting from node "<<destination_node_id - 2<<endl;
+						Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (wifidevices.Get(destination_node_id -N_Controllers));
+						cout<<"DSRC data Unicasting from node "<<destination_node_id - N_Controllers<<endl;
 						dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
 						Simulator::Schedule (Seconds(0.000000) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 					}
 					
 					
-					Y[destination_node_id - 2] = Y[destination_node_id - 2] + 1;	
+					Y[destination_node_id - N_Controllers] = Y[destination_node_id - N_Controllers] + 1;	
 					//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 					
 				}
 			}
 			if (destination_node_id == destination)
 			{
-				cout<<"packet successfully delivered to destination node"<<destination_node_id - 2<<endl;
-				dsrc_packet_final_timestamp[node_index+2] = Simulator::Now().GetSeconds();
-				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<destination_node_id -2 <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
+				cout<<"packet successfully delivered to destination node"<<destination_node_id - N_Controllers<<endl;
+				dsrc_packet_final_timestamp[node_index+N_Controllers] = Simulator::Now().GetSeconds();
+				std::cout << "Received data unicasted packet from "<< tag_routing.GetsenderId()<<"to node "<<destination_node_id -N_Controllers <<"of size "<<tag_routing.GetSerializedSize()<<" at position "<< *tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()<<"with acceleration "<<*tag_routing.Getacceleration()<<"packet timestamp "<< tag_routing.GetTimestamp()->GetSeconds()<<"s "<<"with delay "<< Now().GetMicroSeconds()-tag_routing.GetTimestamp()->GetMicroSeconds()<<"us"<<std::endl;
 			}
 		}
 	}	
@@ -120497,7 +121405,7 @@ void Rx (std::string context, Ptr <const Packet> pkt, uint16_t channelFreqMhz,  
 				//cout<<"testing "<<destination_node_id;
 			}
 			
-			if ((destination_node_id > (total_size+1)) or (destination_node_id < 2))
+			if ((destination_node_id > (total_size)) or (destination_node_id < 2))
 			{
 				cout<<"invalid conversion. setting default value to 2"<<endl;
 				destination_node_id = 2;
@@ -121850,7 +122758,7 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 		Vector acceleration = calculate_acceleration(previous_velocity_dsrc[node_index],current_velocity,delta_t);
 		Time ti = MicroSeconds(Simulator::Now().GetMicroSeconds());
 		Ptr <Packet> packet_i = Create<Packet> (packet_additional_size);
-		tag.SetsenderId(nid-2);
+		tag.SetsenderId(nid-N_Controllers);
 		tag.SetNodeId(&nid);
 		tag.Setposition(&posi);
 		tag.Setvelocity(&current_velocity);
@@ -121860,17 +122768,17 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 		packet_i->AddPacketTag(tag);
 		
 		
-		if (((nid-2) > N_Vehicles) && (next_hop > N_Vehicles))
+		if (((nid-N_Controllers) > N_Vehicles) && (next_hop > N_Vehicles))
 		{
-			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-2-N_Vehicles));	
-	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-2-N_Vehicles));
-	  		cout<<"This is source node. Ethernet data Unicasting from node "<<nid - 2<<endl;
+			Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(nid-N_Controllers-N_Vehicles));	
+	  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(nid-N_Controllers-N_Vehicles));
+	  		cout<<"This is source node. Ethernet data Unicasting from node "<<nid - N_Controllers<<endl;
 			Simulator::Schedule(Seconds(0),RSU_routing_dataunicast_alone, udp_app, nu, RSU_Nodes.Get(next_hop-N_Vehicles),packet_i);
 		}
 		
 		else
 		{
-			cout<<"This is source node. DSRC data Unicasting from node "<<nid - 2<<endl;
+			cout<<"This is source node. DSRC data Unicasting from node "<<nid - N_Controllers<<endl;
 			Ptr <NetDevice> destination_nd = wifidevices.Get(next_hop);
 			Address addr = destination_nd->GetAddress();
 			Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
@@ -121883,7 +122791,7 @@ void hybrid_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint
 		}
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
-		Y[*pt - 2] = Y[*pt -2] + 1;
+		Y[*pt - N_Controllers] = Y[*pt -N_Controllers] + 1;
 		//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 		previous_velocity_dsrc[node_index] = current_velocity;
 	}
@@ -121925,10 +122833,46 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            uint32_t p_size,
                            Time original_timestamp)
 {
-    // wifidevices is indexed by internal node index (same as current_hop / hop
-    // throughout this codebase — NOT by NS-3 node ID).
-    Ptr<NetDevice> source_nd   = wifidevices.Get(malicious_rsu_index);
-    Ptr<NetDevice> eaves_nd    = wifidevices.Get(eavesdropper_index);
+    // eFADE: select the correct NetDevice container based on the transmission channel
+    // to avoid MAC address and frequency mismatch.
+    Ptr<NetDevice> source_nd;
+    Ptr<NetDevice> eaves_nd;
+
+    switch (channel)
+    {
+        case 172:
+            source_nd = wifidevices_172.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_172.Get(eavesdropper_index);
+            break;
+        case 174:
+            source_nd = wifidevices_174.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_174.Get(eavesdropper_index);
+            break;
+        case 176:
+            source_nd = wifidevices_176.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_176.Get(eavesdropper_index);
+            break;
+        case 178:
+            source_nd = wifidevices.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices.Get(eavesdropper_index);
+            break;
+        case 180:
+            source_nd = wifidevices_180.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_180.Get(eavesdropper_index);
+            break;
+        case 182:
+            source_nd = wifidevices_182.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_182.Get(eavesdropper_index);
+            break;
+        case 184:
+            source_nd = wifidevices_184.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices_184.Get(eavesdropper_index);
+            break;
+        default:
+            source_nd = wifidevices.Get(malicious_rsu_index);
+            eaves_nd  = wifidevices.Get(eavesdropper_index);
+            break;
+    }
 
     Address addr               = eaves_nd->GetAddress();
     Mac48Address dest_address  = Mac48Address::ConvertFrom(addr);
@@ -121952,6 +122896,8 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
          << " (flow " << flow_id << ") to unauthorized Vehicle B (node "
          << eavesdropper_index << ") at t=" << Now().GetSeconds() << "s" << endl;
 
+
+
     // Send immediately — no delay, attack is passive (silent eavesdrop)
     Simulator::Schedule(Seconds(0.0), &WifiNetDevice::Send,
                         wdi, dup_pkt, dest_address, protocolwave);
@@ -121959,79 +122905,117 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
 
 void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint32_t flow_id, uint32_t next_hop_id, struct custom_struct arguments, uint32_t packet_ID)
 {
-	//cout<<"transmiiting a a packet at "<<Now().GetMilliSeconds()<<endl;
-	uint32_t nid = source_node->GetId();
-	uint32_t source = nid -2;
-	//cout<<"next hop is "<< next_hop_id <<endl;
-	Ptr <NetDevice> destination_nd = wifidevices.Get(next_hop_id);
-	switch(arguments.channel)
-	{
-		case(172):
-			destination_nd = wifidevices_172.Get(next_hop_id);
-			break;
-		case(174):
-			destination_nd = wifidevices_174.Get(next_hop_id);
-			break;
-		case(176):
-			destination_nd = wifidevices_176.Get(next_hop_id);
-			break;
-		case(178):
-			destination_nd = wifidevices.Get(next_hop_id);
-			break;
-		case(180):
-			destination_nd = wifidevices_180.Get(next_hop_id);
-			break;
-		case(182):
-			destination_nd = wifidevices_182.Get(next_hop_id);
-			break;
-		case(184):
-			destination_nd = wifidevices_184.Get(next_hop_id);
-			break;
-		default:
-			break;
-	
-	}
-	//Ptr <NetDevice> destination_nd = wifidevices.Get(13);
-	Address addr = destination_nd->GetAddress();
-	Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
-	//cout <<endl<<"MAC address of next hop node "<<next_hop_id<<" is "<<dest_address<<endl;
-  	uint16_t protocolwave = 0x88dc;//
-	Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
-	Ptr <Node> ni = DynamicCast <Node> (source_node);
-	CustomDataUnicastTag_ModifiedRouting tag;
-	//uint32_t nid = uint32_t(ni->GetId());
-	dsrc_packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
-	Time ti = Seconds(Simulator::Now().GetSeconds());
-	Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
-	tag.SetflowId(flow_id);
-	tag.SetpacketId(packet_ID);
-	tag.SetchannelId(arguments.channel);
-	tag.Setprevious_senderId(source);
-	tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
-	tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
-	packet_i->AddPacketTag(tag);
-	WifiMacHeader header;
-	packet_i->RemoveHeader(header);
-	header.SetAddr1(dest_address);
-	packet_i->AddHeader(header);
-	//dsrc_total_packet_size = dsrc_total_packet_size + packet_i->GetSerializedSize();
-	
-	if(!selective_delay_malicious_nodes[nid-2])
-	{
-	    cout << attack_tag() << " ② Node " << (nid-2)
-	         << " sending packet ID " << packet_ID
-	         << " to next hop " << next_hop_id
-	         << " normally at t=" << Now().GetSeconds() << "s" << endl;
-	}
-	Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
-	//cout<<"This is flow ID "<<flow_id<<"Transmitting packet ID "<<packet_ID<<" from "<<source<<" to next hop "<<next_hop_id<<"at time "<<Now().GetSeconds()<<endl;
-	//uint32_t * pt = tag.GetNodeId();
-	//cout<<"node id from tag is "<<*pt<<endl;	
-	//Y[*pt - 2] = Y[*pt -2] + 1;
-	//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
-	//cout<<"packet size is "<<arguments.p_size-28<<endl;
-}
+    uint32_t nid = source_node->GetId();
+    uint32_t source = nid - N_Controllers;
+    uint32_t final_next_hop = next_hop_id;
 
+    // ==============================================================
+    // ARCHITECTURE 3: HONOR THE ROUTING DECISION
+    // ==============================================================
+    // The path-finding/optimizer already decides reachability: it selects a
+    // direct vehicle-to-vehicle next hop only when the two vehicles are within
+    // range (link lifetime > 0), and routes via the RSU (next hop = RSU index)
+    // when they are out of range. We therefore trust next_hop_id as-is and do
+    // NOT force every V2V transmission through the RSU. This preserves
+    // "direct when close, relay via RSU when far", and scales to larger
+    // networks where routing may select other relays.
+    // (RSU relay still works: in the out-of-range case routing sets
+    //  final_next_hop to the RSU index, taking the else-branch below.)
+
+    Ptr <NetDevice> destination_nd = 0;
+
+    // ==============================================================
+    // EXACT CHANNEL MAC LOOKUP
+    // ==============================================================
+    if (final_next_hop < N_Vehicles) 
+    {
+        // Safe to use standard vehicle arrays
+        switch(arguments.channel)
+        {
+            case(172): destination_nd = wifidevices_172.Get(final_next_hop); break;
+            case(174): destination_nd = wifidevices_174.Get(final_next_hop); break;
+            case(176): destination_nd = wifidevices_176.Get(final_next_hop); break;
+            case(178): destination_nd = wifidevices.Get(final_next_hop); break;
+            case(180): destination_nd = wifidevices_180.Get(final_next_hop); break;
+            case(182): destination_nd = wifidevices_182.Get(final_next_hop); break;
+            case(184): destination_nd = wifidevices_184.Get(final_next_hop); break;
+            default:   destination_nd = wifidevices.Get(final_next_hop); break;
+        }
+    }
+    else 
+    {
+        // It's the RSU. Scan its hardware to find the exact channel card!
+        Ptr<Node> rsu_node = RSU_Nodes.Get(final_next_hop - N_Vehicles); 
+        for (uint32_t i = 0; i < rsu_node->GetNDevices(); i++) 
+        {
+            Ptr<NetDevice> dev = rsu_node->GetDevice(i);
+            Ptr<WifiNetDevice> wifi_dev = DynamicCast<WifiNetDevice>(dev);
+            if (wifi_dev != 0) 
+            {
+                Ptr<WifiPhy> phy = wifi_dev->GetPhy();
+                // Match the physical channel frequency to the sender's channel
+                if (phy != 0 && phy->GetChannelNumber() == arguments.channel) 
+                {
+                    destination_nd = dev;
+                    break;
+                }
+            }
+        }
+        
+        // Failsafe: if we couldn't match the exact channel, just grab the first Wi-Fi device
+        if (destination_nd == 0) {
+            for (uint32_t i = 0; i < rsu_node->GetNDevices(); i++) {
+                Ptr<NetDevice> dev = rsu_node->GetDevice(i);
+                if (DynamicCast<WifiNetDevice>(dev) != 0) {
+                    destination_nd = dev;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (destination_nd == 0) {
+        cout << "[CRITICAL ERROR] Could not find NetDevice for hop " << final_next_hop << endl;
+        return; 
+    }
+
+    Address addr = destination_nd->GetAddress();
+    Mac48Address dest_address = Mac48Address::ConvertFrom(addr);
+    uint16_t protocolwave = 0x88dc;
+    
+    Ptr <WifiNetDevice> wdi = DynamicCast <WifiNetDevice> (source_nd);
+    CustomDataUnicastTag_ModifiedRouting tag;
+    
+    dsrc_packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
+    Time ti = Seconds(Simulator::Now().GetSeconds());
+    Ptr <Packet> packet_i = Create<Packet> (arguments.p_size-28);
+    
+    tag.SetflowId(flow_id);
+    tag.SetpacketId(packet_ID);
+    tag.SetchannelId(arguments.channel);
+    tag.Setprevious_senderId(source);
+    tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+    tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
+    
+    packet_i->AddPacketTag(tag);
+    // NOTE: Do NOT call RemoveHeader/AddHeader here. packet_i was created with
+    // Create<Packet>(p_size-28) — it contains only payload bytes, no real WiFi
+    // header. Calling RemoveHeader() would deserialise raw payload bytes as a
+    // WifiMacHeader, producing garbage fields that trigger NS_ASSERT inside the
+    // MAC layer on the first real transmission. WifiNetDevice::Send() already
+    // uses dest_address (the Addr1) passed as its second argument.
+
+    cout << "[ARCH 3 OVERRIDE] Node " << source << " sending on Channel " << arguments.channel << " to exact MAC " << dest_address << endl;
+
+    // eFADE: record outbound destination at the source
+    fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
+
+    // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline
+    // for this hop (S1/S2 hop-delay = t_recv − t_claimed; TAP PPAT = t_claimed).
+    record_claimed_forward_timestamp(source, packet_ID);
+
+    Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+}
 
 void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node, uint32_t node_index, uint32_t destination)
 {
@@ -122053,7 +123037,7 @@ void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_
 		CustomDataUnicastTag_Routing tag;
 		//uint32_t nid = uint32_t(ni->GetId());
 		dsrc_packet_initial_timestamp[nid] = Simulator::Now().GetSeconds();
-		cout<<"This is source node. DSRC data Unicasting from node "<<nid - 2<<endl;
+		cout<<"This is source node. DSRC data Unicasting from node "<<nid - N_Controllers<<endl;
 		Ptr<ConstantVelocityMobilityModel> mdl = DynamicCast <ConstantVelocityMobilityModel> (source_node->GetObject<MobilityModel>());
 		Vector posi = mdl->GetPosition();
 		Vector current_velocity = mdl->GetVelocity();
@@ -122061,7 +123045,7 @@ void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_
 		Vector acceleration = calculate_acceleration(previous_velocity_dsrc[node_index],current_velocity,delta_t);
 		Time ti = Seconds(Simulator::Now().GetSeconds());
 		Ptr <Packet> packet_i = Create<Packet> (0);
-		tag.SetsenderId(nid-2);
+		tag.SetsenderId(nid-N_Controllers);
 		tag.SetNodeId(&nid);
 		tag.Setposition(&posi);
 		tag.Setvelocity(&current_velocity);
@@ -122073,7 +123057,7 @@ void centralized_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_
 		Simulator::Schedule (Seconds(0) , &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 		uint32_t * pt = tag.GetNodeId();
 		//cout<<"node id from tag is "<<*pt<<endl;	
-		Y[*pt - 2] = Y[*pt -2] + 1;
+		Y[*pt - N_Controllers] = Y[*pt -N_Controllers] + 1;
 		//cout<<"dsrc total size is "<<dsrc_total_packet_size<<endl;
 		previous_velocity_dsrc[node_index] = current_velocity;
 	}
@@ -122249,6 +123233,81 @@ void initialize_flow_counters()
 {
 	vector<vector<vector<tuple<double,uint32_t,uint32_t>>>> all_sorted_delta_next_hop_flow_size_local;
 
+	// === TEST NETWORK: seed delta values BEFORE the table is built ===
+	// The per-next-hop schedule table (all_sorted_delta_next_hop_flow_size) is
+	// built from delta_values/load_f inside the fid loop below. Under routing_test
+	// Gurobi produces no usable delta, so we must seed the known test path HERE,
+	// before the loop reads it. (Previously this ran AFTER the loop, so the seeded
+	// values never entered the table and no packets were scheduled -> PDR 0.)
+	if (routing_test == true)
+	{
+		// Clear ALL delta/load for both flows to remove stale/old-topology edges
+		for (uint32_t f = 0; f < 2; f++) {
+			for (uint32_t i = 0; i < (uint32_t)total_size; i++) {
+				(load_at_nodes+f)->load_f[i] = 0.0;
+				for (uint32_t j = 0; j < (uint32_t)total_size; j++) {
+					(delta_at_nodes_inst+f)->delta_fi_inst[i].delta_values[j] = 0.0;
+					(delta_at_controller_inst+f)->delta_fi_inst[i].delta_values[j] = 0.0;
+				}
+			}
+		}
+
+		// Flow 0 (unit 0): source=0, path 0 -> 15 -> 1 (RSU0=15)
+		(delta_at_nodes_inst+0)->delta_fi_inst[0].delta_values[15] = 1.0;  // 0 -> 15
+		(load_at_nodes+0)->load_f[0] = 1.0;
+		(delta_at_nodes_inst+0)->delta_fi_inst[15].delta_values[1] = 1.0;  // 15 -> 1
+		(load_at_nodes+0)->load_f[15] = 1.0;
+		// FADE PDR denominator fix: demanding_flow_struct_nodes_inst->f_size is
+		// never set in routing_test mode, so fade_compute_metrics() falls back
+		// to the default flow_size=55 instead of the actual 3 packets/cycle we
+		// send, producing artificially low PDR (e.g. 7.6% instead of ~100%).
+		(demanding_flow_struct_nodes_inst+0)->f_size = 3;
+		cout << "[TEST NET] Delta seeded (pre-build): flow 0: 0->15->1, flow_size=" << flow_size << endl;
+
+		// Flow 1 (unit 1): source=2, path 2 -> 16 -> 3 (RSU1=16)
+		(delta_at_nodes_inst+1)->delta_fi_inst[2].delta_values[16] = 1.0;  // 2 -> 16
+		(load_at_nodes+1)->load_f[2] = 1.0;
+		(delta_at_nodes_inst+1)->delta_fi_inst[16].delta_values[3] = 1.0;  // 16 -> 3
+		(load_at_nodes+1)->load_f[16] = 1.0;
+		(demanding_flow_struct_nodes_inst+1)->f_size = 3;
+		cout << "[TEST NET] Delta seeded (pre-build): flow 1: 2->16->3, flow_size=" << flow_size << endl;
+
+	}
+
+	// Re-apply HF attack poisoned delta entries after the per-cycle clear.
+	// Runs in both routing_test and SUMO mode — the blocks above only seed the
+	// test-network topology; the attack re-apply must happen unconditionally so
+	// SUMO runs (routing_test=false) are also covered.
+	if (active_attack_variant == 4 || active_attack_variant == 6)
+	{
+		for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+		{
+			uint32_t rsu_node   = kv.first;
+			uint32_t eaves_node = kv.second;
+			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
+			{
+				for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+				{
+					// CP: controller table only — nodes_inst must stay clean
+					(delta_at_controller_inst+fid)->delta_fi_inst[rsu_node].delta_values[eaves_node] = 0.5;
+				}
+			}
+		}
+	}
+	else if (active_attack_variant == 5 || active_attack_variant == 7)
+	{
+		for (auto const& kv : passive_hf_rsu_to_eavesdropper)
+		{
+			uint32_t rsu_node = kv.first;
+      		(void)kv.second; // eaves_node unused — DP trigger uses malicious-node flag
+			if (active_hf_malicious_nodes[rsu_node] || passive_hf_malicious_nodes[rsu_node])
+			{
+				// DP trigger uses malicious-node flag — no delta write needed here.
+				// Writing to nodes_inst would corrupt routing decisions.
+			}
+		}
+	}
+
 	for (uint32_t fid=0;fid<2*flows;fid++)
   	{    
 		//(delta_at_nodes_inst+i)->flow_id = flow_ids[i];
@@ -122299,20 +123358,34 @@ void initialize_flow_counters()
 		}
 		
 		vector<vector<tuple<double,uint32_t,uint32_t>>> middle_sorted_delta_next_hop_flow_size_local;
-		for(uint32_t i=0;i<total_size;i++)
+		for(uint32_t i=0;i<(uint32_t)var;i++)
 		{
 			uint32_t main_flow_packets = ceil(f_size*((load_at_nodes+fid)->load_f[i]));
 			vector<tuple<double,uint32_t,uint32_t>> innermost_sorted_delta_next_hop_flow_size;
-			for(uint32_t j=0;j<total_size;j++)
+			for(uint32_t j=0;j<(uint32_t)var;j++)
 			{
 				uint32_t sub_flow_packets = ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j])*main_flow_packets;
 				innermost_sorted_delta_next_hop_flow_size.emplace_back((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j], j, sub_flow_packets);
+				if ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j] > 0.0) {
+				    std::cout << "[DELTA TABLE] flow " << fid << " : node " << i
+				              << " -> node " << j << " delta="
+				              << (delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j]
+				              << " pkts=" << sub_flow_packets << std::endl;
+				}
 				
 			}
 			
-			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end());
+			sort(innermost_sorted_delta_next_hop_flow_size.begin(), innermost_sorted_delta_next_hop_flow_size.end(), [](const tuple<double,uint32_t,uint32_t>& a, const tuple<double,uint32_t,uint32_t>& b) {
+				double valA = get<0>(a);
+				double valB = get<0>(b);
+				if (std::isnan(valA)) valA = 0.0;
+				if (std::isnan(valB)) valB = 0.0;
+				if (valA != valB) return valA < valB;
+				if (get<1>(a) != get<1>(b)) return get<1>(a) < get<1>(b);
+				return get<2>(a) < get<2>(b);
+			});
 			uint32_t total_count =0;
-			for(uint32_t j =0;j<total_size;j++)
+			for(uint32_t j =0;j<(uint32_t)var;j++)
 			{
 				auto index_innermost = innermost_sorted_delta_next_hop_flow_size.begin();
 				//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -122321,7 +123394,7 @@ void initialize_flow_counters()
 				uint32_t nid;
 				uint32_t sub_flow_packets;
 				tie(sub_flow_load, nid, sub_flow_packets) = *index_innermost;
-				if(j < (total_size-1))
+				if(j < ((uint32_t)var-1))
 				{
 					uint32_t checker = j%2;
 					//cout<<"checker is "<<checker<<endl;
@@ -122338,7 +123411,7 @@ void initialize_flow_counters()
 					
 				
 				}
-				else if (j == (total_size-1))
+				else if (j == ((uint32_t)var-1))
 				{
 					uint32_t original_value = ceil(get<2>(*index_innermost));
 					total_count = total_count + original_value;
@@ -122435,304 +123508,52 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						uint32_t zeta = 1;
 						double tg = 1.01*compute_individual_link_delay(source, pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] + 2, 1, arguments.p_size, nid, zeta);
 						Simulator::Schedule (Seconds (0.0), updateTxop, fid, nid, source, total_packets - total_packet_counter, true, arguments);
+						// Record hit: install on first send from source, then increment counters.
+						tcam_hit(source, fid, (uint32_t)arguments.p_size);
+
+						Ptr<NetDevice> dev_to_use;
 						switch(arguments.channel)
 						{
-							case(172):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_172.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(174):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_174.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(176):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_176.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(178):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(180):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_180.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(182):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_182.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							case(184):
-								// === ATTACK 2 INJECTION ===
-								if(selective_delay_malicious_nodes[source] && 
-								   present_selective_delay_attack_nodes &&
-								   pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0)
-								{
-									bool atk = GetBooleanWithProbability(attack_percentage, source);
-									if(atk)
-									{
-										cout << attack_tag() << " ③ Malicious RSU (node " << source
-											 << ") intercepting packet ID " << packet_id
-											 << " for flow " << fid
-											 << " at t=" << Now().GetSeconds() << "s" << endl;
-										cout << attack_tag() << " ④ Buffering — injecting delay of "
-											 << attack2_delay_seconds * 1000.0 << "ms" << endl;
-										Simulator::Schedule(Seconds(attack2_delay_seconds),
-											routing_dsrc_data_unicast,
-											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-										cout << attack_tag() << " ⑤ Delayed forward scheduled at t="
-											 << Now().GetSeconds() + attack2_delay_seconds
-											 << "s (delay=" << attack2_delay_seconds*1000.0
-											 << "ms)" << endl;
-									}
-									else
-									{
-										Simulator::Schedule(Seconds(0.0),
-											routing_dsrc_data_unicast,
-											wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-											fid, nid, arguments, total_packet_counter+1);
-									}
-								}
-								else
-								{
-									Simulator::Schedule(Seconds(0.0),
-										routing_dsrc_data_unicast,
-										wifidevices_184.Get(source), dsrc_Nodes.Get(source),
-										fid, nid, arguments, total_packet_counter+1);
-								}
-								// === END ATTACK 2 INJECTION ===
-								break;
-							default:
-							break;
+							case(172): dev_to_use = wifidevices_172.Get(source); break;
+							case(174): dev_to_use = wifidevices_174.Get(source); break;
+							case(176): dev_to_use = wifidevices_176.Get(source); break;
+							case(178): dev_to_use = wifidevices.Get(source); break;
+							case(180): dev_to_use = wifidevices_180.Get(source); break;
+							case(182): dev_to_use = wifidevices_182.Get(source); break;
+							case(184): dev_to_use = wifidevices_184.Get(source); break;
+							default:   dev_to_use = wifidevices.Get(source); break;
+						}
+						
+						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
+						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
+
+						bool attacked = schedule_unified_selective_delay_attack(
+							present_selective_delay_attack_nodes,
+							selective_delay_malicious_nodes[source],
+							(pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id] == 0),
+							attack_percentage,
+							present_selective_delay_cp_attack,
+							injected_cp,
+							source, packet_id, fid,
+							is_safety_critical_flow[fid],
+							routing_dsrc_data_unicast,
+							dev_to_use, dsrc_Nodes.Get(source),
+							fid, nid, arguments, total_packet_counter+1);
+							
+						if (!attacked)
+						{
+							Simulator::Schedule(Seconds(0), routing_dsrc_data_unicast,
+								dev_to_use, dsrc_Nodes.Get(source),
+								fid, nid, arguments, total_packet_counter+1);
 						}
 						
 						Simulator::Schedule (Seconds (tg+0.000050+rand_delay), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, arguments);
 						routing_packet_initial_timestamp[fid][packet_id] = Now().GetSeconds();
 						sent_IDS[fid][source][packet_id] = true;
 						routing_packet_general_initial_timestamp[fid][source][packet_id] = Now().GetSeconds();
+						// pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id]++;
 						pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id]++;
+						origination_counter[fid]++;
 					}
 					else
 					{
@@ -122759,6 +123580,10 @@ void initiate_all_flows()
 		uint32_t f_size = (demanding_flow_struct_nodes_inst+fid)->f_size;
 		uint32_t p_size = (demanding_flow_struct_nodes_inst+fid)->p_size;
 		double total_load = (load_at_nodes+fid)->load_f[source];
+		// In routing_test mode the LTE uplink is bypassed so load_at_nodes is never
+		// populated. Force a full load of 1.0 so packets are actually scheduled.
+		if (routing_test && total_load == 0.0)
+			total_load = 1.0;
 		uint32_t total_packets = ceil(total_load*f_size);
 		
 		uint32_t zeta;
@@ -122780,18 +123605,27 @@ void initiate_all_flows()
 		}
 		double tg = compute_link_delay(source, 1.0, 1, p_size, dest, zeta);
 		//cout<<"Time gap is "<<tg<<endl;
+		double stagger_offset = routing_test ? 0.0 : (fid*tg/2*(flows));
 		double subflow_start_time = 0.0;
 		uint32_t total_packet_counter = 0;
 		
 		auto index_top = all_sorted_delta_next_hop_flow_size.begin();
+		if (fid >= all_sorted_delta_next_hop_flow_size.size()) {
+			cout << "[ERROR] fid " << fid << " out of bounds for all_sorted_... size " << all_sorted_delta_next_hop_flow_size.size() << endl;
+			continue;
+		}
 		advance(index_top,fid);
 		//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
 
 		auto index_middle = index_top->begin();
+		if (source >= index_top->size()) {
+			cout << "[ERROR] source " << source << " out of bounds for index_top size " << index_top->size() << " (fid=" << fid << ")" << endl;
+			continue;
+		}
 		advance(index_middle,source);	
 		
 		uint32_t total_subflows =0;
-		for(uint32_t j =0;j<total_size;j++)
+		for(uint32_t j =0;j<(uint32_t)var;j++)
 		{
 			auto index_innermost = index_middle->begin();
 			//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -122816,7 +123650,7 @@ void initiate_all_flows()
 		struct custom_struct size_channel;
 		size_channel.p_size = p_size;
 		size_channel.channel = 178;
-		for(uint32_t j =0;j<total_size;j++)
+		for(uint32_t j =0;j<(uint32_t)var;j++)
 		{
 			auto index_innermost = index_middle->begin();
 			//cout<<subflow_start_time<<total_packet_counter<<total_packets<<endl;
@@ -122838,13 +123672,13 @@ void initiate_all_flows()
 					{
 						if(routing_algorithm == 1)
 						{
-							Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+							Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 							pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 						
 						}
 						else
 						{
-							Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+							Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 							pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 						}
 						sub_flow_counter++;
@@ -122867,13 +123701,13 @@ void initiate_all_flows()
 						{
 							if(routing_algorithm == 1)
 							{
-								Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+								Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 								pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 							
 							}
 							else
 							{
-								Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+								Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 								pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 							}
 							sub_flow_counter++;
@@ -122900,13 +123734,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -122928,13 +123762,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -122957,13 +123791,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -122985,13 +123819,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123013,13 +123847,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123041,13 +123875,13 @@ void initiate_all_flows()
 								{
 									if(routing_algorithm == 1)
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset + ((subflow_id*tg) +(total_subflows*tg*sub_flow_counter))), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									
 									}
 									else
 									{
-										Simulator::Schedule (Seconds ((fid*tg/2*(flows)) +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
+										Simulator::Schedule (Seconds (stagger_offset +subflow_start_time + (tg*sub_flow_counter)), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, size_channel);
 										pd_all_inst[fid].pd_inst[source].pending[size_channel.channel][total_packet_counter+1] = true;
 									}
 									sub_flow_counter++;
@@ -123073,7 +123907,9 @@ void initiate_all_flows()
 		{
 			cout<<"Flow id "<<fid<<" scheduled "<<total_packets<<"total packets from "<<source<<endl;
 		}
-		destination_counter[fid] = 0;
+		// destination_counter[fid] intentionally NOT reset here.
+		// It accumulates across the whole simulation and is read
+		// after Simulator::Run() to compute the final PDR.
 		
 			
 	}
@@ -123249,7 +124085,7 @@ void send_LTE_routing_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 	Vector acci[2];
 	uint32_t nodeid[2];
 
-	nid = uint32_t(nu->GetId()) - 2;
+	nid = uint32_t(nu->GetId()) - N_Controllers;
         posi[0] = (routing_data_at_nodes_inst+nid)->position;
 	veli[0] = (routing_data_at_nodes_inst+nid)->velocity;
 	acci[0] = (routing_data_at_nodes_inst+nid)->acceleration;
@@ -123271,6 +124107,13 @@ void send_LTE_routing_data_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> 
 
 void RSU_routing_statusdataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source_node, Ptr <Node> destination_node)
 {
+	// Safety check — destination must have an IP stack
+    Ptr<Ipv4> ipv4_check = destination_node->GetObject<Ipv4>();
+    if (!ipv4_check) {
+        std::cout << "[ERROR] RSU_routing_statusdataunicast_alone: destination NodeId="
+                  << destination_node->GetId() << " has no Ipv4 stack — skipping." << std::endl;
+        return;
+    }
 	Ptr <Node> nu = DynamicCast <Node> (source_node);
 	uint32_t nid = uint32_t(nu->GetId());
 	Ptr <Packet> packet1 = Create <Packet> (0);
@@ -123293,7 +124136,7 @@ void RSU_routing_statusdataunicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr
 	Vector acci[2];
 	uint32_t nodeid[2];
 
-	nid = uint32_t(nu->GetId()) - 2;
+	nid = uint32_t(nu->GetId()) - N_Controllers;
         posi[0] = (routing_data_at_nodes_inst+nid)->position;
 	veli[0] = (routing_data_at_nodes_inst+nid)->velocity;
 	acci[0] = (routing_data_at_nodes_inst+nid)->acceleration;
@@ -123339,7 +124182,7 @@ void RSU_flowdata_unicast_alone(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> s
 	
 	
 
-	nid = uint32_t(nu->GetId()) - 2;
+	nid = uint32_t(nu->GetId()) - N_Controllers;
 	for (uint32_t i=0;i< (2*flows);i++)
 	{
 		source[i] = (demanding_flow_struct_nodes_inst+i)->source;
@@ -131839,7 +132682,7 @@ void send_LTE_data_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> node_sou
 void begin_sending_LTE_data_agent()
 {
  	list<uint32_t> agent_ids;
- 	for (uint32_t i=2;i<(N_Vehicles+2);i++)
+ 	for (uint32_t i=1;i<(N_Vehicles+N_Controllers);i++)
  	{
  		if(X_nodes[i] == 1)
  		{
@@ -131852,7 +132695,7 @@ void begin_sending_LTE_data_agent()
 		uint32_t u = *it;
 		//cout<<"u is "<<u<<endl;
 	  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
-		Simulator::Schedule(Seconds(0.000025*count),send_LTE_data_agent,udp_app,Vehicle_Nodes.Get(u-2),management_Node.Get(0), u-2);
+		Simulator::Schedule(Seconds(0.000025*count),send_LTE_data_agent,udp_app,Vehicle_Nodes.Get(u-N_Controllers),controller_Node.Get(0), u-N_Controllers);
 		count++;
 	}
 }
@@ -139936,7 +140779,7 @@ void RSU_dataunicast_agent(Ptr <SimpleUdpApplication> udp_app, Ptr <Node> source
 void begin_sending_RSU_data_agent()
 {
 	list<uint32_t> agent_ids;
- 	for (uint32_t i=(N_Vehicles+2);i<(total_size+2);i++)
+ 	for (uint32_t i=(N_Vehicles+N_Controllers);i<(total_size);i++)
  	{
  		if(X_nodes[i] == 1)
  		{
@@ -139948,9 +140791,9 @@ void begin_sending_RSU_data_agent()
 	{
 		uint32_t u = *it;
 		//cout<<"agent u is "<<u<<endl;
-	  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u-N_Vehicles-2));	
-	  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u-N_Vehicles-2));
-		Simulator::Schedule(Seconds(0.000050*count),RSU_dataunicast_agent, udp_app, nu, management_Node.Get(0));
+	  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u-N_Vehicles-N_Controllers));	
+	  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u-N_Vehicles-N_Controllers));
+		Simulator::Schedule(Seconds(0.000050*count),RSU_dataunicast_agent, udp_app, nu, controller_Node.Get(0));
 		count++;
 	}
 }
@@ -139974,6 +140817,49 @@ double inv_factorial(long int n)
 }
 
 
+// =====================================================
+// seed_routing_test_tables — plain free function
+// (NS-3 3.35 Simulator::Schedule does not accept lambdas)
+// Seeds all 5 unit paths into proposed_routing_tables so
+// fade_configure_flow and hf_declare_malicious_rsus can find all RSUs.
+// Paths: 0->15->1, 2->16->3, 4->17->5, 6->18->7, 8->19->9
+// =====================================================
+void seed_routing_test_tables()
+{
+    if (!routing_test) return;
+    uint32_t path[total_size];
+
+    // Unit 0
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 0; path[1] = 15; path[2] = 1;
+    update_proposed_route(0, 1, path);
+    std::cout << "[FADE SEED] 0->15->1 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 1
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 2; path[1] = 16; path[2] = 3;
+    update_proposed_route(2, 3, path);
+    std::cout << "[FADE SEED] 2->16->3 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 2
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 4; path[1] = 17; path[2] = 5;
+    update_proposed_route(4, 5, path);
+    std::cout << "[FADE SEED] 4->17->5 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 3
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 6; path[1] = 18; path[2] = 7;
+    update_proposed_route(6, 7, path);
+    std::cout << "[FADE SEED] 6->18->7 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+
+    // Unit 4
+    for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) path[_i] = large;
+    path[0] = 8; path[1] = 19; path[2] = 9;
+    update_proposed_route(8, 9, path);
+    std::cout << "[FADE SEED] 8->19->9 at t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+}
+
 int main(int argc, char *argv[])
 {        
     initialize_empty();
@@ -139982,6 +140868,7 @@ int main(int argc, char *argv[])
     CommandLine cmd;
     cmd.AddValue ("N_RSUs", "N_RSUs", N_RSUs);
     cmd.AddValue ("N_Vehicles", "N_Vehicles", N_Vehicles);
+    cmd.AddValue ("N_Controllers", "N_Controllers (number of SDVN controllers)", N_Controllers);
     cmd.AddValue ("data_transmission_frequency", "data_transmission_frequency", data_transmission_frequency);
     cmd.AddValue ("link_lifetime_threshold", "link_lifetime_threshold", link_lifetime_threshold);
     cmd.AddValue ("simTime", "simTime", simTime);
@@ -139994,27 +140881,125 @@ int main(int argc, char *argv[])
     cmd.AddValue ("routing_algorithm", "routing_algorithm", routing_algorithm);
     cmd.AddValue ("attack_percentage", "attack_percentage", attack_percentage);
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
+    cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
+    cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
+    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): absolute attacker count; nodes 0..N-1 (default 1, overridden by --dp_attack_pct if >0)", num_attackers);
+    cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): percentage of vehicles acting as attackers (0-100). Overrides --num_attackers when >0. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
+    cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 100.0 = all RSUs)", cp_attack_pct);
+    double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
+    cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
     cmd.AddValue ("qf", "qf", qf);
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
+    cmd.AddValue ("use_sumo_mobility", "use_sumo_mobility", use_sumo_mobility);
+    
+    int attack_number_cli = -1; // sentinel: "not provided"
+    cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
+
+    // Phase 1 / D1: Reproducibility.
+    cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
+    cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
+
+    // S1 detection tunable parameters (Eq. 3.11–3.14, proposal §3462–3486).
+    // Default values are initial candidates; final values calibrated from benign SUMO traces.
+    cmd.AddValue("s1_delta0",     "S1: static propagation baseline δ₀ (s, default 0.002)",     s1_delta0);
+    cmd.AddValue("s1_alpha_rho",  "S1: density sensitivity α_ρ (s/vehicle, default 0.0001)",   s1_alpha_rho);
+    cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
+    cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
+    cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
+    crypto_register_cli_params(cmd);
+
+    // Single deterministic attack delay for both CP (Attack 1) and DP (Attack 2).
+    // Original implementation drew from Uniform(60–300 ms); replaced with a fixed
+    // CLI value so delay is an explicit independent variable in sweep experiments.
+    cmd.AddValue("attack_delay_ms",
+                 "Fixed attack delay in ms for both CP and DP attacks (default 80ms; "
+                 "original range was Uniform(60–300ms))",
+                 attack_delay_ms);
+
     cmd.Parse (argc, argv);
+
+    // Phase 1 / D1: Must be called BEFORE any ns-3 random variable is created or used.
+    // Controls GetBooleanWithProbability() and any stochastic draws in the simulation.
+    ns3::RngSeedManager::SetSeed(sim_seed);
+    ns3::RngSeedManager::SetRun(sim_run);
+    cout << "[RNG] Seed=" << sim_seed << " Run=" << sim_run
+         << " — fully reproducible per proposal simulation table." << endl;
+
+    // Convert ms CLI input to seconds for the forwarding path.
+    tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
+
+    // Attack 4 (DP TCAM): if --dp_attack_pct was given, derive num_attackers
+    // from it so both attacks share symmetric percentage-based terminal control.
+    // cp_attack_pct already works this way for Attack 3 (RSU targeting fraction).
+    if (dp_attack_pct > 0.0)
+    {
+        num_attackers = (int)std::ceil(N_Vehicles * (dp_attack_pct / 100.0));
+        if (num_attackers < 1)               num_attackers = 1;
+        if (num_attackers > (int)N_Vehicles) num_attackers = (int)N_Vehicles;
+        cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% -> num_attackers="
+             << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
+    }
+
+    if (attack_number_cli != -1)
+    {
+        attack_number = attack_number_cli;
+        attack_number_explicitly_set = true;
+        // Sync active_attack_variant immediately so all topology/position/dispatch
+        // checks below (which run before declare_attack_states() at line ~142737)
+        // see the correct variant. Mapping: active_attack_variant = attack_number - 1.
+        active_attack_variant = attack_number - 1;
+    }
+
+    // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
+    // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
+    // and the suffix would be misleading, so g_delay_suffix stays empty for those.
+    // NOTE: this check must come AFTER attack_number_cli is transferred to attack_number above.
+    // Guard with attack_number_explicitly_set so the default value of 1 does not trigger
+    // this block for baseline runs (active_attack_variant=-1) that never pass --attack_number.
+    if ((attack_number == 1 || attack_number == 2) && attack_number_explicitly_set)
+    {
+        g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
+
+        // Log the configured delay so every simulation log file has a clear record of what
+        // was injected. Original implementation drew from Uniform(60–300 ms) — lower bound
+        // was 10 ms above S2_DELTA_MAX=50 ms (Eq. 3.5) to guarantee S2 always fires;
+        // upper bound matched the handoff jitter window. The current fixed value should
+        // stay within that same range (60–300 ms) for experiments that replicate the
+        // original threat model, or be swept below 50 ms to probe the S2 detection boundary.
+        cout << "[ATTACK DELAY] Configured delay = " << attack_delay_ms << " ms"
+             << "  |  original random range (CP & DP): 50–300 ms (handoff jitter window)"
+             << "  |  S2 delta_max threshold = 50 ms"
+             << "  |  above S2 threshold: " << (attack_delay_ms > 50.0 ? "YES (S2 should fire)" : "NO  (S2 will NOT fire — below threshold)")
+             << endl;
+    }
     
     if (routing_test == true)
     {
-        if (active_attack_variant == 7)
+        if (active_attack_variant == 0 || 
+			active_attack_variant == 1 || 
+			active_attack_variant == 4 ||
+            active_attack_variant == 5 ||
+            active_attack_variant == 6 ||
+            active_attack_variant == 7)
         {
-            N_Vehicles = 3; // VehicleA(0), VehicleC(1), VehicleB(2=eavesdropper)
-            // Default to single_cycle for attack 7 test — one packet per flow
-            // shows exactly one eavesdrop event clearly in the log.
-            // Override with --single_cycle=0 to restore full flow volume.
-            if (!single_cycle)
-                single_cycle = true;
+            // 5-unit unified topology for all Hidden Forwarding variants (5-8).
+            // Each unit has: Sender, Destination, Eavesdropper (3 vehicles) + 1 RSU.
+            // 5 units × 3 vehicles = 15 vehicles; 5 RSUs.
+            // Node index layout:
+            //   Vehicles 0-9:  Senders(0,2,4,6,8) and Destinations(1,3,5,7,9) — 2 per unit
+            //   Vehicles 10-14: Eavesdroppers — 1 per unit (10=unit0, 11=unit1, ...)
+            //   RSUs 15-19:    RSU0..RSU4 — 1 per unit
+            // attack_percentage controls how many RSUs are compromised:
+            //   20% = 1 RSU, 40% = 2, 60% = 3, 80% = 4, 100% = 5
+            N_Vehicles = 15;
+            N_RSUs = 5;
         }
         else
         {
-			N_Vehicles = 5; // Extended Attack 2 topology — 5 vehicles
+            N_Vehicles = 2; // original Attack 2 layout
+            N_RSUs = 1;
         }
-		N_RSUs = 5; // Extended Attack 2 topology — 5 RSUs
     }
 
     // Apply single_cycle: cap every flow to exactly 1 packet.
@@ -140048,20 +141033,19 @@ int main(int argc, char *argv[])
     
     clear_RQY();
     
-    for (int i = 0; i<total_size+2; i++)
+    for (uint32_t i = 0; i<total_size+N_Controllers; i++)
     {
     	clear_neighbordata(neighbordata_inst+i);
     	clear_controllerdata(con_data_inst+i);
     	clear_data_at_nodes(data_at_nodes_inst+i);
-    	clear_routing_data_at_nodes(routing_data_at_nodes_inst+i-2);
+    	clear_routing_data_at_nodes(routing_data_at_nodes_inst+i-1);
     	clear_data_at_manager(data_at_manager_inst+i);
     }
     clear_delta_at_controller(delta_at_controller_inst);
     clear_solution();
     initialize_all_routing_tables();
   
-  controller_Node.Create(1);
-  management_Node.Create(1); 
+  controller_Node.Create(N_Controllers); // multi-controller: C = {c1,...,cm} per proposal
   if (routing_test == false)
   {
   	  if(N_Vehicles > 0)
@@ -140076,13 +141060,16 @@ int main(int argc, char *argv[])
   
   	    Vehicle_Nodes.Create(N_Vehicles);
     	    // double x = 250;
-		double x = 150; //test - adjusted to force routing through RSU
+	    // (removed unused 'double x' — its only uses were the duplicate default
+	    //  vehicle positions that have been replaced by the spread layout below)
 	    MobilityHelper custom_mobility;
 	    custom_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 
 	    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
-    // positionAlloc->Add(Vector(2*x, x, 0.0)); // Node 0: Vehicle A
-    // positionAlloc->Add(Vector((16.0/3.0)*x, x, 0.0)); // Node 1: Vehicle B
+    // Vehicle A and Vehicle B positions are added by the if/else block below
+    // (attack-7 layout vs. spread NetAnim layout). Do NOT add default entries
+    // here — doing so put 4 entries in the allocator for 2 vehicles, so the
+    // vehicles consumed these defaults and the spread positions were ignored.
 	    // positionAlloc->Add(Vector(0.0, -x*3, 0.0)); // Custom position for Node 3
 	    // // positionAlloc->Add(Vector(0.0, -x*4, 0.0)); // Custom position for Node 4
 	    // // positionAlloc->Add(Vector(x, -x*4, 0.0)); // Custom position for Node 5
@@ -140102,28 +141089,61 @@ int main(int argc, char *argv[])
 	    // // positionAlloc->Add(Vector(x*3, x, 0.0)); // Custom position for Node 19
 	    // // positionAlloc->Add(Vector(x, x, 0.0)); // Custom position for Node 20
 	    // // positionAlloc->Add(Vector(2*x, x, 0.0)); // Custom position for Node 21
-
-		if (active_attack_variant == 7)
+		if ((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+            active_attack_variant == 4 ||
+            active_attack_variant == 5 ||
+            active_attack_variant == 6 ||
+            active_attack_variant == 7)
     {
-        // Attack 7 topology:
-        // Vehicle A (node 0) at (300, 150, 0)
-        // Vehicle C (node 1) at (800, 150, 0) — legitimate destination
-        // Vehicle B (node 2) at (550, 300, 0) — eavesdropper, close to RSU
-        positionAlloc->Add(Vector(300.0, 150.0, 0.0)); // Node 0: Vehicle A (sender)
-        positionAlloc->Add(Vector(800.0, 150.0, 0.0)); // Node 1: Vehicle C (legit dest)
-        positionAlloc->Add(Vector(550.0, 300.0, 0.0)); // Node 2: Vehicle B (eavesdropper)
-        cout << attack_tag() << " [INIT] Vehicle A  (node 0): (300, 150, 0)" << endl;
-        cout << attack_tag() << " [INIT] Vehicle C  (node 1): (800, 150, 0) - legit destination" << endl;
-        cout << attack_tag() << " [INIT] Vehicle B  (node 2): (550, 300, 0) - eavesdropper" << endl;
-        cout << attack_tag() << " [INIT] RSU        (node 3): (550,  75, 0) - MALICIOUS" << endl;
+        // Unified 5-unit topology for all Hidden Forwarding variants (Attacks 5-8).
+        // All links are <= 200m (well within 250m range limit).
+        // Units are spaced 700m apart so cross-unit links are ~300m (out of range).
+        //
+        // Layout per unit (RSU is centre point):
+        //   Sender      = RSU_x - 200m  (left)
+        //   Destination = RSU_x + 200m  (right)
+        //   Eavesdropper= RSU position + 150m down
+        //
+        // Unit 0: RSU0 at (300, 150)
+        positionAlloc->Add(Vector(100.0,  150.0, 0.0)); // Node  0: VehA0  (sender unit 0)
+        positionAlloc->Add(Vector(500.0,  150.0, 0.0)); // Node  1: VehB0  (dest   unit 0)
+        // Unit 1: RSU1 at (1000, 150)
+        positionAlloc->Add(Vector(800.0,  150.0, 0.0)); // Node  2: VehA1  (sender unit 1)
+        positionAlloc->Add(Vector(1200.0, 150.0, 0.0)); // Node  3: VehB1  (dest   unit 1)
+        // Unit 2: RSU2 at (1700, 150)
+        positionAlloc->Add(Vector(1500.0, 150.0, 0.0)); // Node  4: VehA2  (sender unit 2)
+        positionAlloc->Add(Vector(1900.0, 150.0, 0.0)); // Node  5: VehB2  (dest   unit 2)
+        // Unit 3: RSU3 at (2400, 150)
+        positionAlloc->Add(Vector(2200.0, 150.0, 0.0)); // Node  6: VehA3  (sender unit 3)
+        positionAlloc->Add(Vector(2600.0, 150.0, 0.0)); // Node  7: VehB3  (dest   unit 3)
+        // Unit 4: RSU4 at (3100, 150)
+        positionAlloc->Add(Vector(2900.0, 150.0, 0.0)); // Node  8: VehA4  (sender unit 4)
+        positionAlloc->Add(Vector(3300.0, 150.0, 0.0)); // Node  9: VehB4  (dest   unit 4)
+        // Eavesdroppers — one per unit, 150m below their RSU
+        positionAlloc->Add(Vector(300.0,  300.0, 0.0)); // Node 10: Eaves0 (unit 0)
+        positionAlloc->Add(Vector(1000.0, 300.0, 0.0)); // Node 11: Eaves1 (unit 1)
+        positionAlloc->Add(Vector(1700.0, 300.0, 0.0)); // Node 12: Eaves2 (unit 2)
+        positionAlloc->Add(Vector(2400.0, 300.0, 0.0)); // Node 13: Eaves3 (unit 3)
+        positionAlloc->Add(Vector(3100.0, 300.0, 0.0)); // Node 14: Eaves4 (unit 4)
+        cout << attack_tag() << " [INIT] 5-unit HF topology (N_Vehicles=15, N_RSUs=5)" << endl;
+        cout << attack_tag() << " [INIT] Unit0: VehA0(0)=(100,150) RSU0(15)=(300,150) VehB0(1)=(500,150) Eaves0(10)=(300,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit1: VehA1(2)=(800,150) RSU1(16)=(1000,150) VehB1(3)=(1200,150) Eaves1(11)=(1000,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit2: VehA2(4)=(1500,150) RSU2(17)=(1700,150) VehB2(5)=(1900,150) Eaves2(12)=(1700,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit3: VehA3(6)=(2200,150) RSU3(18)=(2400,150) VehB3(7)=(2600,150) Eaves3(13)=(2400,300)" << endl;
+        cout << attack_tag() << " [INIT] Unit4: VehA4(8)=(2900,150) RSU4(19)=(3100,150) VehB4(9)=(3300,150) Eaves4(14)=(3100,300)" << endl;
+        cout << attack_tag() << " [INIT] attack_percentage=" << attack_percentage
+             << "% -> " << (int)std::ceil(5.0 * attack_percentage / 100.0)
+             << " of 5 RSUs will be compromised." << endl;
     }
     else
     {
-			positionAlloc->Add(Vector(0.0,    150.0, 0.0)); // Node 0: Vehicle A (sender)
-			positionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 1: Vehicle B (destination)
-			positionAlloc->Add(Vector(0.0,    400.0, 0.0)); // Node 2: Vehicle C
-			positionAlloc->Add(Vector(500.0,  400.0, 0.0)); // Node 3: Vehicle D
-			positionAlloc->Add(Vector(1000.0, 400.0, 0.0)); // Node 4: Vehicle E
+        // Spread positions for clear NetAnim visualization.
+        // Vehicle A (left) and Vehicle B (right) are 600m apart on the same
+        // horizontal line; the RSU sits above their midpoint and the controller
+        // above the RSU, so the V2V link and the V->RSU->Controller relay path
+        // are all geometrically distinct on screen.
+        positionAlloc->Add(Vector(300.0, 300.0, 0.0)); // Node 0: Vehicle A (left)
+        positionAlloc->Add(Vector(900.0, 300.0, 0.0)); // Node 1: Vehicle B (right)
     }
 
 	    custom_mobility.SetPositionAllocator(positionAlloc);
@@ -140193,7 +141213,9 @@ int main(int argc, char *argv[])
   {
 	  csma_nodes.Add(RSU_Nodes);
 	  csma_nodes.Add(controller_Node);
-	  csma_nodes.Add(management_Node);  
+	  if (architecture != 3) 
+      {
+      } 
 	  csmaDevices = csma.Install (csma_nodes);
   	  address.SetBase ("10.1.1.0", "255.255.255.0");
   	  stack.Install (csma_nodes);
@@ -140286,8 +141308,7 @@ int main(int argc, char *argv[])
 	  RSU_apps.Stop(Seconds(simTime));
   }
   
-  Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
-  Config::SetDefault("ns3::Ipv4GlobalRouting::RespondToInterfaceEvents", BooleanValue(true));
+  
   NodeContainer enbnodes;
   NodeContainer remotehostcontainer;
   Ptr<Node> pgw;
@@ -140298,15 +141319,15 @@ int main(int argc, char *argv[])
 
   if (N_Vehicles > 0)
   {
-  	if (architecture != 1)
+  	if (architecture != 1 && architecture != 3)
   	{
 		  ltehelper = CreateObject<LteHelper> ();
 		  ltehelper->SetAttribute("FadingModel",StringValue("ns3::TraceFadingLossModel"));
 		  std::ifstream TraceFile;
-		  TraceFile.open("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
+		  TraceFile.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad", std::ifstream::in);
 		  if(TraceFile.good())
 		  {
-		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/user/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
+		  	ltehelper->SetFadingModelAttribute("TraceFilename", StringValue("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/src/lte/model/fading-traces/fading_trace_EVA_60kmph.fad"));
 		  }
 		  
 		  ltehelper->SetFadingModelAttribute("TraceLength",TimeValue(Seconds(10.0)));
@@ -140398,25 +141419,28 @@ int main(int argc, char *argv[])
   	switch(maxspeed)
   	{
   		case (0):
-  			trace_file = "/home/user/mobility/mobility_urban_0.tcl";
+  			trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_0.tcl";
   			break;
   		case (10):
-	  		trace_file = "/home/user/mobility/mobility_urban_10.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_10.tcl";
 	  		break;
 	  	case (20):
-	  		trace_file = "/home/user/mobility/mobility_urban_20.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_20.tcl";
 	  		break;
 	  	case (30):
-	  		trace_file = "/home/user/mobility/mobility_urban_30.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_30.tcl";
 	  		break;
 	  	case (40):
-	  		trace_file = "/home/user/mobility/mobility_urban_40.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/user/mobility/mobility_urban_50.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/user/mobility/mobility_urban_60.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_60.tcl";
+	  		break;
+	  	case (150):
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150.tcl";
 	  		break;
 	  	default:
 	  		break;
@@ -140428,37 +141452,37 @@ int main(int argc, char *argv[])
    	switch(maxspeed)
    	{
    		case (0):
-   			trace_file = "/home/user/mobility/mobility_rural_0.tcl";
+   			trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_0.tcl";
    	  		break;
    		case (10):
-   	  		trace_file = "/home/user/mobility/mobility_rural_10.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_10.tcl";
    	  		break;
    	  	case (20):
-	  		trace_file = "/home/user/mobility/mobility_rural_20.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_20.tcl";
 	  		break;
 	  	case (30):
-	   		trace_file = "/home/user/mobility/mobility_rural_30.tcl";
+	   		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_30.tcl";
 	   		break;
 	   	case (40):
-	  		trace_file = "/home/user/mobility/mobility_rural_40.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_40.tcl";
 	  		break;
 	  	case (50):
-	  		trace_file = "/home/user/mobility/mobility_rural_50.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_50.tcl";
 	  		break;
 	  	case (60):
-	  		trace_file = "/home/user/mobility/mobility_rural_60.tcl";
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_60.tcl";
 	  		break;
    	  	case (70):
-   	  		trace_file = "/home/user/mobility/mobility_rural_70.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_70.tcl";
    	  		break;
    	  	case (80):
-   	  		trace_file = "/home/user/mobility/mobility_rural_80.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_80.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/user/mobility/mobility_rural_90.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_90.tcl";
    	  		break;
    	  	case (100):
-   	  		trace_file = "/home/user/mobility/mobility_rural_100.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_rural_100.tcl";
    	  		break;
    	  	default:
    	  		break;
@@ -140470,46 +141494,46 @@ int main(int argc, char *argv[])
    	  switch(maxspeed)
    	  {
    	  	case (0):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_0.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_0.tcl";
    	  		break;	
    	  	case (10):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_10.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_10.tcl";
    	  		break;
    	  	case (30):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_30.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_30.tcl";
    	  		break;
    	  	case (50):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_50.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_50.tcl";
    	  		break;
    	  	case (70):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_70.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_70.tcl";
    	  		break;
    	  	case (90):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_90.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_90.tcl";
    	  		break;
    	  	case (110):
-   	  		trace_file = "/home/user/mobility/mobility_autobahn_110.tcl";
+   	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_110.tcl";
    	  		break;
 	 	case (130):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_130.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_130.tcl";
 	 		break;
 	 	case (150):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_150.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_150.tcl";
 	 		break;
 	 	case (170):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_170.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_170.tcl";
 	 		break;
 	 	case (190):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_190.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_190.tcl";
 	 		break;
 	 	case (210):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_210.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_210.tcl";
 	 		break;
 	 	case (230):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_230.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_230.tcl";
 	 		break;
 	 	case (250):
-	 		trace_file = "/home/user/mobility/mobility_autobahn_250.tcl";
+	 		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_autobahn_250.tcl";
 	 		break;
 	 	default:
 	 		break;
@@ -140519,6 +141543,7 @@ int main(int argc, char *argv[])
 
   
   //Ns2MobilityHelper vehicle_mobility  = Ns2MobilityHelper (trace_file);
+  Ns2MobilityHelper sumo_mobility = Ns2MobilityHelper (trace_file);
   
  
   
@@ -140527,7 +141552,11 @@ int main(int argc, char *argv[])
   if (N_Vehicles > 0)
   {
   	
-  	if (experiment_number != 5)
+  	if (use_sumo_mobility && !trace_file.empty())
+  	{
+  		sumo_mobility.Install(Vehicle_Nodes.Begin(), Vehicle_Nodes.End());
+  	}
+  	else if (experiment_number != 5)
   	{
   		//vehicle_mobility.Install(Vehicle_Nodes.Begin(),Vehicle_Nodes.End());
   	}
@@ -140555,8 +141584,6 @@ int main(int argc, char *argv[])
   double delta_y; 
   int lte_base_posx;
   int lte_base_posy;
-  int man_base_posx;
-  int man_base_posy;
   int con_base_posx;
   int con_base_posy;
   MobilityHelper RSU_mobility;
@@ -140564,8 +141591,6 @@ int main(int argc, char *argv[])
   vehicle_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
   if (mobility_scenario == 0)//urban mobility
   {
-  	man_base_posx = 1700;
-  	man_base_posy = 1700;
   	con_base_posx = 1600;
   	con_base_posy = 1600;
   	lte_base_posx = 1500;
@@ -140575,7 +141600,13 @@ int main(int argc, char *argv[])
   	delta_y = 280;
   	//delta_x = 1600/5;
   	delta_x = 280;
-	  	if (N_RSUs < 13)
+	  	if (use_sumo_mobility)
+	  	{
+	  		// 64 (8x8) RSUs, perfectly centered on the new 2061m x 2137m LA map.
+	  		// Using MinX=100, MinY=100, and Delta=260/270 to span X: 100->1920 and Y: 100->1990.
+	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (100.0),"MinY", DoubleValue (100.0),"DeltaX", DoubleValue (260.0),"DeltaY", DoubleValue (270.0),"GridWidth", UintegerValue (8),"LayoutType", StringValue ("RowFirst"));
+	  	}
+	  	else if (N_RSUs < 13)
 	  	{		
 	  		RSU_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (750.0),"MinY", DoubleValue (1200.0),"DeltaX", DoubleValue (delta_x),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (7),"LayoutType", StringValue ("RowFirst"));
 	  		vehicle_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (650.0),"MinY", DoubleValue (1000.0), "DeltaX", DoubleValue (delta_x/2),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (14),"LayoutType", StringValue ("RowFirst"));
@@ -140587,11 +141618,11 @@ int main(int argc, char *argv[])
 	  		vehicle_mobility.SetPositionAllocator ("ns3::GridPositionAllocator","MinX", DoubleValue (650.0),"MinY", DoubleValue (1000.0), "DeltaX", DoubleValue (delta_x/2),"DeltaY", DoubleValue (delta_y),"GridWidth", UintegerValue (14),"LayoutType", StringValue ("RowFirst"));
 	  	}
   }
-  if(routing_test == false)
+  if(routing_test == false && !use_sumo_mobility)
   {
   	vehicle_mobility.Install(Vehicle_Nodes);
   }
-  if(routing_test == false)
+  if(routing_test == false && !use_sumo_mobility)
   {
   	update_mobility();
   }
@@ -140600,8 +141631,6 @@ int main(int argc, char *argv[])
    if (mobility_scenario == 1)//non-urban mobility
   {
 
-  	man_base_posx = 4600;
-  	man_base_posy = 4600;
   	con_base_posx = 4700;
   	con_base_posy = 4700;
   	lte_base_posx = 4500;
@@ -140613,8 +141642,6 @@ int main(int argc, char *argv[])
   
   if (mobility_scenario == 2)//autobahn mobility
   {
-  	man_base_posx = 2200;
-  	man_base_posy = 3700;
   	con_base_posx = 2100;
   	con_base_posy = 3600;
   	lte_base_posx = 2000;
@@ -140626,31 +141653,51 @@ int main(int argc, char *argv[])
   
   if (routing_test == true)//routing_test
   {
-  	man_base_posx = 500;
-  	man_base_posy = 0;
-  	con_base_posx = 550;
-  	con_base_posy = 0;
-  	lte_base_posx = 525;
-  	lte_base_posy = 0;
+  	con_base_posx = 600;
+  	con_base_posy = 600;
+  	lte_base_posx = 450;
+  	lte_base_posy = 600;
+    // TODO: man_base_posx/posy, con_base_posx/posy, lte_base_posx/posy above are
+    // tuned for the variant-7 (3-node) layout. Attacks 5/6/7 (variants 4/5/6,
+    // 2-unit/6-vehicle topology spanning x=300..1600) likely need their own
     Ptr<ListPositionAllocator> rsuPositionAlloc = CreateObject<ListPositionAllocator>();
-		rsuPositionAlloc->Add(Vector(250.0,  75.0, 0.0));  // RSU 0 (current_hop 5)
-		rsuPositionAlloc->Add(Vector(500.0,  75.0, 0.0));  // RSU 1 (current_hop 6)
-		rsuPositionAlloc->Add(Vector(750.0,  75.0, 0.0));  // RSU 2 (current_hop 7)
-		rsuPositionAlloc->Add(Vector(250.0,  300.0, 0.0)); // RSU 3 (current_hop 8)
-		rsuPositionAlloc->Add(Vector(750.0,  300.0, 0.0)); // RSU 4 (current_hop 9)
+    if ((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+        active_attack_variant == 4 ||
+        active_attack_variant == 5 ||
+        active_attack_variant == 6 ||
+        active_attack_variant == 7)
+    {
+        // 5-unit topology RSUs (nodes 15-19), one per unit at unit centre:
+        rsuPositionAlloc->Add(Vector(300.0,  150.0, 0.0)); // Node 15: RSU0 (unit 0)
+        rsuPositionAlloc->Add(Vector(1000.0, 150.0, 0.0)); // Node 16: RSU1 (unit 1)
+        rsuPositionAlloc->Add(Vector(1700.0, 150.0, 0.0)); // Node 17: RSU2 (unit 2)
+        rsuPositionAlloc->Add(Vector(2400.0, 150.0, 0.0)); // Node 18: RSU3 (unit 3)
+        rsuPositionAlloc->Add(Vector(3100.0, 150.0, 0.0)); // Node 19: RSU4 (unit 4)
+        cout << "[TEST NETWORK] 5-unit RSU positions set:" << endl;
+        cout << "[TEST NETWORK] RSU0 (node 15): (300,150,0)"  << endl;
+        cout << "[TEST NETWORK] RSU1 (node 16): (1000,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU2 (node 17): (1700,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU3 (node 18): (2400,150,0)" << endl;
+        cout << "[TEST NETWORK] RSU4 (node 19): (3100,150,0)" << endl;
+    }
+    else
+    {
+        rsuPositionAlloc->Add(Vector(600.0, 450.0, 0.0)); // RSU: above the A-B midpoint
+    }
     RSU_mobility.SetPositionAllocator(rsuPositionAlloc);
-		cout << "[TEST NETWORK] 10-node topology: 5 Vehicles + 5 RSUs" << endl;
-		cout << "[TEST NETWORK] Vehicle A (node 0): (0, 150, 0) — SENDER" << endl;
-		cout << "[TEST NETWORK] Vehicle B (node 1): (1000, 150, 0) — DESTINATION" << endl;
-		cout << "[TEST NETWORK] Vehicle C (node 2): (0, 400, 0)" << endl;
-		cout << "[TEST NETWORK] Vehicle D (node 3): (500, 400, 0)" << endl;
-		cout << "[TEST NETWORK] Vehicle E (node 4): (1000, 400, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 0 (node 5): (250, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 1 (node 6): (500, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 2 (node 7): (750, 75, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 3 (node 8): (250, 300, 0)" << endl;
-		cout << "[TEST NETWORK] RSU 4 (node 9): (750, 300, 0)" << endl;
-		cout << "[TEST NETWORK] Traffic path: Vehicle A->RSU0->RSU1->RSU2->Vehicle B" << endl;
+    if (!((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+          active_attack_variant == 4 ||
+          active_attack_variant == 5 ||
+          active_attack_variant == 6 ||
+          active_attack_variant == 7))
+    {
+        cout << "[TEST NETWORK] Positions set (spread for NetAnim):" << endl;
+        cout << "[TEST NETWORK] Vehicle A   : (300, 300, 0)  Node 0" << endl;
+        cout << "[TEST NETWORK] Vehicle B   : (900, 300, 0)  Node 1" << endl;
+        cout << "[TEST NETWORK] RSU         : (600, 450, 0)  Node index 2" << endl;
+        cout << "[TEST NETWORK] Controller  : (600, 600, 0)" << endl;
+        cout << "[TEST NETWORK] Management  : (300, 600, 0)" << endl;
+    }
     
   }
   
@@ -140663,7 +141710,7 @@ int main(int argc, char *argv[])
   NodeContainer other_stationary_LTE_nodes;
   if (N_Vehicles > 0)
   {
-  	if (architecture != 1)
+  	if (architecture != 1 && architecture != 3)
   	{
 	  nd = ns3::NodeList::GetNode(N_Vehicles+N_RSUs+4);
 	  other_stationary_LTE_nodes.Add(enbnodes);
@@ -140674,14 +141721,13 @@ int main(int argc, char *argv[])
 	}
   }
   
-  if (architecture != 1)
+
   {
   
 	  MobilityHelper other_stationary_mobility;
 	  other_stationary_mobility.SetMobilityModel ("ns3::ConstantVelocityMobilityModel");
 	  other_stationary_mobility.Install(controller_Node);
-	  other_stationary_mobility.Install(management_Node);
-	  if (N_Vehicles > 0)
+	  if (architecture != 1 && architecture != 3 && N_Vehicles > 0)
 	  {
 	  	other_stationary_mobility.Install(other_stationary_LTE_nodes);
 	  }
@@ -140710,29 +141756,74 @@ int main(int argc, char *argv[])
 	  }
   }
   
-  //setting the position of controller node 
-  //int con_base_posx = rand()%3000;
-  //int con_base_posy = rand()%3000;
+  //setting the position of controller nodes (2x2 grid over 2km x 2km area)
+  //Per proposal: C = {c1,...,cm}, each controller covers one quadrant.
+  //Quadrant centers for 2km x 2km area: (500,500),(1500,500),(500,1500),(1500,1500)
+  {
+    // Define controller positions as a 2x2 grid over the simulation area.
+    // Adjust these if the SUMO network bounding box differs.
+    std::vector<Vector> ctrl_positions;
+    if (N_Controllers == 1)
+    {
+      ctrl_positions.push_back(Vector(con_base_posx, con_base_posy, 0));
+    }
+    else if (N_Controllers == 4)
+    {
+      // 2x2 grid - one controller per quadrant of the 2km x 2km area.
+      // Offset from RSU grid (which is at multiples of 250m) to avoid overlap.
+      // RSU grid: (0,0),(250,0),...,(1750,1750). Controllers sit at quadrant
+      // centres shifted by +125m so they fall between RSU positions.
+      ctrl_positions.push_back(Vector(515,  534,  0)); // c1: SW quadrant (Center of 0-1030, 0-1068)
+      ctrl_positions.push_back(Vector(1545, 534,  0)); // c2: SE quadrant
+      ctrl_positions.push_back(Vector(515,  1602, 0)); // c3: NW quadrant
+      ctrl_positions.push_back(Vector(1545, 1602, 0)); // c4: NE quadrant
+    }
+    else
+    {
+      // Fallback: place all controllers at con_base_posx/posy with small offsets
+      for (uint32_t ci = 0; ci < N_Controllers; ci++)
+      {
+        ctrl_positions.push_back(Vector(con_base_posx + 50*ci, con_base_posy + 50*ci, 0));
+      }
+    }
 
-   if (architecture != 1)
-   {
-	   Ptr<ConstantVelocityMobilityModel> mdl_controller = DynamicCast <ConstantVelocityMobilityModel> (controller_Node.Get(0)->GetObject<MobilityModel>());
-	   mdl_controller->SetPosition(Vector(con_base_posx, con_base_posy, 0));
-	   mdl_controller->SetVelocity(Vector(0, 0, 0));//centralized controller placement
-	   
-	  //setting the position of management node
-	  //int man_base_posx = rand()%3000;
-	  //int man_base_posy = rand()%3000;
+    for (uint32_t ci = 0; ci < N_Controllers; ci++)
+    {
+      Ptr<ConstantVelocityMobilityModel> mdl_ctrl = DynamicCast<ConstantVelocityMobilityModel>
+          (controller_Node.Get(ci)->GetObject<MobilityModel>());
+      mdl_ctrl->SetPosition(ctrl_positions[ci]);
+      mdl_ctrl->SetVelocity(Vector(0, 0, 0));
+    }
 
-	   Ptr<ConstantVelocityMobilityModel> mdl_management = DynamicCast <ConstantVelocityMobilityModel> (management_Node.Get(0)->GetObject<MobilityModel>());
-	   mdl_management->SetPosition(Vector(man_base_posx, man_base_posy, 0));
-	   mdl_management->SetVelocity(Vector(0, 0, 0));//centralized management server placement
-   }
+    // RSU-to-controller assignment: each RSU is assigned to nearest controller
+    // Implements: c*(k,t) = argmin_{ci in C_trusted(t)} d(r_k, ci)  [proposal eq.]
+    for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
+    {
+      Ptr<ConstantVelocityMobilityModel> rsu_mdl = DynamicCast<ConstantVelocityMobilityModel>
+          (RSU_Nodes.Get(r)->GetObject<MobilityModel>());
+      Vector rsu_pos = rsu_mdl->GetPosition();
+
+      double min_dist = 1e18;
+      uint32_t best_ctrl = 0;
+      for (uint32_t ci = 0; ci < N_Controllers; ci++)
+      {
+        double dx = rsu_pos.x - ctrl_positions[ci].x;
+        double dy = rsu_pos.y - ctrl_positions[ci].y;
+        double dist = sqrt(dx*dx + dy*dy);
+        if (dist < min_dist)
+        {
+          min_dist = dist;
+          best_ctrl = ci;
+        }
+      }
+      rsu_controller_assignment[r] = best_ctrl;
+    }
+  }
   
   Ipv4StaticRoutingHelper ipv4routinghelper_con;
   if (N_Vehicles > 0)
   {
-  	if (architecture != 1)
+  	if (architecture != 1 && architecture != 3)
   	{
 		  //point to point connection for pgw and remotehost 
 		  PointToPointHelper p2ph;
@@ -140755,13 +141846,13 @@ int main(int argc, char *argv[])
 		  Ipv4InterfaceContainer controller_interfaces = ipv4helper.Assign(p2pcontroller_devices);
 		  
 		  //point to point connection for management server
-		  PointToPointHelper p2p_management;
-		  p2p_management.SetDeviceAttribute("DataRate", DataRateValue(DataRate("1000Mb/s")));
-		  p2p_management.SetChannelAttribute("Delay", TimeValue(MicroSeconds(10)));
-		  NetDeviceContainer p2pmanagement_devices = p2p_management.Install(pgw,management_Node.Get(0));
+		  PointToPointHelper p2p_server2;
+		  p2p_server2.SetDeviceAttribute("DataRate", DataRateValue(DataRate("1000Mb/s")));
+		  p2p_server2.SetChannelAttribute("Delay", TimeValue(MicroSeconds(10)));
+		  NetDeviceContainer p2pmanagement_devices = p2p_server2.Install(pgw,controller_Node.Get(0));
 		  Ipv4AddressHelper ipv4helper2;
 		  ipv4helper2.SetBase("80.1.1.0","255.255.255.0");
-		  Ipv4InterfaceContainer management_interfaces = ipv4helper2.Assign(p2pmanagement_devices);
+		  Ipv4InterfaceContainer server2_interfaces = ipv4helper2.Assign(p2pmanagement_devices);
 		  
 		  
 		  Ipv4StaticRoutingHelper ipv4routinghelper;
@@ -140772,8 +141863,8 @@ int main(int argc, char *argv[])
 		  controller_staticrouting->AddNetworkRouteTo (Ipv4Address("7.0.0.0"),Ipv4Mask("255.0.0.0"),2);
 
 		  Ipv4StaticRoutingHelper ipv4routinghelper_man;
-		  Ptr<Ipv4StaticRouting> management_staticrouting = ipv4routinghelper_man.GetStaticRouting(management_Node.Get(0)->GetObject<Ipv4>());
-		  management_staticrouting->AddNetworkRouteTo (Ipv4Address("7.0.0.0"),Ipv4Mask("255.0.0.0"),2);
+		  Ptr<Ipv4StaticRouting> server2_staticrouting = ipv4routinghelper_man.GetStaticRouting(controller_Node.Get(0)->GetObject<Ipv4>());
+		  server2_staticrouting->AddNetworkRouteTo (Ipv4Address("7.0.0.0"),Ipv4Mask("255.0.0.0"),2);
 	}
 }
 
@@ -141229,16 +142320,26 @@ int main(int argc, char *argv[])
   wifidevices_180 = wifi_180.Install (Phy_180, Mac_180, dsrc_Nodes);
   wifidevices_182 = wifi_182.Install (Phy_182, Mac_182, dsrc_Nodes);
   wifidevices_184 = wifi_184.Install (Phy_184, Mac_184, dsrc_Nodes);
+	cout << "[DSRC INSTALL CHECK] dsrc_Nodes.GetN()=" << dsrc_Nodes.GetN()
+		<< " wifidevices_184.GetN()=" << wifidevices_184.GetN()
+		<< " Vehicle_Nodes.GetN()=" << Vehicle_Nodes.GetN()
+		<< " RSU_Nodes.GetN()=" << RSU_Nodes.GetN() << endl;
+	for (uint32_t _i = 0; _i < dsrc_Nodes.GetN(); _i++) {
+		Ptr<Node> _n = dsrc_Nodes.Get(_i);
+		cout << "[DSRC NODE CHECK] container_index=" << _i
+			<< " ns3_node_id=" << _n->GetId()
+			<< " device_count=" << _n->GetNDevices() << endl;
+	}
+
   
   NetDeviceContainer enbdevices;
   NetDeviceContainer uedevices;
   NodeContainer LTE_Nodes;
   LTE_Nodes.Add(controller_Node);
-  LTE_Nodes.Add(management_Node);
   
   if (N_Vehicles >0)
   {
-  	if (architecture != 1)
+  	if (architecture != 1 && architecture != 3)
   	{
 	  	  enbdevices = ltehelper->InstallEnbDevice(enbnodes);
 		  uedevices = ltehelper->InstallUeDevice(Vehicle_Nodes);
@@ -141286,7 +142387,14 @@ int main(int argc, char *argv[])
 		}
 	}
 }
-
+  // arch=3: install internet stack on vehicles before DSRC IP assignment
+  // Only assign DSRC IPv4 addresses for SDVN (architecture == 3)
+   if (architecture == 3 && N_Vehicles > 0)
+  {
+    internet.Install(Vehicle_Nodes);
+  }
+if (architecture == 3 && N_Vehicles > 0)
+{
   Ipv4AddressHelper address_dsrc;
   Ipv4AddressHelper address_dsrc_172;
   Ipv4AddressHelper address_dsrc_174;
@@ -141294,7 +142402,7 @@ int main(int argc, char *argv[])
   Ipv4AddressHelper address_dsrc_180;
   Ipv4AddressHelper address_dsrc_182;
   Ipv4AddressHelper address_dsrc_184;
- 
+
   Ipv4InterfaceContainer dsrc_interfaces;
   Ipv4InterfaceContainer dsrc_interfaces_172;
   Ipv4InterfaceContainer dsrc_interfaces_174;
@@ -141302,6 +142410,7 @@ int main(int argc, char *argv[])
   Ipv4InterfaceContainer dsrc_interfaces_180;
   Ipv4InterfaceContainer dsrc_interfaces_182;
   Ipv4InterfaceContainer dsrc_interfaces_184;
+
   address_dsrc.SetBase ("3.0.0.0", "255.0.0.0");
   dsrc_interfaces = address_dsrc.Assign (wifidevices);
   address_dsrc_172.SetBase ("4.0.0.0", "255.0.0.0");
@@ -141316,29 +142425,86 @@ int main(int argc, char *argv[])
   dsrc_interfaces_182 = address_dsrc_182.Assign (wifidevices_182);
   address_dsrc_184.SetBase ("9.0.0.0", "255.0.0.0");
   dsrc_interfaces_184 = address_dsrc_184.Assign (wifidevices_184);
+
+	
+ if (N_RSUs > 0)
+{
+    Ipv4StaticRoutingHelper ipv4RoutingHelper;
+
+    // RSU's WiFi IP on channel 178 (interface 1 = first WiFi interface)
+    // dsrc_Nodes order: [Vehicle_A, Vehicle_B, RSU]
+    // so after address_dsrc.Assign: Vehicle_A=3.0.0.1, Vehicle_B=3.0.0.2, RSU=3.0.0.3
+    Ptr<Ipv4> rsu_ipv4 = RSU_Nodes.Get(0)->GetObject<Ipv4>();
+    Ipv4Address rsu_wifi_ip = rsu_ipv4->GetAddress(2, 0).GetLocal(); // interface 2 = WiFi ch178
+
+    // Controller's CSMA IP (interface 1 = CSMA, loopback is 0)
+    Ptr<Ipv4> ctrl_ipv4 = controller_Node.Get(0)->GetObject<Ipv4>();
+	cout << "[DEBUG] Controller 0 CSMA IP: "
+         << ctrl_ipv4->GetAddress(1, 0).GetLocal() << endl;
+
+    // 1. Vehicles: default route via RSU's WiFi IP (interface 1)
+    for (uint32_t i = 0; i < Vehicle_Nodes.GetN(); i++)
+    {
+        Ptr<Ipv4StaticRouting> sr = ipv4RoutingHelper.GetStaticRouting(
+            Vehicle_Nodes.Get(i)->GetObject<Ipv4>());
+        sr->SetDefaultRoute(rsu_wifi_ip, 1);
+    }
+
+    // 2. RSU: route to vehicle subnets (3.0.0.0/8) via its own WiFi (interface 1)
+    //    route to controller (10.1.1.0/24) via its own CSMA (interface 2)
+    //    (RSU already has direct interfaces on both, so these are host routes)
+    // No extra routes needed — RSU has direct interfaces on both networks
+
+    // 3. All controllers: route to vehicle WiFi subnet via RSU's CSMA IP
+    //    Per proposal: all controllers get read-only network view via CSMA
+    Ipv4Address rsu_csma_ip = rsu_ipv4->GetAddress(1, 0).GetLocal();
+
+    for (uint32_t ci = 0; ci < N_Controllers; ci++)
+    {
+      Ptr<Ipv4> ci_ipv4 = controller_Node.Get(ci)->GetObject<Ipv4>();
+      Ptr<Ipv4StaticRouting> ci_sr = ipv4RoutingHelper.GetStaticRouting(ci_ipv4);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("3.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("4.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("5.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("6.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("8.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("9.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+      ci_sr->AddNetworkRouteTo(Ipv4Address("11.0.0.0"), Ipv4Mask("255.0.0.0"), rsu_csma_ip, 1);
+    }
+}
+
  
- if (architecture != 1)
+} // Only install on LTE nodes if the architecture actually uses LTE (e.g., architecture 2)
+ if (architecture != 1 && architecture != 3)
  {
-	 for (uint32_t u=0; u<LTE_Nodes.GetN(); u++)
-	 {
-	  	Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
-		LTE_Nodes.Get(u)->AddApplication(udp_app);
-		apps.Add(udp_app);
-	 }
-	 apps.Start(Seconds(0.00));
-	 apps.Stop(Seconds(simTime)); 
+     for (uint32_t u=0; u<LTE_Nodes.GetN(); u++)
+     {
+        Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
+        LTE_Nodes.Get(u)->AddApplication(udp_app);
+        apps.Add(udp_app);
+     }
+     apps.Start(Seconds(0.00));
+     apps.Stop(Seconds(simTime)); 
  }
  
- if (architecture == 1)
+ // Install on Vehicle nodes for pure DSRC (1) AND your new SDVN (3)
+ if (architecture == 1 || architecture == 3)
  {
-	 for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
-	 {
-	  	Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
-		Vehicle_Nodes.Get(u)->AddApplication(udp_app);
-		apps.Add(udp_app);
-	 }
-	 apps.Start(Seconds(0.00));
-	 apps.Stop(Seconds(simTime)); 
+
+	// Create a container to hold ALL nodes that need the custom app
+     NodeContainer SDVN_App_Nodes;
+     SDVN_App_Nodes.Add(Vehicle_Nodes);
+     SDVN_App_Nodes.Add(controller_Node); // adds all N_Controllers controller nodes
+    
+    
+     for (uint32_t u = 0; u < SDVN_App_Nodes.GetN(); u++)
+     {
+        Ptr <SimpleUdpApplication> udp_app = Create <SimpleUdpApplication> ();
+        SDVN_App_Nodes.Get(u)->AddApplication(udp_app);
+        apps.Add(udp_app);
+     }
+     apps.Start(Seconds(0.00));
+     apps.Stop(Seconds(simTime)); 
  }
 
  //if (architecture == 0)//centralized architecture
@@ -141361,8 +142527,8 @@ int main(int argc, char *argv[])
 	  	{
 			  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			  {
-			  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u+2));
-				Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_data_alone,udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
+			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+				Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_data_alone,udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
 			  }
 			  Simulator::Schedule (Seconds (t), set_lte_initial_timestamp);
 			  Simulator::Schedule (Seconds (t+0.090), calculate_centralized_metrics);
@@ -141377,7 +142543,7 @@ int main(int argc, char *argv[])
 				  {
 				  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 				  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
-					Simulator::Schedule(Seconds(t+0.000050*u),RSU_dataunicast_alone, udp_app, nu, management_Node.Get(0));
+					Simulator::Schedule(Seconds(t+0.000050*u),RSU_dataunicast_alone, udp_app, nu, controller_Node.Get(rsu_controller_assignment[u]));
 			   	  }
 			   	  Simulator::Schedule (Seconds (t), set_ethernet_initial_timestamp);
 			 }
@@ -141403,7 +142569,7 @@ int main(int argc, char *argv[])
 			
 		  	//DSRC flow instantiation
 		  	double t0 = 0;
-			declare_attackers();  // Set attack flags
+
 			for (double t=t0+0.999; t<simTime-1; t=t+data_transmission_period)//All official data transmissions begin at t=0
 			{	
 				  //Go over all the wifi devices
@@ -141426,18 +142592,30 @@ int main(int argc, char *argv[])
     						}
     						else
     						{
-    							// source = 11;
+    							if ((routing_test == true && (active_attack_variant == 0 || active_attack_variant == 1)) ||
+                                    active_attack_variant == 4 ||
+                                    active_attack_variant == 5 ||
+                                    active_attack_variant == 6 ||
+                                    active_attack_variant == 7)
+    							{
+    								// 5-unit topology: flow 1 = unit 1 (VehA1(2)->VehB1(3))
+									source = 2;
+    								destination = 3;
+    							}
+    							else
+    							{
 								source = 1;
     							destination = 0;
+    							}
     						}
     					}
     					else
     					{
     					
 						srand(t*i);
-				  		destination = rand()%total_size;
+				  		destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 				  		srand(1.15*t*i);
-				  		source = rand()%total_size;
+				  		source = N_Controllers + rand()%var;      // excludes controller IDs 0..N_Controllers-1
 				  		bool found_both = false;
 				  		bool found_source = false;
 				  		bool found_destination = false;
@@ -141569,7 +142747,7 @@ int main(int argc, char *argv[])
 			  		uint32_t z = flow_packet_size;
 			  		uint32_t q = qf;
 			  		Simulator::Schedule (Seconds (t+0.000002*i), add_demanding_flow_struct_nodes, demanding_flow_struct_nodes_inst+i, source, destination, x, z, q);
-			  		if(routing_test == false)
+			  		if(routing_test == false && !use_sumo_mobility)
 			  		{
 			  			Simulator::Schedule(Seconds(t-0.002), update_mobility);
 			  		}
@@ -141585,6 +142763,35 @@ int main(int argc, char *argv[])
 				  //Simulator::Schedule (Seconds (t), set_dsrc_initial_timestamp);
 			}
 			
+			// Phase 4 / D5: Populate is_safety_critical_flow[] once after flow setup.
+			// Proposal Signature S1 (Eq. 3.4): "Priority(p) = HIGH" is a load-bearing
+			// conjunction — attacks must only delay safety-critical packets.
+			// Flow IDs 0..(flows-1) are safety-critical (collision-avoidance / BSM-equivalent);
+			// flow IDs flows..(2*flows-1) are best-effort. The split is explicit rather than
+			// inferred from ID parity, matching the thesis's two-tier QoS model directly.
+			for (uint32_t _f = 0; _f < (uint32_t)(2 * flows); _f++) {
+			    is_safety_critical_flow[_f] = (_f < (uint32_t)flows);
+			    cout << "[FLOW-PRIORITY] flow_id=" << _f
+			         << " is_safety_critical=" << is_safety_critical_flow[_f] << endl;
+			}
+
+			// Initialize dynamic attack configurations
+			declare_attack_states();
+			declare_attackers();
+
+			// Set unique tag for all per-run scratch-level CSV files AFTER
+			// declare_attack_states() has resolved active_attack_variant from
+			// either --attack_number (new path) or --active_attack_variant
+			// (legacy path). Using active_attack_variant means every variant —
+			// including those that never set attack_number — gets a distinct tag.
+			g_sim_tag = "_V" + std::to_string(active_attack_variant)
+			          + "_pct" + std::to_string(attack_percentage)
+			          + g_delay_suffix;
+			
+			if (routing_test) {
+			    hardcode_test_network_attackers();
+			}
+
 			// Initialize attack state before main loop
 			initialise_stub_attack_state();
 			
@@ -141593,16 +142800,38 @@ int main(int argc, char *argv[])
 			  	for (double t=t0+1.000 ; t<simTime-1; t=t+data_transmission_period)
 			  	{	
 			  		  Simulator::Schedule(Seconds(t),clear_delta_at_nodes, delta_at_nodes_inst);
-			  		 
+						// hf_reapply_dp_after_clear / hf_reapply_cp_after_clear are internally
+						// guarded by active_attack_variant and the malicious-node maps, so they
+						// are safe no-ops when no HF attack is active. They must run in BOTH
+						// routing_test and SUMO modes: clear_delta_at_nodes() above wipes
+						// delta_at_nodes_inst at the start of every cycle regardless of mode,
+						// and SUMO's hf_declare_malicious_rsus() injects the attack only once
+						// at attack_start_time with no other periodic re-apply mechanism of its
+						// own — without this running unconditionally, HF attacks (especially DP,
+						// which has no other source of truth) would go dormant after one cycle
+						// in SUMO runs.
+						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_dp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0001), &hf_reapply_cp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0650), &hf_reapply_dp_after_clear);
+						Simulator::Schedule(Seconds(t+0.0650), &hf_reapply_cp_after_clear);
+											
 					  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
-					  {
-					  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u+2));
-						Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,udp_app,Vehicle_Nodes.Get(u),management_Node.Get(0), u);
-					  }
+						{
+							if (architecture != 3)
+							{
+								uint32_t app_index = (architecture == 3) ? u : (u + 2);
+								Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(app_index));
+								Simulator::Schedule(Seconds(t+0.000025*u),send_LTE_routing_data_alone,
+									udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
+							}
+							// architecture=3: vehicle→RSU→Controller relay added in Layer 2
+						}
 					  //calculate the routing solution
 					  //unicast the solution back to nodes
-					  
-					  Simulator::Schedule(Seconds(t+0.034500),run_optimization_link_lifetime);
+					  if(routing_test == false){
+						Simulator::Schedule(Seconds(t+0.034500),run_optimization_link_lifetime);
+					  }
+					  					  
 					  Simulator::Schedule(Seconds(t+0.034800),update_flows);
 					  Simulator::Schedule(Seconds(t+0.034900+(2*(flows+1)*0.000050)),filter_flows);
 					  
@@ -141658,10 +142887,14 @@ int main(int argc, char *argv[])
 					  {
 					  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 					  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
-						Simulator::Schedule(Seconds(t+0.000050*u),RSU_routing_statusdataunicast_alone, udp_app, nu, management_Node.Get(0));
+						
+						Ptr<Node> rsu_uplink_dest = (architecture == 3) ? 
+				    controller_Node.Get(rsu_controller_assignment[u]) : // SDVN: nearest controller per proposal
+				    controller_Node.Get(rsu_controller_assignment[u]);  // other: same assignment
+						Simulator::Schedule(Seconds(t+0.000050*u),RSU_routing_statusdataunicast_alone, udp_app, nu, rsu_uplink_dest);
 						if (u == (RSU_Nodes.GetN() - 1))
 						{
-							Simulator::Schedule(Seconds(t+0.000060*u),RSU_flowdata_unicast_alone, udp_app, nu, management_Node.Get(0));
+							Simulator::Schedule(Seconds(t+0.000060*u),RSU_flowdata_unicast_alone, udp_app, nu, rsu_uplink_dest);
 						}
 						
 						//Simulator::Schedule (Seconds (t), set_ethernet_initial_timestamp);
@@ -141718,10 +142951,11 @@ int main(int argc, char *argv[])
 		{
 			//for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 			//{
-		  	srand(data_transmission_frequency*t);
-	  		uint32_t destination = rand()%total_size;
+			  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
+	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 7;
-	  		cout<<"destination id: "<<destination+2<<endl;
+	  		// cout<<"destination id: "<<destination+2<<endl;
+			cout<<"destination id: "<<destination+N_Controllers<<endl;
 	  		Simulator::Schedule (Seconds (t+0.10), send_distributed_packets, destination);
 			Simulator::Schedule (Seconds (t+0.10), set_dsrc_initial_timestamp);
 			Simulator::Schedule (Seconds (t+(data_transmission_period - 0.005)), calculate_aodv_metrics);
@@ -141773,7 +143007,7 @@ int main(int argc, char *argv[])
 		  {
 		  	Ptr <Node> nu = DynamicCast <Node> (RSU_Nodes.Get(u));	
 		  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (RSU_apps.Get(u));
-			Simulator::Schedule(Seconds(0.4300+0.000050*u),RSU_metadata_uplink_unicast, udp_app, nu, controller_Node.Get(0));
+			Simulator::Schedule(Seconds(0.4300+0.000050*u),RSU_metadata_uplink_unicast, udp_app, nu, controller_Node.Get(rsu_controller_assignment[u]));
 		  }
 	   }
 	  if (N_Vehicles > 0)
@@ -141781,7 +143015,7 @@ int main(int argc, char *argv[])
 	  	  //unicast metadata from vehicles to controller using LTE uplink - only in the first data cycle
 		  for (uint32_t u=0; u<Vehicle_Nodes.GetN(); u++)
 		  {
-		  	Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u+2));
+		  		Ptr <SimpleUdpApplication> udp_app = DynamicCast <SimpleUdpApplication> (apps.Get(u));
 			Simulator::Schedule(Seconds(0.4300+0.000025*u),send_LTE_metadata_uplink_alone,udp_app,Vehicle_Nodes.Get(u),controller_Node.Get(0), u);
 
 		  } 
@@ -141888,9 +143122,10 @@ int main(int argc, char *argv[])
 	  	for (double t=1.100; t<simTime-1; t=t+data_transmission_period)
 		{
 		  	srand(data_transmission_frequency*t);
-	  		uint32_t destination = rand()%total_size;
+	  		uint32_t destination = N_Controllers + rand()%var; // excludes controller IDs 0..N_Controllers-1
 	  		//uint32_t destination = 5;
-	  		cout<<"destination id: "<<destination+2<<endl;
+	  		// cout<<"destination id: "<<destination+2<<endl;
+			cout<<"destination id: "<<destination+N_Controllers<<endl;
 	  		Simulator::Schedule (Seconds (t), send_hybrid_packets, destination);
 	  		//Simulator::Schedule (Seconds (t+0.100), calculate_centralized_metrics_routing); 
 		}
@@ -141910,10 +143145,17 @@ int main(int argc, char *argv[])
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/MacRx", MakeCallback (&MacRx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/$ns3::RegularWifiMac/MacTx", MakeCallback (&MacTx) );
   Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Enqueue",MakeCallback (&Enqueue));
+  Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml");  
-
+  AnimationInterface anim("/home/nipuni/ns-allinone-3.35/ns-3.35/routing.xml");  
+  anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
+  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
+  // builds custom raw packets (manual WifiMacHeader + custom tags in the
+  // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
+  // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
+  // NetAnim still animates packet movement fine without metadata.
+          
   if (N_RSUs > 0)
   {
 	  for (uint32_t i=0; i<RSU_Nodes.GetN() ; i++)
@@ -141921,6 +143163,7 @@ int main(int argc, char *argv[])
 	  	anim.UpdateNodeColor(RSU_Nodes.Get(i),255,255,0);//RSUs in yellow color
 	  	Ptr <Node> ni = DynamicCast <Node> (RSU_Nodes.Get(i));
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
+	  	anim.UpdateNodeDescription(RSU_Nodes.Get(i), "RSU-" + std::to_string(i+1));
 	  }
   }
   
@@ -141931,6 +143174,7 @@ int main(int argc, char *argv[])
 	  	anim.UpdateNodeColor(Vehicle_Nodes.Get(i),0,255,0);//vehicle nodes are green color
 	  	Ptr <Node> ni = DynamicCast <Node> (Vehicle_Nodes.Get(i));
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
+	  	anim.UpdateNodeDescription(Vehicle_Nodes.Get(i), "V-" + std::to_string(i+1));
 	  }
 	   
 	  if (architecture !=1)
@@ -141946,16 +143190,18 @@ int main(int argc, char *argv[])
   
     if (architecture != 1)
     {
-	    anim.UpdateNodeColor(controller_Node.Get(0),255,0,255);//controller node is purple color.
-	    Ptr <Node> node_controller = DynamicCast <Node> (controller_Node.Get(0));
-	    anim.UpdateNodeSize(node_controller->GetId(),20.0,20.0);
-	    
-	    anim.UpdateNodeColor(management_Node.Get(0),255,0,0);//management node is red color.
-	    Ptr <Node> node_management = DynamicCast <Node> (management_Node.Get(0));
-	    anim.UpdateNodeSize(node_management->GetId(),20.0,20.0);
+      // Color and label all N_Controllers controller nodes
+      for (uint32_t ci = 0; ci < N_Controllers; ci++)
+      {
+        anim.UpdateNodeColor(controller_Node.Get(ci), 255, 0, 255); // purple/magenta
+        Ptr<Node> node_ctrl = DynamicCast<Node>(controller_Node.Get(ci));
+        anim.UpdateNodeSize(node_ctrl->GetId(), 40.0, 40.0); // 2x larger than RSUs/vehicles
+        anim.UpdateNodeDescription(controller_Node.Get(ci),
+            "CTRL-" + std::to_string(ci+1));
+      }
     }
  
-  //AnimationInterface anim("/home/user/ns-allinone-3.35/ns-3.35/routing.xml"); 
+  //AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
   for (uint32_t i=0; i<Custom_Nodes.GetN() ; i++)
@@ -141967,42 +143213,109 @@ int main(int argc, char *argv[])
   */
   
   Simulator::Stop(Seconds(simTime));
+  
+    // Position override: only apply the 4-node test layout when NOT running Attacks 5, 6, 7, 8
+    // The unified 15-node test topology already assigns positions for all nodes
+    // via the custom PositionAllocator above. No need to override positions here.
+    if (routing_test &&
+        active_attack_variant != 0 &&
+        active_attack_variant != 1 &&
+        active_attack_variant != 4 &&
+        active_attack_variant != 5 &&
+        active_attack_variant != 6 &&
+        active_attack_variant != 7)
+    {
+        Ptr<MobilityModel> mob0 = NodeList::GetNode(2)->GetObject<MobilityModel>(); // Vehicle 0 (Node ID 2)
+        Ptr<MobilityModel> mob1 = NodeList::GetNode(3)->GetObject<MobilityModel>(); // Vehicle 1 (Node ID 3)
+        Ptr<MobilityModel> mobRSU = RSU_Nodes.Get(0)->GetObject<MobilityModel>();   // The RSU
+
+        mobRSU->SetPosition(Vector(500.0, 150.0, 0.0));
+               mob0->SetPosition(Vector(400.0, 100.0, 0.0));
+
+               mob1->SetPosition(Vector(600.0, 100.0, 0.0));
+    }
+
+// =====================================================
+// FADE CSV INITIALIZATION
+// =====================================================
+std::system("mkdir -p results_routing");
+fade_csv.open("results_routing/fade_results" + g_sim_tag + ".csv");
+fade_csv << "FlowID,"
+         << "AnomalyType,"
+         << "Detected,"
+         << "DetectionTime,"
+         << "LocalisedFrom,"
+         << "LocalisedTo,"
+         << "DuplicatingNode"
+         << std::endl;
+
+// =====================================================
+// START FADE
+// Pre-configure all flows once routing tables are stable
+// For routing_algorithm=4 + routing_test=true, proposed_routing_tables is never
+// written by the normal dijkstra path, so we seed it explicitly at t=1.060
+// (after run_proposed_RL at t=1.035, before fade_configure at t=1.080).
+// =====================================================
+// Seed function: writes the known routing_test paths into proposed_routing_tables
+// so fade_configure_flow and hf_declare_malicious_rsus can find all 5 RSUs.
+// 5-unit topology: path i = VehA_i -> RSU_i -> VehB_i
+//   Unit 0: 0  -> 15 -> 1
+//   Unit 1: 2  -> 16 -> 3
+//   Unit 2: 4  -> 17 -> 5
+//   Unit 3: 6  -> 18 -> 7
+//   Unit 4: 8  -> 19 -> 9
+// NS-3 3.35 Simulator::Schedule cannot accept lambdas — must be a plain function.
+// seed_routing_test_tables is defined as a free function below and called via pointer.
+Simulator::Schedule(Seconds(1.060), &seed_routing_test_tables);
+Simulator::Schedule(Seconds(1.080), &fade_configure_all_flows);  // FIX: after seed at t=1.060 and run_proposed_RL at t=1.035
+// Re-walk delta_at_nodes_inst 0.5s before attack fires so both eFADE's
+// monitored path and the attack's RSU target reflect current vehicle positions.
+// Uses fade_reconfigure_all_flows (not fade_configure_all_flows) so the
+// configured=true early-return in fade_configure_flow is bypassed.
+if (attack_start_time > 2.0)
+    Simulator::Schedule(Seconds(attack_start_time - 0.5), &fade_reconfigure_all_flows);
+
+// Detection loop starts at t=1.0, repeating every FADE_EPOCH_SEC
+Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
+
+
+  OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
   Simulator::Run();
+  export_tcam_snapshot_baseline();
+
+// =====================================================
+// SAVE FADE RESULTS
+// =====================================================
+if (fade_detection_active)
+{
+    for (auto &entry : fade_flow_config)
+    {
+        uint32_t            flow_id = entry.first;
+        FadeDetectionResult &res    = fade_results[flow_id];
+
+        fade_csv << flow_id                << ","
+                 << res.anomaly_type       << ","
+                 << res.detected           << ","
+                 << res.detection_time     << ","
+                 << res.loc_from           << ","
+                 << res.loc_to             << ","
+                 << res.duplicating_node
+                 << std::endl;
+    }
+
+    fade_csv.close();
+
+    // ── FADE: write final metrics row for this run ───────────────────────────────
+    fade_save_metrics();
+}
+
+// write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
+// and is called once per data-gathering cycle — no post-simulation call needed.
+
   Simulator::Destroy();
   
  
   //apb.SetFinish();
   return 0;  
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
