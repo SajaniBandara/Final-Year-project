@@ -1,6 +1,6 @@
 # Detection Pipeline Implementation Plan
 
-> **Reference:** `main (10).tex`
+> **Reference:** `main_Metrices_Updated.tex`
 > Sections covered: §Lightweight Rule-Based Detection Engine, §Federated LSTM Anomaly
 > Detection, §Data Collection, §Performance Evaluation and Benchmarking.
 >
@@ -12,6 +12,8 @@
 > individual detection headers. What is missing is (a) threshold calibration via
 > regression, (b) the composite LRAD-OBU / LRAD-RSU wiring, (c) the full Python
 > Federated LSTM pipeline, and (d) the performance evaluation harness.
+>
+> **Last verified against codebase:** 2026-06-29 (branch S10, commit 40367f4)
 
 ---
 
@@ -32,12 +34,16 @@
 | β grid search `{0.7, 0.8, 0.9, 0.95}` | §Simulation settings | — | **Not implemented** |
 | k grid search `{1, 2, 3}` | §Simulation settings | — | **Not implemented** |
 | Robustness perturbation ±{10%, 20%, 30%} | §Simulation settings | — | **Not implemented** |
-| LSTM training data logger | `eq:lstm_input` | `lstm_logger.h` | Implemented |
+| LSTM training data logger | `eq:lstm_input` | `lstm_logger.h` | **Not implemented** — file does not exist |
 | LSTM preprocessing (Z-score, windowing) | §Federated LSTM | `lstm_pipeline/src/preprocessor.py` | **Not implemented** |
 | LSTM model (2-layer, autoencoder) | `eq:lstm_hidden`, `eq:anomaly_score` | `lstm_pipeline/src/lstm_model.py` | **Not implemented** |
 | Local trainer + threshold calibration | `eq:lstm_detection`, `eq:lstm_threshold` | `lstm_pipeline/src/local_trainer.py` | **Not implemented** |
 | BRFA-v2 federated aggregation | `alg:brfa_v2`, `eq:fed_robust` | `lstm_pipeline/src/fed_aggregator.py` | **Not implemented** |
-| Evaluator (MCC, DR, FPR, latency) | §Primary Performance Metrics | `lstm_pipeline/src/evaluator.py` | **Not implemented** |
+| Evaluator (M1–M8 per variant and ablation) | §Primary Performance Metrics | `lstm_pipeline/src/evaluator.py` | **Not implemented** |
+| M7 TVR (Safety-Critical Threshold Violation Rate) | `eq:tvr` | `routing.cc` (lines 114663–117520) | **Implemented** — simulation outputs cur_TVR%, avg_TVR% |
+| M8 UCR (Unauthorized Copy Rate) | `eq:ucr` | `routing.cc` (lines 114674–117520) | **Implemented** — simulation outputs cur_UCR%, avg_UCR% |
+| External baseline — TAP | §External Baselines | `tap_detection.h` | **Implemented** (stub) |
+| External baseline — eFADE | §External Baselines | `efade_detection.h` | **Implemented** (stub) |
 | Ablation baselines A1–A5 | §Internal Ablation Baselines | — | **Not implemented** |
 | Benign simulation runs (5 seeds) | §Data Collection | — | **Not run** |
 | Attack simulation runs (240 total) | §Data Collection | — | Partial (Attacks 2, 5–8 only) |
@@ -297,10 +303,25 @@ Each run: 300 s simulation, 1 Hz data collection, `--training=1` flag.
 
 Attack percentage allocation:
 - 0%, 20%, 40%, 60%, 80%, 100%
-- Attacker count: `⌊0.01 × p × 264⌋` nodes
-- Control-plane variants (1, 3, 5, 7): attackers allocated among RSUs
-- Data-plane variants (2, 4, 6, 8): attackers allocated among vehicles and RSUs
-- Controller attackers: p < 33% → 1; 33–66% → 2; ≥ 66% → 3; 100% → 4
+
+**Control-plane variants (1, 3, 5, 7) — Controller compromise (threshold ladder):**
+Attackers target the 4 SDVN controllers exclusively. The number of compromised
+controllers is derived deterministically from `attack_percentage` in
+`attack_declaration.h:declare_attackers()`:
+- p < 10% → 0 controllers compromised
+- 10% ≤ p < 33% → 1 controller compromised
+- 33% ≤ p < 66% → 2 controllers compromised
+- p ≥ 66% → 3 controllers compromised
+- p = 100% → all 4 controllers compromised
+
+All RSUs whose assigned controller is compromised are marked indirectly malicious
+(ground truth written into `is_malicious_node[variant][rsu_node_id]`).
+
+**Data-plane variants (2, 4, 6, 8) — Probabilistic node assignment:**
+`⌊0.01 × p × 264⌋` attackers are drawn from the 264 non-controller nodes
+(200 vehicles + 64 RSUs) via an independent stochastic draw per node at rate p%.
+Attacks 2 and 4 may assign to both vehicles and RSUs; Attack 4 targets RSU
+TCAM flooding via RSU nodes specifically (see `tcam_attack_helper.h:~line 455`).
 
 ### 4.2 Run Status
 
@@ -347,18 +368,30 @@ LSTM training data (`--training=1`) has not been collected for any variant yet �
 
 ### 5.3 Primary Performance Metrics (from Proposal §Primary Performance Metrics)
 
-| ID | Metric | Formula / Definition | Target |
-|---|---|---|---|
-| M1 — MCC | Matthews Correlation Coefficient | `(TP·TN − FP·FN) / √((TP+FP)(TP+FN)(TN+FP)(TN+FN))` | Primary detection quality metric |
-| M2 — DR | Per-variant Detection Rate | TP / (TP + FN) per attack variant | Independent per variant (8 values) |
-| M3 — FPR | False Positive Rate | FP / (FP + TN) | ≤ 1% (both lightweight and full mode) |
-| M4 — L_mit | Mitigation latency | Attack onset → smart contract quarantine (`eq:quarantine`) | ≤ 100 ms |
-| M5 — PDR | Packet Delivery Ratio | Delivered / sent, safety-critical packets | Evaluated under attack with/without MOBIGUARD |
-| M6 — L_e2e | End-to-End Latency | Mean per-packet latency across all hops | ≤ 100 ms safety-critical bound |
+| ID | Metric | Formula / Definition | Target | Simulation Status |
+|---|---|---|---|---|
+| M1 — MCC | Matthews Correlation Coefficient | `(TP·TN − FP·FN) / √((TP+FP)(TP+FN)(TN+FP)(TN+FN))` | Primary detection quality metric | In CSV output |
+| M2 — DR | Per-variant Detection Rate | TP / (TP + FN) per attack variant | ≥ 95% per variant | In CSV output |
+| M3 — FPR | False Positive Rate | FP / (FP + TN) | ≤ 1% (both modes) | In CSV output |
+| M4 — L_mit | Mitigation latency | Attack onset → smart contract quarantine (`eq:quarantine`) | ≤ 100 ms | In CSV (avg_mit column) |
+| M5 — PDR | Packet Delivery Ratio | Delivered / sent, safety-critical packets | Evaluated under attack with/without MOBIGUARD | In CSV (cur_PDR/avg_PDR) |
+| M6 — L_e2e | End-to-End Latency | Mean per-packet latency across all hops | ≤ 100 ms safety-critical bound | In CSV (cur_lat/avg_lat) |
+| M7 — TVR | Safety-Critical Threshold Violation Rate | `\|{p ∈ P_crit : δ_p > Δ_max}\| / \|P_crit\|` | ≈ 0 benign; > 0 under Attacks 1–4; returns to 0 post-quarantine | **Implemented** — routing.cc `calculate_tvr_metric()`, CSV cur_TVR%/avg_TVR% |
+| M8 — UCR | Unauthorized Copy Rate | `\|{p ∈ P_total : ∃ d'∉P(s,d), p∈R(d',W)}\| / \|P_total\|` | 0 benign; > 0 under Attacks 5–8; returns to 0 post-quarantine | **Implemented** — routing.cc `calculate_ucr_metric()`, CSV cur_UCR%/avg_UCR% |
 
-MCC, DR, FPR are already computed by the existing simulation output (columns in
-`MOBIGUARD_Attack{N}_{pct}.csv`). M4 (mitigation latency) and M5, M6 (PDR, E2E latency)
-are also in the existing CSV output.
+M1–M6 are in the existing CSV output columns. M7 and M8 were added in commit `40367f4`
+(branch S10); their per-variant analysis will be extracted by `evaluator.py`.
+
+**Note on M7 vs M6:** M6 measures mean latency over all packets, diluting extreme
+safety-critical delays. M7 counts only packets whose per-hop delay definitively
+exceeds Δ_max — the precise condition of a successful Selective Time Delay attack.
+M7 is compared against baselines B1–B3 to show their failure to suppress violations
+under vehicular mobility.
+
+**Note on M8 vs M5:** M5 (PDR) stays at 100% under passive hidden forwarding (Attacks
+7–8) because the original packet path is unaffected. M8 is the only metric that
+definitively exposes passive hidden forwarding by detecting copies at unauthorized
+destinations via blockchain-committed forwarding policy.
 
 ---
 
@@ -450,32 +483,56 @@ Implements `alg:brfa_v2` exactly:
 
 ### 6.6 `lstm_pipeline/src/evaluator.py` (Step 8)
 
-Computes all six metrics (M1–M6) per attack variant and ablation:
+Computes all eight metrics (M1–M8) per attack variant and ablation:
 ```python
 # M1: MCC per variant and overall
-# M2: DR per variant
-# M3: FPR (lightweight mode and full mode separately)
-# M4: Mitigation latency from simulation CSV (avg_mit column)
+# M2: DR per variant (target ≥ 95%)
+# M3: FPR (lightweight mode and full mode separately; target ≤ 1%)
+# M4: Mitigation latency from simulation CSV (avg_mit column; target ≤ 100 ms)
 # M5: PDR from simulation CSV (cur_PDR / avg_PDR columns)
-# M6: E2E latency from simulation CSV (cur_lat / avg_lat columns)
+# M6: E2E latency from simulation CSV (cur_lat / avg_lat columns; target ≤ 100 ms)
+# M7: TVR from simulation CSV (cur_TVR% / avg_TVR% columns) — Attacks 1–4 only
+# M8: UCR from simulation CSV (cur_UCR% / avg_UCR% columns) — Attacks 5–8 only
 # Output: results/metrics/{variant}_{ablation}.json
 ```
 
 ---
 
-## 7. Implementation Order
+## 7. Files to Create
+
+| File | Step | Status |
+|---|---|---|
+| `scratch/lstm_logger.h` | Step 1 | **Not started** |
+| `lstm_pipeline/src/rule_calibrator.py` | Step 2.5 | Not started |
+| `lstm_pipeline/src/preprocessor.py` | Step 4 | Not started |
+| `lstm_pipeline/src/lstm_model.py` | Step 5 | Not started |
+| `lstm_pipeline/src/local_trainer.py` | Step 6 | Not started |
+| `lstm_pipeline/src/fed_aggregator.py` | Step 7 | Not started |
+| `lstm_pipeline/src/evaluator.py` | Step 8 | Not started |
+| `lstm_pipeline/src/pipeline.py` | Step 9 | Not started |
+
+---
+
+## 8. Implementation Order (updated)
 
 ```
-Step 1  (done)  — lstm_logger.h: LSTM training data logger
-Step 2          — Run 5 benign simulations (--training=1, 5 seeds, 0% attack)
-Step 2.5        — rule_calibrator.py: fit δ₀, α_ρ, α_v; select β, k
-Step 2.6        — Update s1_detection.h with calibrated values
+Step 1          — lstm_logger.h: implement LSTM training data logger
+                  (was incorrectly listed as "done" — file does not exist)
+Step 2          — Run 5 benign simulations (seeds 1–5, 0% attack, --training=1)
+Step 2.5        — rule_calibrator.py: fit δ₀, α_ρ, α_v via OLS; β grid {0.7,0.8,0.9,0.95};
+                  k grid {1,2,3}; robustness ±{10%,20%,30%}
+Step 2.6        — Update s1_detection.h with calibrated δ₀, α_ρ, α_v, β, k
 Step 3          — Run 240 attack simulations (--training=1, all 8 variants × 6 pct × 5 seeds)
-Step 4          — preprocessor.py: Z-score, windowing, train/val/test split
-Step 5          — lstm_model.py: 2-layer LSTM + autoencoder + sigmoid head
-Step 6          — local_trainer.py: grid search η, B, E; calibrate θ^(k)
-Step 7          — fed_aggregator.py: BRFA-v2
-Step 8          — evaluator.py: M1–M6 per variant and ablation
-Step 9          — pipeline.py: end-to-end orchestration
-Step 10         — Ablation runs A1–A5 (requires disabling components per config)
+                  Priority: Attacks 1, 3, 4 (not yet collected per §4.2)
+Step 4          — preprocessor.py: Z-score (benign stats per RSU), 10s/5s windowing,
+                  70/15/15 split by seed, stratified by variant+percentage
+Step 5          — lstm_model.py: 2-layer LSTM (64, 32 units) + autoencoder + sigmoid head
+Step 6          — local_trainer.py: Adam, grid search η∈{1e-4,1e-3,1e-2}, B∈{32,64,128},
+                  E∈{1,3,5}; calibrate θ^(k) = μ_A + z_α·σ_A; save weights+hash
+Step 7          — fed_aggregator.py: BRFA-v2; R∈{50,100,150} rounds
+Step 8          — evaluator.py: M1–M8 per variant and per ablation
+Step 9          — pipeline.py: end-to-end orchestration (data → train → aggregate → eval)
+Step 10         — Ablation runs A1–A5 (disable components per config)
+Step 11         — Composite OBU (D_OBU) and LRAD-RSU unified functions in routing.cc
+                  (required for ablation A1 rule-only and A2 LSTM-only modes)
 ```

@@ -114922,6 +114922,8 @@ void initialise_stub_attack_state()
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
+	// lstm_logger_init is called from main() after cmd.Parse() so the training
+	// flag and N_RSUs are both resolved before the logger is set up.
 
 
 	switch (active_attack_variant)
@@ -117175,6 +117177,9 @@ void calculate_ucr_metric()
 
 static const int TCAM_HW_SIZE = 256;
 #include "tcam_detection.h"
+#include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
+                                     // g_slowpath_hit_count extern'd inside header;
+                                     // defined below at line ~120273 in this file.
 void write_security_metrics_csv()
 {
 	fstream fout;
@@ -117561,6 +117566,9 @@ void calculate_performance_evaluation_metrics()
 		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
 		s1_rsu_obs_sum[_r]   = 0.0;
 		s1_rsu_obs_count[_r] = 0;
+
+		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
+		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -120265,7 +120273,7 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // function). The extern declaration lets check_delivery_and_retransmit read
 // it without moving the include.
 extern int g_tcam_rule_count[300];
-int g_slowpath_hit_count[300] = {0};
+int g_slowpath_hit_count[300] = {0}; // satisfies the extern in lstm_logger.h
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
 // (packet matched immediately), TCAM_SLOWPATH_S when the table is full
@@ -140957,6 +140965,7 @@ int main(int argc, char *argv[])
     // Phase 1 / D1: Reproducibility.
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
+    cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
     // S1 detection tunable parameters (Eq. 3.11–3.14, proposal §3462–3486).
     // Default values are initial candidates; final values calibrated from benign SUMO traces.
@@ -142846,6 +142855,7 @@ if (architecture == 3 && N_Vehicles > 0)
 
 			// Initialize attack state before main loop
 			initialise_stub_attack_state();
+			lstm_logger_init(N_RSUs); // eq:lstm_input — called here so training flag + N_RSUs are resolved
 			
 			if (N_Vehicles > 0)
 			{
