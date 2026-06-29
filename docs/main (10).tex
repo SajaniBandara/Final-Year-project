@@ -1159,6 +1159,20 @@ frameworks.
 
                         \hline
                         $\mathcal{L}_w, W, H(p)$ & Witness short-term cache, observation time window, and cryptographic packet hash, respectively. \\
+
+                        \hline
+                       $\mathcal{P}_{crit}$ &
+                        Set of safety-critical (high-priority) packets
+                        used in TVR computation
+                          (Eq.~\ref{eq:tvr}). \\
+                        \hline
+                        $\text{TVR}, \text{UCR}$ &
+                        Safety-Critical Threshold Violation Rate and
+                        Unauthorized Copy Rate; attack-class-specific
+                        evaluation metrics for selective time delay
+                        and hidden forwarding respectively
+                        (Eqs.~\ref{eq:tvr}, \ref{eq:ucr}). \\   
+                        
                         \hline
                         $\alpha_w, \beta_w, f$ & Signed duplication alert, signed non-forwarding alert, and maximum number of local Byzantine nodes, respectively. \\
                         \hline
@@ -3420,6 +3434,80 @@ attack and post-mitigation to quantify the latency restoration
 effectiveness of the proposed framework relative to the three external
 baselines.
 
+\textbf{M7 — Safety-Critical Threshold Violation Rate (TVR):}
+Existing metrics L$_{e2e}$ (M6) measure mean latency over all
+packets, diluting extreme delays in safety-critical traffic with
+normal traffic and conflating legitimate handoff latency with
+attack-induced delay. TVR instead measures the fraction of
+safety-critical packets whose per-hop forwarding delay
+definitively exceeds the safety threshold $\Delta_{max}$ ---
+the precise condition constituting a successful Selective Time
+Delay Attack. The TVR is given in Equation~\eqref{eq:tvr}.
+\begin{equation}
+\text{TVR} = \frac{\left|\left\{
+p \in \mathcal{P}_{crit} :
+\delta_p(v,r,t) > \Delta_{max}
+\right\}\right|}{|\mathcal{P}_{crit}|}
+\label{eq:tvr}
+\end{equation}
+As given in Equation~\eqref{eq:tvr},
+$\mathcal{P}_{crit} = \{p : \text{Priority}(p) =
+\textsc{High}\}$ is the set of safety-critical packets,
+and $\delta_p(v,r,t)$ is the per-hop forwarding delay
+anchored to the distributed time reference $T_{ref}(t)$
+(Eq.~\ref{eq:delay_updated}), ensuring that
+handoff-induced delay is normalised out before the
+threshold comparison. Under no attack, TVR $\approx 0$;
+under Attack Variants~1--4, TVR rises directly
+proportional to attack intensity; and post-quarantine,
+TVR returns toward 0. TVR is evaluated per attack variant
+and per attack percentage, and compared against all three
+external baselines (B1--B3) to quantify their failure
+to suppress threshold violations under mobility.
+
+\textbf{M8 — Unauthorized Copy Rate (UCR):}
+\ac{PDR} (M5) measures delivery to the authorized
+destination, which remains at 100\% under passive hidden
+forwarding (Attack Variants~7--8) because the original
+packet path is unaffected --- the attack is entirely
+invisible to PDR. UCR instead directly measures the
+fraction of transmitted packets for which at least one
+copy was received at an unauthorized destination,
+definitively capturing all four hidden forwarding variants.
+The UCR is given in Equation~\eqref{eq:ucr}.
+\begin{equation}
+\text{UCR} = \frac{\left|\left\{
+p \in \mathcal{P}_{total} :
+\exists\, d' \notin \mathcal{P}(s_p, d_p),\;
+p \in \mathcal{R}(d', W)
+\right\}\right|}{|\mathcal{P}_{total}|}
+\label{eq:ucr}
+\end{equation}
+As given in Equation~\eqref{eq:ucr},
+$\mathcal{P}(s_p, d_p)$ is the blockchain-committed
+authorised forwarding policy for packet $p$ from
+source $s_p$ to destination $d_p$
+(Eq.~\ref{eq:policy_commit}),
+$\mathcal{R}(d', W)$ is the set of packet hashes
+received at node $d'$ within observation window $W$,
+and $\mathcal{P}_{total}$ is the total set of
+transmitted packets. Under no attack, UCR $= 0$ exactly;
+under Attack Variants~5--8, UCR $> 0$; and
+post-quarantine, UCR returns to 0. For active hidden
+forwarding variants (5, 6), the unauthorized copy
+carries modified content confirmed by
+$\textsc{ML-DSA-87.Verify} = 0$; for passive
+variants (7, 8), the content is unmodified but the
+unauthorized destination $d' \notin \mathcal{P}(s_p, d_p)$
+remains detectable via the blockchain-committed policy,
+making UCR the only metric in the set that
+definitively exposes passive hidden forwarding.
+UCR is evaluated per attack variant and per attack
+percentage, and compared against all three external
+baselines (B1--B3).
+
+
+
 
 \section{Simulation settings}
 
@@ -3772,7 +3860,8 @@ One-time ceremony among 64 RSUs pre-simulation
             $T_{fwd}$ (forwarding deadline) & 50\,ms ($= \Delta_{max}$) \\
             \hline
             $W$ (witness observation window) & [tbd: $\{5, 10, 15\}$\,s]; $\leq 9$\,s zone residence bound \\
-
+                
+    
              \hline
             $T_{min}^{ctrl}$ (controller trust threshold,
             Eq.~\ref{eq:sc_revoke}) &
@@ -3796,6 +3885,20 @@ One-time ceremony among 64 RSUs pre-simulation
             0, 1, 2 compromised controllers evaluated;
             PBFT tolerates $f < n/3$ ($\leq 1$
             Byzantine controller) \\
+             \hline
+          TVR target (M7, Eq.~\ref{eq:tvr}) &
+          TVR $\approx 0$ under no attack;
+          evaluated per variant and attack percentage;
+          post-quarantine return to $\approx 0$
+          confirms mitigation effectiveness \\
+          \hline
+          UCR target (M8, Eq.~\ref{eq:ucr}) &
+          UCR $= 0$ under no attack;
+          UCR $> 0$ under Attacks~5--8;
+          post-quarantine return to 0 confirms
+          mitigation; only metric capturing passive
+          hidden forwarding (Attacks~7--8) \\
+        
 
 \end{longtable}
 
