@@ -149,7 +149,7 @@ bool use_sumo_mobility = true; // when true + routing_test==false, load Ns2Mobil
                                 // SUMO trace instead of synthetic grid/random mobility
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
 int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
-int maxspeed = 80;	
+int maxspeed = 150;
 
 int paper = 1; //0-optimization, 1 -architecture
 
@@ -6802,6 +6802,38 @@ void CustomDataUnicastTag_Routing::SetdestinationId(uint32_t destination_id)
 	m_destinationId = destination_id;
 }
 
+// CryptoAnchorTag — carries SHA3-512(ML-DSA-87 sig) reference + HMAC tag per packet.
+// 129 bytes: 64 (sig_hash) + 64 (hmac_tag) + 1 (flags).
+// bit0=sig_valid, bit1=stark_timing_ok, bit2=stark_hop_ok
+class CryptoAnchorTag : public Tag {
+public:
+    static TypeId GetTypeId(void) {
+        static TypeId tid = TypeId("CryptoAnchorTag")
+            .SetParent<Tag>().AddConstructor<CryptoAnchorTag>();
+        return tid;
+    }
+    TypeId GetInstanceTypeId(void) const override { return GetTypeId(); }
+    uint32_t GetSerializedSize(void) const override { return 129; }
+    void Serialize(TagBuffer i) const override {
+        i.Write(m_sig_hash, 64); i.Write(m_hmac_tag, 64); i.WriteU8(m_flags);
+    }
+    void Deserialize(TagBuffer i) override {
+        i.Read(m_sig_hash, 64); i.Read(m_hmac_tag, 64); m_flags = i.ReadU8();
+    }
+    void Print(std::ostream& os) const override { os << "CryptoAnchorTag"; }
+    void SetSigHash(const uint8_t* h)  { memcpy(m_sig_hash, h, 64); }
+    void SetHmacTag(const uint8_t* h)  { memcpy(m_hmac_tag, h, 64); }
+    void SetFlags(uint8_t f)           { m_flags = f; }
+    const uint8_t* GetSigHash() const  { return m_sig_hash; }
+    uint8_t GetFlags() const           { return m_flags; }
+    CryptoAnchorTag() : m_flags(0) {
+        memset(m_sig_hash, 0, 64); memset(m_hmac_tag, 0, 64);
+    }
+private:
+    uint8_t m_sig_hash[64];
+    uint8_t m_hmac_tag[64];
+    uint8_t m_flags;
+};
 
 class CustomFlowDataUplinkTag1 : public Tag {
 public:
@@ -114707,7 +114739,7 @@ bool s5_detection_active = false;    // master enable for S5 (Active HF CP)  —
 bool s6_detection_active = false;    // master enable for S6 (Active HF DP)  — read by s6_detection.h
 bool s7_detection_active = false;    // master enable for S7 (Passive HF CP) — read by s7_detection.h
 bool s8_detection_active = false;    // master enable for S8 (Passive HF DP) — read by s8_detection.h
-bool fade_detection_active = true;   // master enable for FADE — read by efade_detection.h
+bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -114826,6 +114858,9 @@ void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
 void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
+#include "crypto_layer.h"
+#include "dkg_setup.h"
+#include "blockchain_sim.h"
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
@@ -114856,6 +114891,14 @@ void initialise_stub_attack_state()
 
 
 	tap_reset_state(total_size);
+
+	// Crypto layer initialization — must run before any packet forwarding
+	trust_init_all();
+	Simulator::Schedule(Seconds(0.0),             &dkg_run_ceremony);
+	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &update_T_ref_recurring);
+	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
+	Simulator::Schedule(Seconds(0.050),           &crypto_batch_verify_tick);
+	Simulator::Schedule(Seconds(5.0),             &crypto_evict_old_entries_recurring);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
@@ -117117,7 +117160,9 @@ void write_security_metrics_csv()
 		if (active_attack_variant == 2 || active_attack_variant == 3)
 			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
-		fout << "\n";
+		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
+			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117131,6 +117176,25 @@ void write_security_metrics_csv()
 			active_vehicles
 		);
 	}
+
+	// Phase 5 — crypto metric aggregates
+	double sig_valid_rate = (g_verify_attempts > 0)
+	                        ? (double)g_verify_passed / g_verify_attempts : 1.0;
+
+	double _trust_sum = 0.0;
+	for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) _trust_sum += g_trust_score[_i];
+	double avg_trust_score = _trust_sum / (double)total_size;
+
+	uint32_t _stark_t_fail = 0, _stark_h_fail = 0;
+	for (auto& kv : g_lstm_stark_counts) { _stark_t_fail += kv.second.first; _stark_h_fail += kv.second.second; }
+
+	uint32_t _fm_total = 0, _fm_committed = 0;
+	for (auto& kv : g_flowmod_endorsements) { _fm_total++; if (kv.second.committed) _fm_committed++; }
+	double flowmod_endorsement_rate = (_fm_total > 0) ? (double)_fm_committed / _fm_total : 1.0;
+
+	uint32_t _da_count = 0, _nfa_count = 0;
+	for (auto& kv : g_witness_alert_pool)
+		for (auto& al : kv.second) { if (al.alert_type == 0) _da_count++; else _nfa_count++; }
 
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
@@ -117151,7 +117215,16 @@ void write_security_metrics_csv()
 		 << sec_FN[selected_variant];
 	if (active_attack_variant == 2 || active_attack_variant == 3)
 		fout << TcamDetectionCsvColumns(tcam_metrics);
-	fout << "\n";
+	fout << ", " << sig_valid_rate
+		 << ", " << avg_trust_score
+		 << ", " << _stark_t_fail
+		 << ", " << _stark_h_fail
+		 << ", " << flowmod_endorsement_rate
+		 << ", " << g_rsu_chain.size()
+		 << ", " << g_global_chain.size()
+		 << ", " << _da_count
+		 << ", " << _nfa_count
+		 << "\n";
 
 	fout.close();
 	cout << "written to file successfully" << endl;
@@ -117359,6 +117432,10 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000110), calculate_tap_security_metrics);
 	Simulator::Schedule(Seconds(0.000120), write_tap_csv);
 
+	// §7.5 — LSTM feature accumulator reset + volume window tick (eq:lstm_features)
+	Simulator::Schedule(Seconds(0.000130), crypto_reset_lstm_accumulators);
+	Simulator::Schedule(Seconds(0.000131), volume_tick);
+
 	// --- MOBIGUARD S1/S2 detection metrics ---
 	// S1 baseline update: per-RSU ρ(t) and v̄(t) from the live link-lifetime
 	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
@@ -117397,7 +117474,7 @@ void calculate_performance_evaluation_metrics()
 	char* home_env = getenv("HOME");
 	if (home_env != nullptr)
 	{
-		results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+		results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 	}
 
 	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
@@ -117729,6 +117806,20 @@ void transmit_solution()
 
 void transmit_delta_values()
 {
+	// §7.4 — FlowMod pre-installation audit: log → endorse → commit (eq:rsu_endorsement)
+	{
+		uint32_t fid = 0;
+		for (uint32_t rsu = N_Vehicles; rsu < (uint32_t)(N_Vehicles + N_RSUs); rsu++) {
+			uint8_t params[4]; memcpy(params, &rsu, 4);
+			flowmod_endorse(rsu, fid, params, 4);
+		}
+		FlowModEndorsement& e = g_flowmod_endorsements[fid];
+		bc_log_flowmod(e, N_Vehicles);
+		if (!bc_commit_flowmod(e) && N_RSUs > 0) {
+			ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
+		}
+	}
+
 	//read_csv();
 	//After getting the solution, unicast the solution to the nodes.
 	for (uint32_t u=0; u<(uint32_t)var; u++)
@@ -120327,6 +120418,9 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// timestamp below is.
 						record_claimed_forward_timestamp(current_hop, packet_id);
 
+						// §7.2 — ML-DSA-87 sign outgoing packet
+						mldsa87_sign(current_hop, packet_id, hop, flow_id);
+
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
 								cout << "[ATTACK2] ② Node " << current_hop
@@ -120777,6 +120871,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         s5_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
                         s6_log_recv(fid, packet_ID, current_hop);   // log d' for DUP check
                         s6_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        // §7.4 — Controller trust penalty for unauthorized FlowMod (eq:ctrl_trust)
+                        if (_s56_prev < (uint32_t)total_size && _s56_prev >= N_Vehicles) {
+                            ctrl_trust_update_negative(rsu_controller_assignment[_s56_prev]);
+                        }
                     }
                     // === END SIGNATURE S5/S6 DETECTION ===
                 }
@@ -120807,6 +120905,52 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					                 fid);
 				}
 				// === END SIGNATURE S2 DETECTION ===
+
+				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
+				{
+					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
+					// Timing ok: compare claimed forward timestamp against S2 threshold
+					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
+					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					bool timing_ok = (t_fwd_claimed > 0.0) &&
+					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
+					// Only update STARK meta for the intended recipient.
+					// Broadcast MAC causes all nearby nodes to call MacRx; mldsa87_verify
+					// already returns false for overheard packets (wrong next_hop in digest),
+					// so gate the STARK counters on sig_ok to avoid broadcast noise.
+					if (sig_ok) {
+						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+						// β_w NFA alert: valid sig but delay exceeded S2 threshold
+						if (t_fwd_claimed > 0.0 && !timing_ok) {
+							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
+							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
+						}
+					}
+				}
+				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
+
+				// §7.6 — Witness log + duplication alert + msg-id cache + volume tracking
+				{
+					uint8_t pkt_hash[64] = {};
+					uint32_t buf3[3] = {fid, packet_ID, current_hop};
+					sha3_512_hash(reinterpret_cast<const uint8_t*>(buf3), 12, pkt_hash);
+					uint32_t _w_prev = tagmodified_routing.Getprevious_senderId();
+					witness_log_packet(current_hop, pkt_hash, destination,
+					                   ns3::Simulator::Now().GetSeconds());
+					// Only fire duplication alert during HF attack variants (S5-S8).
+					// Flow destinations change during routing updates causing false positives
+					// in non-HF scenarios.
+					if ((present_active_hf_attack || present_passive_hf_attack) &&
+					    witness_check_duplication(current_hop, pkt_hash, destination)) {
+						witness_submit_duplication_alert(current_hop, _w_prev,
+						                                 packet_ID, destination, current_hop);
+					}
+					check_msg_duplication(pkt_hash, destination);
+					volume_record_delivery(destination);
+				}
+				// === END §7.6 WITNESS / VOLUME ===
 
 				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
 				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
@@ -140736,6 +140880,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
+    crypto_register_cli_params(cmd);
 
     // Single deterministic attack delay for both CP (Attack 1) and DP (Attack 2).
     // Original implementation drew from Uniform(60–300 ms); replaced with a fixed
@@ -140773,13 +140918,19 @@ int main(int argc, char *argv[])
     {
         attack_number = attack_number_cli;
         attack_number_explicitly_set = true;
+        // Sync active_attack_variant immediately so all topology/position/dispatch
+        // checks below (which run before declare_attack_states() at line ~142737)
+        // see the correct variant. Mapping: active_attack_variant = attack_number - 1.
+        active_attack_variant = attack_number - 1;
     }
 
     // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
     // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
     // and the suffix would be misleading, so g_delay_suffix stays empty for those.
     // NOTE: this check must come AFTER attack_number_cli is transferred to attack_number above.
-    if (attack_number == 1 || attack_number == 2)
+    // Guard with attack_number_explicitly_set so the default value of 1 does not trigger
+    // this block for baseline runs (active_attack_variant=-1) that never pass --attack_number.
+    if ((attack_number == 1 || attack_number == 2) && attack_number_explicitly_set)
     {
         g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
 
@@ -143101,6 +143252,7 @@ if (attack_start_time > 2.0)
 Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 
 
+  OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
   Simulator::Run();
   export_tcam_snapshot_baseline();
 
