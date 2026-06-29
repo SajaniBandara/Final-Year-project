@@ -149,7 +149,7 @@ bool use_sumo_mobility = true; // when true + routing_test==false, load Ns2Mobil
                                 // SUMO trace instead of synthetic grid/random mobility
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
 int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
-int maxspeed = 80;	
+int maxspeed = 150;
 
 int paper = 1; //0-optimization, 1 -architecture
 
