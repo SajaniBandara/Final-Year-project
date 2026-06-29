@@ -11,6 +11,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
+#include <iostream>
+#include <sstream>
 #include <vector>
 #include <array>
 #include <map>
@@ -28,6 +31,22 @@
 void bc_write_event(uint32_t rsu_idx, uint32_t event_type, uint32_t node, double ts);
 void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                    uint32_t n_rsus, double ts_setup);
+
+// ── Evidence-quality debug logging ───────────────────────────────────────────
+// Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
+// Supervisor demo: flip to true for rich per-operation output proving every
+// cryptographic component is executing with real liboqs/OpenSSL values.
+// High-frequency per-packet ops are gated on this flag.
+// Low-frequency high-importance events (DKG, quarantine, failures, blockchain
+// commits) fire unconditionally regardless of this flag.
+static bool CRYPTO_DEBUG_LOG = false;
+
+// Formats first 4 bytes of buf as compact hex — evidence token in debug lines.
+static std::string _hex4(const uint8_t* b) {
+    char s[9];
+    snprintf(s, sizeof(s), "%02x%02x%02x%02x", b[0], b[1], b[2], b[3]);
+    return std::string(s);
+}
 
 // ── SHA3-512 and HMAC-SHA3-512 via OpenSSL ───────────────────────────────────
 
@@ -178,10 +197,25 @@ inline bool mldsa87_keygen(uint32_t node_index) {
     NodeKeyMaterial& km = g_node_keys[node_index];
     if (km.keys_generated) return true;
     OQS_SIG* sig = get_oqs_ctx();
-    if (!sig) return false;
-    if (OQS_SIG_keypair(sig, km.pk, km.sk) != OQS_SUCCESS) return false;
+    if (!sig) {
+        std::cerr << "[CRYPTO-ERROR] mldsa87_keygen: OQS_SIG_new(ml_dsa_87) failed for node="
+                  << node_index << "\n";
+        return false;
+    }
+    if (OQS_SIG_keypair(sig, km.pk, km.sk) != OQS_SUCCESS) {
+        std::cerr << "[CRYPTO-ERROR] mldsa87_keygen: OQS_SIG_keypair failed for node="
+                  << node_index << "\n";
+        return false;
+    }
     km.keys_generated = true;
     km.node_id = node_index;
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[CRYPTO-KEY] node=" << node_index
+                  << " ML-DSA-87 keypair generated"
+                  << " pk_len=" << OQS_SIG_ml_dsa_87_length_public_key
+                  << " sk_len=" << OQS_SIG_ml_dsa_87_length_secret_key
+                  << " pk[0..3]=" << _hex4(km.pk)
+                  << " sk[0..3]=" << _hex4(km.sk) << "\n";
     return true;
 }
 
@@ -203,8 +237,11 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     inp.timestamp = ns3::Simulator::Now().GetSeconds();
 
     uint8_t digest[64];
-    if (!sha3_512_hash(reinterpret_cast<const uint8_t*>(&inp), sizeof(inp), digest))
+    if (!sha3_512_hash(reinterpret_cast<const uint8_t*>(&inp), sizeof(inp), digest)) {
+        std::cerr << "[CRYPTO-ERROR] mldsa87_sign: SHA3-512 failed node=" << signer
+                  << " pkt=" << pkt_id << "\n";
         return false;
+    }
 
     PacketCryptoMeta& meta = g_packet_crypto[{signer, pkt_id}];
     memcpy(meta.msg_digest, digest, 64);
@@ -212,12 +249,23 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     if (OQS_SIG_sign(sig, meta.sig, &meta.sig_len,
                      digest, 64, g_node_keys[signer].sk) != OQS_SUCCESS) {
         meta.sig_len = 0;
+        std::cerr << "[CRYPTO-ERROR] mldsa87_sign: OQS_SIG_sign failed node=" << signer
+                  << " pkt=" << pkt_id << "\n";
         return false;
     }
     meta.sign_timestamp  = inp.timestamp;
     meta.signed_next_hop = next_hop;
     meta.signed_zone_id  = inp.zone_id;
     meta.sig_valid = true;
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[CRYPTO-SIGN] node=" << signer
+                  << " pkt=" << pkt_id
+                  << " next_hop=" << next_hop
+                  << " sig_len=" << meta.sig_len  // expected 4627
+                  << " zone=" << inp.zone_id
+                  << " t=" << inp.timestamp
+                  << " digest[0..3]=" << _hex4(digest)
+                  << " sig[0..3]=" << _hex4(meta.sig) << "\n";
     return true;
 }
 
@@ -227,14 +275,25 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
                             uint32_t next_hop, uint32_t seq) {
     if (claimed_signer >= (uint32_t)total_size) return false;
     auto it = g_packet_crypto.find({claimed_signer, pkt_id});
-    if (it == g_packet_crypto.end() || it->second.sig_len == 0) return false;
+    if (it == g_packet_crypto.end() || it->second.sig_len == 0) {
+        if (CRYPTO_DEBUG_LOG)
+            std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
+                      << " pkt=" << pkt_id << " → no_record (not signed by this node)\n";
+        return false;
+    }
 
     // Broadcast MAC: every node in range overhears every packet. Only the
     // intended next hop can produce a matching digest (next_hop is embedded
     // in the signed message). Skip OQS_SIG_verify and don't count overheard
     // packets in sig_valid_rate — they would always fail and dilute the metric.
-    if (it->second.signed_next_hop != (uint32_t)-1 && next_hop != it->second.signed_next_hop)
+    if (it->second.signed_next_hop != (uint32_t)-1 && next_hop != it->second.signed_next_hop) {
+        if (CRYPTO_DEBUG_LOG)
+            std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
+                      << " pkt=" << pkt_id
+                      << " → skip_broadcast (intended_hop=" << it->second.signed_next_hop
+                      << " actual_hop=" << next_hop << ")\n";
         return false;
+    }
 
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
@@ -257,6 +316,23 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     it->second.sig_valid = ok;
     g_verify_attempts++;
     if (ok) g_verify_passed++;
+
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
+                  << " pkt=" << pkt_id
+                  << " ok=" << ok
+                  << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " attempts=" << g_verify_attempts
+                  << " passed=" << g_verify_passed
+                  << " rate=" << (g_verify_attempts > 0
+                                  ? (double)g_verify_passed / g_verify_attempts : 1.0)
+                  << " pk[0..3]=" << _hex4(g_node_keys[claimed_signer].pk) << "\n";
+    if (!ok)
+        std::cout << "[CRYPTO-WARN] ML-DSA-87 verify FAILED:"
+                  << " claimed_signer=" << claimed_signer
+                  << " pkt=" << pkt_id
+                  << " sig[0..3]=" << _hex4(it->second.sig)
+                  << " digest[0..3]=" << _hex4(digest) << "\n";
     return ok;
 }
 
@@ -297,6 +373,14 @@ inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
     g_lstm_pkt_counts[signer]++;
     if (!timing_ok) g_lstm_stark_counts[signer].first++;
     if (!hop_ok)    g_lstm_stark_counts[signer].second++;
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[STARK] signer=" << signer
+                  << " pkt=" << pkt_id
+                  << " timing_ok=" << timing_ok
+                  << " hop_ok=" << hop_ok
+                  << " | lstm_t_fails=" << g_lstm_stark_counts[signer].first
+                  << " lstm_h_fails=" << g_lstm_stark_counts[signer].second
+                  << " pkt_count=" << g_lstm_pkt_counts[signer] << "\n";
 }
 
 // ── Randomised Batch Verification — eq:batch_challenge / eq:batch_verify ─────
@@ -333,6 +417,12 @@ inline BatchVerifyResult batch_verify_mldsa87(
         ++res.n_verified;
         res.elapsed_s += 0.001;
     }
+
+    if (CRYPTO_DEBUG_LOG && res.n_verified > 0)
+        std::cout << "[BATCH-VERIFY] n=" << res.n_verified
+                  << " passed=" << res.passed
+                  << " challenge[0..3]=" << (combined.empty() ? "n/a" : _hex4(challenge))
+                  << " elapsed=" << res.elapsed_s << "s\n";
     return res;
 }
 
@@ -347,6 +437,11 @@ inline CryptoLstmFeatures crypto_get_lstm_features(uint32_t node) {
     float total = (float)pc->second;
     f.stark_timing_fail = (float)sc->second.first  / total;
     f.stark_hop_fail    = (float)sc->second.second / total;
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[LSTM-FEAT] node=" << node
+                  << " pkt_count=" << pc->second
+                  << " stark_timing_fail=" << f.stark_timing_fail
+                  << " stark_hop_fail=" << f.stark_hop_fail << "\n";
     return f;
 }
 
@@ -379,21 +474,37 @@ inline void trust_init_all() {
 
 inline void trust_update_positive(uint32_t node) {
     if (node >= (uint32_t)total_size) return;
-    double v = g_trust_score[node] + TRUST_DELTA_R;
+    double old_v = g_trust_score[node];
+    double v = old_v + TRUST_DELTA_R;
     g_trust_score[node] = (v < 1.0 ? v : 1.0);
     g_trust_last_update[node] = ns3::Simulator::Now().GetSeconds();
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[TRUST+] node=" << node
+                  << " " << old_v << " → " << g_trust_score[node]
+                  << " (Δ_r=" << TRUST_DELTA_R << ")\n";
 }
 
 inline void trust_update_negative(uint32_t node) {
     if (node >= (uint32_t)total_size) return;
-    double v = g_trust_score[node] - TRUST_DELTA_P;
+    double old_v = g_trust_score[node];
+    double v = old_v - TRUST_DELTA_P;
     g_trust_score[node] = (v > 0.0 ? v : 0.0);
     g_trust_last_update[node] = ns3::Simulator::Now().GetSeconds();
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[TRUST-] node=" << node
+                  << " " << old_v << " → " << g_trust_score[node]
+                  << " (Δ_p=" << TRUST_DELTA_P
+                  << " T_min=" << TRUST_T_MIN << ")\n";
     if (g_trust_score[node] < TRUST_T_MIN && !g_quarantined[node]) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
         if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
             record_detection_event(active_attack_variant, (int)node);
+        // Unconditional: quarantine is a high-importance detection event
+        std::cout << "[TRUST-QUARANTINE] node=" << node
+                  << " trust=" << g_trust_score[node]
+                  << " < T_min=" << TRUST_T_MIN
+                  << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
         NS_LOG_WARN("[TRUST] Quarantine: node=" << node
             << " trust=" << g_trust_score[node]
             << " t=" << ns3::Simulator::Now().GetSeconds());
@@ -408,11 +519,17 @@ inline void ctrl_trust_update_positive(uint32_t ctrl) {
 
 inline void ctrl_trust_update_negative(uint32_t ctrl) {
     if (ctrl >= N_Controllers) return;
-    double v = g_ctrl_trust_score[ctrl] - TRUST_DELTA_P_CTRL;
+    double old_v = g_ctrl_trust_score[ctrl];
+    double v = old_v - TRUST_DELTA_P_CTRL;
     g_ctrl_trust_score[ctrl] = (v > 0.0 ? v : 0.0);
     if (g_ctrl_trust_score[ctrl] < TRUST_T_MIN_CTRL && !g_ctrl_revoked[ctrl]) {
         g_ctrl_revoked[ctrl] = true;
         ctrl_reassign_rsus(ctrl);
+        // Unconditional: controller revocation is high-importance
+        std::cout << "[CTRL-REVOKED] controller idx=" << ctrl
+                  << " trust=" << old_v << " → " << g_ctrl_trust_score[ctrl]
+                  << " < T_min_ctrl=" << TRUST_T_MIN_CTRL
+                  << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
         NS_LOG_WARN("[CTRL-TRUST] Controller revoked: idx=" << ctrl
             << " t=" << ns3::Simulator::Now().GetSeconds());
     }
@@ -423,10 +540,13 @@ inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
     for (uint32_t c = 0; c < N_Controllers; ++c)
         if (!g_ctrl_revoked[c]) trusted.push_back(c);
     if (trusted.empty()) {
+        std::cerr << "[CRYPTO-ERROR] ctrl_reassign_rsus: ALL controllers revoked"
+                  << " — no failover possible\n";
         NS_LOG_ERROR("[CTRL] All controllers revoked — no failover possible");
         return;
     }
     uint32_t zone_size = N_RSUs / N_Controllers;
+    uint32_t reassigned = 0;
     for (uint32_t r = 0; r < N_RSUs; ++r) {
         if ((uint32_t)rsu_controller_assignment[r] != revoked_ctrl) continue;
         uint32_t rsu_zone = r / (zone_size > 0 ? zone_size : 1);
@@ -436,9 +556,14 @@ inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
             if (d < min_d) { min_d = d; best = c; }
         }
         rsu_controller_assignment[r] = (int)best;
+        ++reassigned;
         NS_LOG_WARN("[CTRL-FAILOVER] RSU " << r << " ctrl " << revoked_ctrl
             << " → " << best);
     }
+    // Unconditional: failover summary
+    std::cout << "[CTRL-FAILOVER] Revoked ctrl=" << revoked_ctrl
+              << " reassigned " << reassigned << " RSUs to trusted controllers"
+              << " (trusted_count=" << trusted.size() << ")\n";
 }
 
 // ── Distributed Time Reference — eq:time_consensus ───────────────────────────
@@ -451,6 +576,9 @@ inline void update_T_ref() {
     std::sort(times.begin(), times.end());
     g_T_ref           = times[times.size() / 2];
     g_T_ref_last_sync = ns3::Simulator::Now().GetSeconds();
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[T-REF] Distributed time synced T_ref=" << g_T_ref
+                  << " from " << N_RSUs << " RSUs t=" << g_T_ref_last_sync << "\n";
 }
 
 inline void update_T_ref_recurring() {
@@ -463,6 +591,7 @@ inline void update_T_ref_recurring() {
 
 inline void crypto_evict_old_entries() {
     double cutoff = ns3::Simulator::Now().GetSeconds() - 5.0;
+    size_t before = g_packet_crypto.size();
     for (auto it = g_packet_crypto.begin(); it != g_packet_crypto.end(); )
         it = (it->second.sign_timestamp < cutoff)
              ? g_packet_crypto.erase(it) : std::next(it);
@@ -471,6 +600,9 @@ inline void crypto_evict_old_entries() {
         entries.erase(std::remove_if(entries.begin(), entries.end(),
             [wcut](const WitnessLogEntry& e){ return e.ts < wcut; }),
             entries.end());
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[EVICT] crypto_map " << before << " → " << g_packet_crypto.size()
+                  << " (cutoff t=" << cutoff << ")\n";
 }
 
 inline void crypto_evict_old_entries_recurring() {
@@ -486,9 +618,16 @@ inline void crypto_batch_verify_tick() {
     for (auto& [key, meta] : g_packet_crypto)
         if (meta.sign_timestamp >= window) pending.push_back(key);
     if (!pending.empty()) {
+        if (CRYPTO_DEBUG_LOG)
+            std::cout << "[BATCH-TICK] t=" << ns3::Simulator::Now().GetSeconds()
+                      << " pending=" << pending.size() << " pkts in 50ms window\n";
         auto result = batch_verify_mldsa87(pending);
-        if (!result.passed)
+        if (!result.passed) {
+            std::cerr << "[CRYPTO-ERROR] Batch verify tick FAILED:"
+                      << " " << pending.size() << " pkts"
+                      << " verified=" << result.n_verified << "\n";
             NS_LOG_WARN("[BATCH] Verify failed: " << pending.size() << " pkts");
+        }
     }
     ns3::Simulator::Schedule(ns3::Seconds(0.050), &crypto_batch_verify_tick);
 }
@@ -500,6 +639,11 @@ inline void witness_log_packet(uint32_t witness, const uint8_t* pkt_hash,
     WitnessLogEntry e;
     memcpy(e.pkt_hash, pkt_hash, 64); e.dst = dst; e.ts = ts;
     g_witness_log[witness].push_back(e);
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[WITNESS-LOG] witness=" << witness
+                  << " dst=" << dst
+                  << " hash[0..3]=" << _hex4(pkt_hash)
+                  << " log_size=" << g_witness_log[witness].size() << "\n";
 }
 
 inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
@@ -509,8 +653,15 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
     double cutoff = ns3::Simulator::Now().GetSeconds() - WITNESS_WINDOW;
     for (auto& e : it->second)
         if (memcmp(e.pkt_hash, pkt_hash, 64) == 0 &&
-            e.dst != dst_seen_now && e.ts >= cutoff)
+            e.dst != dst_seen_now && e.ts >= cutoff) {
+            if (CRYPTO_DEBUG_LOG)
+                std::cout << "[WITNESS-DUP] witness=" << witness
+                          << " hash[0..3]=" << _hex4(pkt_hash)
+                          << " prev_dst=" << e.dst
+                          << " new_dst=" << dst_seen_now
+                          << " → DUPLICATION DETECTED\n";
             return true;
+        }
     return false;
 }
 
@@ -530,7 +681,20 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
     g_witness_alert_pool[target_node].push_back(alert);
     bc_write_event(N_Vehicles, 2 /*witness_alert*/, target_node,
                    ns3::Simulator::Now().GetSeconds());
-    if ((uint32_t)g_witness_alert_pool[target_node].size() >= 2 * WITNESS_F + 1) {
+    uint32_t pool_sz  = (uint32_t)g_witness_alert_pool[target_node].size();
+    uint32_t threshold = 2 * WITNESS_F + 1;
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[WITNESS-DA] witness=" << witness
+                  << " → target=" << target_node
+                  << " pkt=" << pkt_id
+                  << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " sig[0..3]=" << _hex4(it->second.sig)
+                  << " pool=" << pool_sz << "/" << threshold << "\n";
+    if (pool_sz >= threshold) {
+        // Unconditional: BFT threshold reached is a high-importance detection event
+        std::cout << "[WITNESS-DA-BFT] BFT threshold reached: target=" << target_node
+                  << " alerts=" << pool_sz << " >= 2f+1=" << threshold
+                  << " → trust_update_negative\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
     }
@@ -551,7 +715,20 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
     g_witness_alert_pool[target_node].push_back(alert);
     bc_write_event(N_Vehicles, 4 /*nfa_alert*/, target_node,
                    ns3::Simulator::Now().GetSeconds());
-    if ((uint32_t)g_witness_alert_pool[target_node].size() >= 2 * WITNESS_F + 1) {
+    uint32_t pool_sz  = (uint32_t)g_witness_alert_pool[target_node].size();
+    uint32_t threshold = 2 * WITNESS_F + 1;
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[WITNESS-NFA] witness=" << witness
+                  << " → target=" << target_node
+                  << " pkt=" << pkt_id
+                  << " T_fwd=" << T_fwd << "s"
+                  << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " pool=" << pool_sz << "/" << threshold << "\n";
+    if (pool_sz >= threshold) {
+        // Unconditional: BFT threshold reached
+        std::cout << "[WITNESS-NFA-BFT] BFT threshold reached: target=" << target_node
+                  << " alerts=" << pool_sz << " >= 2f+1=" << threshold
+                  << " → trust_update_negative\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
     }
@@ -622,8 +799,11 @@ inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
     uint8_t endorsement_sig[OQS_SIG_ml_dsa_87_length_signature];
     size_t  endorsement_sig_len = OQS_SIG_ml_dsa_87_length_signature;
     if (OQS_SIG_sign(oqs, endorsement_sig, &endorsement_sig_len,
-                     msg_digest, 64, g_node_keys[rsu_idx].sk) != OQS_SUCCESS)
+                     msg_digest, 64, g_node_keys[rsu_idx].sk) != OQS_SUCCESS) {
+        std::cerr << "[CRYPTO-ERROR] flowmod_endorse: OQS_SIG_sign failed rsu="
+                  << rsu_idx << " flow=" << flow_id << "\n";
         return false;
+    }
 
     FlowModEndorsement& e = g_flowmod_endorsements[flow_id];
     if (e.endorsing_rsus.empty()) {
@@ -631,6 +811,15 @@ inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
         sha3_512_hash(endorsement_sig, endorsement_sig_len, e.endorsement_hash);
     }
     e.endorsing_rsus.push_back(rsu_idx);
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[FLOWMOD-ENDORSE] rsu=" << rsu_idx
+                  << " flow=" << flow_id
+                  << " zone=" << zone
+                  << " sig_len=" << endorsement_sig_len  // expected 4627
+                  << " sig[0..3]=" << _hex4(endorsement_sig)
+                  << " flowmod_hash[0..3]=" << _hex4(flowmod_hash)
+                  << " T_rj[0..3]=" << _hex4(T_rj)
+                  << " endorsers_so_far=" << e.endorsing_rsus.size() << "\n";
     return true;
 }
 
