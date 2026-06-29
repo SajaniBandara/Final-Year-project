@@ -1,0 +1,12 @@
+{
+  "_comment": "Stage 1 config: 4 RSUs (node IDs 200-203), 1 controller. Replace lat/lng with real SUMO coordinates from routing.cc once you extract RSU positions from the sim output.",
+  "rsus": [
+    { "id": "rsu-200", "node_id": 200, "lat": 51.5000, "lng": -0.1000 },
+    { "id": "rsu-201", "node_id": 201, "lat": 51.5020, "lng": -0.1000 },
+    { "id": "rsu-202", "node_id": 202, "lat": 51.5000, "lng": -0.0980 },
+    { "id": "rsu-203", "node_id": 203, "lat": 51.5020, "lng": -0.0980 }
+  ],
+  "controllers": [
+    { "id": "ctrl-0", "lat": 51.5010, "lng": -0.0990 }
+  ]
+}
