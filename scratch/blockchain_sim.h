@@ -23,6 +23,12 @@ inline bool bc_log_flowmod(const FlowModEndorsement& e, uint32_t /*rsu_idx*/) {
     memcpy(buf+64, &entry.timestamp, 8);
     if (!sha3_512_hash(buf, 72, entry.commit_hash)) return false;
     g_rsu_chain.push_back(entry);
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[BC-LOG] FlowMod pre-install logged"
+                  << " endorsers=" << entry.num_endorsements
+                  << " flowmod_hash[0..3]=" << _hex4(e.flowmod_hash)
+                  << " commit_hash[0..3]=" << _hex4(entry.commit_hash)
+                  << " rsu_chain_len=" << g_rsu_chain.size() << "\n";
     return true;
 }
 
@@ -31,6 +37,10 @@ inline bool bc_log_flowmod(const FlowModEndorsement& e, uint32_t /*rsu_idx*/) {
 inline bool bc_commit_flowmod(FlowModEndorsement& e) {
     uint32_t f_plus_1 = (N_RSUs / 3) + 1;
     if ((uint32_t)e.endorsing_rsus.size() < f_plus_1) {
+        // Unconditional: BFT rejection is a detection event
+        std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
+                  << e.endorsing_rsus.size() << " < required f+1=" << f_plus_1
+                  << " → S1 detection signal\n";
         NS_LOG_WARN("[BC] FlowMod rejected: " << e.endorsing_rsus.size()
             << " < required " << f_plus_1 << " — S1 signal");
         return false;
@@ -47,6 +57,11 @@ inline bool bc_commit_flowmod(FlowModEndorsement& e) {
     g_rsu_chain.push_back(commit);
     e.committed   = true;
     e.commit_time = commit.timestamp;
+    // Unconditional: successful blockchain commit is important
+    std::cout << "[BC-COMMIT] FlowMod COMMITTED: endorsers="
+              << commit.num_endorsements << "/" << f_plus_1
+              << " commit_hash[0..3]=" << _hex4(commit.commit_hash)
+              << " rsu_chain_len=" << g_rsu_chain.size() << "\n";
     return true;
 }
 
@@ -70,12 +85,28 @@ inline void bc_write_event(uint32_t rsu_idx, uint32_t event_type,
     size_t  rsu_sig_len = OQS_SIG_ml_dsa_87_length_signature;
     if (OQS_SIG_sign(oqs, rsu_sig, &rsu_sig_len,
                      content_hash, 64,
-                     g_node_keys[rsu_idx].sk) != OQS_SUCCESS) return;
+                     g_node_keys[rsu_idx].sk) != OQS_SUCCESS) {
+        std::cerr << "[CRYPTO-ERROR] bc_write_event: OQS_SIG_sign failed"
+                  << " rsu=" << rsu_idx << " event=" << event_type
+                  << " node=" << node << "\n";
+        return;
+    }
 
     BlockchainCommit entry;
     entry.timestamp = ts; entry.num_endorsements = 1; entry.tier = 0;
     sha3_512_hash(rsu_sig, rsu_sig_len, entry.commit_hash);
     g_rsu_chain.push_back(entry);
+
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[BC-WRITE] rsu=" << rsu_idx
+                  << " event=" << event_type
+                  << " (2=da,3=T_ref,4=nfa,5=model)"
+                  << " node=" << node
+                  << " t=" << ts
+                  << " sig_len=" << rsu_sig_len  // expected 4627
+                  << " sig[0..3]=" << _hex4(rsu_sig)
+                  << " commit_hash[0..3]=" << _hex4(entry.commit_hash)
+                  << " rsu_chain_len=" << g_rsu_chain.size() << "\n";
 }
 
 // DKG ceremony/rotation commit per eq:vk_commit → global chain (tier=1).
@@ -92,6 +123,14 @@ inline void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
     entry.tier             = 1;
     sha3_512_hash(payload.data(), payload.size(), entry.commit_hash);
     g_global_chain.push_back(entry);
+
+    // Unconditional: DKG blockchain commit is a one-time high-importance event
+    std::cout << "[DKG-BC] vk_ZKP committed to global chain"
+              << " t=" << ts_setup
+              << " n_rsus=" << n_rsus
+              << " vk_zkp[0..3]=" << _hex4(vk_zkp)
+              << " commit_hash[0..3]=" << _hex4(entry.commit_hash)
+              << " global_chain_len=" << g_global_chain.size() << "\n";
     NS_LOG_INFO("[DKG-BC] vk_ZKP committed to global chain at t=" << ts_setup);
 }
 
@@ -118,6 +157,12 @@ inline void bc_anchor_to_global() {
             buf[i] ^= g_global_chain.back().commit_hash[i];
     sha3_512_hash(buf, 72, anchor.commit_hash);
     g_global_chain.push_back(anchor);
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[BC-ANCHOR] Global anchor committed"
+                  << " rsu_chain_len=" << g_rsu_chain.size()
+                  << " global_chain_len=" << g_global_chain.size()
+                  << " t=" << anchor.timestamp
+                  << " anchor_hash[0..3]=" << _hex4(anchor.commit_hash) << "\n";
 }
 
 inline void bc_anchor_recurring() {
@@ -137,6 +182,9 @@ inline void bc_commit_model_hash(uint32_t rsu_idx, const uint8_t* model_hash_64)
     bc_write_event(N_Vehicles + (rsu_idx < N_RSUs ? rsu_idx : 0),
                    5 /*model_hash_commit*/, rsu_idx,
                    ns3::Simulator::Now().GetSeconds());
+    // Unconditional: model hash commit proves federated ML integrity chain
+    std::cout << "[BC-MODEL] RSU " << rsu_idx << " model hash committed"
+              << " hash[0..3]=" << _hex4(model_hash_64) << "\n";
 }
 
 inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash_64) {

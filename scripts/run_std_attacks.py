@@ -97,12 +97,27 @@ def delay_suffix(delay_ms: int | None) -> str:
 
 
 def sync_files() -> None:
-    """Copy all files from scratch/ into NS-3 scratch."""
+    """Copy project scratch files into ns-3.35/scratch/routing/ (subdirectory form)."""
     print("── Syncing project files to NS-3 scratch ──")
+    routing_dir = SCRATCH_DIR / "routing"
+    routing_dir.mkdir(parents=True, exist_ok=True)
+
+    # A stale scratch/routing.cc from before the move to the subdirectory
+    # creates a second 'routing' program that collides with the subdir target.
+    stale = SCRATCH_DIR / "routing.cc"
+    if stale.exists():
+        stale.unlink()
+        print(f"  removed stale  scratch/routing.cc")
+
     for src in sorted((PROJECT_DIR / "scratch").iterdir()):
-        if src.is_file():
-            shutil.copy2(src, SCRATCH_DIR / src.name)
-            print(f"  copied  {src.name}")
+        if not src.is_file():
+            continue
+        if src.name == "routing.cc" or src.suffix == ".h":
+            dest = routing_dir / src.name
+        else:
+            dest = SCRATCH_DIR / src.name
+        shutil.copy2(src, dest)
+        print(f"  copied  {src.name}  →  {dest.relative_to(SCRATCH_DIR.parent)}")
 
 
 def build_simulation() -> bool:
@@ -155,7 +170,7 @@ def build_waf_command(attack_number: int, attack_percentage: int,
         params["attack_delay_ms"] = delay_ms
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
-    return ["./waf", "--run", f"scratch/routing {param_str}"]
+    return ["./waf", "--run", f"scratch/routing/routing {param_str}"]
 
 
 def run_one(attack_number: int, attack_percentage: int,
@@ -265,7 +280,7 @@ def main() -> None:
             "Fix the attack delay to one or more specific values in ms, treating "
             "delay as an independent variable. Each value becomes a separate set of "
             "runs with result files named MOBIGUARD_Attack1_<pct>_d<X>ms.csv etc. "
-            "Omit to use the default random range (60–300 ms)."
+            "Default: 80 ms (matches the C++ attack_delay_ms default)."
         ),
     )
     parser.add_argument(
@@ -308,7 +323,7 @@ def main() -> None:
     elif args.delay:
         scope_delays = args.delay
     else:
-        scope_delays = [None]   # None = random range (default behaviour)
+        scope_delays = [80]   # matches C++ default attack_delay_ms=80ms so filenames are consistent
 
     if args.clean:
         clean_results(args.attack, args.percentage, scope_delays)

@@ -149,7 +149,7 @@ bool use_sumo_mobility = true; // when true + routing_test==false, load Ns2Mobil
                                 // SUMO trace instead of synthetic grid/random mobility
 int mobility_scenario = 0;// 0 - urban, 1 - non-urban, 2 - highway
 int architecture = 3; // 0 - centralized, 1 - distributed, 2 - hybrid, 3 - SDVN (Vehicle→RSU→Controller, no LTE)
-int maxspeed = 80;	
+int maxspeed = 150;
 
 int paper = 1; //0-optimization, 1 -architecture
 
@@ -114759,7 +114759,7 @@ bool s5_detection_active = false;    // master enable for S5 (Active HF CP)  —
 bool s6_detection_active = false;    // master enable for S6 (Active HF DP)  — read by s6_detection.h
 bool s7_detection_active = false;    // master enable for S7 (Passive HF CP) — read by s7_detection.h
 bool s8_detection_active = false;    // master enable for S8 (Passive HF DP) — read by s8_detection.h
-bool fade_detection_active = true;   // master enable for FADE — read by efade_detection.h
+bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -117246,8 +117246,7 @@ void write_security_metrics_csv()
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
 		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
-			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
-			 << "\n# cur_TVR%, avg_TVR%, cur_UCR%, avg_UCR%\n";
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117263,9 +117262,8 @@ void write_security_metrics_csv()
 	}
 
 	// Phase 5 — crypto metric aggregates
-	uint32_t _sig_total = 0, _sig_ok = 0;
-	for (auto& kv : g_packet_crypto) { _sig_total++; if (kv.second.sig_valid) _sig_ok++; }
-	double sig_valid_rate = (_sig_total > 0) ? (double)_sig_ok / _sig_total : 1.0;
+	double sig_valid_rate = (g_verify_attempts > 0)
+	                        ? (double)g_verify_passed / g_verify_attempts : 1.0;
 
 	double _trust_sum = 0.0;
 	for (uint32_t _i = 0; _i < (uint32_t)total_size; _i++) _trust_sum += g_trust_score[_i];
@@ -117310,11 +117308,6 @@ void write_security_metrics_csv()
 		 << ", " << g_global_chain.size()
 		 << ", " << _da_count
 		 << ", " << _nfa_count
-		 // M7 TVR (%) and M8 UCR (%) — appended as the final two column pairs
-		 << ", " << (current_TVR * 100.0)
-		 << ", " << (average_TVR  * 100.0)
-		 << ", " << (current_UCR * 100.0)
-		 << ", " << (average_UCR  * 100.0)
 		 << "\n";
 
 	fout.close();
@@ -117575,7 +117568,7 @@ void calculate_performance_evaluation_metrics()
 	char* home_env = getenv("HOME");
 	if (home_env != nullptr)
 	{
-		results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+		results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 	}
 
 	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
@@ -121010,9 +121003,25 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
 				{
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
-					bool sig_ok = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
-					bool hop_ok = stark_verify_hop(current_hop, prev_sender, destination);
-					stark_update_meta(prev_sender, packet_ID, sig_ok, hop_ok);
+					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
+					// Timing ok: compare claimed forward timestamp against S2 threshold
+					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
+					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					bool timing_ok = (t_fwd_claimed > 0.0) &&
+					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
+					// Only update STARK meta for the intended recipient.
+					// Broadcast MAC causes all nearby nodes to call MacRx; mldsa87_verify
+					// already returns false for overheard packets (wrong next_hop in digest),
+					// so gate the STARK counters on sig_ok to avoid broadcast noise.
+					if (sig_ok) {
+						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+						// β_w NFA alert: valid sig but delay exceeded S2 threshold
+						if (t_fwd_claimed > 0.0 && !timing_ok) {
+							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
+							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
+						}
+					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
 
@@ -121024,7 +121033,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					uint32_t _w_prev = tagmodified_routing.Getprevious_senderId();
 					witness_log_packet(current_hop, pkt_hash, destination,
 					                   ns3::Simulator::Now().GetSeconds());
-					if (witness_check_duplication(current_hop, pkt_hash, destination)) {
+					// Only fire duplication alert during HF attack variants (S5-S8).
+					// Flow destinations change during routing updates causing false positives
+					// in non-HF scenarios.
+					if ((present_active_hf_attack || present_passive_hf_attack) &&
+					    witness_check_duplication(current_hop, pkt_hash, destination)) {
 						witness_submit_duplication_alert(current_hop, _w_prev,
 						                                 packet_ID, destination, current_hop);
 					}
@@ -141012,13 +141025,19 @@ int main(int argc, char *argv[])
     {
         attack_number = attack_number_cli;
         attack_number_explicitly_set = true;
+        // Sync active_attack_variant immediately so all topology/position/dispatch
+        // checks below (which run before declare_attack_states() at line ~142737)
+        // see the correct variant. Mapping: active_attack_variant = attack_number - 1.
+        active_attack_variant = attack_number - 1;
     }
 
     // Only encode the delay suffix for attacks that actually inject a delay (1 = CP, 2 = DP).
     // For other attack variants (TCAM, Hidden Forwarding) attack_delay_ms is irrelevant
     // and the suffix would be misleading, so g_delay_suffix stays empty for those.
     // NOTE: this check must come AFTER attack_number_cli is transferred to attack_number above.
-    if (attack_number == 1 || attack_number == 2)
+    // Guard with attack_number_explicitly_set so the default value of 1 does not trigger
+    // this block for baseline runs (active_attack_variant=-1) that never pass --attack_number.
+    if ((attack_number == 1 || attack_number == 2) && attack_number_explicitly_set)
     {
         g_delay_suffix = "_d" + std::to_string(static_cast<int>(attack_delay_ms)) + "ms";
 
