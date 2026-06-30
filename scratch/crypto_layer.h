@@ -844,6 +844,16 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
     cmd.AddValue("vol_rate_thresh",    "Volume rate threshold ε_vol (pkt/s)", VOL_RATE_THRESH);
+
+    // LRAD detection-active CLI overrides (ablation: disable individual
+    // signatures without recompiling — e.g. --attack_number=5 --s5_detection_active=0
+    // measures detection contribution of S5 in isolation).
+    cmd.AddValue("s1_detection_active", "Enable LRAD S1 (Selective Delay CP) detection",  s1_detection_active);
+    cmd.AddValue("s2_detection_active", "Enable LRAD S2 (Selective Delay DP) detection",  s2_detection_active);
+    cmd.AddValue("s5_detection_active", "Enable LRAD S5 (Active HF CP) detection",        s5_detection_active);
+    cmd.AddValue("s6_detection_active", "Enable LRAD S6 (Active HF DP) detection",        s6_detection_active);
+    cmd.AddValue("s7_detection_active", "Enable LRAD S7 (Passive HF CP) detection",       s7_detection_active);
+    cmd.AddValue("s8_detection_active", "Enable LRAD S8 (Passive HF DP) detection",       s8_detection_active);
 }
 
 #endif // CRYPTO_LAYER_H

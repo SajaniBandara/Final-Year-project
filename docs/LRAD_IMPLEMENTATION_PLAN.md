@@ -648,6 +648,13 @@ Reset via `lrad_reset_state()` (Phase 1.4), not `trust_init_all()`.
 
 ## Phase 12 — Baseline testing checklist (corrected)
 
+> **STATUS: PENDING** — waiting for current training baseline runs (seeds 1–5,
+> `attack_percentage=0`, `training=1`) to finish before launching Phase 12 test
+> runs. Do not start Phase 12 until those processes exit (check with
+> `pgrep -a routing`). CSV file collision risk if both write concurrently.
+
+
+
 | Scenario | Attack variant | Expected firing |
 |---|---|---|
 | Baseline | none | `D_OBU=0`, `D_RSU=0`, `escalation_count=0`, mean trust ≈ 1.0 |
