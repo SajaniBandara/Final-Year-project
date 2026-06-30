@@ -64,7 +64,7 @@ events to the blockchain in real-time.
 ### Step 4 — Run the NS-3 Simulation (Terminal 2)
 
 ```bash
-cd /home/nipuni/ns-allinone-3.35/ns-3.35
+cd /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35
 
 # Benign baseline (no attack)
 ./waf --run "scratch/routing/routing --simTime=40 --active_attack_variant=-1 --use_sumo_mobility=1"
