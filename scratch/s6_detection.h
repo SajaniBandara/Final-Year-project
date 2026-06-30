@@ -128,11 +128,25 @@ inline bool s6_detect(uint32_t recv_flow_id,
     // because d' ∉ P(s,d). Kept as an independent check from ML-DSA-87.
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!active_hf_malicious_nodes[prev_sender]) return false;
-    bool b_hop_fails = true; // confirmed above — STARK hop proof fails
+
+    // Lookup crypto record once — used for both mldsa_fails and b_hop_fails.
+    auto it_s6 = g_packet_crypto.find({prev_sender, packet_id});
 
     // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0
-    // Proxy: 0xDEAD0000 fabrication marker set by hf_send_active_duplicate().
-    bool mldsa_fails = ((recv_flow_id & S6_DEAD_MARKER) == S6_DEAD_MARKER);
+    // Primary: result of mldsa87_verify() stored in g_packet_crypto by MacRx.
+    // Fallback to 0xDEAD0000 marker if crypto record not yet populated.
+    bool mldsa_fails;
+    if (it_s6 != g_packet_crypto.end() && it_s6->second.sig_len > 0)
+        mldsa_fails = !it_s6->second.sig_valid;
+    else
+        mldsa_fails = ((recv_flow_id & S6_DEAD_MARKER) == S6_DEAD_MARKER);
+
+    // b_hop(u) = 0: primary from stark_hop_ok, fallback to ground truth.
+    bool b_hop_fails;
+    if (it_s6 != g_packet_crypto.end() && it_s6->second.sig_len > 0)
+        b_hop_fails = !it_s6->second.stark_hop_ok;
+    else
+        b_hop_fails = true; // active_hf_malicious_nodes confirmed above
 
     // Conjunctions 1/2: DUP(msg_id, W) — R(d,W) ∧ R(d',W)
     // Count only live entries within window W (expiry already done in s6_log_recv).

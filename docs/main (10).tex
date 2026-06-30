@@ -3617,7 +3617,7 @@ The Federated LSTM parameters are structured as follows:
 The cryptographic parameters are designed to support strict post-quantum resilience and evaluate real-time vehicular execution bounds:
 
 \begin{itemize}
-    \item \textbf{Signature scheme:} CRYSTALS-Dilithium5 (NIST ML-DSA-87) asymmetric signatures ($4,595$\,bytes per signature) are deployed to guarantee quantum-safe entity authentication and data origin integrity at the network layer.
+    \item \textbf{Signature scheme:} CRYSTALS-Dilithium5 (NIST ML-DSA-87) asymmetric signatures ($4,627$\,bytes per signature) are deployed to guarantee quantum-safe entity authentication and data origin integrity at the network layer.
     
     \item \textbf{Batch size $B$
     (Eq.~\ref{eq:overhead_batch}):}
@@ -3839,7 +3839,7 @@ One-time ceremony among 64 RSUs pre-simulation
             \hline
             Detection threshold & Anomaly score $\geq 0.5$ (to be tuned for $\geq$95\% precision, $\leq$1\% FPR) \\
             \hline
-            Cryptographic layer & ML-DSA-87 (FIPS\,204) signatures (4,595\,B/pkt),
+            Cryptographic layer & ML-DSA-87 (FIPS\,204) signatures (4,627\,B/pkt),
             HMAC-SHA3-512 lightweight mode (64\,B/pkt),
             batch verification $B$ [tbd: $\{10, 15, 20\}$\,pkts/batch];
             selected for lowest $L_{e2e}$ within 50\,ms,  ZKP proof size  $\leq 100$\,KB per proof   (FRI-STARK, SHA3-512; conservative blowup

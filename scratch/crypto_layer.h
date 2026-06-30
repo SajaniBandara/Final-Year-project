@@ -103,6 +103,7 @@ struct PacketCryptoMeta {
     double   sign_timestamp   = 0.0;
     uint32_t signed_next_hop  = (uint32_t)-1;  // intended next hop at sign time
     uint32_t signed_zone_id   = 0;             // zone_id at sign time (rsu_controller_assignment changes)
+    uint32_t nonce            = 0;             // fresh random nonce (η_i ← RAND()) — eq:mldsa_sign
     bool     sig_valid        = false;
     bool     stark_timing_ok  = false;
     bool     stark_hop_ok     = false;
@@ -228,11 +229,16 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
 
+    // η_i ← RAND(): fresh per-signature nonce preventing replay (eq:mldsa_sign).
+    // The caller's `seq` argument is ignored for the digest — nonce is random.
+    uint32_t fresh_nonce = 0;
+    OQS_randombytes(reinterpret_cast<uint8_t*>(&fresh_nonce), sizeof(fresh_nonce));
+
     SigningInput inp = {};  // zero-init including padding bytes before double timestamp
     inp.msg_id    = pkt_id;
     inp.node_id   = signer;
     inp.next_hop  = next_hop;
-    inp.seq       = seq;
+    inp.seq       = fresh_nonce;
     inp.zone_id   = crypto_zone_id(signer);
     inp.timestamp = ns3::Simulator::Now().GetSeconds();
 
@@ -256,6 +262,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     meta.sign_timestamp  = inp.timestamp;
     meta.signed_next_hop = next_hop;
     meta.signed_zone_id  = inp.zone_id;
+    meta.nonce           = fresh_nonce;
     meta.sig_valid = true;
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[CRYPTO-SIGN] node=" << signer
@@ -302,7 +309,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     inp.msg_id    = pkt_id;
     inp.node_id   = claimed_signer;
     inp.next_hop  = next_hop;
-    inp.seq       = seq;
+    inp.seq       = it->second.nonce;           // replay stored random nonce η_i (eq:mldsa_sign)
     inp.zone_id   = it->second.signed_zone_id;  // use stored value — rsu_controller_assignment changes
     inp.timestamp = it->second.sign_timestamp;
 

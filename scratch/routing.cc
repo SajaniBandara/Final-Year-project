@@ -114861,6 +114861,7 @@ void record_detection_event(int v, int n); // defined at ~line 115476; forward-d
 #include "crypto_layer.h"
 #include "dkg_setup.h"
 #include "blockchain_sim.h"
+#include "crypto_event_log.h"  // per-operation timing log (supervisor timing verification)
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
@@ -120419,7 +120420,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						record_claimed_forward_timestamp(current_hop, packet_id);
 
 						// §7.2 — ML-DSA-87 sign outgoing packet
-						mldsa87_sign(current_hop, packet_id, hop, flow_id);
+						{
+							auto _t_sign = crypto_log_start();
+							bool _sign_ok = mldsa87_sign(current_hop, packet_id, hop, flow_id);
+							crypto_log_event("sign", current_hop, packet_id, _t_sign, _sign_ok);
+						}
 
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
@@ -120822,6 +120827,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                 {
                     uint32_t _s78_prev = tagmodified_routing.Getprevious_senderId();
                     uint32_t _s78_base = fid & 0xFFFFu;
+                    // Record unauthorized delivery at eavesdropper d' so
+                    // volume_check_anomaly(current_hop) returns live data for S7.
+                    volume_record_delivery(current_hop);
                     s7_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
                     s8_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
                 }
@@ -120909,8 +120917,12 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
 				{
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+					auto _t_verify = crypto_log_start();
 					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					crypto_log_event("verify", prev_sender, packet_ID, _t_verify, sig_ok);
+					auto _t_hop = crypto_log_start();
 					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
+					crypto_log_event("stark_hop", prev_sender, packet_ID, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
@@ -120927,6 +120939,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
 							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
 						}
+						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
+						// sig_ok gate ensures we only update for packets intended for this node,
+						// not overheard broadcasts (verify returns false for those).
+						if (hop_ok && timing_ok)
+							trust_update_positive(prev_sender);
+						else
+							trust_update_negative(prev_sender);
 					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
@@ -143253,6 +143272,7 @@ Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 
 
   OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
+  crypto_log_init();   // open crypto_timing_log.csv for per-operation timing
   Simulator::Run();
   export_tcam_snapshot_baseline();
 
@@ -143285,6 +143305,7 @@ if (fade_detection_active)
 // write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
 // and is called once per data-gathering cycle — no post-simulation call needed.
 
+  crypto_log_close();  // flush and close crypto_timing_log.csv
   Simulator::Destroy();
   
  
