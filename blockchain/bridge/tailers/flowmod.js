@@ -60,7 +60,7 @@ async function handleRow(row) {
     if (!seenHashes[hash].has(rsuId)) {
         seenHashes[hash].add(rsuId);
         try {
-            await fc.submit(identity, 'LogFlowMod', rsuId, hash, timestampMs);
+            await fc.submit(identity, 'LogFlowMod', hash, timestampMs);
             console.log(`[${wallTime}] [FLOWMOD] LOGGED    rsu=${rsuId}  hash=${hash}  sim_t=${timestampMs}ms  ledger=COMMITTED`);
         } catch (err) {
             // Chaincode returns error if hash already exists (duplicate log from same RSU).
@@ -72,7 +72,7 @@ async function handleRow(row) {
     // f+1 = 2 endorsements needed to commit the FlowMod (Eq 3.41).
     if (seenHashes[hash].size === 2) {
         try {
-            await fc.submit(identity, 'EndorseFlowMod', hash, rsuId);
+            await fc.submit(identity, 'EndorseFlowMod', hash);
             console.log(`[${wallTime}] [FLOWMOD] ENDORSED   rsu=${rsuId}  hash=${hash}  quorum=REACHED (f+1=2 Eq.3.41)  ledger=COMMITTED`);
         } catch (err) {
             console.warn(`[${wallTime}] [FLOWMOD] ENDORSE_FAIL hash=${hash}  → ${err.message}`);
