@@ -44,7 +44,8 @@ invoke() {
   peer chaincode invoke -o localhost:7050 \
     --ordererTLSHostnameOverride orderer.example.com --tls \
     --cafile "$ORDERER_CA" -C "$CHANNEL" -n "$CC" \
-    --peerAddresses "$CORE_PEER_ADDRESS" --tlsRootCertFiles "$CORE_PEER_TLS_ROOTCERT_FILE" \
+    --peerAddresses localhost:7051 --tlsRootCertFiles "$ORG1_CA" \
+    --peerAddresses localhost:9051 --tlsRootCertFiles "$ORG2_CA" \
     -c "{\"function\":\"$1\",\"Args\":$2}"
   sleep 3
 }

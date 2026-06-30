@@ -52,7 +52,7 @@ from pathlib import Path
 # Paths
 # ---------------------------------------------------------------------------
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-NS3_DIR     = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
+NS3_DIR     = Path.home() / "ns-allinone-3.35/ns-3.35"
 SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs"
@@ -108,6 +108,12 @@ def sync_files() -> None:
         else:
             # .py helpers are loaded by routing.cc via hardcoded scratch/ paths.
             dest = SCRATCH_DIR / src.name
+        
+        # Avoid SameFileError for symlinked setups
+        if dest.exists() and os.path.samefile(src, dest):
+            print(f"  already synced  {src.name}")
+            continue
+            
         shutil.copy2(src, dest)
         print(f"  copied  {src.name}  →  {dest.relative_to(SCRATCH_DIR.parent)}")
 
