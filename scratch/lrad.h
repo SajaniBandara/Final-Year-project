@@ -246,7 +246,201 @@ inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle)
 }
 
 // =========================================================================
-// Function bodies — Phase 2 / 4 / 5 / 6 added in subsequent commits.
+// Phase 6 — btmm()
+//
+// Per-packet trust update (Algorithm BTMM, eq:trust_update).
+// Called UNCONDITIONALLY for every verified packet — NOT gated behind D_RSU.
+// Matches the existing pattern at routing.cc:120942–948.
 // =========================================================================
+
+inline void btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok)
+{
+    if (b_batch && b_hop && timing_ok)
+        trust_update_positive(node);
+    else
+        trust_update_negative(node);
+}
+
+// =========================================================================
+// Phase 5 — lrad_rsu()   (alg:lrad_rsu, thesis lines 2035–2086)
+//
+// Evaluates S2-full, S5, S6, S7, S8 at the RSU and writes D_RSU.
+// Calls the REAL s2_detect_packet()/s5_detect()…s8_detect() — not a
+// reimplementation — so all existing guards are preserved intact.
+// record_detection_event() is already called inside whichever s*_detect()
+// fires; do NOT call it again here (would double-count TP/FP metrics).
+// =========================================================================
+
+inline LRADRSUFlags lrad_rsu(
+    uint32_t     rsu,           // current_hop / receiving RSU (eavesdropper)
+    uint32_t     prev_sender,   // suspected sending / forwarding node
+    uint32_t     pkt_id,
+    uint32_t     fid,
+    LRADOBUFlags obu_flags,     // from escalation (may be zero-initialised)
+    double       t_now)
+{
+    LRADRSUFlags flags;
+    auto _t0 = crypto_log_start();
+
+    // Use .find() — never operator[] — to avoid silently inserting a
+    // default-constructed "verification failed" record for unsigned packets.
+    auto it         = g_packet_crypto.find({prev_sender, pkt_id});
+    bool have_crypto = (it != g_packet_crypto.end() && it->second.sig_len > 0);
+
+    // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
+    // s2_detect_packet() internally evaluates both the delay threshold AND
+    // the STARK timing proof, covering the full eq:stark_delay_verify check.
+    flags.flag_S2f = s2_detect_packet(prev_sender, t_now,
+                                       is_safety_critical_flow[fid],
+                                       rsu, pkt_id, fid);
+
+    // ── S5–S8 (lines 5–8 of alg:lrad_rsu) ──────────────────────────────────
+    // recv_flow_id approximated as fid: these functions prefer g_packet_crypto
+    // evidence over the 0xDEAD0000 marker whenever a crypto record exists.
+    uint32_t base_fid = fid & 0xFFFFu;
+    flags.flag_S5 = s5_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S6 = s6_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S7 = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S8 = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+
+    flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
+                  flags.flag_S7 || flags.flag_S8;
+
+    // ── BTMM — unconditional per verified packet (line 11, eq:trust_update) ─
+    // Matches existing routing.cc:120942–948: inside the sig_ok gate but NOT
+    // behind D_RSU, so trust_update_positive() remains reachable.
+    if (have_crypto)
+        btmm(prev_sender, it->second.sig_valid, it->second.stark_hop_ok,
+             !flags.flag_S2f /* timing_ok = delay proof passed */);
+
+    // ── BC.Write + counting (line 10 of alg:lrad_rsu) ──────────────────────
+    if (flags.D_RSU) {
+        g_d_rsu_count++;
+        // event_type=6: "lrad_composite_detection" (new, see blockchain_sim.h).
+        bc_write_event(rsu, 6, prev_sender, t_now);
+    }
+
+    crypto_log_event("lrad_rsu", prev_sender, pkt_id, _t0, flags.D_RSU);
+    return flags;
+}
+
+// =========================================================================
+// Phase 4 — process_escalation_at_rsu()
+//
+// Drains the escalation queue for rsu_id and runs lrad_rsu() for each
+// pending OBU escalation event. Invoked via Simulator::Schedule 1 ms after
+// the OBU detection, modelling the OBU→RSU escalation latency.
+// Note: if multiple vehicles escalate to the same RSU within 1 ms, the
+// first scheduled call drains all of them — each still processed exactly once.
+// =========================================================================
+
+inline void process_escalation_at_rsu(uint32_t rsu_id)
+{
+    auto& queue = g_escalation_queue[rsu_id];
+    for (auto& ev : queue)
+        lrad_rsu(rsu_id, ev.vehicle_id, ev.pkt_id, ev.flow_id,
+                 ev.obu_flags, ns3::Simulator::Now().GetSeconds());
+    queue.clear();
+}
+
+// =========================================================================
+// Phase 3 — escalate_to_rsu()
+//
+// Called by lrad_obu() when D_OBU=1.  Enqueues the escalation event at
+// the vehicle's current associated RSU and schedules processing 1 ms later.
+// Silently drops (returns false) when no RSU is in DSRC range — valid state,
+// not an error (vehicle between coverage zones).
+// =========================================================================
+
+inline void escalate_to_rsu(
+    uint32_t vehicle, uint32_t pkt_id, uint32_t fid, LRADOBUFlags obu_flags)
+{
+    auto _t0 = crypto_log_start();
+
+    uint32_t rsu_local_idx = lookup_vehicle_associated_rsu_local_idx(vehicle);
+    if (rsu_local_idx >= (uint32_t)N_RSUs) {
+        // No RSU in DSRC range — drop gracefully.
+        crypto_log_event("escalate_to_rsu", vehicle, pkt_id, _t0, false);
+        return;
+    }
+    uint32_t rsu_id = N_Vehicles + rsu_local_idx;
+
+    EscalationEvent ev;
+    ev.vehicle_id = vehicle;
+    ev.rsu_id     = rsu_id;
+    ev.pkt_id     = pkt_id;
+    ev.flow_id    = fid;
+    ev.t_escalate = ns3::Simulator::Now().GetSeconds();
+    ev.obu_flags  = obu_flags;
+
+    g_escalation_queue[rsu_id].push_back(ev);
+    g_escalation_count++;
+
+    crypto_log_event("escalate_to_rsu", vehicle, pkt_id, _t0, true);
+
+    // Model 1 ms OBU→RSU escalation latency (upper bound — see plan note).
+    ns3::Simulator::Schedule(ns3::Seconds(0.001),
+                             &process_escalation_at_rsu, rsu_id);
+}
+
+// =========================================================================
+// Phase 2 — lrad_obu()   (alg:lrad_obu, thesis lines 1983–2027)
+//
+// Evaluates S1, S2-partial, S3, S4 at the OBU (vehicle) and writes D_OBU.
+// If D_OBU=1, triggers escalation to the associated RSU.
+//
+// prev_sender: the node that forwarded this packet to `vehicle`; used as
+//   sender_node_id in s1_detect_packet() so record_detection_event() targets
+//   the forwarding RSU (the potential attacker), NOT the receiving vehicle.
+//   Passing vehicle here would corrupt TP/FP/FN counts.
+// =========================================================================
+
+inline LRADOBUFlags lrad_obu(
+    uint32_t vehicle,
+    uint32_t prev_sender,           // forwarding node — see note above
+    uint32_t pkt_id,
+    uint32_t fid,
+    bool     is_high_priority,
+    double   t_now,
+    double   delta_p,
+    uint32_t assoc_rsu_local_idx)   // RSU local index (0..N_RSUs-1)
+{
+    LRADOBUFlags flags;
+    auto _t0 = crypto_log_start();
+
+    // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────
+    // Reads the associated RSU's existing EWMA baseline/variance state
+    // directly — simulation shortcut documented in the LRAD plan.
+    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
+        flags.flag_S1 = s1_detect_packet(
+            assoc_rsu_local_idx, delta_p, is_high_priority,
+            prev_sender,            // sender_node_id → fed into record_detection_event
+            vehicle,                // current_hop (receiver / OBU)
+            pkt_id, fid);
+    }
+
+    // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
+    flags.flag_S2p = lrad_s2_partial_check(vehicle, pkt_id, t_now);
+
+    // ── S3 / S4: TCAM flooding / injection (lightweight snapshot) ───────────
+    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
+        uint32_t rsu_node_id = N_Vehicles + assoc_rsu_local_idx;
+        LRADTcamSnapshot snap = lrad_tcam_snapshot(rsu_node_id);
+        flags.flag_S3 = snap.flag_s3;
+        flags.flag_S4 = snap.flag_s4;
+    }
+
+    // ── D_OBU (Eq. composite_light) ─────────────────────────────────────────
+    flags.D_OBU = flags.flag_S1 || flags.flag_S2p ||
+                  flags.flag_S3 || flags.flag_S4;
+
+    crypto_log_event("lrad_obu", vehicle, pkt_id, _t0, flags.D_OBU);
+
+    if (flags.D_OBU) {
+        g_d_obu_count++;
+        escalate_to_rsu(vehicle, pkt_id, fid, flags);
+    }
+    return flags;
+}
 
 #endif // LRAD_H
