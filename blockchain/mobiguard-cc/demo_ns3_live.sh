@@ -24,7 +24,7 @@ ORDERER_CA="${TESTNET}/organizations/ordererOrganizations/example.com/orderers/o
 NS3_DIR="/home/nipuni/ns-allinone-3.35/ns-3.35"
 CSV_FLOWMOD="${NS3_DIR}/results_routing/bc_flowmod_log.csv"
 CSV_TRUST="${NS3_DIR}/results_routing/bc_trust_updates.csv"
-BRIDGE_DIR="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+BRIDGE_DIR="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 BRIDGE_LOG="/tmp/bridge_demo.log"
 NS3_BINARY="${NS3_DIR}/build/scratch/routing/routing"
 

@@ -103,7 +103,7 @@ static void bc_open_files()
     if (g_bc_files_open) return;
 
     const std::string dir =
-        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.
