@@ -120579,6 +120579,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 //Attack helper functions
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
+#include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
 
 int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
