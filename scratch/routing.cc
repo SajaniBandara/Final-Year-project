@@ -123006,6 +123006,10 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline
     // for this hop (S1/S2 hop-delay = t_recv − t_claimed; TAP PPAT = t_claimed).
     record_claimed_forward_timestamp(source, packet_ID);
+    // LRAD S2-partial: stamp HMAC tag at send time so lrad_s2_partial_check()
+    // can recover ts_recv via HMAC.Verify at the receiving OBU (eq:hmac_light).
+    // Uses packet_ID as nonce — deterministic, unique per packet, known to receiver.
+    lrad_hmac_tag_packet(source, packet_ID, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
