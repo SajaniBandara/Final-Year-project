@@ -125,16 +125,69 @@ docker ps
 
 ---
 
-## Prerequisites (verified working)
+## 🛠️ Fresh Setup on a New Machine
 
-| Tool | Version |
-|------|---------|
-| Ubuntu | 22.04 |
-| Docker + Compose plugin | 29.x / v5.x |
-| Go | 1.23.4 |
-| Node.js / npm | 22.x / 10.x |
-| Hyperledger Fabric | 2.5.15 |
-| Fabric CA | 1.5.17 |
+Follow these step-by-step instructions to configure and set up the blockchain environment on a clean Ubuntu 22.04 LTS installation.
+
+### 1. Install Docker & Docker Compose
+Install Docker Engine and the Docker Compose plugin:
+```bash
+# Add Docker's official GPG key
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Add the repository to Apt sources
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker packages
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Configure Docker group (run docker commands without sudo)
+sudo usermod -aG docker $USER
+# Apply group membership changes to the current shell
+newgrp docker
+```
+
+### 2. Install Go (v1.23.4)
+Download and extract the Go package:
+```bash
+wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+
+# Add Go to user PATH
+echo 'export PATH=$PATH:/usr/local/go' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### 3. Install Node.js (v22.x) and npm
+Setup the NodeSource apt repository and install nodejs:
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+### 4. Setup Fabric Images and CLI Binaries
+Navigate to the blockchain directory and download the matching platform binaries and Docker images:
+```bash
+cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain"
+chmod +x install-fabric.sh
+./install-fabric.sh docker binary 2.5.15 1.5.17
+```
+*(This extracts the `peer`, `configtxgen`, and other command-line tools into `fabric-samples/bin` and pulls the required docker images).*
+
+### 5. Install Node Bridge Dependencies
+Install packages for the Gateway bridge client:
+```bash
+cd bridge
+npm install
+```
 
 ---
 
