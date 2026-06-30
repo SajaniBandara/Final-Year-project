@@ -79,9 +79,12 @@ static std::map<std::pair<uint32_t,uint32_t>, HmacTag> g_hmac_tags;
 struct LRADTcamSnapshot { bool flag_s3; bool flag_s4; };
 
 // Detection event counters — written to CSV in Phase 8.
-static uint32_t g_d_obu_count      = 0;
-static uint32_t g_d_rsu_count      = 0;
-static uint32_t g_escalation_count = 0;
+// Defined in routing.cc (before write_security_metrics_csv) so they are
+// visible both to the CSV writer (included before lrad.h) and to lrad.h
+// function bodies (included after the definitions).
+extern uint32_t g_d_obu_count;
+extern uint32_t g_d_rsu_count;
+extern uint32_t g_escalation_count;
 
 // =========================================================================
 // lrad_reset_state():

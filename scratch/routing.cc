@@ -117097,6 +117097,14 @@ void calculate_mitigation_latency_metric()
 
 static const int TCAM_HW_SIZE = 256;
 #include "tcam_detection.h"
+
+// LRAD detection event counters — defined here so write_security_metrics_csv()
+// can access them without requiring lrad.h (included later after tcam_attack_helper.h).
+// Declared extern in lrad.h so the LRAD function bodies can increment them.
+uint32_t g_d_obu_count      = 0;
+uint32_t g_d_rsu_count      = 0;
+uint32_t g_escalation_count = 0;
+
 void write_security_metrics_csv()
 {
 	fstream fout;
@@ -117163,7 +117171,8 @@ void write_security_metrics_csv()
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
 		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
-			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
+			 << " d_obu_count, d_rsu_count, escalation_count\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117225,6 +117234,9 @@ void write_security_metrics_csv()
 		 << ", " << g_global_chain.size()
 		 << ", " << _da_count
 		 << ", " << _nfa_count
+		 << ", " << g_d_obu_count
+		 << ", " << g_d_rsu_count
+		 << ", " << g_escalation_count
 		 << "\n";
 
 	fout.close();
@@ -142763,6 +142775,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			// Initialize dynamic attack configurations
 			declare_attack_states();
 			declare_attackers();
+			lrad_reset_state(); // reset LRAD counters/queues each run (lrad.h in scope here)
 
 			// Set unique tag for all per-run scratch-level CSV files AFTER
 			// declare_attack_states() has resolved active_attack_variant from
