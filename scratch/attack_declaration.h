@@ -81,40 +81,61 @@ inline void declare_attack_states()
     present_selective_delay_cp_attack    = false;
     present_selective_delay_attack_nodes = false;
 
+    // GATE-1 fix (LRAD plan): reset all MOBIGUARD detection-active flags so
+    // exactly one is enabled per run. Without this, all flags stay false and
+    // s1_detect_packet()/s2_detect_packet()/s5_detect()…s8_detect() return
+    // immediately on every call, making MOBIGUARD S1/S2/S5–S8 completely
+    // unreachable regardless of what LRAD calls. S3/S4 are not gated by a
+    // detection_active boolean — they use lrad_tcam_snapshot() directly.
+    s1_detection_active = false;
+    s2_detection_active = false;
+    s5_detection_active = false;
+    s6_detection_active = false;
+    s7_detection_active = false;
+    s8_detection_active = false;
+
     switch (attack_number)
     {
         case (1): // Selective Time Delay — Control Plane (Attack 1)
             present_selective_delay_cp_attack = true;
             active_attack_variant = 0;
+            s1_detection_active = true;
             break;
 
         case (2): // Selective Time Delay — Data Plane (Attack 2)
             present_selective_delay_attack_nodes = true;
             active_attack_variant = 1;
+            s2_detection_active = true;
             break;
 
         case (3): // TCAM Exhaustion — Control Plane (Attack 3)
             active_attack_variant = 2;
+            // S3 detection uses lrad_tcam_snapshot() — no detection_active gate.
             break;
 
         case (4): // TCAM Exhaustion — Data Plane (Attack 4)
             active_attack_variant = 3;
+            // S4 detection uses lrad_tcam_snapshot() — no detection_active gate.
             break;
 
         case (5): // Active Hidden Forwarding — Control Plane (Attack 5)
             active_attack_variant = 4;
+            s5_detection_active = true;
             break;
 
         case (6): // Active Hidden Forwarding — Data Plane (Attack 6)
             active_attack_variant = 5;
+            s6_detection_active = true;
             break;
 
         case (7): // Passive Hidden Forwarding — Control Plane (Attack 7)
             active_attack_variant = 6;
+            s7_detection_active = true;
             break;
 
         case (8): // Passive Hidden Forwarding — Data Plane (Attack 8)
             active_attack_variant = 7;
+            s8_detection_active = true;
             break;
 
         default:
