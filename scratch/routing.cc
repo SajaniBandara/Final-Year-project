@@ -120821,20 +120821,16 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         fade_eavesdrop_counter++;
                     }
                 }
-                // === SIGNATURE S7/S8 DETECTION (MOBIGUARD) ===
-                // S7: Passive HF CP — Eq. sig_s7: d/dt Vol(d',t)>ε_vol ∧ ∄FM ∧ ML-DSA-87=1 ∧ b_hop=⊥
-                // S8: Passive HF DP — Eq. sig_s8: BatchVerify=1 ∧ ML-DSA-87=1 ∧ b_hop=⊥
-                // Controlled solely by s7_detection_active / s8_detection_active.
+                // === LRAD at eavesdropper (Passive HF path) ===
+                // Volume must be recorded first so volume_check_anomaly() has
+                // live data when lrad_rsu() → s7_detect() evaluates Vol(d',t).
                 {
                     uint32_t _s78_prev = tagmodified_routing.Getprevious_senderId();
-                    uint32_t _s78_base = fid & 0xFFFFu;
-                    // Record unauthorized delivery at eavesdropper d' so
-                    // volume_check_anomaly(current_hop) returns live data for S7.
                     volume_record_delivery(current_hop);
-                    s7_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
-                    s8_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
+                    lrad_rsu(current_hop, _s78_prev, packet_ID, fid,
+                             LRADOBUFlags{}, Now().GetSeconds());
                 }
-                // === END SIGNATURE S7/S8 DETECTION ===
+                // === END LRAD at eavesdropper (Passive HF) ===
                 // Drop it here — Vehicle B is not a legitimate hop,
                 // do NOT forward it further or mark delivery
                 return;  // exit MacRx for this packet
@@ -120870,22 +120866,18 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                             fade_eavesdrop_counter++;
                         }
                     }
-                    // === SIGNATURE S5/S6 DETECTION (MOBIGUARD) ===
-                    // S5: Active HF CP — Eq. sig_s5: d'∉P(s,d) ∧ FlowMod(CP) ∧ ML-DSA-87=0 ∧ b_hop=⊥
-                    // S6: Active HF DP — Eq. sig_s6: DUP(msg_id,W) ∧ ML-DSA-87=0 ∧ b_hop=⊥
-                    // Controlled solely by s5_detection_active / s6_detection_active.
+                    // === LRAD at eavesdropper (Active HF path) ===
                     {
                         uint32_t _s56_prev = tagmodified_routing.Getprevious_senderId();
-                        uint32_t _s56_base = fid & 0xFFFFu;
-                        s5_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
-                        s6_log_recv(fid, packet_ID, current_hop);   // log d' for DUP check
-                        s6_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        s6_log_recv(fid, packet_ID, current_hop); // logging helper — kept
+                        lrad_rsu(current_hop, _s56_prev, packet_ID, fid,
+                                 LRADOBUFlags{}, Now().GetSeconds());
                         // §7.4 — Controller trust penalty for unauthorized FlowMod (eq:ctrl_trust)
                         if (_s56_prev < (uint32_t)total_size && _s56_prev >= N_Vehicles) {
                             ctrl_trust_update_negative(rsu_controller_assignment[_s56_prev]);
                         }
                     }
-                    // === END SIGNATURE S5/S6 DETECTION ===
+                    // === END LRAD at eavesdropper (Active HF) ===
                 }
             }
 
@@ -120901,19 +120893,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// the eavesdropper copy (fid | 0xDEAD0000) map to the same entry.
 				s6_log_recv(fid, packet_ID, current_hop);
 
-				// === SIGNATURE S2 DETECTION (MOBIGUARD) ===
-				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
-				// Controlled solely by s2_detection_active.
-				{
-					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					s2_detect_packet(sender_sim_index,
-					                 Now().GetSeconds(),
-					                 is_safety_critical_flow[fid],
-					                 current_hop,
-					                 packet_ID,
-					                 fid);
-				}
-				// === END SIGNATURE S2 DETECTION ===
+				// S2 detection moved into lrad_rsu() via the LRAD dispatcher below.
 
 				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
 				{
@@ -120972,29 +120952,37 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				}
 				// === END §7.6 WITNESS / VOLUME ===
 
-				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
-				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
-				// Only runs when current_hop is an RSU. Controlled solely by s1_detection_active.
-				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				// === LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu) ===
 				{
-					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
-					                         ? t_claimed_packet[sender_sim_index][packet_ID]
-					                         : 0.0;
-					if (t_fwd_by_sender > 0.0)
-					{
-						double packet_delay_s = Now().GetSeconds() - t_fwd_by_sender;
-						uint32_t rsu_idx = current_hop - N_Vehicles;
-						s1_detect_packet(rsu_idx,
-						                 packet_delay_s,
-						                 is_safety_critical_flow[fid],
-						                 sender_sim_index,  // malicious RSU that applied the delay
-						                 current_hop,       // receiving RSU (EWMA baseline + logging)
-						                 packet_ID,
-						                 fid);
+					bool     _is_vehicle = (current_hop < (uint32_t)N_Vehicles);
+					bool     _is_rsu     = (!_is_vehicle &&
+					                        current_hop < (uint32_t)(N_Vehicles + N_RSUs));
+					uint32_t _prev       = tagmodified_routing.Getprevious_senderId();
+
+					if (_is_vehicle) {
+						// OBU path: evaluate S1, S2-partial, S3, S4.
+						// delta_p = t_now - t_claimed at prev_sender (0 if unavailable).
+						double _t_claimed = (_prev < (uint32_t)total_size &&
+						                     packet_ID < (uint32_t)(Flow_size + 2))
+						                     ? t_claimed_packet[_prev][packet_ID] : 0.0;
+						double _delta_p   = (_t_claimed > 0.0)
+						                     ? (Now().GetSeconds() - _t_claimed) : 0.0;
+						bool   _hi_pri    = is_safety_critical_flow[fid];
+						uint32_t _assoc_rsu =
+						    lookup_vehicle_associated_rsu_local_idx(current_hop);
+						lrad_obu(current_hop, _prev, packet_ID, fid,
+						         _hi_pri, Now().GetSeconds(), _delta_p, _assoc_rsu);
+					}
+
+					if (_is_rsu) {
+						// RSU path (normal delivery): evaluate S2-full, S5–S8.
+						// S5–S8 return false for non-eavesdropped packets — no false positives.
+						LRADOBUFlags _empty_obu_flags;
+						lrad_rsu(current_hop, _prev, packet_ID, fid,
+						         _empty_obu_flags, Now().GetSeconds());
 					}
 				}
-				// === END SIGNATURE S1 DETECTION ===
+				// === END LRAD ===
 
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1.
