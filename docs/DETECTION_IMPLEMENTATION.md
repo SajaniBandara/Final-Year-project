@@ -34,7 +34,7 @@
 | β grid search `{0.7, 0.8, 0.9, 0.95}` | §Simulation settings | — | **Not implemented** |
 | k grid search `{1, 2, 3}` | §Simulation settings | — | **Not implemented** |
 | Robustness perturbation ±{10%, 20%, 30%} | §Simulation settings | — | **Not implemented** |
-| LSTM training data logger | `eq:lstm_input` | `lstm_logger.h` | **Not implemented** — file does not exist |
+| LSTM training data logger | `eq:lstm_input` | `lstm_logger.h` | **Implemented** — verified 2026-07-01 |
 | LSTM preprocessing (Z-score, windowing) | §Federated LSTM | `lstm_pipeline/src/preprocessor.py` | **Not implemented** |
 | LSTM model (2-layer, autoencoder) | `eq:lstm_hidden`, `eq:anomaly_score` | `lstm_pipeline/src/lstm_model.py` | **Not implemented** |
 | Local trainer + threshold calibration | `eq:lstm_detection`, `eq:lstm_threshold` | `lstm_pipeline/src/local_trainer.py` | **Not implemented** |
@@ -45,7 +45,7 @@
 | External baseline — TAP | §External Baselines | `tap_detection.h` | **Implemented** (stub) |
 | External baseline — eFADE | §External Baselines | `efade_detection.h` | **Implemented** (stub) |
 | Ablation baselines A1–A5 | §Internal Ablation Baselines | — | **Not implemented** |
-| Benign simulation runs (5 seeds) | §Data Collection | — | **Not run** |
+| Benign simulation runs (5 seeds) | §Data Collection | — | **Running** on HPC (PIDs 1902080–1902084, seeds 1–5, 2026-07-01) |
 | Attack simulation runs (240 total) | §Data Collection | — | Partial (Attacks 2, 5–8 only) |
 
 ---
@@ -502,8 +502,8 @@ Computes all eight metrics (M1–M8) per attack variant and ablation:
 
 | File | Step | Status |
 |---|---|---|
-| `scratch/lstm_logger.h` | Step 1 | **Not started** |
-| `lstm_pipeline/src/rule_calibrator.py` | Step 2.5 | Not started |
+| `scratch/lstm_logger.h` | Step 1 | **Done** — implemented 2026-07-01 |
+| `lstm_pipeline/src/rule_calibrator.py` | Step 2.5 | **Done** — implemented 2026-07-01 |
 | `lstm_pipeline/src/preprocessor.py` | Step 4 | Not started |
 | `lstm_pipeline/src/lstm_model.py` | Step 5 | Not started |
 | `lstm_pipeline/src/local_trainer.py` | Step 6 | Not started |
@@ -516,9 +516,10 @@ Computes all eight metrics (M1–M8) per attack variant and ablation:
 ## 8. Implementation Order (updated)
 
 ```
-Step 1          — lstm_logger.h: implement LSTM training data logger
-                  (was incorrectly listed as "done" — file does not exist)
+Step 1          — lstm_logger.h: DONE (2026-07-01). All 4 routing.cc hooks verified.
 Step 2          — Run 5 benign simulations (seeds 1–5, 0% attack, --training=1)
+                  IN PROGRESS on HPC (PIDs 1902080–1902084). ⚠ First batch was Terminated —
+                  clean lstm_training/ before using output, then re-verify or re-run.
 Step 2.5        — rule_calibrator.py: fit δ₀, α_ρ, α_v via OLS; β grid {0.7,0.8,0.9,0.95};
                   k grid {1,2,3}; robustness ±{10%,20%,30%}
 Step 2.6        — Update s1_detection.h with calibrated δ₀, α_ρ, α_v, β, k
