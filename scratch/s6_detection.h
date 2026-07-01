@@ -135,9 +135,10 @@ inline bool s6_detect(uint32_t recv_flow_id,
     // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0
     // Primary: result of mldsa87_verify() stored in g_packet_crypto by MacRx.
     // Fallback to 0xDEAD0000 marker if crypto record not yet populated.
+    // ¬b_batch = individual verify failed OR batch challenge failed (eq:batch_challenge)
     bool mldsa_fails;
     if (it_s6 != g_packet_crypto.end() && it_s6->second.sig_len > 0)
-        mldsa_fails = !it_s6->second.sig_valid;
+        mldsa_fails = !it_s6->second.sig_valid || !g_batch_passed;
     else
         mldsa_fails = ((recv_flow_id & S6_DEAD_MARKER) == S6_DEAD_MARKER);
 

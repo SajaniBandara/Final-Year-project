@@ -335,8 +335,8 @@ inline LRADRSUFlags lrad_rsu(
         // signals (S7/S8) the negative path is forced via have_crypto being true
         // but the detection having already confirmed attack behaviour.
         if (have_crypto)
-            btmm(prev_sender, it->second.sig_valid, it->second.stark_hop_ok,
-                 !flags.flag_S2f);
+            btmm(prev_sender, it->second.sig_valid && g_batch_passed,
+                 it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
         if (flags.flag_S5)  bc_write_detection_event(rsu, prev_sender, 5, t_now);
         if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);

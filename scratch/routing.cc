@@ -120998,12 +120998,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 					if (_is_vehicle) {
 						// OBU path: evaluate S1, S2-partial, S3, S4.
-						// delta_p = t_now - t_claimed at prev_sender (0 if unavailable).
+						// delta_p anchored to T_ref per eq:time_consensus
 						double _t_claimed = (_prev < (uint32_t)total_size &&
 						                     packet_ID < (uint32_t)(Flow_size + 2))
 						                     ? t_claimed_packet[_prev][packet_ID] : 0.0;
-						double _delta_p   = (_t_claimed > 0.0)
-						                     ? (Now().GetSeconds() - _t_claimed) : 0.0;
+						double _t_now_ref  = Now().GetSeconds() - g_T_ref;
+						double _t_send_ref = (_t_claimed > 0.0) ? (_t_claimed - g_T_ref) : 0.0;
+						double _delta_p    = (_t_claimed > 0.0) ? (_t_now_ref - _t_send_ref) : 0.0;
 						bool   _hi_pri    = is_safety_critical_flow[fid];
 						uint32_t _assoc_rsu =
 						    lookup_vehicle_associated_rsu_local_idx(current_hop);
