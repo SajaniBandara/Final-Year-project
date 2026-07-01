@@ -80,15 +80,33 @@ def load_benign_data(data_dir: Path) -> pd.DataFrame:
     if missing:
         sys.exit(f"ERROR: Missing columns in CSVs: {missing}")
 
+    # ── Filter: keep only rows with real traffic at this RSU this cycle.
+    # When rho=0 (no vehicles near RSU), lstm_logger writes delta_t=s1_delta0=0.002
+    # as a fallback (see routing.cc: obs_delay = s1_delta0 when obs_count==0).
+    # These "null" rows have delta_t=const, rho=0, v_bar=14.0 (fallbacks) and
+    # dominate the OLS, washing out the mobility signal → alpha_rho=0, alpha_v=0.
+    # Only rows with rho > 0 represent cycles where real packets were observed.
+    n_total = len(df_all)
+    df_traffic = df_all[df_all["rho"] > 0].copy()
+    n_null = n_total - len(df_traffic)
+    null_pct = 100.0 * n_null / n_total if n_total > 0 else 0.0
+    print(f"  Null (rho=0) rows filtered: {n_null:,} / {n_total:,} ({null_pct:.1f}%)")
+    print(f"  Rows with real traffic (rho>0): {len(df_traffic):,}")
+
+    if len(df_traffic) < 100:
+        print("  WARNING: fewer than 100 traffic rows — calibration may be unreliable.")
+        print("           Using all rows as fallback.")
+        df_traffic = df_all.copy()
+
     # Drop rows with zero v_bar (undefined 1/v_bar)
-    n_before = len(df_all)
-    df_all = df_all[df_all["v_bar"] > 0.1].copy()
-    dropped = n_before - len(df_all)
+    n_before = len(df_traffic)
+    df_traffic = df_traffic[df_traffic["v_bar"] > 0.1].copy()
+    dropped = n_before - len(df_traffic)
     if dropped:
         print(f"  Dropped {dropped} rows with v_bar ≤ 0.1 m/s")
 
-    df_all["inv_v_bar"] = 1.0 / df_all["v_bar"]
-    return df_all
+    df_traffic["inv_v_bar"] = 1.0 / df_traffic["v_bar"]
+    return df_traffic
 
 
 # ---------------------------------------------------------------------------
