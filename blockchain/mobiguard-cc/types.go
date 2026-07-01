@@ -268,8 +268,9 @@ type GlobalAnchor struct {
 type DKGCommit struct {
 	DocType     string `json:"docType"`     // constant "dkg"
 	Round       int    `json:"round"`
-	VkZKP       string `json:"vkZKP"`       // hex of H(all per-RSU commitments)
+	VkZKP       string `json:"vkZKP"`       // hex of H(Com_0 ‖ … ‖ Com_{nRSUs-1})
 	NRSUs       int    `json:"nRSUs"`
+	Commitments string `json:"commitments"` // hex of Com_0 ‖ … ‖ Com_{nRSUs-1} per eq:vk_commit
 	CommittedAt int64  `json:"committedAt"` // ms since epoch
 }
 

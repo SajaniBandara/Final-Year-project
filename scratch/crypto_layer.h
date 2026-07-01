@@ -267,7 +267,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
                   << " next_hop=" << next_hop
-                  << " sig_len=" << meta.sig_len  // expected 4627
+                  << " sig_len=" << meta.sig_len  // expected 4595
                   << " zone=" << inp.zone_id
                   << " t=" << inp.timestamp
                   << " digest[0..3]=" << _hex4(digest)
@@ -327,7 +327,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
         std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                   << " pkt=" << pkt_id
                   << " ok=" << ok
-                  << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " sig_len=" << it->second.sig_len  // expected 4595
                   << " attempts=" << g_verify_attempts
                   << " passed=" << g_verify_passed
                   << " rate=" << (g_verify_attempts > 0
@@ -690,7 +690,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         std::cout << "[WITNESS-DA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
-                  << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " sig_len=" << it->second.sig_len  // expected 4595
                   << " sig[0..3]=" << _hex4(it->second.sig)
                   << " pool=" << pool_sz << "/" << threshold << "\n";
     if (pool_sz >= threshold) {
@@ -723,7 +723,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
                   << " T_fwd=" << T_fwd << "s"
-                  << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " sig_len=" << it->second.sig_len  // expected 4595
                   << " pool=" << pool_sz << "/" << threshold << "\n";
     if (pool_sz >= threshold) {
         // Unconditional: BFT threshold reached
@@ -808,15 +808,23 @@ inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
 
     FlowModEndorsement& e = g_flowmod_endorsements[flow_id];
     if (e.endorsing_rsus.empty()) {
+        // First endorser: seed the accumulator with H(sig_1)
         memcpy(e.flowmod_hash, flowmod_hash, 64);
         sha3_512_hash(endorsement_sig, endorsement_sig_len, e.endorsement_hash);
+    } else {
+        // Each subsequent endorser: H_new = SHA3-512(H_prev ‖ sig_j)
+        // Binds all {ε_j} per eq:endorsed_commit: C_P = BC.Commit(H(FlowMod) ‖ {ε_j} ‖ ts)
+        uint8_t rolling[64 + OQS_SIG_ml_dsa_87_length_signature];
+        memcpy(rolling,    e.endorsement_hash, 64);
+        memcpy(rolling+64, endorsement_sig,    endorsement_sig_len);
+        sha3_512_hash(rolling, sizeof(rolling), e.endorsement_hash);
     }
     e.endorsing_rsus.push_back(rsu_idx);
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[FLOWMOD-ENDORSE] rsu=" << rsu_idx
                   << " flow=" << flow_id
                   << " zone=" << zone
-                  << " sig_len=" << endorsement_sig_len  // expected 4627
+                  << " sig_len=" << endorsement_sig_len  // expected 4595
                   << " sig[0..3]=" << _hex4(endorsement_sig)
                   << " flowmod_hash[0..3]=" << _hex4(flowmod_hash)
                   << " T_rj[0..3]=" << _hex4(T_rj)

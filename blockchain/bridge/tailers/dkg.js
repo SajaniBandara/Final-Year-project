@@ -38,13 +38,14 @@ async function handleRow(row) {
     const round      = parseInt(row.round);
     const vkZKP     = row.vk_zkp;
     const nRSUs     = parseInt(row.n_rsus);
+    const commitments = row.commitments || '';
     const tsMs      = parseInt(row.timestamp_ms);
     const identity  = identityFor(rsuId);
     const wallTime  = utcNow();
     const label     = round === 1 ? 'CEREMONY' : `ROTATION (round ${round})`;
 
     try {
-        await fc.submit(identity, 'CommitDKG', round, vkZKP, nRSUs, tsMs);
+        await fc.submit(identity, 'CommitDKG', round, vkZKP, nRSUs, commitments, tsMs);
 
         console.log('');
         console.log(`  ╔══════════════════════════════════════════════════════════════╗`);
@@ -85,7 +86,7 @@ function start() {
 
         try {
             const [record] = parse(line, {
-                columns: ['rsu_id', 'round', 'vk_zkp', 'n_rsus', 'timestamp_ms'],
+                columns: ['rsu_id', 'round', 'vk_zkp', 'n_rsus', 'commitments', 'timestamp_ms'],
                 skip_empty_lines: true,
                 from_line: 1,
             });

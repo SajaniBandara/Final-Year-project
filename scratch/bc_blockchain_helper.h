@@ -375,7 +375,7 @@ static void bc_open_dkg_csv() {
     if (g_bc_dkg_open) return;
     g_bc_dkg_csv.open(BC_RESULTS_DIR + "bc_dkg_log.csv", std::ios::trunc);
     if (g_bc_dkg_csv.is_open())
-        g_bc_dkg_csv << "rsu_id,round,vk_zkp,n_rsus,timestamp_ms\n";
+        g_bc_dkg_csv << "rsu_id,round,vk_zkp,n_rsus,commitments,timestamp_ms\n";
     g_bc_dkg_open = true;
 }
 static void bc_open_anchor_csv() {
@@ -491,10 +491,17 @@ inline void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][SHA3_512_BY
     long long ts_ms = (long long)(ts_setup * 1000.0);
     uint32_t reporting_rsu = N_Vehicles;
 
+    // Hex-encode per-RSU commitments {Com_j} per eq:vk_commit
+    std::ostringstream com_hex;
+    for (uint32_t r = 0; r < n_rsus; ++r)
+        for (size_t b = 0; b < SHA3_512_BYTES; ++b)
+            com_hex << std::hex << std::setw(2) << std::setfill('0') << (int)com[r][b];
+
     bc_open_dkg_csv();
     if (g_bc_dkg_csv.is_open()) {
         g_bc_dkg_csv << reporting_rsu << "," << round << ","
-                     << vk_hex.str() << "," << n_rsus << "," << ts_ms << "\n";
+                     << vk_hex.str() << "," << n_rsus << ","
+                     << com_hex.str() << "," << ts_ms << "\n";
         g_bc_dkg_csv.flush();
     }
 

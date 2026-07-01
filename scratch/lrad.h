@@ -212,10 +212,13 @@ inline LRADTcamSnapshot lrad_tcam_snapshot(uint32_t rsu_node_id)
     double lambda_fm = (rules_delta > 0) ? (double)rules_delta : 0.0;
     double lambda_pi = (hits_delta  > 0) ? (double)hits_delta  : 0.0;
 
-    // Count malicious entries injected by the attacker into this RSU's table.
-    int malicious_count = 0;
+    // Count legitimate (non-malicious) active flows at this RSU.
+    // Thesis eq:sig_s3 second conjunct: ¬∃v: flow(r) ∈ F_active(v)
+    // i.e. S3 fires only when there are NO legitimate active vehicle flows —
+    // the excess FlowMods cannot be attributed to real traffic.
+    int legit_flow_count = 0;
     for (const auto& e : g_tcam_table)
-        if (e.node_id == rsu_node_id && e.is_malicious) ++malicious_count;
+        if (e.node_id == rsu_node_id && !e.is_malicious) ++legit_flow_count;
 
     // Expected legitimate FlowMod rate at current vehicle density.
     // Using N_Vehicles as the density proxy, consistent with the existing
@@ -224,7 +227,7 @@ inline LRADTcamSnapshot lrad_tcam_snapshot(uint32_t rsu_node_id)
     double lambda_hat_a = lambda_fm - E_lambda_l;
 
     // Thresholds match ComputeTcamDetection()'s call-site values.
-    snap.flag_s3 = (lambda_hat_a > 10.0) && (malicious_count > 0);  // S3: CP flooding
+    snap.flag_s3 = (lambda_hat_a > 10.0) && (legit_flow_count == 0);  // S3: CP flooding, no legit flows
     snap.flag_s4 = (lambda_pi    > 15.0) && (tcam_util > 0.80);     // S4: DP injection
 
     return snap;
@@ -322,17 +325,18 @@ inline LRADRSUFlags lrad_rsu(
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
                   flags.flag_S7 || flags.flag_S8;
 
-    // ── BTMM — unconditional per verified packet (line 11, eq:trust_update) ─
-    // Matches existing routing.cc:120942–948: inside the sig_ok gate but NOT
-    // behind D_RSU, so trust_update_positive() remains reachable.
-    if (have_crypto)
-        btmm(prev_sender, it->second.sig_valid, it->second.stark_hop_ok,
-             !flags.flag_S2f /* timing_ok = delay proof passed */);
-
-    // ── BC.Write per-signal (eq:rsu_write, line 10 of alg:lrad_rsu) ─────────
-    // RSU-side signals: one LogDetection record per fired signal.
+    // ── BC.Write per-signal + BTMM (eq:rsu_write, alg:lrad_rsu) ─────────────
+    // Per thesis alg:lrad_rsu: BTMM and BC.Write are BOTH inside the D_RSU gate.
+    // Positive trust rewards for clean packets come from routing.cc (outside lrad_rsu).
     if (flags.D_RSU) {
         g_d_rsu_count++;
+        // BTMM trust penalty (eq:trust_update) — inside D_RSU per alg:lrad_rsu.
+        // trust_update_negative fires when sig or hop proof fails; for volume-based
+        // signals (S7/S8) the negative path is forced via have_crypto being true
+        // but the detection having already confirmed attack behaviour.
+        if (have_crypto)
+            btmm(prev_sender, it->second.sig_valid, it->second.stark_hop_ok,
+                 !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
         if (flags.flag_S5)  bc_write_detection_event(rsu, prev_sender, 5, t_now);
         if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);

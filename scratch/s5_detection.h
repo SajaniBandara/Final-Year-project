@@ -87,8 +87,12 @@ inline bool s5_detect(uint32_t recv_flow_id,
 {
     if (!s5_detection_active) return false;
 
-    // Conjunction 1: CP active variant only (Attack 5, index 4)
-    if (active_attack_variant != 4) return false;
+    // Conjunction 1: FlowMod not committed to blockchain — unauthorized (eq:unauth_flowmod).
+    // bc_query_flowmod returns true iff the FlowMod was f+1 endorsed and committed.
+    // If committed, the FlowMod is legitimate → S5 does not fire.
+    // In Attack 5, the controller injects the FlowMod bypassing endorsement,
+    // so bc_query_flowmod returns false → S5 proceeds to the remaining conjunctions.
+    if (bc_query_flowmod(base_flow_id)) return false;
 
     // Conjunction 2: prev_sender must be a flagged active malicious RSU
     if (prev_sender >= (uint32_t)total_size) return false;

@@ -23,7 +23,7 @@ import (
 //
 // RSU-only write: only a participating RSU may commit the ceremony result.
 func (c *MobiguardContract) CommitDKG(ctx contractapi.TransactionContextInterface,
-	round int, vkZKP string, nRSUs int, committedAt int64) error {
+	round int, vkZKP string, nRSUs int, commitments string, committedAt int64) error {
 
 	if _, err := requireRSU(ctx); err != nil {
 		return err
@@ -44,6 +44,7 @@ func (c *MobiguardContract) CommitDKG(ctx contractapi.TransactionContextInterfac
 		Round:       round,
 		VkZKP:       vkZKP,
 		NRSUs:       nRSUs,
+		Commitments: commitments,
 		CommittedAt: committedAt,
 	}
 
