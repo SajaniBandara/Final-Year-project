@@ -272,7 +272,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
                   << " next_hop=" << next_hop
-                  << " sig_len=" << meta.sig_len  // expected 4595
+                  << " sig_len=" << meta.sig_len  // expected 4627
                   << " zone=" << zone
                   << " t=" << ts
                   << " digest[0..3]=" << _hex4(digest)
@@ -332,7 +332,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
         std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                   << " pkt=" << pkt_id
                   << " ok=" << ok
-                  << " sig_len=" << it->second.sig_len  // expected 4595
+                  << " sig_len=" << it->second.sig_len  // expected 4627
                   << " attempts=" << g_verify_attempts
                   << " passed=" << g_verify_passed
                   << " rate=" << (g_verify_attempts > 0
@@ -424,7 +424,12 @@ inline BatchVerifyResult batch_verify_mldsa87(
 
     for (auto& [node, pkt] : node_pkt_pairs) {
         if (res.elapsed_s >= budget_s) break;
-        if (!mldsa87_verify(node, pkt, 0, 0)) res.passed = false;
+        // Use the stored signed_next_hop so the broadcast-skip guard in mldsa87_verify
+        // does not reject every packet when called with next_hop=0.
+        auto it_bv = g_packet_crypto.find({node, pkt});
+        uint32_t nh = (it_bv != g_packet_crypto.end())
+                      ? it_bv->second.signed_next_hop : 0;
+        if (!mldsa87_verify(node, pkt, nh, 0)) res.passed = false;
         ++res.n_verified;
         res.elapsed_s += 0.001;
     }
@@ -884,7 +889,7 @@ inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
         std::cout << "[FLOWMOD-ENDORSE] rsu=" << rsu_idx
                   << " flow=" << flow_id
                   << " zone=" << zone
-                  << " sig_len=" << endorsement_sig_len  // expected 4595
+                  << " sig_len=" << endorsement_sig_len  // expected 4627
                   << " sig[0..3]=" << _hex4(endorsement_sig)
                   << " flowmod_hash[0..3]=" << _hex4(flowmod_hash)
                   << " T_rj[0..3]=" << _hex4(T_rj)
