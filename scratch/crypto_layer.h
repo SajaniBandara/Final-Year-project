@@ -282,8 +282,12 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
 
 // ── ML-DSA-87 Verification ────────────────────────────────────────────────────
 
+// is_batch_call: true when called from batch_verify_mldsa87() (50ms tick),
+//                false when called at packet receive time (MacRx callback).
+//                Logged as batch=0/1 so timing tools can distinguish the two call sites.
 inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
-                            uint32_t next_hop, uint32_t seq) {
+                            uint32_t next_hop, uint32_t seq,
+                            bool is_batch_call = false) {
     if (claimed_signer >= (uint32_t)total_size) return false;
     auto it = g_packet_crypto.find({claimed_signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) {
@@ -333,6 +337,10 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
                   << " pkt=" << pkt_id
                   << " ok=" << ok
                   << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " t_verify=" << ns3::Simulator::Now().GetSeconds()
+                  << " t_sign=" << it->second.sign_timestamp
+                  << " Δ=" << (ns3::Simulator::Now().GetSeconds() - it->second.sign_timestamp)
+                  << " batch=" << is_batch_call
                   << " attempts=" << g_verify_attempts
                   << " passed=" << g_verify_passed
                   << " rate=" << (g_verify_attempts > 0
@@ -387,6 +395,7 @@ inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[STARK] signer=" << signer
                   << " pkt=" << pkt_id
+                  << " t=" << ns3::Simulator::Now().GetSeconds()
                   << " timing_ok=" << timing_ok
                   << " hop_ok=" << hop_ok
                   << " | lstm_t_fails=" << g_lstm_stark_counts[signer].first
@@ -429,7 +438,7 @@ inline BatchVerifyResult batch_verify_mldsa87(
         auto it_bv = g_packet_crypto.find({node, pkt});
         uint32_t nh = (it_bv != g_packet_crypto.end())
                       ? it_bv->second.signed_next_hop : 0;
-        if (!mldsa87_verify(node, pkt, nh, 0)) res.passed = false;
+        if (!mldsa87_verify(node, pkt, nh, 0, /*is_batch_call=*/true)) res.passed = false;
         ++res.n_verified;
         res.elapsed_s += 0.001;
     }
@@ -497,7 +506,8 @@ inline void trust_update_positive(uint32_t node) {
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[TRUST+] node=" << node
                   << " " << old_v << " → " << g_trust_score[node]
-                  << " (Δ_r=" << TRUST_DELTA_R << ")\n";
+                  << " (Δ_r=" << TRUST_DELTA_R << ")"
+                  << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
 }
 
 inline void trust_update_negative(uint32_t node) {
@@ -510,7 +520,8 @@ inline void trust_update_negative(uint32_t node) {
         std::cout << "[TRUST-] node=" << node
                   << " " << old_v << " → " << g_trust_score[node]
                   << " (Δ_p=" << TRUST_DELTA_P
-                  << " T_min=" << TRUST_T_MIN << ")\n";
+                  << " T_min=" << TRUST_T_MIN << ")"
+                  << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
     if (g_trust_score[node] < TRUST_T_MIN && !g_quarantined[node]) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
@@ -723,6 +734,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         std::cout << "[WITNESS-DA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " t_alert=" << ts_w
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
     // BFT penalty: count only cryptographically verified alerts (eq:bft_penalty)
@@ -780,6 +792,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         std::cout << "[WITNESS-NFA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " t_alert=" << ts_w
                   << " T_fwd=" << T_fwd << "s"
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
