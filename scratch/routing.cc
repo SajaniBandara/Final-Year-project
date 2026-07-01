@@ -114703,6 +114703,8 @@ double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === DETECTION TIMESTAMP GLOBALS ===
 
+// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
+// attack-injected delay has elapsed). 
 // double t_fwd_packet[total_size][Flow_size+2];
 
 // t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
