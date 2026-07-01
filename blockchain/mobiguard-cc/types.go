@@ -240,7 +240,23 @@ const (
 	keyPrefixModel      = "model:"
 	keyPrefixAlert      = "alert:"
 	keyPrefixDKG        = "dkg:"
+	keyPrefixAnchor     = "anchor:"
 )
+
+// -----------------------------------------------------------------------
+// Asset 8: Global anchor commits (eq:anchor_hash)
+// Key: anchor:{seq}
+// -----------------------------------------------------------------------
+
+// GlobalAnchor records one periodic RSU-chain → global-chain anchor event.
+// anchorHash = H(H_root^RSU ‖ ts_anchor ‖ H_prev^global) per eq:anchor_hash.
+type GlobalAnchor struct {
+	DocType      string `json:"docType"`      // constant "anchor"
+	Seq          int    `json:"seq"`          // monotonically increasing per simulation
+	AnchorHash   string `json:"anchorHash"`   // hex of H_anchor^(r)
+	RsuChainLen  int    `json:"rsuChainLen"`  // RSU-chain length at anchor time
+	CommittedAt  int64  `json:"committedAt"`  // ms since epoch
+}
 
 // -----------------------------------------------------------------------
 // Asset 7: DKG ceremony commits (eq:vk_commit, eq:vk_commit_rotated)

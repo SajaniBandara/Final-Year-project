@@ -23,6 +23,7 @@ const trust      = require('./tailers/trust');
 const detection  = require('./tailers/detection');
 const model      = require('./tailers/model');
 const dkg        = require('./tailers/dkg');
+const anchor     = require('./tailers/anchor');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config: select stage based on env vars
@@ -166,16 +167,18 @@ async function main() {
     detection.setIdentityMap(identityMap);
     model.setIdentityMap(identityMap);
     dkg.setIdentityMap(identityMap);
+    anchor.setIdentityMap(identityMap);
 
     // 3. Register network on-chain (idempotent — safe to re-run on restart)
     await registerNetwork(config);
 
     // 4. Start real-time CSV tailers
-    const fmTail  = flowmod.start();
-    const tTail   = trust.start();
-    const dTail   = detection.start();
-    const mTail   = model.start();
-    const dkgTail = dkg.start();
+    const fmTail     = flowmod.start();
+    const tTail      = trust.start();
+    const dTail      = detection.start();
+    const mTail      = model.start();
+    const dkgTail    = dkg.start();
+    const anchorTail = anchor.start();
 
     console.log('\n[BRIDGE] ✅ Real-time tailers active. Waiting for NS-3 events...');
     console.log('[BRIDGE]    FlowMod CSV   → LogFlowMod / EndorseFlowMod / MarkFlowModUnauthorized');
@@ -183,6 +186,7 @@ async function main() {
     console.log('[BRIDGE]    Detection CSV → LogDetection (eq:rsu_write, S1-S8 per signal)');
     console.log('[BRIDGE]    Model CSV     → CommitModelHash (Eq 3.39, per training round)');
     console.log('[BRIDGE]    DKG CSV       → CommitDKG (eq:vk_commit / eq:vk_commit_rotated)');
+    console.log('[BRIDGE]    Anchor CSV    → AnchorGlobal (eq:anchor_hash, periodic)');
     console.log('[BRIDGE]    Press Ctrl-C to stop.\n');
 
     // 5. Graceful shutdown
@@ -193,6 +197,7 @@ async function main() {
         dTail.unwatch();
         mTail.unwatch();
         dkgTail.unwatch();
+        anchorTail.unwatch();
         fc.close();
         process.exit(0);
     });

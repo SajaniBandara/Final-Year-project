@@ -186,14 +186,33 @@ inline bool bc_query_flowmod(uint32_t flow_key) {
     return (it != g_flowmod_endorsements.end()) && it->second.committed;
 }
 
-// Periodic global anchor commit per eq:anchor_hash.
-// H_anchor^{(r)} = H(H_root_RSU ‖ ts_anchor ‖ H_prev_global)
+// ── Periodic global anchor commit (eq:anchor_hash) ───────────────────────────
+// H_anchor^{(r)} = H(H_root^RSU ‖ ts_anchor ‖ H_prev^global)
+// Writes to bc_anchor_log.csv → bridge tailer → AnchorGlobal chaincode on Fabric.
+
+static std::ofstream g_bc_anchor_csv;
+static bool          g_bc_anchor_open = false;
+static int           g_anchor_seq     = 0; // incremented per anchor event
+
+static void bc_open_anchor_csv() {
+    if (g_bc_anchor_open) return;
+    const std::string dir =
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    g_bc_anchor_csv.open(dir + "bc_anchor_log.csv", std::ios::trunc);
+    if (g_bc_anchor_csv.is_open())
+        g_bc_anchor_csv << "rsu_id,seq,anchor_hash,rsu_chain_len,timestamp_ms\n";
+    g_bc_anchor_open = true;
+}
+
 inline void bc_anchor_to_global() {
     if (g_rsu_chain.empty()) return;
+
     BlockchainCommit anchor;
-    anchor.timestamp = ns3::Simulator::Now().GetSeconds();
+    anchor.timestamp        = ns3::Simulator::Now().GetSeconds();
     anchor.num_endorsements = (uint32_t)g_rsu_chain.size();
-    anchor.tier = 1;
+    anchor.tier             = 1;
+
+    // H_anchor^(r) = H(H_root^RSU ⊕ H_prev^global ‖ ts_anchor) per eq:anchor_hash
     uint8_t buf[72];
     memcpy(buf, g_rsu_chain.back().commit_hash, 64);
     memcpy(buf+64, &anchor.timestamp, 8);
@@ -202,8 +221,29 @@ inline void bc_anchor_to_global() {
             buf[i] ^= g_global_chain.back().commit_hash[i];
     sha3_512_hash(buf, 72, anchor.commit_hash);
     g_global_chain.push_back(anchor);
+
+    int seq = ++g_anchor_seq;
+    long long ts_ms = (long long)(anchor.timestamp * 1000.0);
+    uint32_t reporting_rsu = N_Vehicles; // first RSU (node_id = N_Vehicles)
+
+    // Hex-encode anchor hash for CSV transport
+    std::ostringstream ah_hex;
+    for (int i = 0; i < 64; ++i)
+        ah_hex << std::hex << std::setw(2) << std::setfill('0') << (int)anchor.commit_hash[i];
+
+    bc_open_anchor_csv();
+    if (g_bc_anchor_csv.is_open()) {
+        g_bc_anchor_csv
+            << reporting_rsu        << ","
+            << seq                  << ","
+            << ah_hex.str()         << ","
+            << g_rsu_chain.size()   << ","
+            << ts_ms                << "\n";
+        g_bc_anchor_csv.flush();
+    }
+
     if (CRYPTO_DEBUG_LOG)
-        std::cout << "[BC-ANCHOR] Global anchor committed"
+        std::cout << "[BC-ANCHOR] Global anchor committed (Fabric seq=" << seq << ")"
                   << " rsu_chain_len=" << g_rsu_chain.size()
                   << " global_chain_len=" << g_global_chain.size()
                   << " t=" << anchor.timestamp
@@ -257,10 +297,13 @@ inline void bc_commit_model_hash(uint32_t rsu_idx, const uint8_t* model_hash_64)
     long long ts_ms = (long long)(ts * 1000.0);
 
     // Write CSV row — bridge tails this and calls CommitModelHash on Fabric
+    // node_id for Fabric identity lookup = N_Vehicles + rsu_idx (matches identityMap)
+    uint32_t rsu_node_id = N_Vehicles + (rsu_idx < (uint32_t)N_RSUs ? rsu_idx : 0);
+
     bc_open_model_csv();
     if (g_bc_model_csv.is_open()) {
         g_bc_model_csv
-            << rsu_idx         << ","
+            << rsu_node_id     << ","
             << round           << ","
             << hash_hex.str()  << ","
             << ts_ms           << "\n";
