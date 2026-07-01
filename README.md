@@ -55,6 +55,10 @@ Final-Year-project/
 │   └── run_attack2_sweep.sh         # Legacy shell sweep (superseded by run_std_attacks.py)
 ├── mobility/                        # SUMO-exported NS-2 mobility traces (.tcl files)
 ├── sumo_sim/                        # SUMO scenario folders (net, trips, sumocfg)
+├── blockchain/                      # Hyperledger Fabric integration, bridge, and chaincode assets
+│   ├── README.md                    # Blockchain setup and usage guide
+│   ├── bridge/                      # Node.js bridge (RSU log ingestion → Fabric transactions)
+│   └── fabric-samples/              # Fabric test-network, channel, and deployed chaincode workspace
 ├── logs/                            # Per-run simulation logs (auto-created by launcher)
 ├── docs/
 │   └── main (10).tex                # Thesis document
