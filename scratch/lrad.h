@@ -63,6 +63,13 @@ struct EscalationEvent {
     uint32_t     flow_id;
     double       t_escalate;
     LRADOBUFlags obu_flags;
+    // Suspects for per-signal BC.Write (eq:rsu_write) at the RSU:
+    //   orig_prev_sender   — forwarding node suspected by S1/S2p
+    //   assoc_rsu_node_id  — associated RSU node ID suspected by S3/S4
+    // Without these, lrad_rsu() only has vehicle_id (the OBU reporter),
+    // which is NOT the suspect and must not be logged on the ledger.
+    uint32_t     orig_prev_sender;    // UINT32_MAX = unknown/not applicable
+    uint32_t     assoc_rsu_node_id;   // UINT32_MAX = no RSU in range
 };
 
 // Per-RSU queue of pending escalation events.
@@ -106,11 +113,15 @@ inline void lrad_reset_state()
 // lrad_rsu() before those bodies appear in the file.
 // =========================================================================
 inline void    escalate_to_rsu(uint32_t vehicle, uint32_t pkt_id,
-                                uint32_t fid, LRADOBUFlags obu_flags);
+                                uint32_t fid, LRADOBUFlags obu_flags,
+                                uint32_t orig_prev_sender,
+                                uint32_t assoc_rsu_node_id);
 inline void    process_escalation_at_rsu(uint32_t rsu_id);
 inline LRADRSUFlags lrad_rsu(uint32_t rsu, uint32_t prev_sender,
                               uint32_t pkt_id, uint32_t fid,
-                              LRADOBUFlags obu_flags, double t_now);
+                              LRADOBUFlags obu_flags, double t_now,
+                              uint32_t obu_orig_prev_sender  = UINT32_MAX,
+                              uint32_t obu_assoc_rsu_node_id = UINT32_MAX);
 inline void    btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok);
 inline bool    lrad_s2_partial_check(uint32_t vehicle,
                                      uint32_t pkt_id, double t_now);
@@ -275,12 +286,14 @@ inline void btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok)
 // =========================================================================
 
 inline LRADRSUFlags lrad_rsu(
-    uint32_t     rsu,           // current_hop / receiving RSU (eavesdropper)
-    uint32_t     prev_sender,   // suspected sending / forwarding node
+    uint32_t     rsu,                              // current_hop / receiving RSU
+    uint32_t     prev_sender,                      // suspected sending node
     uint32_t     pkt_id,
     uint32_t     fid,
-    LRADOBUFlags obu_flags,     // from escalation (may be zero-initialised)
-    double       t_now)
+    LRADOBUFlags obu_flags,                        // from escalation (zero if not escalated)
+    double       t_now,
+    uint32_t     obu_orig_prev_sender   /* = UINT32_MAX */,  // S1/S2p suspect
+    uint32_t     obu_assoc_rsu_node_id  /* = UINT32_MAX */)  // S3/S4 suspect
 {
     LRADRSUFlags flags;
     auto _t0 = crypto_log_start();
@@ -317,12 +330,7 @@ inline LRADRSUFlags lrad_rsu(
              !flags.flag_S2f /* timing_ok = delay proof passed */);
 
     // ── BC.Write per-signal (eq:rsu_write, line 10 of alg:lrad_rsu) ─────────
-    // Write one LogDetection record per fired signal so each is individually
-    // attributable to a specific RSU (chaincode key: detect:{suspect}:{ts_ms}).
-    // OBU-escalated signals (S1/S2p/S3/S4) are omitted here: the escalation
-    // event carries vehicle_id as prev_sender, not the original malicious node —
-    // logging them would accuse an innocent vehicle. Extend EscalationEvent with
-    // orig_prev_sender to fix this in a follow-up.
+    // RSU-side signals: one LogDetection record per fired signal.
     if (flags.D_RSU) {
         g_d_rsu_count++;
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
@@ -330,6 +338,20 @@ inline LRADRSUFlags lrad_rsu(
         if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);
         if (flags.flag_S7)  bc_write_detection_event(rsu, prev_sender, 7, t_now);
         if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);
+    }
+
+    // OBU-escalated signals (S1/S2p/S3/S4): RSU writes on behalf of the OBU
+    // observation, using the correct suspects carried through EscalationEvent.
+    // Guards against UINT32_MAX (sentinel = unknown) before writing.
+    if (obu_flags.D_OBU) {
+        if (obu_flags.flag_S1  && obu_orig_prev_sender  != UINT32_MAX)
+            bc_write_detection_event(rsu, obu_orig_prev_sender,  1, t_now);
+        if (obu_flags.flag_S2p && obu_orig_prev_sender  != UINT32_MAX)
+            bc_write_detection_event(rsu, obu_orig_prev_sender,  2, t_now);
+        if (obu_flags.flag_S3  && obu_assoc_rsu_node_id != UINT32_MAX)
+            bc_write_detection_event(rsu, obu_assoc_rsu_node_id, 3, t_now);
+        if (obu_flags.flag_S4  && obu_assoc_rsu_node_id != UINT32_MAX)
+            bc_write_detection_event(rsu, obu_assoc_rsu_node_id, 4, t_now);
     }
 
     crypto_log_event("lrad_rsu", prev_sender, pkt_id, _t0, flags.D_RSU);
@@ -351,7 +373,8 @@ inline void process_escalation_at_rsu(uint32_t rsu_id)
     auto& queue = g_escalation_queue[rsu_id];
     for (auto& ev : queue)
         lrad_rsu(rsu_id, ev.vehicle_id, ev.pkt_id, ev.flow_id,
-                 ev.obu_flags, ns3::Simulator::Now().GetSeconds());
+                 ev.obu_flags, ns3::Simulator::Now().GetSeconds(),
+                 ev.orig_prev_sender, ev.assoc_rsu_node_id);
     queue.clear();
 }
 
@@ -365,7 +388,8 @@ inline void process_escalation_at_rsu(uint32_t rsu_id)
 // =========================================================================
 
 inline void escalate_to_rsu(
-    uint32_t vehicle, uint32_t pkt_id, uint32_t fid, LRADOBUFlags obu_flags)
+    uint32_t vehicle, uint32_t pkt_id, uint32_t fid, LRADOBUFlags obu_flags,
+    uint32_t orig_prev_sender, uint32_t assoc_rsu_node_id)
 {
     auto _t0 = crypto_log_start();
 
@@ -378,12 +402,14 @@ inline void escalate_to_rsu(
     uint32_t rsu_id = N_Vehicles + rsu_local_idx;
 
     EscalationEvent ev;
-    ev.vehicle_id = vehicle;
-    ev.rsu_id     = rsu_id;
-    ev.pkt_id     = pkt_id;
-    ev.flow_id    = fid;
-    ev.t_escalate = ns3::Simulator::Now().GetSeconds();
-    ev.obu_flags  = obu_flags;
+    ev.vehicle_id        = vehicle;
+    ev.rsu_id            = rsu_id;
+    ev.pkt_id            = pkt_id;
+    ev.flow_id           = fid;
+    ev.t_escalate        = ns3::Simulator::Now().GetSeconds();
+    ev.obu_flags         = obu_flags;
+    ev.orig_prev_sender  = orig_prev_sender;
+    ev.assoc_rsu_node_id = assoc_rsu_node_id;
 
     g_escalation_queue[rsu_id].push_back(ev);
     g_escalation_count++;
@@ -435,9 +461,10 @@ inline LRADOBUFlags lrad_obu(
     flags.flag_S2p = lrad_s2_partial_check(vehicle, pkt_id, t_now);
 
     // ── S3 / S4: TCAM flooding / injection (lightweight snapshot) ───────────
+    uint32_t assoc_rsu_node_id = UINT32_MAX; // sentinel: no RSU in range
     if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
-        uint32_t rsu_node_id = N_Vehicles + assoc_rsu_local_idx;
-        LRADTcamSnapshot snap = lrad_tcam_snapshot(rsu_node_id);
+        assoc_rsu_node_id = N_Vehicles + assoc_rsu_local_idx;
+        LRADTcamSnapshot snap = lrad_tcam_snapshot(assoc_rsu_node_id);
         flags.flag_S3 = snap.flag_s3;
         flags.flag_S4 = snap.flag_s4;
     }
@@ -450,7 +477,12 @@ inline LRADOBUFlags lrad_obu(
 
     if (flags.D_OBU) {
         g_d_obu_count++;
-        escalate_to_rsu(vehicle, pkt_id, fid, flags);
+        // Pass suspects explicitly so the RSU can write correct BC.Write records
+        // for each OBU-side signal (eq:rsu_write):
+        //   prev_sender       → suspect for S1/S2p (the forwarding node)
+        //   assoc_rsu_node_id → suspect for S3/S4  (the TCAM-anomalous RSU)
+        escalate_to_rsu(vehicle, pkt_id, fid, flags,
+                        prev_sender, assoc_rsu_node_id);
     }
     return flags;
 }
