@@ -30,6 +30,9 @@
 // Forward declarations — bc_commit_dkg defined in bc_blockchain_helper.h (included after this).
 void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                    uint32_t n_rsus, double ts_setup);
+// dkg_rotate_keys defined in dkg_setup.h (included after this) — called from trust_update_negative
+// per eq:key_rotation_trigger when a quarantined node is an RSU.
+inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
@@ -349,9 +352,9 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {
     StarkTimingProof proof;
     proof.valid = (t_fwd - t_recv) <= STARK_DELTA_MAX;
-    uint8_t buf[20];
-    memcpy(buf, &t_recv, 8); memcpy(buf+8, &t_fwd, 8); memcpy(buf+16, &nonce, 4);
-    sha3_512_hash(buf, 20, proof.commitment);
+    // c_i = H_SHA3-512(ρ_i) — commit to blinding randomness only; timestamps are
+    // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
+    sha3_512_hash(reinterpret_cast<const uint8_t*>(&nonce), sizeof(nonce), proof.commitment);
     return proof;
 }
 
@@ -516,6 +519,9 @@ inline void trust_update_negative(uint32_t node) {
         NS_LOG_WARN("[TRUST] Quarantine: node=" << node
             << " trust=" << g_trust_score[node]
             << " t=" << ns3::Simulator::Now().GetSeconds());
+        // eq:key_rotation_trigger: if revoked node is an RSU, rotate all proving keys
+        if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
+            dkg_rotate_keys(node);
     }
 }
 

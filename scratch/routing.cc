@@ -120958,9 +120958,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
 						}
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
-						// sig_ok gate ensures we only update for packets intended for this node,
-						// not overheard broadcasts (verify returns false for those).
-						if (hop_ok && timing_ok)
+						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
+						// sig_ok gate excludes overheard broadcast packets.
+						if (hop_ok && timing_ok && g_batch_passed)
 							trust_update_positive(prev_sender);
 						else
 							trust_update_negative(prev_sender);

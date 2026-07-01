@@ -75,7 +75,8 @@ inline bool bc_log_flowmod(const FlowModEndorsement& /*e*/, uint32_t /*rsu_idx*/
 // Returns false → S1 detection signal. On success, appends the commit hash to
 // g_rsu_commit_hashes so it feeds the next Merkle root in bc_anchor_to_global().
 inline bool bc_commit_flowmod(FlowModEndorsement& e) {
-    uint32_t f_plus_1 = (N_RSUs / 3) + 1;
+    // f = floor((N_RSUs-1)/3) Byzantine faults tolerated; require f+1 endorsers (eq:endorsed_commit)
+    uint32_t f_plus_1 = (N_RSUs > 0) ? ((N_RSUs - 1) / 3) + 1 : 1;
     if ((uint32_t)e.endorsing_rsus.size() < f_plus_1) {
         std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
                   << e.endorsing_rsus.size() << " < required f+1=" << f_plus_1

@@ -165,12 +165,8 @@ inline bool s7_detect(uint32_t recv_flow_id,
          << " [CP — controller FlowMod poisoned; passive/unmodified copy]"
          << endl;
 
-    // Corroborating volume check from crypto_layer.h (eq:sig_s7 Vol conjunct).
-    // volume_record_delivery(current_hop) is called before s7_detect() in routing.cc
-    // so g_dst_volume_curr[current_hop] reflects the eavesdropped packet count.
-    bool vol_anomaly = volume_check_anomaly(current_hop);
-
-    if ((rate > S7_EPSILON_VOL || vol_anomaly) && b_hop_fails)
+    // eq:sig_s7: d/dt Vol(d',t) > ε_vol — single sliding-window rate gate only
+    if (rate > S7_EPSILON_VOL && b_hop_fails)
     {
         cout << "[S7] ⚠️ SIGNATURE S7 TRIGGERED!"
              << " Passive HF (CP): unexpected volume at d'=" << current_hop
