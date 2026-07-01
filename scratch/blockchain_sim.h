@@ -204,6 +204,40 @@ static void bc_open_anchor_csv() {
     g_bc_anchor_open = true;
 }
 
+// Binary Merkle tree over g_rsu_chain commit_hashes (SHA3-512 at each level).
+// Odd-length levels: duplicate the last node (standard Bitcoin/RFC convention).
+// Single entry → that entry's hash is the root.
+// Empty chain → root is all zeros.
+static void compute_merkle_root(const std::vector<BlockchainCommit>& chain,
+                                uint8_t root_out[64])
+{
+    if (chain.empty()) { memset(root_out, 0, 64); return; }
+
+    // Leaf layer: copy each entry's commit_hash
+    std::vector<std::array<uint8_t,64>> level(chain.size());
+    for (size_t i = 0; i < chain.size(); ++i)
+        memcpy(level[i].data(), chain[i].commit_hash, 64);
+
+    // Reduce pairwise up the tree
+    while (level.size() > 1) {
+        if (level.size() & 1)            // odd: duplicate last leaf
+            level.push_back(level.back());
+
+        std::vector<std::array<uint8_t,64>> next;
+        next.reserve(level.size() / 2);
+        for (size_t i = 0; i < level.size(); i += 2) {
+            uint8_t pair[128];
+            memcpy(pair,    level[i].data(),   64);
+            memcpy(pair+64, level[i+1].data(), 64);
+            std::array<uint8_t,64> parent;
+            sha3_512_hash(pair, 128, parent.data());
+            next.push_back(parent);
+        }
+        level = std::move(next);
+    }
+    memcpy(root_out, level[0].data(), 64);
+}
+
 inline void bc_anchor_to_global() {
     if (g_rsu_chain.empty()) return;
 
@@ -212,14 +246,20 @@ inline void bc_anchor_to_global() {
     anchor.num_endorsements = (uint32_t)g_rsu_chain.size();
     anchor.tier             = 1;
 
-    // H_anchor^(r) = H(H_root^RSU ⊕ H_prev^global ‖ ts_anchor) per eq:anchor_hash
-    uint8_t buf[72];
-    memcpy(buf, g_rsu_chain.back().commit_hash, 64);
-    memcpy(buf+64, &anchor.timestamp, 8);
+    // Step 1: Merkle root of RSU chain (H_root^RSU)
+    uint8_t merkle_root[64];
+    compute_merkle_root(g_rsu_chain, merkle_root);
+
+    // Step 2: H_anchor^(r) = SHA3-512(H_root^RSU ‖ ts_anchor ‖ H_prev^global)
+    // Exactly eq:anchor_hash — three-way concatenation, no XOR.
+    uint8_t buf[136];
+    memcpy(buf,    merkle_root,        64); // H_root^RSU
+    memcpy(buf+64, &anchor.timestamp,   8); // ts_anchor
     if (!g_global_chain.empty())
-        for (int i = 0; i < 64; ++i)
-            buf[i] ^= g_global_chain.back().commit_hash[i];
-    sha3_512_hash(buf, 72, anchor.commit_hash);
+        memcpy(buf+72, g_global_chain.back().commit_hash, 64); // H_prev^global
+    else
+        memset(buf+72, 0, 64); // genesis block: H_prev^global = 0^512
+    sha3_512_hash(buf, 136, anchor.commit_hash);
     g_global_chain.push_back(anchor);
 
     int seq = ++g_anchor_seq;
