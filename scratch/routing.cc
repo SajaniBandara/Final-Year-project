@@ -114701,13 +114701,9 @@ double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs 
 // Mirrors cp_attack_pct so both attacks have symmetric terminal control.
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
-// === SIGNATURE S2 DETECTION GLOBALS ===
-// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
-// attack-injected delay has elapsed). S2 measures hop_delay = t_recv_now -
-// t_fwd_packet[sender][packet_id], so this MUST be the real, post-delay
-// send time for S2's elapsed-time measurement to correctly capture any
-// injected delay.
-double t_fwd_packet[total_size][Flow_size+2];
+// === DETECTION TIMESTAMP GLOBALS ===
+
+// double t_fwd_packet[total_size][Flow_size+2];
 
 // t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
 // time — i.e., when it received/decided to forward the packet, BEFORE any
