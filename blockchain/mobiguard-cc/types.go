@@ -239,7 +239,23 @@ const (
 	keyPrefixQuarantine = "quarantine:"
 	keyPrefixModel      = "model:"
 	keyPrefixAlert      = "alert:"
+	keyPrefixDKG        = "dkg:"
 )
+
+// -----------------------------------------------------------------------
+// Asset 7: DKG ceremony commits (eq:vk_commit, eq:vk_commit_rotated)
+// Key: dkg:{round}  (round=1 initial ceremony; round>1 key rotations)
+// -----------------------------------------------------------------------
+
+// DKGCommit records a DKG ceremony or key-rotation result on the global
+// anchor chain. vkZKP = SHA3-512(Com_0 ‖ … ‖ Com_{nRSUs-1}) per eq:vk_commit.
+type DKGCommit struct {
+	DocType     string `json:"docType"`     // constant "dkg"
+	Round       int    `json:"round"`
+	VkZKP       string `json:"vkZKP"`       // hex of H(all per-RSU commitments)
+	NRSUs       int    `json:"nRSUs"`
+	CommittedAt int64  `json:"committedAt"` // ms since epoch
+}
 
 // -----------------------------------------------------------------------
 // Controller trust constants (§3.4.11, Eq 3.49-3.53)

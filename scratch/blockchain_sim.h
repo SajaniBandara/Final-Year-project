@@ -113,9 +113,51 @@ inline void bc_write_event(uint32_t rsu_idx, uint32_t event_type,
                   << " rsu_chain_len=" << g_rsu_chain.size() << "\n";
 }
 
-// DKG ceremony/rotation commit per eq:vk_commit → global chain (tier=1).
+// ── DKG ceremony/rotation commit (eq:vk_commit, eq:vk_commit_rotated) ────────
+// Writes to bc_dkg_log.csv → bridge tailer → CommitDKG chaincode on Fabric.
+// vk_zkp = SHA3-512(Com_0 ‖ … ‖ Com_{n_rsus-1}) — already the compact hash.
+// Also pushes to the in-memory global chain (tier=1).
+
+static std::ofstream g_bc_dkg_csv;
+static bool          g_bc_dkg_open  = false;
+static int           g_dkg_round    = 0; // incremented per ceremony/rotation
+
+static void bc_open_dkg_csv() {
+    if (g_bc_dkg_open) return;
+    const std::string dir =
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    g_bc_dkg_csv.open(dir + "bc_dkg_log.csv", std::ios::trunc);
+    if (g_bc_dkg_csv.is_open())
+        g_bc_dkg_csv << "rsu_id,round,vk_zkp,n_rsus,timestamp_ms\n";
+    g_bc_dkg_open = true;
+}
+
 inline void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                            uint32_t n_rsus, double ts_setup) {
+    int round = ++g_dkg_round;
+
+    // vk_zkp is already H(all per-RSU commitments) — hex-encode for CSV
+    std::ostringstream vk_hex;
+    for (int i = 0; i < 64; ++i)
+        vk_hex << std::hex << std::setw(2) << std::setfill('0') << (int)vk_zkp[i];
+
+    long long ts_ms = (long long)(ts_setup * 1000.0);
+
+    // RSU 0 (first RSU, node_id = N_Vehicles) is the submitting identity
+    uint32_t reporting_rsu = N_Vehicles;
+
+    bc_open_dkg_csv();
+    if (g_bc_dkg_csv.is_open()) {
+        g_bc_dkg_csv
+            << reporting_rsu   << ","
+            << round           << ","
+            << vk_hex.str()    << ","
+            << n_rsus          << ","
+            << ts_ms           << "\n";
+        g_bc_dkg_csv.flush();
+    }
+
+    // Keep in-memory global chain (tier=1) for g_global_chain metric
     std::vector<uint8_t> payload(64 + n_rsus * 64 + 8);
     memcpy(payload.data(), vk_zkp, 64);
     for (uint32_t r = 0; r < n_rsus; ++r)
@@ -128,8 +170,7 @@ inline void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
     sha3_512_hash(payload.data(), payload.size(), entry.commit_hash);
     g_global_chain.push_back(entry);
 
-    // Unconditional: DKG blockchain commit is a one-time high-importance event
-    std::cout << "[DKG-BC] vk_ZKP committed to global chain"
+    std::cout << "[DKG-BC] vk_ZKP committed to global chain (Fabric round=" << round << ")"
               << " t=" << ts_setup
               << " n_rsus=" << n_rsus
               << " vk_zkp[0..3]=" << _hex4(vk_zkp)
@@ -176,19 +217,65 @@ inline void bc_anchor_recurring() {
 
 // ── Federated LSTM model hash verification stubs (Gap 7) ─────────────────────
 // eq:bc_model_verify: SC.VerifyModelHash(H(W_local^k), CommittedHash^k)
+//
+// bc_commit_model_hash() writes to bc_model_log.csv in addition to the
+// in-memory chain. The Node.js bridge tails the CSV and calls
+// CommitModelHash(round, hash, committedAt) on Fabric (model.go, Eq 3.39).
 
 std::map<uint32_t, std::array<uint8_t,64>> g_committed_model_hashes;
+
+// Per-RSU training round counter — incremented on every commit call.
+static std::map<uint32_t, int> g_model_round;
+
+static std::ofstream g_bc_model_csv;
+static bool          g_bc_model_open = false;
+
+static void bc_open_model_csv() {
+    if (g_bc_model_open) return;
+    const std::string dir =
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    g_bc_model_csv.open(dir + "bc_model_log.csv", std::ios::trunc);
+    if (g_bc_model_csv.is_open())
+        g_bc_model_csv << "rsu_id,round,model_hash,timestamp_ms\n";
+    g_bc_model_open = true;
+}
 
 inline void bc_commit_model_hash(uint32_t rsu_idx, const uint8_t* model_hash_64) {
     std::array<uint8_t,64> arr;
     memcpy(arr.data(), model_hash_64, 64);
     g_committed_model_hashes[rsu_idx] = arr;
+
+    // Advance round counter for this RSU (chaincode key: model:{rsuId}:{round})
+    int round = ++g_model_round[rsu_idx];
+
+    // Hex-encode 64-byte model hash for CSV/chaincode transport
+    std::ostringstream hash_hex;
+    for (int i = 0; i < 64; ++i)
+        hash_hex << std::hex << std::setw(2) << std::setfill('0') << (int)model_hash_64[i];
+
+    double ts = ns3::Simulator::Now().GetSeconds();
+    long long ts_ms = (long long)(ts * 1000.0);
+
+    // Write CSV row — bridge tails this and calls CommitModelHash on Fabric
+    bc_open_model_csv();
+    if (g_bc_model_csv.is_open()) {
+        g_bc_model_csv
+            << rsu_idx         << ","
+            << round           << ","
+            << hash_hex.str()  << ","
+            << ts_ms           << "\n";
+        g_bc_model_csv.flush();
+    }
+
+    // Keep in-memory chain for rsu_chain_len metric
     bc_write_event(N_Vehicles + (rsu_idx < N_RSUs ? rsu_idx : 0),
-                   5 /*model_hash_commit*/, rsu_idx,
-                   ns3::Simulator::Now().GetSeconds());
-    // Unconditional: model hash commit proves federated ML integrity chain
-    std::cout << "[BC-MODEL] RSU " << rsu_idx << " model hash committed"
-              << " hash[0..3]=" << _hex4(model_hash_64) << "\n";
+                   5 /*model_hash_commit*/, rsu_idx, ts);
+
+    std::cout << "[BC-MODEL] RSU " << rsu_idx
+              << " round=" << round
+              << " model hash committed"
+              << " hash[0..3]=" << _hex4(model_hash_64)
+              << " t=" << ts << "s\n";
 }
 
 inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash_64) {
