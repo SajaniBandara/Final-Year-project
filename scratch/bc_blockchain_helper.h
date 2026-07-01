@@ -31,7 +31,83 @@
 #include <vector>
 #include <array>
 
-// SHA3_512_BYTES is defined in blockchain_sim.h (included before this file in routing.cc).
+// SHA3-512 output size in bytes. Single authoritative definition for the TU.
+static constexpr size_t SHA3_512_BYTES = 64;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared blockchain state — one definition per TU (routing.cc).
+// FlowMod, detection, and model writes all push hashes here; bc_anchor_to_global
+// reads this vector to build the binary Merkle root (eq:anchor_hash).
+// ─────────────────────────────────────────────────────────────────────────────
+static std::vector<std::array<uint8_t,SHA3_512_BYTES>> g_rsu_commit_hashes;
+static int g_bc_global_commit_count = 0;
+
+static std::map<uint32_t, std::array<uint8_t,SHA3_512_BYTES>> g_committed_model_hashes;
+static std::map<uint32_t, int> g_model_round;
+
+static std::ofstream g_bc_detection_csv;
+static bool          g_bc_detection_open = false;
+static std::ofstream g_bc_model_csv;
+static bool          g_bc_model_open     = false;
+static std::ofstream g_bc_dkg_csv;
+static bool          g_bc_dkg_open       = false;
+static std::ofstream g_bc_anchor_csv;
+static bool          g_bc_anchor_open    = false;
+static int           g_dkg_round         = 0;
+static int           g_anchor_seq        = 0;
+static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
+
+static const std::string BC_RESULTS_DIR =
+    "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flowmod endorsement functions — synchronous BFT path (eq:endorsed_commit).
+// FlowModEndorsement and g_flowmod_endorsements are defined in crypto_layer.h
+// which is included in routing.cc before this header.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Pre-install audit log — no-op in Fabric mode (bridge's flowmod tailer handles it).
+inline bool bc_log_flowmod(const FlowModEndorsement& /*e*/, uint32_t /*rsu_idx*/) {
+    return true;
+}
+
+// BFT endorsement check per eq:endorsed_commit.
+// Returns false → S1 detection signal. On success, appends the commit hash to
+// g_rsu_commit_hashes so it feeds the next Merkle root in bc_anchor_to_global().
+inline bool bc_commit_flowmod(FlowModEndorsement& e) {
+    uint32_t f_plus_1 = (N_RSUs / 3) + 1;
+    if ((uint32_t)e.endorsing_rsus.size() < f_plus_1) {
+        std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
+                  << e.endorsing_rsus.size() << " < required f+1=" << f_plus_1
+                  << " → S1 detection signal\n";
+        NS_LOG_WARN("[BC] FlowMod rejected: " << e.endorsing_rsus.size()
+            << " < required " << f_plus_1 << " — S1 signal");
+        return false;
+    }
+    double ts = ns3::Simulator::Now().GetSeconds();
+    uint8_t buf[SHA3_512_BYTES * 2 + sizeof(double)];
+    memcpy(buf,                    e.flowmod_hash,     SHA3_512_BYTES);
+    memcpy(buf + SHA3_512_BYTES,   e.endorsement_hash, SHA3_512_BYTES);
+    memcpy(buf + SHA3_512_BYTES*2, &ts,                sizeof(double));
+    std::array<uint8_t,SHA3_512_BYTES> commit_hash;
+    if (!sha3_512_hash(buf, sizeof(buf), commit_hash.data())) return false;
+    g_rsu_commit_hashes.push_back(commit_hash);
+    e.committed   = true;
+    e.commit_time = ts;
+    std::cout << "[BC-COMMIT] FlowMod COMMITTED: endorsers="
+              << e.endorsing_rsus.size() << "/" << f_plus_1
+              << " commit_hash[0..3]=" << _hex4(commit_hash.data())
+              << " rsu_chain_len=" << g_rsu_commit_hashes.size() << "\n";
+    return true;
+}
+
+// Check whether a FlowMod was committed (f+1 endorsed) — used for S3/S5 detection.
+inline bool bc_query_flowmod(uint32_t flow_key) {
+    auto it = g_flowmod_endorsements.find(flow_key);
+    return (it != g_flowmod_endorsements.end()) && it->second.committed;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // These globals are defined in tcam_attack_helper.h (same translation unit).
 // Forward-declared here so bc_blockchain_helper.h compiles when included

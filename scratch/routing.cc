@@ -114865,7 +114865,7 @@ void record_detection_event(int v, int n); // defined at ~line 115476; forward-d
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
 #include "crypto_layer.h"
 #include "dkg_setup.h"
-#include "blockchain_sim.h"
+#include "bc_blockchain_helper.h"
 #include "crypto_event_log.h"  // per-operation timing log (supervisor timing verification)
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
