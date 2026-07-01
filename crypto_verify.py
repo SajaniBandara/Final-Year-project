@@ -325,11 +325,15 @@ def v_batch(c, tags, out):
     tick_times = [extract_float(l, "t") for l in tick]
     tick_times = sorted(v for v in tick_times if v is not None)
     if len(tick_times) >= 2:
-        intervals = [round(tick_times[i+1]-tick_times[i], 4)
-                     for i in range(min(5, len(tick_times)-1))]
-        c.check("Batch tick interval ≈ 50 ms",
-                all(0.04 <= iv <= 0.06 for iv in intervals),
-                f"first 5 intervals (s): {intervals}")
+        all_intervals = [round(tick_times[i+1]-tick_times[i], 4)
+                         for i in range(len(tick_times)-1)]
+        # Only check intervals within the same burst (≤200ms); gaps between bursts
+        # are expected when no packets are pending and produce no BATCH-TICK log.
+        burst_intervals = [iv for iv in all_intervals if iv <= 0.20]
+        if burst_intervals:
+            c.check("Batch tick interval ≈ 50 ms (within-burst)",
+                    all(0.04 <= iv <= 0.06 for iv in burst_intervals),
+                    f"burst intervals (s): {burst_intervals}")
         _pr(f"\n  Tick timestamps (first 5):  {tick_times[:5]}", out)
 
     if bv:
@@ -475,10 +479,10 @@ def v_blockchain_csv(c, out):
     section(11, "Blockchain CSV Output Verification", out)
     _pr(f"\n  Checking in: {NS3_RESULTS}", out)
     expected = {
-        "bc_detection_log.csv": ["rsu_id","node_id","signal_id","timestamp_ms","sig_hex"],
+        "bc_detection_log.csv": ["rsu_id","suspect_node","signal_idx","timestamp_ms","rsu_sig"],
         "bc_dkg_log.csv":       ["rsu_id","round","vk_zkp","n_rsus","commitments","timestamp_ms"],
-        "bc_model_log.csv":     ["rsu_id","round","hash_hex","timestamp_ms"],
-        "bc_anchor_log.csv":    ["seq","merkle_root","ts_anchor","prev_hash","anchor_hash"],
+        "bc_flowmod_log.csv":   ["rsu_id","flow_mod_hash","recv_timestamp_ms","is_malicious"],
+        "bc_anchor_log.csv":    ["rsu_id","seq","anchor_hash","rsu_chain_len","timestamp_ms"],
     }
     for fname, cols in expected.items():
         fpath = NS3_RESULTS / fname
@@ -546,6 +550,12 @@ def v_timing_evidence(raw, out):
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--replay", metavar="RAW_FILE",
+                    help="Skip simulation; re-analyse an existing raw log")
+    args = ap.parse_args()
+
     RESULTS.mkdir(exist_ok=True)
 
     with open(REPORT_PATH, "w") as out:
@@ -557,17 +567,20 @@ def main():
         )
         header(banner.strip(), out)
 
-        # ── Run simulation ────────────────────────────────────────────────────
-        try:
-            raw = run_simulation()
-        except subprocess.TimeoutExpired:
-            _pr("ERROR: simulation timed out after 180s", out); sys.exit(1)
-        except FileNotFoundError:
-            _pr(f"ERROR: waf not found at {NS3_DIR}/waf", out); sys.exit(1)
+        # ── Run simulation (or replay existing log) ───────────────────────────
+        if args.replay:
+            raw = Path(args.replay).read_text()
+            _pr(f"\n[{wall_ts()}] REPLAY mode — loaded {args.replay}", out)
+        else:
+            try:
+                raw = run_simulation()
+            except subprocess.TimeoutExpired:
+                _pr("ERROR: simulation timed out after 180s", out); sys.exit(1)
+            except FileNotFoundError:
+                _pr(f"ERROR: waf not found at {NS3_DIR}/waf", out); sys.exit(1)
+            RAW_PATH.write_text(raw)
 
-        RAW_PATH.write_text(raw)
-        _pr(f"\n[{wall_ts()}] Raw output saved: {RAW_PATH}", out)
-        _pr(f"[{wall_ts()}] Raw output lines: {len(raw.splitlines())}", out)
+        _pr(f"\n[{wall_ts()}] Raw output lines: {len(raw.splitlines())}", out)
 
         tags = parse_tags(raw)
         _pr(f"[{wall_ts()}] Distinct log tags parsed: "
