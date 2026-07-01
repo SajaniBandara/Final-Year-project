@@ -1,6 +1,10 @@
 #ifndef BLOCKCHAIN_SIM_H
 #define BLOCKCHAIN_SIM_H
 
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+
 struct BlockchainCommit {
     uint8_t  commit_hash[64];
     double   timestamp;
@@ -191,6 +195,95 @@ inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash
     auto it = g_committed_model_hashes.find(rsu_idx);
     if (it == g_committed_model_hashes.end()) return false;
     return memcmp(it->second.data(), submitted_hash_64, 64) == 0;
+}
+
+// ── bc_detection_log.csv writer ───────────────────────────────────────────────
+// Opened lazily; flushed after every row so the Node.js bridge tailer sees
+// each detection event in real time.
+static std::ofstream g_bc_detection_csv;
+static bool          g_bc_detection_open = false;
+
+static void bc_open_detection_csv() {
+    if (g_bc_detection_open) return;
+    const std::string dir =
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    g_bc_detection_csv.open(dir + "bc_detection_log.csv", std::ios::trunc);
+    if (g_bc_detection_csv.is_open())
+        g_bc_detection_csv << "rsu_id,suspect_node,signal_idx,timestamp_ms,rsu_sig\n";
+    g_bc_detection_open = true;
+}
+
+// BC.Write(rk, vs || Si || ts || MLDSA.Sign(sk_rk, H(vs||Si||ts))) — eq:rsu_write
+//
+// Connects to the LogDetection chaincode via bc_detection_log.csv → bridge tailer.
+// signal_idx must be in [1,8] corresponding to S1-S8 (enforced by the chaincode).
+// Call once per fired signal per detection event so each is attributable to a
+// specific signature (the chaincode key is detect:{suspectNode}:{timestamp_ms}).
+//
+// Also appends to the in-memory g_rsu_chain so rsu_chain_len stays accurate.
+// The original bc_write_event() is kept for internal simulation events
+// (event_type=2 da, 3 T_ref, 4 nfa, 5 model) that do not map to S1-S8.
+inline void bc_write_detection_event(uint32_t rsu_idx, uint32_t suspect_node,
+                                      int signal_idx, double ts)
+{
+    if (rsu_idx >= (uint32_t)total_size) return;
+    if (signal_idx < 1 || signal_idx > 8) return; // chaincode enforces this too
+    if (!g_node_keys[rsu_idx].keys_generated) mldsa87_keygen(rsu_idx);
+    OQS_SIG* oqs = get_oqs_ctx();
+    if (!oqs) return;
+
+    // H(vs || Si || ts) per eq:rsu_write
+    uint8_t buf[16];
+    memcpy(buf,    &suspect_node, 4);
+    memcpy(buf+4,  &signal_idx,   4);
+    memcpy(buf+8,  &ts,           8);
+    uint8_t content_hash[64];
+    sha3_512_hash(buf, 16, content_hash);
+
+    uint8_t rsu_sig[OQS_SIG_ml_dsa_87_length_signature];
+    size_t  rsu_sig_len = OQS_SIG_ml_dsa_87_length_signature;
+    if (OQS_SIG_sign(oqs, rsu_sig, &rsu_sig_len,
+                     content_hash, 64,
+                     g_node_keys[rsu_idx].sk) != OQS_SUCCESS) {
+        std::cerr << "[CRYPTO-ERROR] bc_write_detection_event: OQS_SIG_sign failed"
+                  << " rsu=" << rsu_idx << " S" << signal_idx
+                  << " suspect=" << suspect_node << "\n";
+        return;
+    }
+
+    // Hex-encode signature for CSV transport (bridge re-verifies on Fabric side)
+    std::ostringstream sig_hex;
+    for (size_t i = 0; i < rsu_sig_len; ++i)
+        sig_hex << std::hex << std::setw(2) << std::setfill('0') << (int)rsu_sig[i];
+
+    // Write CSV row — bridge tails this and calls LogDetection on Fabric
+    bc_open_detection_csv();
+    long long ts_ms = (long long)(ts * 1000.0);
+    if (g_bc_detection_csv.is_open()) {
+        g_bc_detection_csv
+            << rsu_idx          << ","
+            << suspect_node     << ","
+            << signal_idx       << ","
+            << ts_ms            << ","
+            << sig_hex.str()    << "\n";
+        g_bc_detection_csv.flush();
+    }
+
+    // Keep in-memory chain for rsu_chain_len metric
+    BlockchainCommit entry;
+    entry.timestamp        = ts;
+    entry.num_endorsements = 1;
+    entry.tier             = 0;
+    sha3_512_hash(rsu_sig, rsu_sig_len, entry.commit_hash);
+    g_rsu_chain.push_back(entry);
+
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[BC-DETECT] rsu=" << rsu_idx
+                  << " S" << signal_idx
+                  << " suspect=" << suspect_node
+                  << " t=" << ts
+                  << " sig[0..3]=" << _hex4(rsu_sig)
+                  << " rsu_chain_len=" << g_rsu_chain.size() << "\n";
 }
 
 #endif // BLOCKCHAIN_SIM_H

@@ -316,11 +316,20 @@ inline LRADRSUFlags lrad_rsu(
         btmm(prev_sender, it->second.sig_valid, it->second.stark_hop_ok,
              !flags.flag_S2f /* timing_ok = delay proof passed */);
 
-    // ── BC.Write + counting (line 10 of alg:lrad_rsu) ──────────────────────
+    // ── BC.Write per-signal (eq:rsu_write, line 10 of alg:lrad_rsu) ─────────
+    // Write one LogDetection record per fired signal so each is individually
+    // attributable to a specific RSU (chaincode key: detect:{suspect}:{ts_ms}).
+    // OBU-escalated signals (S1/S2p/S3/S4) are omitted here: the escalation
+    // event carries vehicle_id as prev_sender, not the original malicious node —
+    // logging them would accuse an innocent vehicle. Extend EscalationEvent with
+    // orig_prev_sender to fix this in a follow-up.
     if (flags.D_RSU) {
         g_d_rsu_count++;
-        // event_type=6: "lrad_composite_detection" (new, see blockchain_sim.h).
-        bc_write_event(rsu, 6, prev_sender, t_now);
+        if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
+        if (flags.flag_S5)  bc_write_detection_event(rsu, prev_sender, 5, t_now);
+        if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);
+        if (flags.flag_S7)  bc_write_detection_event(rsu, prev_sender, 7, t_now);
+        if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);
     }
 
     crypto_log_event("lrad_rsu", prev_sender, pkt_id, _t0, flags.D_RSU);

@@ -18,8 +18,9 @@
 const path    = require('path');
 const fs      = require('fs');
 const fc      = require('./fabric-client');
-const flowmod = require('./tailers/flowmod');
-const trust   = require('./tailers/trust');
+const flowmod    = require('./tailers/flowmod');
+const trust      = require('./tailers/trust');
+const detection  = require('./tailers/detection');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config: select stage based on env vars
@@ -160,6 +161,7 @@ async function main() {
     const identityMap = buildIdentityMap(config.rsus);
     flowmod.setIdentityMap(identityMap);
     trust.setIdentityMap(identityMap);
+    detection.setIdentityMap(identityMap);
 
     // 3. Register network on-chain (idempotent — safe to re-run on restart)
     await registerNetwork(config);
@@ -167,10 +169,12 @@ async function main() {
     // 4. Start real-time CSV tailers
     const fmTail = flowmod.start();
     const tTail  = trust.start();
+    const dTail  = detection.start();
 
     console.log('\n[BRIDGE] ✅ Real-time tailers active. Waiting for NS-3 events...');
-    console.log('[BRIDGE]    FlowMod CSV → LogFlowMod / EndorseFlowMod / MarkFlowModUnauthorized');
-    console.log('[BRIDGE]    Trust CSV   → UpdateTrust → IsActivePeer (demotion/removal check)');
+    console.log('[BRIDGE]    FlowMod CSV   → LogFlowMod / EndorseFlowMod / MarkFlowModUnauthorized');
+    console.log('[BRIDGE]    Trust CSV     → UpdateTrust → IsActivePeer (demotion/removal check)');
+    console.log('[BRIDGE]    Detection CSV → LogDetection (eq:rsu_write, S1-S8 per signal)');
     console.log('[BRIDGE]    Press Ctrl-C to stop.\n');
 
     // 5. Graceful shutdown
@@ -178,6 +182,7 @@ async function main() {
         console.log('\n[BRIDGE] Shutting down...');
         fmTail.unwatch();
         tTail.unwatch();
+        dTail.unwatch();
         fc.close();
         process.exit(0);
     });
