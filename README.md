@@ -18,6 +18,7 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 10. [CLI Reference](#10-cli-reference)
 11. [Node Architecture](#11-node-architecture)
 12. [Troubleshooting](#12-troubleshooting)
+13. [Blockchain Integration (Hyperledger Fabric)](#13-blockchain-integration-hyperledger-fabric)
 
 > **New to this project?** Read Sections 2 and 2.1 first — the cryptographic layer added in v2 requires two extra dependencies (`liboqs` and `libssl-dev`) that must be installed before the first build.
 
@@ -712,3 +713,70 @@ rm ~/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack*.csv
 - `data_transmission_frequency` is fixed at 1.0 (one routing cycle per second). Higher values cause proportional slowdown — do not change.
 - The S1 EWMA baseline requires approximately 10 seconds of benign traffic to converge. This is why `attack_start_time` defaults to 10.0 s. Do not lower it below ~5 s.
 - Attacks 1 and 2 are safe to run in parallel (separate processes, unique filenames). Other attack variants that share intermediate scratch files should not be parallelized without further filename isolation.
+
+---
+
+## 13. Blockchain Integration (Hyperledger Fabric)
+
+MobiGuard integrates a real-time blockchain audit-trail layer implemented in Hyperledger Fabric. When the NS-3 simulation runs, RSU nodes log FlowMod rule installations, verify endorsements, and log trust updates into `results_routing/`. A Node.js bridge tails these logs and invokes the Fabric smart contract (`mobiguard-cc`) to commit transactions on-chain.
+
+For complete fresh-machine setup instructions (Docker, Go, Node.js, and Fabric binaries), refer to [blockchain/README.md](file:///home/nipuni/ns-allinone-3.35/ns-3.35/final%20yr%20project%20updated/Final-Year-project/blockchain/README.md).
+
+### Step-by-Step Execution Guide
+
+Run these steps in order when running a blockchain-enabled simulation session:
+
+#### Step 1: Deploy the Fabric Network
+From the project root directory, navigate to the test-network and run the deployment script:
+```bash
+cd blockchain/fabric-samples/test-network
+./deploy-mobiguard.sh
+```
+*This starts the Fabric nodes (peers, orderer, CAs, CouchDB), creates `mychannel`, and deploys the Go chaincode (`mobiguard-cc`). Wait for the success banner.*
+
+#### Step 2: Enroll RSU Identities (First-time only)
+Enroll the RSU nodes' Fabric CA certificates:
+```bash
+cd ../../bridge
+./enroll_rsu_identities.sh stage1
+```
+*This generates public/private key wallets under `blockchain/bridge/wallet/`.*
+
+#### Step 3: Start the Node.js Bridge (Terminal 1)
+Run the bridge service to tail logs and publish to Fabric:
+```bash
+cd blockchain/bridge
+node index.js
+```
+*Keep this terminal open. It will print blockchain transaction submissions in real time.*
+
+#### Step 4: Run the NS-3 Simulation (Terminal 2)
+In a separate terminal, run the NS-3 simulation as usual (either using the sweep scripts or manually via `./waf`):
+```bash
+cd ~/ns-allinone-3.35/ns-3.35
+# Example: Run Attack 3 (Control Plane TCAM Flood)
+./waf --run "scratch/routing/routing --simTime=40 --attack_number=3 --attack_percentage=40"
+```
+*Watch Terminal 1 update with live `LogFlowMod`, `EndorseFlowMod`, and `UpdateTrust` transactions as the simulation progresses.*
+
+#### Step 5: Querying the Ledger (Optional)
+To query the current ledger state directly, set up the peer CLI environment variables and invoke peer commands:
+```bash
+export PATH="$(pwd)/blockchain/fabric-samples/bin:$PATH"
+export FABRIC_CFG_PATH="$(pwd)/blockchain/fabric-samples/config/"
+export CORE_PEER_TLS_ENABLED=true
+export CORE_PEER_LOCALMSPID="Org1MSP"
+export CORE_PEER_ADDRESS=localhost:7051
+export CORE_PEER_MSPCONFIGPATH="$(pwd)/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+export CORE_PEER_TLS_ROOTCERT_FILE="$(pwd)/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+
+# Example: Check trust score for RSU 200
+peer chaincode query -C mychannel -n mobiguard-cc -c '{"function":"QueryTrust","Args":["200"]}'
+```
+
+#### Step 6: Shut Down and Clean up
+Stop the Node.js bridge using `Ctrl+C` in Terminal 1, then tear down the Fabric network:
+```bash
+cd blockchain/fabric-samples/test-network
+./network.sh down
+```
