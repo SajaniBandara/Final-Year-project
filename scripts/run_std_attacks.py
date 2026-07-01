@@ -116,6 +116,12 @@ def sync_files() -> None:
             dest = routing_dir / src.name
         else:
             dest = SCRATCH_DIR / src.name
+        
+        # Avoid SameFileError for symlinked setups
+        if dest.exists() and os.path.samefile(src, dest):
+            print(f"  already synced  {src.name}")
+            continue
+            
         shutil.copy2(src, dest)
         print(f"  copied  {src.name}  →  {dest.relative_to(SCRATCH_DIR.parent)}")
 

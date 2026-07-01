@@ -50,7 +50,7 @@ static std::string _hex4(const uint8_t* b) {
 
 // ── SHA3-512 and HMAC-SHA3-512 via OpenSSL ───────────────────────────────────
 
-static bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
+static inline bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     if (!ctx) return false;
     unsigned int out_len = 64;
@@ -61,7 +61,7 @@ static bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
     return ok;
 }
 
-static bool hmac_sha3_512(const uint8_t* key, size_t klen,
+static inline bool hmac_sha3_512(const uint8_t* key, size_t klen,
                            const uint8_t* data, size_t dlen, uint8_t* out_64) {
     unsigned int out_len = 64;
     return HMAC(EVP_sha3_512(), key, (int)klen, data, dlen, out_64, &out_len) != nullptr
@@ -470,7 +470,7 @@ inline void trust_init_all() {
         g_trust_last_update[i] = 0.0;
         g_node_keys[i] = NodeKeyMaterial{};
     }
-    memset(&g_dkg, 0, sizeof(DKGState));
+    g_dkg = DKGState{};
     g_T_ref = g_T_ref_last_sync = 0.0;
     g_packet_crypto.clear(); g_flowmod_endorsements.clear();
     g_witness_log.clear(); g_witness_alert_pool.clear();
