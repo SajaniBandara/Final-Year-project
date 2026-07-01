@@ -1,0 +1,17 @@
+{
+  "name": "mobiguard-bridge",
+  "version": "1.0.0",
+  "description": "Real-time NS-3 → Hyperledger Fabric bridge for MobiGuard SDVN",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "start:stage1": "N_RSUS=4 N_CONTROLLERS=1 node index.js",
+    "start:stage2": "N_RSUS=16 N_CONTROLLERS=2 node index.js",
+    "start:stage3": "N_RSUS=64 N_CONTROLLERS=4 node index.js"
+  },
+  "dependencies": {
+    "@hyperledger/fabric-gateway": "^1.4.0",
+    "tail": "^2.2.6",
+    "csv-parse": "^5.5.6"
+  }
+}

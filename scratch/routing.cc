@@ -1,4 +1,4 @@
-﻿#include <set>
+#include <set>
 #include "ns3/wave-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/lte-helper.h"
@@ -114702,6 +114702,11 @@ double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs 
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === DETECTION TIMESTAMP GLOBALS ===
+
+// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
+// attack-injected delay has elapsed). 
+// double t_fwd_packet[total_size][Flow_size+2];
+
 // t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
 // time — i.e., when it received/decided to forward the packet, BEFORE any
 // malicious buffering. This is the correct analogue of the TAP paper's
@@ -117157,7 +117162,7 @@ void write_security_metrics_csv()
 		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
 			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
 			 << "# TP, FP, TN, FN";
-		if (active_attack_variant == 2 || active_attack_variant == 3)
+		if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
 			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
 		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
@@ -117166,7 +117171,7 @@ void write_security_metrics_csv()
 	}
 
 	TcamCycleMetrics tcam_metrics{};
-	if (active_attack_variant == 2 || active_attack_variant == 3) {
+	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1) {
 		double active_vehicles = (double)N_Vehicles;
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
@@ -117213,7 +117218,7 @@ void write_security_metrics_csv()
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
 		 << sec_FN[selected_variant];
-	if (active_attack_variant == 2 || active_attack_variant == 3)
+	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
 		fout << TcamDetectionCsvColumns(tcam_metrics);
 	fout << ", " << sig_valid_rate
 		 << ", " << avg_trust_score
@@ -120389,6 +120394,26 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							packet_id,
 							flow_id,
 							is_safety_critical_flow[flow_id]);
+
+						// TCAM slow-path delay (Attacks 3 & 4).
+						// Real TCAM lookup is O(1) — fill level does not affect latency.
+						// The penalty fires only when the table is AT OR ABOVE capacity:
+						// the incoming packet has no matching rule, so it takes the
+						// controller slow path (PacketIn → FlowMod round-trip).
+						// Below capacity the packet hits a rule immediately (0 extra delay).
+						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
+						    current_hop >= N_Vehicles &&
+						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						{
+						    total_tx_delay += tcam_slowpath_s;
+						    g_slowpath_hit_count[current_hop]++;
+						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						              << " rules=" << g_tcam_rule_count[current_hop]
+						              << "/" << TCAM_HW_SIZE
+						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
+						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						              << std::endl;
+						}
 
 						// TCAM slow-path delay (Attacks 3 & 4).
 						// Real TCAM lookup is O(1) — fill level does not affect latency.
