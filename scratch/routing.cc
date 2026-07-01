@@ -117235,8 +117235,8 @@ void write_security_metrics_csv()
 		 << ", " << _stark_t_fail
 		 << ", " << _stark_h_fail
 		 << ", " << flowmod_endorsement_rate
-		 << ", " << g_rsu_chain.size()
-		 << ", " << g_global_chain.size()
+		 << ", " << g_rsu_commit_hashes.size()
+		 << ", " << g_bc_global_commit_count
 		 << ", " << _da_count
 		 << ", " << _nfa_count
 		 << ", " << g_d_obu_count

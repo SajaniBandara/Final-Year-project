@@ -27,8 +27,7 @@
 #pragma pop_macro("min")
 #pragma pop_macro("max")
 
-// Forward declarations — defined in blockchain_sim.h (included after this header).
-void bc_write_event(uint32_t rsu_idx, uint32_t event_type, uint32_t node, double ts);
+// Forward declarations — bc_commit_dkg defined in bc_blockchain_helper.h (included after this).
 void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                    uint32_t n_rsus, double ts_setup);
 
@@ -590,7 +589,6 @@ inline void update_T_ref() {
 
 inline void update_T_ref_recurring() {
     update_T_ref();
-    bc_write_event(N_Vehicles, 3 /*T_ref_sync*/, 0, g_T_ref);
     ns3::Simulator::Schedule(ns3::Seconds(T_SYNC_INTERVAL), &update_T_ref_recurring);
 }
 
@@ -686,8 +684,6 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
     memcpy(alert.sig_hash.data(), it->second.sig, 64);
     alert.alert_type = 0;
     g_witness_alert_pool[target_node].push_back(alert);
-    bc_write_event(N_Vehicles, 2 /*witness_alert*/, target_node,
-                   ns3::Simulator::Now().GetSeconds());
     uint32_t pool_sz  = (uint32_t)g_witness_alert_pool[target_node].size();
     uint32_t threshold = 2 * WITNESS_F + 1;
     if (CRYPTO_DEBUG_LOG)
@@ -720,8 +716,6 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
     memcpy(alert.sig_hash.data(), it->second.sig, 64);
     alert.alert_type = 1;
     g_witness_alert_pool[target_node].push_back(alert);
-    bc_write_event(N_Vehicles, 4 /*nfa_alert*/, target_node,
-                   ns3::Simulator::Now().GetSeconds());
     uint32_t pool_sz  = (uint32_t)g_witness_alert_pool[target_node].size();
     uint32_t threshold = 2 * WITNESS_F + 1;
     if (CRYPTO_DEBUG_LOG)
