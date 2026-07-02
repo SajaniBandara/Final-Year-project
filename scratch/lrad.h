@@ -76,11 +76,8 @@ struct EscalationEvent {
 // Drained by process_escalation_at_rsu() after a 1 ms simulated OBU→RSU delay.
 static std::map<uint32_t, std::vector<EscalationEvent>> g_escalation_queue;
 
-// Per-packet HMAC timestamp tag (for S2-partial at OBU).
-// Populated at send time by lrad_hmac_tag_packet(); read at receive time
-// by lrad_s2_partial_check().
-struct HmacTag { uint8_t tag[64]; double ts; uint32_t nonce; bool valid; };
-static std::map<std::pair<uint32_t,uint32_t>, HmacTag> g_hmac_tags;
+// HmacTag, g_hmac_tags, lrad_hmac_tag_packet — defined in lrad_hmac.h
+// (included early in routing.cc so the RSU routing loop can stamp pre-delay).
 
 // Per-RSU lightweight TCAM snapshot result (for S3/S4 in lrad_obu).
 struct LRADTcamSnapshot { bool flag_s3; bool flag_s4; };
@@ -130,37 +127,9 @@ inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
 
 // =========================================================================
 // Phase 2.5 — HMAC-SHA3-512 packet tagging (S2-partial at OBU)
-//
-// Implements eq:hmac_light:  τ_i = HMAC-SHA3-512(k_i, pkt_id ‖ ts_i ‖ η_i)
-//
-// lrad_hmac_tag_packet(): called at SEND time (OBU only), alongside
-//   record_claimed_forward_timestamp(), to stamp the departure timestamp
-//   under the vehicle's HMAC key.
-//
-// lrad_s2_partial_check(): called at RECEIVE time from lrad_obu().
-//   Re-derives the HMAC tag from the stored key and compares; on success
-//   checks (t_now - ts) > S2_DELTA_MAX — the S2-partial conjunction.
+// lrad_hmac_tag_packet() is defined in lrad_hmac.h (included early).
+// lrad_s2_partial_check() reads g_hmac_tags written by lrad_hmac_tag_packet().
 // =========================================================================
-
-inline void lrad_hmac_tag_packet(uint32_t node, uint32_t pkt_id, uint32_t nonce)
-{
-    // OBU (vehicle) only — RSUs use STARK-based S2-full path.
-    if (node >= (uint32_t)N_Vehicles) return;
-    if (pkt_id >= (uint32_t)(Flow_size + 2)) return;
-    if (!g_node_keys[node].keys_generated) return;
-
-    double  ts = ns3::Simulator::Now().GetSeconds();
-    uint8_t msg[16];
-    memcpy(msg,    &pkt_id, 4);
-    memcpy(msg+4,  &ts,     8);
-    memcpy(msg+12, &nonce,  4);
-
-    HmacTag h{};
-    h.ts    = ts;
-    h.nonce = nonce;
-    h.valid = hmac_sha3_512(g_node_keys[node].hmac_key, 64, msg, 16, h.tag);
-    g_hmac_tags[{node, pkt_id}] = h;
-}
 
 // flag_S2p = HMAC.Verify(τ_i, k_i, msg) ∧ (t_now − ts_recv) > Δ_max
 inline bool lrad_s2_partial_check(uint32_t vehicle, uint32_t pkt_id, double t_now)

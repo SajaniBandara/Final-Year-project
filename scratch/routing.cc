@@ -114867,6 +114867,7 @@ void record_detection_event(int v, int n); // defined at ~line 115476; forward-d
 #include "dkg_setup.h"
 #include "bc_blockchain_helper.h"
 #include "crypto_event_log.h"  // per-operation timing log (supervisor timing verification)
+#include "lrad_hmac.h"         // HmacTag + g_hmac_tags + lrad_hmac_tag_packet (S2-partial, early include)
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
@@ -120455,6 +120456,9 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// must NOT be deferred to total_tx_delay the way the actual send
 						// timestamp below is.
 						record_claimed_forward_timestamp(current_hop, packet_id);
+						// S2-partial HMAC tag: same reasoning — stamp pre-delay so
+						// lrad_s2_partial_check() sees (t_recv - t_stamp) = attack_delay + propagation.
+						lrad_hmac_tag_packet(current_hop, packet_id, packet_id);
 
 						// §7.2 — ML-DSA-87 sign outgoing packet
 						{
