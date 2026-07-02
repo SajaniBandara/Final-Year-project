@@ -50,6 +50,21 @@ static std::string _hex4(const uint8_t* b) {
     return std::string(s);
 }
 
+// Formats first 8 bytes as hex — used in [PKT-CRYPTO] verbose field logs.
+static std::string _hex8(const uint8_t* b) {
+    char s[17];
+    snprintf(s, sizeof(s), "%02x%02x%02x%02x%02x%02x%02x%02x",
+             b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7]);
+    return std::string(s);
+}
+
+// Formats a uint32 as 8-char hex — for nonce / zone / next_hop in verbose logs.
+static std::string _hex32(uint32_t v) {
+    char s[9];
+    snprintf(s, sizeof(s), "%08x", v);
+    return std::string(s);
+}
+
 // ── SHA3-512 and HMAC-SHA3-512 via OpenSSL ───────────────────────────────────
 
 static inline bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
@@ -268,7 +283,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     meta.signed_zone_id  = zone;
     meta.nonce           = fresh_nonce;
     meta.sig_valid = true;
-    if (CRYPTO_DEBUG_LOG)
+    if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
                   << " next_hop=" << next_hop
@@ -277,6 +292,29 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
                   << " t=" << ts
                   << " digest[0..3]=" << _hex4(digest)
                   << " sig[0..3]=" << _hex4(meta.sig) << "\n";
+        // [PKT-CRYPTO] — human-readable field-level breakdown for manual inspection
+        std::cout << "[PKT-CRYPTO] ── SIGN ─────────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   node      = " << signer << "  (signer)\n"
+                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   next_hop  = " << next_hop << "\n"
+                  << "[PKT-CRYPTO]   zone      = " << zone << "\n"
+                  << "[PKT-CRYPTO]   t_sign    = " << ts << " s  (NS-3 simulation time)\n"
+                  << "[PKT-CRYPTO]   nonce(η)  = 0x" << _hex32(fresh_nonce) << "  (random per-packet)\n"
+                  << "[PKT-CRYPTO]   -- Sign buffer (eq:mldsa_sign, 24 bytes) ----------\n"
+                  << "[PKT-CRYPTO]   buf[0..3]   msg_id   = " << pkt_id   << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[4..11]  ts       = " << ts       << "  (8 B double)\n"
+                  << "[PKT-CRYPTO]   buf[12..15] nonce    = 0x" << _hex32(fresh_nonce) << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[16..19] next_hop = " << next_hop << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[20..23] zone     = " << zone     << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   -- SHA3-512(buf) → 64-byte digest -----------------\n"
+                  << "[PKT-CRYPTO]   digest[0..7]  = " << _hex8(digest) << "\n"
+                  << "[PKT-CRYPTO]   digest[8..15] = " << _hex8(digest+8) << "\n"
+                  << "[PKT-CRYPTO]   -- ML-DSA-87 signature (FIPS 204, liboqs) ---------\n"
+                  << "[PKT-CRYPTO]   sig_len       = " << meta.sig_len << " bytes  (expected 4627)\n"
+                  << "[PKT-CRYPTO]   sig[0..7]     = " << _hex8(meta.sig) << "\n"
+                  << "[PKT-CRYPTO]   sig[8..15]    = " << _hex8(meta.sig+8) << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
     return true;
 }
 
@@ -332,6 +370,28 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     g_verify_attempts++;
     if (ok) g_verify_passed++;
 
+    if (CRYPTO_DEBUG_LOG && !is_batch_call) {
+        // [PKT-CRYPTO] — human-readable field-level breakdown for manual inspection
+        std::cout << "[PKT-CRYPTO] ── VERIFY ────────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   claimed   = " << claimed_signer << "  (original signer)\n"
+                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   verifier  = " << next_hop << "  (this hop)\n"
+                  << "[PKT-CRYPTO]   -- Reconstructed sign buffer (must match signer) -\n"
+                  << "[PKT-CRYPTO]   msg_id    = " << pkt_id                        << "  ✓ (same as signed)\n"
+                  << "[PKT-CRYPTO]   ts_sign   = " << it->second.sign_timestamp     << " s  (from signed record)\n"
+                  << "[PKT-CRYPTO]   nonce(η)  = 0x" << _hex32(it->second.nonce)   << "  (from signed record)\n"
+                  << "[PKT-CRYPTO]   next_hop  = " << next_hop                      << "  (must equal signed_next_hop=" << it->second.signed_next_hop << ")\n"
+                  << "[PKT-CRYPTO]   zone      = " << it->second.signed_zone_id     << "  (from signed record)\n"
+                  << "[PKT-CRYPTO]   -- SHA3-512 recomputed digest ----------------------\n"
+                  << "[PKT-CRYPTO]   digest[0..7]  = " << _hex8(digest) << "\n"
+                  << "[PKT-CRYPTO]   digest[8..15] = " << _hex8(digest+8) << "\n"
+                  << "[PKT-CRYPTO]   -- OQS ML-DSA-87 verify result --------------------\n"
+                  << "[PKT-CRYPTO]   sig[0..7]  = " << _hex8(it->second.sig) << "\n"
+                  << "[PKT-CRYPTO]   pk[0..7]   = " << _hex8(g_node_keys[claimed_signer].pk) << "\n"
+                  << "[PKT-CRYPTO]   result     = " << (ok ? "PASS ✓  signature authentic" : "FAIL ✗  signature invalid") << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
+
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                   << " pkt=" << pkt_id
@@ -363,6 +423,17 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
     // c_i = H_SHA3-512(ρ_i) — commit to blinding randomness only; timestamps are
     // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
     sha3_512_hash(reinterpret_cast<const uint8_t*>(&nonce), sizeof(nonce), proof.commitment);
+    if (CRYPTO_DEBUG_LOG) {
+        std::cout << "[PKT-CRYPTO] ── STARK-PROVE ────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   nonce(ρ_i)    = 0x" << _hex32(nonce) << "  (blinding randomness)\n"
+                  << "[PKT-CRYPTO]   t_recv        = " << t_recv << " s  (private witness)\n"
+                  << "[PKT-CRYPTO]   t_fwd         = " << t_fwd  << " s  (private witness)\n"
+                  << "[PKT-CRYPTO]   Δ = t_fwd-t_recv = " << (t_fwd - t_recv)*1000.0 << " ms\n"
+                  << "[PKT-CRYPTO]   STARK_DELTA_MAX  = " << STARK_DELTA_MAX*1000.0   << " ms\n"
+                  << "[PKT-CRYPTO]   timing_valid  = " << (proof.valid ? "YES ✓  within bound" : "NO ✗   DELAY EXCEEDS LIMIT") << "\n"
+                  << "[PKT-CRYPTO]   commitment    = H(ρ_i) = " << _hex8(proof.commitment) << "  (ZK: no ts in commit)\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
     return proof;
 }
 
@@ -380,7 +451,18 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
     auto it = g_packet_crypto.find({signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
         return true;  // no signing record — can't verify, assume valid
-    return current_hop == it->second.signed_next_hop;
+    bool hop_ok = (current_hop == it->second.signed_next_hop);
+    if (CRYPTO_DEBUG_LOG) {
+        std::cout << "[PKT-CRYPTO] ── STARK-HOP ─────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   signer          = " << signer << "\n"
+                  << "[PKT-CRYPTO]   pkt_id          = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   signed_next_hop = " << it->second.signed_next_hop << "  (embedded at sign time)\n"
+                  << "[PKT-CRYPTO]   current_hop     = " << current_hop << "  (actual receiver)\n"
+                  << "[PKT-CRYPTO]   hop_ok          = " << (hop_ok ? "YES ✓  packet on intended path"
+                                                                     : "NO ✗   packet misdirected!") << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
+    return hop_ok;
 }
 
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,

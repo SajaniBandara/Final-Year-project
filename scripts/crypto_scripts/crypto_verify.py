@@ -46,7 +46,8 @@ NS3_RESULTS  = NS3_DIR / "results_routing"       # blockchain CSVs (hardcoded BC
 # Use default network size — small networks cause routing topology crashes.
 # DKG, sign/verify, batch ticks and T_ref sync all fire early regardless of attack.
 SIM_TIME    = 5      # seconds — enough for DKG + ~100 batch ticks + packet flows
-SIM_ATTACK  = 1      # Attack 1: timing-based, exercises S1/S2, STARK, ML-DSA
+SIM_ATTACK  = 2      # Attack 2 (data-plane selective delay): pass as --attack_number so
+                     # declare_attack_states() arms s2_detection_active=true → STARK-PROVE fires
 SIM_TIMEOUT = 420    # seconds — waf+simulation wall-clock budget
 
 # FIPS 204 / liboqs ML-DSA-87 constants  (verified from oqs/sig_ml_dsa.h)
@@ -119,7 +120,7 @@ def run_simulation():
     args = (
         f"routing "
         f"--simTime={SIM_TIME} "
-        f"--active_attack_variant={SIM_ATTACK} "
+        f"--attack_number={SIM_ATTACK} "
         f"--attack_percentage=20"
     )
     cmd = [str(NS3_DIR / "waf"), "--run", args, "--cwd", str(RESULTS)]
