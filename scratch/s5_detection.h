@@ -87,26 +87,35 @@ inline bool s5_detect(uint32_t recv_flow_id,
 {
     if (!s5_detection_active) return false;
 
-    // Conjunction 1: CP active variant only (Attack 5, index 4)
-    if (active_attack_variant != 4) return false;
+    // Conjunction 1: FlowMod not committed to blockchain — unauthorized (eq:unauth_flowmod).
+    // bc_query_flowmod returns true iff the FlowMod was f+1 endorsed and committed.
+    // If committed, the FlowMod is legitimate → S5 does not fire.
+    // In Attack 5, the controller injects the FlowMod bypassing endorsement,
+    // so bc_query_flowmod returns false → S5 proceeds to the remaining conjunctions.
+    if (bc_query_flowmod(base_flow_id)) return false;
 
     // Conjunction 2: prev_sender must be a flagged active malicious RSU
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!active_hf_malicious_nodes[prev_sender]) return false;
 
     // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0
-    // Simulation proxy: 0xDEAD0000 marker in recv_flow_id confirms content
-    // modification by hf_send_active_duplicate(). In the full system this is an
-    // explicit ML-DSA-87.Verify() call returning 0 (failure).
-    bool mldsa_fails = ((recv_flow_id & S5_DEAD_MARKER) == S5_DEAD_MARKER);
+    // Primary: result of mldsa87_verify() stored in g_packet_crypto by MacRx.
+    // Fallback to 0xDEAD0000 marker if crypto record not yet populated.
+    auto it_s5 = g_packet_crypto.find({prev_sender, packet_id});
+    bool mldsa_fails;
+    if (it_s5 != g_packet_crypto.end() && it_s5->second.sig_len > 0)
+        mldsa_fails = !it_s5->second.sig_valid;
+    else
+        mldsa_fails = ((recv_flow_id & S5_DEAD_MARKER) == S5_DEAD_MARKER);
 
     // Conjunction 4: b_hop(u) = 0 — INDEPENDENT from ML-DSA-87.
-    // In deployed MOBIGUARD: STARK.Verify(π_hop(u), C_hop, H_SHA3) = 0 because
-    // the receiving node d' is absent from the authorized next-hop set P(s,d).
-    // Simulation proxy: active_hf_malicious_nodes[prev_sender] (confirmed above).
-    // Kept as a separate boolean so the two failure modes are distinguishable
-    // in logs and future implementations where STARK is cryptographically realized.
-    bool b_hop_fails = active_hf_malicious_nodes[prev_sender];
+    // Primary: stark_hop_ok from g_packet_crypto set by stark_update_meta().
+    // Fallback: active_hf_malicious_nodes ground truth.
+    bool b_hop_fails;
+    if (it_s5 != g_packet_crypto.end() && it_s5->second.sig_len > 0)
+        b_hop_fails = !it_s5->second.stark_hop_ok;
+    else
+        b_hop_fails = active_hf_malicious_nodes[prev_sender];
 
     // Conjunction 0 (Eq. sig_s5 first term): d' ∉ P(s,d).
     // Explicit guard: if current_hop is the legitimate authorized destination for

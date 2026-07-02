@@ -93,9 +93,19 @@ inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index) {
     for (uint32_t v = 0; v < N_Vehicles; ++v) {
         g_node_keys[v].keys_generated = false;
         mldsa87_keygen(v);
+        // Re-derive HMAC key with updated vk_ZKP (eq:hmac_light: k_v = SHA3-512(v ‖ vk_ZKP))
+        uint8_t seed[68];
+        memcpy(seed,   &v,            4);
+        memcpy(seed+4, g_dkg.vk_zkp, 64);
+        sha3_512_hash(seed, 68, g_node_keys[v].hmac_key);
     }
+    if (CRYPTO_DEBUG_LOG && N_Vehicles > 0)
+        std::cout << "[DKG-ROTATE-P4] HMAC keys re-derived for " << N_Vehicles
+                  << " vehicles with new vk_ZKP"
+                  << " (v=0 hmac[0..3]=" << _hex4(g_node_keys[0].hmac_key) << ")\n";
     g_dkg.last_rotation = ns3::Simulator::Now().GetSeconds();
-    bc_commit_dkg(g_dkg.vk_zkp, g_dkg.com, N_RSUs, g_dkg.last_rotation);
+    // Pass rekeyed count (excludes revoked RSU) per eq:vk_commit_rotated
+    bc_commit_dkg(g_dkg.vk_zkp, g_dkg.com, rekeyed, g_dkg.last_rotation);
 
     // Unconditional: key rotation is a high-importance security event
     std::cout << "[DKG-ROTATE] Key rotation complete: revoked_rsu=" << revoked_rsu_node_index

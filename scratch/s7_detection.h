@@ -111,9 +111,15 @@ inline bool s7_detect(uint32_t recv_flow_id,
     if (!passive_hf_malicious_nodes[prev_sender]) return false;
 
     // Conjunction 3: ML-DSA-87.Verify = 1 — content unmodified (passive copy).
-    // If the 0xDEAD0000 marker is present this is an active copy; S7 must not fire.
-    bool is_passive = ((recv_flow_id & 0xDEAD0000u) == 0);
-    if (!is_passive) return false;
+    // Primary: sig_valid from g_packet_crypto set by mldsa87_verify() in MacRx.
+    // Fallback: absence of 0xDEAD0000 marker if crypto record not populated.
+    auto it_s7 = g_packet_crypto.find({prev_sender, packet_id});
+    bool sig_ok;
+    if (it_s7 != g_packet_crypto.end() && it_s7->second.sig_len > 0)
+        sig_ok = it_s7->second.sig_valid;
+    else
+        sig_ok = ((recv_flow_id & 0xDEAD0000u) == 0);
+    if (!sig_ok) return false;
 
     // Conjunction 4: d/dt Vol(d',t) > ε_vol — sliding window volume rate.
     double t_now = Simulator::Now().GetSeconds();
@@ -140,8 +146,12 @@ inline bool s7_detect(uint32_t recv_flow_id,
     // Rate estimate: count / elapsed (guard against first-packet divide-by-zero)
     double rate = (elapsed > 0.1) ? ((double)s7_vol_count[current_hop] / elapsed) : 0.0;
 
-    // b_hop(u) = 0: confirmed by passive_hf_malicious_nodes[prev_sender]
-    bool b_hop_fails = true;
+    // b_hop(u) = 0: primary from stark_hop_ok, fallback to ground truth.
+    bool b_hop_fails;
+    if (it_s7 != g_packet_crypto.end() && it_s7->second.sig_len > 0)
+        b_hop_fails = !it_s7->second.stark_hop_ok;
+    else
+        b_hop_fails = true; // passive_hf_malicious_nodes confirmed above
 
     cout << "[S7] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender
@@ -155,6 +165,7 @@ inline bool s7_detect(uint32_t recv_flow_id,
          << " [CP — controller FlowMod poisoned; passive/unmodified copy]"
          << endl;
 
+    // eq:sig_s7: d/dt Vol(d',t) > ε_vol — single sliding-window rate gate only
     if (rate > S7_EPSILON_VOL && b_hop_fails)
     {
         cout << "[S7] ⚠️ SIGNATURE S7 TRIGGERED!"
