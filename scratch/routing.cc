@@ -123034,10 +123034,9 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // S2 hop_delay = attack_delay + propagation rather than propagation only.
     if (t_claimed_packet[source][packet_ID] == 0.0)
         record_claimed_forward_timestamp(source, packet_ID);
-    // LRAD S2-partial: stamp HMAC tag at send time so lrad_s2_partial_check()
-    // can recover ts_recv via HMAC.Verify at the receiving OBU (eq:hmac_light).
-    // Uses packet_ID as nonce — deterministic, unique per packet, known to receiver.
-    lrad_hmac_tag_packet(source, packet_ID, packet_ID);
+    // Guard: skip if already stamped pre-delay by the vehicle attack path.
+    if (g_hmac_tags.find({source, packet_ID}) == g_hmac_tags.end())
+        lrad_hmac_tag_packet(source, packet_ID, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
@@ -123552,11 +123551,13 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
 						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
 
-						// Record BEFORE any attack delay so S2 hop_delay = attack_delay + propagation.
+						// Stamp BEFORE any attack delay so S2/S2-partial see the pre-delay time.
 						// Mirrors the RSU path at line 120457; without this, the vehicle path
 						// records the post-delay timestamp inside routing_dsrc_data_unicast and
-						// S2 sees only propagation delay, never triggering.
+						// both S2-full (t_claimed_packet) and S2-partial (HMAC ts) see only
+						// propagation delay, never triggering.
 						record_claimed_forward_timestamp(source, packet_id);
+						lrad_hmac_tag_packet(source, packet_id, packet_id);
 
 						bool attacked = schedule_unified_selective_delay_attack(
 							present_selective_delay_attack_nodes,
