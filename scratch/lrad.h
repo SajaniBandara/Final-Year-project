@@ -462,7 +462,8 @@ inline LRADOBUFlags lrad_obu(
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
-    flags.flag_S2p = lrad_s2_partial_check(vehicle, pkt_id, t_now);
+    // Tag was stamped by the SENDER (prev_sender) not by the receiving vehicle.
+    flags.flag_S2p = lrad_s2_partial_check(prev_sender, pkt_id, t_now);
 
     // ── S3 / S4: TCAM flooding / injection (lightweight snapshot) ───────────
     uint32_t assoc_rsu_node_id = UINT32_MAX; // sentinel: no RSU in range
