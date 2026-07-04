@@ -1,28 +1,28 @@
 MOBIGUARD S1 Parameter Calibration Report
 ==================================================
 Data source : /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
-Total rows  : 87,710
+Total rows  : 1,077
 
 Step 1 — OLS regression
-  delta0    = 0.002  (s)
-  alpha_rho = 0.0  (s/vehicle)
-  alpha_v   = 0.0  (s²/m)
-  R²        = 0.0
+  delta0    = 0.0019037  (s)
+  alpha_rho = 4.53e-06  (s/vehicle)
+  alpha_v   = 1.955e-05  (s²/m)
+  R²        = 0.0118
 
 Step 2 — β selection: 0.7
-Step 3 — k selection: 1.0
-Step 4 — Max |ΔFPR|: 0.0
+Step 3 — k selection: 3.0
+Step 4 — Max |ΔFPR|: 0.0261
 
 Robustness details:
-  delta0 +10%             ΔFPR=+0.0000
-  delta0 +20%             ΔFPR=+0.0000
-  delta0 +30%             ΔFPR=+0.0000
-  delta0 -10%             ΔFPR=+0.0000
-  delta0 -20%             ΔFPR=+0.0000
-  delta0 -30%             ΔFPR=+0.0000
+  delta0 +10%             ΔFPR=-0.0022
+  delta0 +20%             ΔFPR=-0.0174
+  delta0 +30%             ΔFPR=-0.0261
+  delta0 -10%             ΔFPR=-0.0109
+  delta0 -20%             ΔFPR=-0.0109
+  delta0 -30%             ΔFPR=-0.0174
   alpha_rho +10%          ΔFPR=+0.0000
-  alpha_rho +20%          ΔFPR=+0.0000
-  alpha_rho +30%          ΔFPR=+0.0000
+  alpha_rho +20%          ΔFPR=+0.0022
+  alpha_rho +30%          ΔFPR=+0.0153
   alpha_rho -10%          ΔFPR=+0.0000
   alpha_rho -20%          ΔFPR=+0.0000
   alpha_rho -30%          ΔFPR=+0.0000

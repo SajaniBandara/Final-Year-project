@@ -133,11 +133,21 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
                               uint32_t packet_id,
                               uint32_t flow_id)
 {
-    if (!s1_detection_active) return false;
     if (rsu_idx >= (uint32_t)N_RSUs) return false;
 
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4)
     if (!is_safety_crit) return false;
+
+    // Training-mode: accumulate real delays BEFORE the detection-active gate so
+    // obs_delay is populated even when s1_detection_active=false (uncalibrated).
+    // Without this, the gate fires first and the accumulator is never seeded.
+    if (training && packet_delay_s > 0.0)
+    {
+        s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
+        s1_rsu_obs_count[rsu_idx] += 1;
+    }
+
+    if (!s1_detection_active) return false;
 
     double delta_bar = s1_delta_bar[rsu_idx];
     double sigma     = std::sqrt(s1_sigma2[rsu_idx]);
@@ -145,12 +155,11 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 
     // Accumulate observed hop-delay for δ_r(t) (Eq. 3.12/3.13) only when
     // the delay appears benign (within the current threshold). This prevents
-    // attack-delayed packets from pulling the EWMA baseline upward and
-    // progressively suppressing future detections. During cold-start
-    // (delta_bar == 0 before the first s1_update_baseline() tick) all
-    // positive delays are accumulated unconditionally to seed the baseline.
+    // attack-delayed packets from pulling the EWMA baseline upward.
+    // During cold-start (delta_bar == 0) all positive delays are accumulated
+    // unconditionally to seed the baseline.
     bool cold_start = (delta_bar == 0.0);
-    if (packet_delay_s > 0.0 && (cold_start || packet_delay_s <= threshold))
+    if (!training && packet_delay_s > 0.0 && (cold_start || packet_delay_s <= threshold))
     {
         s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
         s1_rsu_obs_count[rsu_idx] += 1;

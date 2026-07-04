@@ -116269,6 +116269,7 @@ double average(double x, double y)
 
 void update_stable(uint32_t flow_id, uint32_t current_hop)
 {
+	if (current_hop >= linklifetimeMatrix_dsrc.size()) return; // controllers (264-267) have no DSRC rows
 	proposed_algo2_output_inst[flow_id].met[current_hop] = true;
 	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
@@ -116323,6 +116324,7 @@ void run_stable_path_finding(uint32_t flow_id)
 
 void update_unstable(uint32_t flow_id, uint32_t current_hop)
 {
+	if (current_hop >= linklifetimeMatrix_dsrc.size()) return; // controllers (264-267) have no DSRC rows
 	distance_algo2_output_inst[flow_id].met[current_hop] = true;
 	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
@@ -142866,6 +142868,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			// including those that never set attack_number — gets a distinct tag.
 			g_sim_tag = "_V" + std::to_string(active_attack_variant)
 			          + "_pct" + std::to_string(attack_percentage)
+			          + "_s" + std::to_string(sim_seed)
 			          + g_delay_suffix;
 			
 			if (routing_test) {

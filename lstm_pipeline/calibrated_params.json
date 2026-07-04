@@ -1,9 +1,9 @@
 {
-  "delta0": 0.002,
-  "alpha_rho": 0.0,
-  "alpha_v": 0.0,
+  "delta0": 0.0019037,
+  "alpha_rho": 4.53e-06,
+  "alpha_v": 1.955e-05,
   "beta": 0.7,
-  "k": 1.0,
-  "ols_r2": 0.0,
-  "robustness_max_delta_fpr": 0.0
+  "k": 3.0,
+  "ols_r2": 0.0118,
+  "robustness_max_delta_fpr": 0.0261
 }
