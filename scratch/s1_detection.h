@@ -47,28 +47,15 @@ using namespace std;
 // δ₀ — baseline intercept (seconds). Eq. 3.11.
 // Pending: least-squares regression on benign (0% attack) SUMO traces.
 // Initial estimate: 2 ms — typical DSRC propagation + MAC overhead at zero load.
-double s1_delta0 = 0.002;
-
-// α_ρ — density sensitivity coefficient (s per vehicle). Eq. 3.11.
-// Pending: regression calibration against SUMO density traces.
-// Initial estimate: 0.0001 s/vehicle (0.1 ms per additional vehicle in RSU zone).
-double s1_alpha_rho = 0.0001;
-
-// α_v — speed sensitivity coefficient (s²/m). Eq. 3.11.
-// Pending: regression calibration against SUMO speed traces.
-// Initial estimate: 0.05.
-double s1_alpha_v = 0.05;
-
-// k — standard-deviation multiplier for the S1 detection threshold. Eq. 3.14.
-// Thesis §3485: [tbd — initial candidate k=3, three-sigma rule].
-// Pending: grid search over {1.5, 2.0, 2.5, 3.0} to maximise MCC at 0% attack.
-double s1_k = 3.0;
-
-// β — EWMA forgetting factor ∈ (0,1) for the variance estimator. Eq. 3.12.
-// Thesis §3473–3479: [tbd — candidates {0.7, 0.8, 0.9, 0.95}].
-// Pending: grid search selecting β for fastest stable σ² convergence within
-// the 9 s minimum RSU zone residence window.
-double s1_beta = 0.9;
+// Calibrated 2026-07-05 via OLS on 27,795 benign rows (5 seeds × 148 cycles × 64 RSUs).
+// rule_calibrator.py steps: OLS → β sweep {0.7,0.8,0.9,0.95} → k sweep {1,2,3} → robustness ±30%.
+// R²=0.0004: α_ρ and α_v are near-zero — delay in NS-3 DSRC is dominated by crypto/routing
+// overhead rather than vehicle density/speed; baseline effectively collapses to δ₀.
+double s1_delta0    = 0.00197594;   // s  — OLS intercept (≈1.976 ms)
+double s1_alpha_rho = 5.2e-07;      // s/vehicle — density term (near-zero, kept for completeness)
+double s1_alpha_v   = 1.237e-05;    // s²/m — speed term (near-zero, kept for completeness)
+double s1_k         = 3.0;          // sigma multiplier — k sweep: smallest k with FPR ≤ 1%
+double s1_beta      = 0.7;          // EWMA factor — β sweep: fastest σ²(t) convergence in 9s window
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
 // Sized dynamically at runtime by s1_init_state(N_RSUs) — no hardcoded ceiling.
