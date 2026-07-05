@@ -114714,7 +114714,7 @@ double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 
 double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
-double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 100%)
+double   cp_attack_pct           = 40.0;    // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 40%)
 // Attack 4 (DP): percentage of vehicles acting as attackers.
 // 0 = disabled (use --num_attackers directly).
 // >0 overrides num_attackers: num_attackers = ceil(N_Vehicles * dp_attack_pct/100).
@@ -114876,7 +114876,7 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
                            Time original_timestamp);
 void send_hidden_duplicate_trampoline();
 // TAP function prototypes are now inside tap_detection.h
-void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid); // Change 5
+void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id, uint32_t fake_fid); // Change 5
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
@@ -114968,6 +114968,29 @@ void initialise_stub_attack_state()
             is_malicious_node[2][N_Vehicles] = true;
             t_onset[N_Vehicles] = attack_start_time;
             {
+                // WHO: number of compromised controllers, derived from the same
+                // attack_percentage sweep used by Attacks 1,2,5-8. Ground-truth/
+                // logging only (controller_compromised[]) -- does NOT change
+                // which/how many RSUs get flooded; that remains cp_attack_pct's
+                // job below, intentionally independent of attack_percentage.
+                uint32_t num_controllers_compromised;
+                if      (attack_percentage == 0)   num_controllers_compromised = 0;
+                else if (attack_percentage == 100) num_controllers_compromised = 4;
+                else if (attack_percentage >= 66)   num_controllers_compromised = 3;
+                else if (attack_percentage >= 33)   num_controllers_compromised = 2;
+                else                                num_controllers_compromised = 1;
+                if (num_controllers_compromised > N_Controllers)
+                    num_controllers_compromised = N_Controllers;
+
+                for (uint32_t c = 0; c < N_Controllers; c++)
+                    controller_compromised[c] = false;
+                for (uint32_t c = 0; c < num_controllers_compromised; c++)
+                    controller_compromised[c] = true;
+
+                cout << "[ATTACK3] [INIT] attack_percentage=" << attack_percentage
+                     << "% -> " << num_controllers_compromised << " of " << N_Controllers
+                     << " controller(s) compromised (ground truth only)." << endl;
+
                 uint32_t num_targeted_log = static_cast<uint32_t>(
                     std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
                 if (num_targeted_log < 1) num_targeted_log = 1;
@@ -114982,7 +115005,7 @@ void initialise_stub_attack_state()
 
         case (3): // Attack 4 — Slow-flow TCAM exhaustion, Data Plane (Change 5+7)
             // Nodes 0..num_attackers-1 each act as independent DP attackers.
-            if (num_attackers < 1) num_attackers = 1;  // guard against bad CLI input
+            if (attack_percentage > 0 && num_attackers < 1) num_attackers = 1;  // p=0 baseline legitimately has 0 attackers
             cout << "[ATTACK4] [INIT] Slow-flow DP, " << num_attackers
                  << " attacker(s), nodes 0.." << (num_attackers - 1)
                  << ", rate=" << attack_rate_pps << " pps"
@@ -141015,9 +141038,9 @@ int main(int argc, char *argv[])
     cmd.AddValue ("active_attack_variant", "active_attack_variant", active_attack_variant);
     cmd.AddValue ("attack_rate_pps", "Slow-flow injection rate pkt/s for Attacks 3+4 (default 20.0, paper range 3.2-40)", attack_rate_pps);
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
-    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): absolute attacker count; nodes 0..N-1 (default 1, overridden by --dp_attack_pct if >0)", num_attackers);
-    cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): percentage of vehicles acting as attackers (0-100). Overrides --num_attackers when >0. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
-    cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 100.0 = all RSUs)", cp_attack_pct);
+    cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): unused input -- num_attackers is now always recomputed from --attack_percentage (or --dp_attack_pct if >0) after CLI parsing; this flag has no effect", num_attackers);
+    cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): manual override outside the --attack_percentage sweep (0-100, default 0.0=off). When >0, overrides the attack_percentage-derived attacker count. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
+    cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 40.0). Independent of --attack_percentage, which now only drives the ground-truth compromised-controller count.", cp_attack_pct);
     double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
     cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
     cmd.AddValue ("qf", "qf", qf);
@@ -141062,15 +141085,26 @@ int main(int argc, char *argv[])
     // Convert ms CLI input to seconds for the forwarding path.
     tcam_slowpath_s = tcam_slowpath_ms_cli / 1000.0;
 
-    // Attack 4 (DP TCAM): if --dp_attack_pct was given, derive num_attackers
-    // from it so both attacks share symmetric percentage-based terminal control.
-    // cp_attack_pct already works this way for Attack 3 (RSU targeting fraction).
+    // Attack 4 (DP TCAM): by default, num_attackers is derived from the same
+    // attack_percentage sweep (0/20/40/60/80/100) used by Attacks 1,2,5-8,
+    // scaled over the vehicle pool (N_Vehicles denominator).
+    num_attackers = (int)std::floor(0.01 * attack_percentage * N_Vehicles);
+    if (attack_percentage > 0 && num_attackers < 1) num_attackers = 1;
+    if (num_attackers > (int)N_Vehicles)            num_attackers = (int)N_Vehicles;
+    cout << "[ATTACK4] attack_percentage=" << attack_percentage << "% -> num_attackers="
+         << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
+
+    // --dp_attack_pct is a manual override for standalone testing OUTSIDE the
+    // attack_percentage sweep. No-op unless explicitly passed with a value > 0
+    // (default 0.0); when passed, it takes priority over the
+    // attack_percentage-derived value above and is NOT part of the default
+    // 0/20/40/60/80/100 sweep path.
     if (dp_attack_pct > 0.0)
     {
         num_attackers = (int)std::ceil(N_Vehicles * (dp_attack_pct / 100.0));
         if (num_attackers < 1)               num_attackers = 1;
         if (num_attackers > (int)N_Vehicles) num_attackers = (int)N_Vehicles;
-        cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% -> num_attackers="
+        cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% override -> num_attackers="
              << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
     }
 
