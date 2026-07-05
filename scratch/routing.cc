@@ -114660,6 +114660,26 @@ double current_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double current_mitigation_latency                  = 0.0;
 double average_mitigation_latency                  = 0.0;
 
+// M7: Safety-Critical Threshold Violation Rate (TVR) — Eq. tvr
+// Counts safety-critical (HIGH-priority) packets whose per-hop forwarding
+// delay δ_p(v,r,t) exceeds Δ_max at any RSU receive point.
+// Numerator/denominator are running totals (never reset during a run),
+// matching the cumulative-ratio convention used for PDR.
+uint64_t g_tvr_crit_total  = 0;   // distinct safety-critical RSU-hop observations
+uint64_t g_tvr_violated    = 0;   // of those: hop_delay > Δ_max (S2_DELTA_MAX)
+double   current_TVR       = 0.0;
+double   average_TVR       = 0.0;
+double   g_tvr_cumulative  = 0.0;
+
+// M8: Unauthorized Copy Rate (UCR) — Eq. ucr
+// Numerator: fade_eavesdrop_counter (distinct (flow,pkt) received at any
+// unauthorized destination, already maintained by MacRx via
+// fade_eavesdropped_packets dedup set in efade_detection.h).
+// Denominator: total packets across all active flows (same as PDR).
+double   current_UCR       = 0.0;
+double   average_UCR       = 0.0;
+double   g_ucr_cumulative  = 0.0;
+
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
 #include "attack_variables.h"
@@ -114909,6 +114929,8 @@ void initialise_stub_attack_state()
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
+	// lstm_logger_init is called from main() after cmd.Parse() so the training
+	// flag and N_RSUs are both resolved before the logger is set up.
 
 
 	switch (active_attack_variant)
@@ -116254,6 +116276,7 @@ double average(double x, double y)
 
 void update_stable(uint32_t flow_id, uint32_t current_hop)
 {
+	if (current_hop >= linklifetimeMatrix_dsrc.size()) return; // controllers (264-267) have no DSRC rows
 	proposed_algo2_output_inst[flow_id].met[current_hop] = true;
 	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
@@ -116308,6 +116331,7 @@ void run_stable_path_finding(uint32_t flow_id)
 
 void update_unstable(uint32_t flow_id, uint32_t current_hop)
 {
+	if (current_hop >= linklifetimeMatrix_dsrc.size()) return; // controllers (264-267) have no DSRC rows
 	distance_algo2_output_inst[flow_id].met[current_hop] = true;
 	for(uint32_t i=0;i<linklifetimeMatrix_dsrc[current_hop].size();i++)
 	{
@@ -117101,8 +117125,70 @@ void calculate_mitigation_latency_metric()
               << 1000.0 * average_mitigation_latency << " ms" << std::endl;
 }
 
+// ============================================================
+// M7: Safety-Critical Threshold Violation Rate (TVR)
+// TVR = |{p ∈ P_crit : δ_p(v,r,t) > Δ_max}| / |P_crit|
+// Counters g_tvr_crit_total / g_tvr_violated are incremented
+// inside MacRx at every RSU receive point (see TVR block above).
+// Δ_max = S2_DELTA_MAX = 50 ms (s2_detection.h).
+// ============================================================
+void calculate_tvr_metric()
+{
+    double denom = (g_tvr_crit_total > 0) ? (double)g_tvr_crit_total : 1.0;
+    current_TVR = (double)g_tvr_violated / denom;
+
+    g_tvr_cumulative += current_TVR;
+    double cycle = data_gathering_cycle_number - 1.0;
+    if (cycle < 1.0) cycle = 1.0;
+    average_TVR = g_tvr_cumulative / cycle;
+
+    std::cout << "[SECURITY] TVR=" << 100.0 * current_TVR << "%"
+              << "  (violated=" << g_tvr_violated
+              << " / crit_obs=" << g_tvr_crit_total << ")"
+              << "  avg=" << 100.0 * average_TVR << "%" << std::endl;
+}
+
+// ============================================================
+// M8: Unauthorized Copy Rate (UCR)
+// UCR = |{p ∈ P_total : ∃d'∉P(s,d), p∈R(d',W)}| / |P_total|
+// Numerator  : fade_eavesdrop_counter — distinct (flow,pkt) pairs
+//              confirmed received at an unauthorized destination,
+//              deduplicated via fade_eavesdropped_packets set in
+//              efade_detection.h.  Covers all four HF variants
+//              (active 5/6 via active_hf block; passive 7/8 via
+//              passive_hf block) without double-counting.
+// Denominator: total packets across all active flows — same loop
+//              used by PDR, so UCR and PDR share the same base.
+// ============================================================
+void calculate_ucr_metric()
+{
+    uint32_t total_pkts = 0;
+    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
+    {
+        uint32_t f_size = (demanding_flow_struct_nodes_inst + fid)->f_size;
+        if (f_size > 0)
+            total_pkts += f_size;
+    }
+
+    uint64_t ucr_num = (uint64_t)fade_eavesdrop_counter;
+    current_UCR = (total_pkts > 0) ? ((double)ucr_num / (double)total_pkts) : 0.0;
+
+    g_ucr_cumulative += current_UCR;
+    double cycle = data_gathering_cycle_number - 1.0;
+    if (cycle < 1.0) cycle = 1.0;
+    average_UCR = g_ucr_cumulative / cycle;
+
+    std::cout << "[SECURITY] UCR=" << 100.0 * current_UCR << "%"
+              << "  (eavesdropped=" << ucr_num
+              << " / total_sent=" << total_pkts << ")"
+              << "  avg=" << 100.0 * average_UCR << "%" << std::endl;
+}
+
 static const int TCAM_HW_SIZE = 256;
 #include "tcam_detection.h"
+#include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
+                                     // g_slowpath_hit_count extern'd inside header;
+                                     // defined below at line ~120273 in this file.
 
 // LRAD detection event counters — defined here so write_security_metrics_csv()
 // can access them without requiring lrad.h (included later after tcam_attack_helper.h).
@@ -117371,7 +117457,11 @@ void fade_write_per_cycle_csv(std::string dir)
 		     << tn << ", "
 		     << fn << ", "
 		     << cur_pir << ", "
-		     << avg_pir << "\n";
+		     << avg_pir << ", "
+		     << (current_TVR * 100.0) << ", "
+		     << (average_TVR  * 100.0) << ", "
+		     << (current_UCR * 100.0) << ", "
+		     << (average_UCR  * 100.0) << "\n";
 		fout.close();
 	}
 
@@ -117444,6 +117534,9 @@ void calculate_performance_evaluation_metrics()
 	// Scheduled after existing writes to avoid timing conflicts
 	Simulator::Schedule(Seconds(0.000080), calculate_security_detection_metrics);
 	Simulator::Schedule(Seconds(0.000090), calculate_mitigation_latency_metric);
+	// M7 TVR and M8 UCR — fire after mitigation latency, before CSV write
+	Simulator::Schedule(Seconds(0.000091), calculate_tvr_metric);
+	Simulator::Schedule(Seconds(0.000092), calculate_ucr_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
@@ -117487,6 +117580,9 @@ void calculate_performance_evaluation_metrics()
 		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
 		s1_rsu_obs_sum[_r]   = 0.0;
 		s1_rsu_obs_count[_r] = 0;
+
+		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
+		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -120191,7 +120287,7 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // function). The extern declaration lets check_delivery_and_retransmit read
 // it without moving the include.
 extern int g_tcam_rule_count[300];
-int g_slowpath_hit_count[300] = {0};
+int g_slowpath_hit_count[300] = {0}; // satisfies the extern in lstm_logger.h
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
 // (packet matched immediately), TCAM_SLOWPATH_S when the table is full
@@ -140935,6 +141031,7 @@ int main(int argc, char *argv[])
     // Phase 1 / D1: Reproducibility.
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
+    cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
     // S1 detection tunable parameters (Eq. 3.11–3.14, proposal §3462–3486).
     // Default values are initial candidates; final values calibrated from benign SUMO traces.
@@ -142823,6 +142920,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			// including those that never set attack_number — gets a distinct tag.
 			g_sim_tag = "_V" + std::to_string(active_attack_variant)
 			          + "_pct" + std::to_string(attack_percentage)
+			          + "_s" + std::to_string(sim_seed)
 			          + g_delay_suffix;
 			
 			if (routing_test) {
@@ -142831,6 +142929,7 @@ if (architecture == 3 && N_Vehicles > 0)
 
 			// Initialize attack state before main loop
 			initialise_stub_attack_state();
+			lstm_logger_init(N_RSUs); // eq:lstm_input — called here so training flag + N_RSUs are resolved
 			
 			if (N_Vehicles > 0)
 			{
