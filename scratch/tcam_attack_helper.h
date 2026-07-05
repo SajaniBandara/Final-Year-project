@@ -369,8 +369,13 @@ inline void export_tcam_snapshot_baseline()
 // as a seed to produce a unique 5-tuple and is never written to any output.
 // Without this, an LSTM or similar model can trivially classify entries as
 // malicious purely from the flow_id magnitude.
-inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
+inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id, uint32_t fake_fid)
 {
+    // node_id            = attacker's own node (source of the packet; used for src_ip).
+    // target_rsu_node_id = the RSU whose TCAM this malicious FlowMod actually lands on.
+    // For Attack 3 (CP), attacker and victim RSU are the same node, so that call
+    // site passes the same value for both -- no behavior change there.
+    //
     // Build a synthetic 5-tuple unique to this fake_fid.
     // src IP = attacker node's real IP; dst IP sampled from the same server
     // range used by benign traffic (10.1.1.65–68) so the dst_ip column does
@@ -392,7 +397,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
 
     TcamEntry e;
     e.flow_id        = visible_fid;
-    e.node_id        = node_id;
+    e.node_id        = target_rsu_node_id;
     e.src_ip         = src_ip;
     e.dst_ip         = dst_ip;
     e.src_port       = src_port;
@@ -404,7 +409,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
     e.byte_count     = 750;  // nominal packet size consistent with benign traffic
     e.is_malicious   = true;
     g_tcam_table.push_back(e);
-    g_tcam_rule_count[node_id]++;
+    g_tcam_rule_count[target_rsu_node_id]++;
     // NOTE: intentionally NOT inserted into g_tcam_installed so repeated calls
     // with the same fake_fid could be used for refresh; but dp_attack_tick always
     // increments g_dp_attack_fid_counter so each call is truly unique.
@@ -414,28 +419,45 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t fake_fid)
     dip.Set(dst_ip);
     std::cout << "[TCAM INSTALL MAL] visible_fid=" << visible_fid
               << " (seed=" << fake_fid << ")"
-              << " node=" << node_id
+              << " attacker=" << node_id
+              << " target_rsu=" << target_rsu_node_id
               << " " << sip << ":" << src_port
               << " -> " << dip << ":" << dst_port
               << " t=" << e.install_time << "s" << std::endl;
 
     // MobiGuard: log malicious FlowMod to bc_flowmod_log.csv (is_malicious=1).
     // Bridge calls MarkFlowModUnauthorized() + triggers S3 rate counter.
-    bc_log_flowmod(node_id, visible_fid, src_ip, dst_ip, src_port, dst_port, true);
+    bc_log_flowmod(target_rsu_node_id, visible_fid, src_ip, dst_ip, src_port, dst_port, true);
 }
+
+// Forward-declared here (defined in lrad.h, included later in routing.cc) so
+// dp_attack_tick_for can reuse the same vehicle->RSU association used by real
+// per-vehicle escalation routing -- not a new/invented notion of "nearest RSU."
+inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
 
 // ── Change 5+7: self-rescheduling DP attacker tick (per-node) ─────────────
 // dp_attack_tick_for(node): fires every (1/attack_rate_pps) seconds for the
 // given attacker node while active_attack_variant==3 and sim time < simTime.
-// Each call installs one new unique malicious TCAM rule on behalf of `node`.
+// Each call installs one new unique malicious TCAM rule targeting the RSU
+// this attacker vehicle is currently associated with.
 inline void dp_attack_tick_for(uint32_t attacker_node)
 {
     if (active_attack_variant != 3) return;
     double now = Simulator::Now().GetSeconds();
     if (now >= simTime) return;
 
-    uint32_t fake_fid = g_dp_attack_fid_counter++;
-    tcam_install_malicious(attacker_node, fake_fid);
+    // Target the RSU this attacker vehicle is actually associated with right
+    // now (same lookup real packet forwarding/escalation uses), instead of
+    // stuffing the entry into the attacker's own TCAM slot.
+    uint32_t rsu_local_idx = lookup_vehicle_associated_rsu_local_idx(attacker_node);
+    if (rsu_local_idx < N_RSUs)
+    {
+        uint32_t target_rsu_node_id = N_Vehicles + rsu_local_idx;
+        uint32_t fake_fid = g_dp_attack_fid_counter++;
+        tcam_install_malicious(attacker_node, target_rsu_node_id, fake_fid);
+    }
+    // else: vehicle currently out of DSRC range of any RSU -- skip this tick,
+    // same "silently drop, not an error" handling as escalate_to_rsu().
 
     double interval = 1.0 / attack_rate_pps;
     Simulator::Schedule(Seconds(interval),
@@ -470,7 +492,7 @@ inline void cp_attack_tick()
     {
         uint32_t rsu_idx  = N_Vehicles + r;        // sim node index of RSU r
         uint32_t fake_fid = g_cp_attack_fid_counter++;
-        tcam_install_malicious(rsu_idx, fake_fid);
+        tcam_install_malicious(rsu_idx, rsu_idx, fake_fid); // attacker == victim RSU, same as before
     }
 
     double interval = 1.0 / attack_rate_pps;
