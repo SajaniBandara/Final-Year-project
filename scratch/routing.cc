@@ -1,4 +1,4 @@
-﻿#include <set>
+#include <set>
 #include "ns3/wave-module.h"
 #include "ns3/csma-helper.h"
 #include "ns3/lte-helper.h"
@@ -114722,6 +114722,11 @@ double   cp_attack_pct           = 100.0;   // CLI: --cp_attack_pct  (% of RSUs 
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === DETECTION TIMESTAMP GLOBALS ===
+
+// t_fwd_packet holds the ACTUAL wire-departure timestamp (after any
+// attack-injected delay has elapsed). 
+// double t_fwd_packet[total_size][Flow_size+2];
+
 // t_claimed_packet holds the timestamp a node CLAIMS as its forwarding
 // time — i.e., when it received/decided to forward the packet, BEFORE any
 // malicious buffering. This is the correct analogue of the TAP paper's
@@ -114880,7 +114885,9 @@ void record_detection_event(int v, int n); // defined at ~line 115476; forward-d
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
 #include "crypto_layer.h"
 #include "dkg_setup.h"
-#include "blockchain_sim.h"
+#include "bc_blockchain_helper.h"
+#include "crypto_event_log.h"  // per-operation timing log (supervisor timing verification)
+#include "lrad_hmac.h"         // HmacTag + g_hmac_tags + lrad_hmac_tag_packet (S2-partial, early include)
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
@@ -117182,6 +117189,14 @@ static const int TCAM_HW_SIZE = 256;
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
                                      // g_slowpath_hit_count extern'd inside header;
                                      // defined below at line ~120273 in this file.
+
+// LRAD detection event counters — defined here so write_security_metrics_csv()
+// can access them without requiring lrad.h (included later after tcam_attack_helper.h).
+// Declared extern in lrad.h so the LRAD function bodies can increment them.
+uint32_t g_d_obu_count      = 0;
+uint32_t g_d_rsu_count      = 0;
+uint32_t g_escalation_count = 0;
+
 void write_security_metrics_csv()
 {
 	fstream fout;
@@ -117243,16 +117258,17 @@ void write_security_metrics_csv()
 		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
 			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
 			 << "# TP, FP, TN, FN";
-		if (active_attack_variant == 2 || active_attack_variant == 3)
+		if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
 			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
 		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
-			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count\n";
+			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
+			 << " d_obu_count, d_rsu_count, escalation_count\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
-	if (active_attack_variant == 2 || active_attack_variant == 3) {
+	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1) {
 		double active_vehicles = (double)N_Vehicles;
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
@@ -117299,17 +117315,20 @@ void write_security_metrics_csv()
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
 		 << sec_FN[selected_variant];
-	if (active_attack_variant == 2 || active_attack_variant == 3)
+	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
 		fout << TcamDetectionCsvColumns(tcam_metrics);
 	fout << ", " << sig_valid_rate
 		 << ", " << avg_trust_score
 		 << ", " << _stark_t_fail
 		 << ", " << _stark_h_fail
 		 << ", " << flowmod_endorsement_rate
-		 << ", " << g_rsu_chain.size()
-		 << ", " << g_global_chain.size()
+		 << ", " << g_rsu_commit_hashes.size()
+		 << ", " << g_bc_global_commit_count
 		 << ", " << _da_count
 		 << ", " << _nfa_count
+		 << ", " << g_d_obu_count
+		 << ", " << g_d_rsu_count
+		 << ", " << g_escalation_count
 		 << "\n";
 
 	fout.close();
@@ -120506,6 +120525,26 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						              << std::endl;
 						}
 
+						// TCAM slow-path delay (Attacks 3 & 4).
+						// Real TCAM lookup is O(1) — fill level does not affect latency.
+						// The penalty fires only when the table is AT OR ABOVE capacity:
+						// the incoming packet has no matching rule, so it takes the
+						// controller slow path (PacketIn → FlowMod round-trip).
+						// Below capacity the packet hits a rule immediately (0 extra delay).
+						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
+						    current_hop >= N_Vehicles &&
+						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						{
+						    total_tx_delay += tcam_slowpath_s;
+						    g_slowpath_hit_count[current_hop]++;
+						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
+						              << " rules=" << g_tcam_rule_count[current_hop]
+						              << "/" << TCAM_HW_SIZE
+						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
+						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
+						              << std::endl;
+						}
+
 						// Record the CLAIMED forwarding timestamp immediately, at decision
 						// time, before any attack-injected delay is applied — this is what
 						// TAP's PPAT reads. A malicious node has no reason to honestly
@@ -120513,9 +120552,16 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// must NOT be deferred to total_tx_delay the way the actual send
 						// timestamp below is.
 						record_claimed_forward_timestamp(current_hop, packet_id);
+						// S2-partial HMAC tag: same reasoning — stamp pre-delay so
+						// lrad_s2_partial_check() sees (t_recv - t_stamp) = attack_delay + propagation.
+						lrad_hmac_tag_packet(current_hop, packet_id, packet_id);
 
 						// §7.2 — ML-DSA-87 sign outgoing packet
-						mldsa87_sign(current_hop, packet_id, hop, flow_id);
+						{
+							auto _t_sign = crypto_log_start();
+							bool _sign_ok = mldsa87_sign(current_hop, packet_id, hop, flow_id);
+							crypto_log_event("sign", current_hop, packet_id, _t_sign, _sign_ok);
+						}
 
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
 							{
@@ -120670,6 +120716,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 //Attack helper functions
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
+#include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
 
 int simulated_tcam_counter[200] = {0};
 int TCAM_CAPACITY = 1000;
@@ -120911,17 +120958,16 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         fade_eavesdrop_counter++;
                     }
                 }
-                // === SIGNATURE S7/S8 DETECTION (MOBIGUARD) ===
-                // S7: Passive HF CP — Eq. sig_s7: d/dt Vol(d',t)>ε_vol ∧ ∄FM ∧ ML-DSA-87=1 ∧ b_hop=⊥
-                // S8: Passive HF DP — Eq. sig_s8: BatchVerify=1 ∧ ML-DSA-87=1 ∧ b_hop=⊥
-                // Controlled solely by s7_detection_active / s8_detection_active.
+                // === LRAD at eavesdropper (Passive HF path) ===
+                // Volume must be recorded first so volume_check_anomaly() has
+                // live data when lrad_rsu() → s7_detect() evaluates Vol(d',t).
                 {
                     uint32_t _s78_prev = tagmodified_routing.Getprevious_senderId();
-                    uint32_t _s78_base = fid & 0xFFFFu;
-                    s7_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
-                    s8_detect(fid, _s78_prev, current_hop, packet_ID, _s78_base);
+                    volume_record_delivery(current_hop);
+                    lrad_rsu(current_hop, _s78_prev, packet_ID, fid,
+                             LRADOBUFlags{}, Now().GetSeconds());
                 }
-                // === END SIGNATURE S7/S8 DETECTION ===
+                // === END LRAD at eavesdropper (Passive HF) ===
                 // Drop it here — Vehicle B is not a legitimate hop,
                 // do NOT forward it further or mark delivery
                 return;  // exit MacRx for this packet
@@ -120957,22 +121003,18 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                             fade_eavesdrop_counter++;
                         }
                     }
-                    // === SIGNATURE S5/S6 DETECTION (MOBIGUARD) ===
-                    // S5: Active HF CP — Eq. sig_s5: d'∉P(s,d) ∧ FlowMod(CP) ∧ ML-DSA-87=0 ∧ b_hop=⊥
-                    // S6: Active HF DP — Eq. sig_s6: DUP(msg_id,W) ∧ ML-DSA-87=0 ∧ b_hop=⊥
-                    // Controlled solely by s5_detection_active / s6_detection_active.
+                    // === LRAD at eavesdropper (Active HF path) ===
                     {
                         uint32_t _s56_prev = tagmodified_routing.Getprevious_senderId();
-                        uint32_t _s56_base = fid & 0xFFFFu;
-                        s5_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
-                        s6_log_recv(fid, packet_ID, current_hop);   // log d' for DUP check
-                        s6_detect(fid, _s56_prev, current_hop, packet_ID, _s56_base);
+                        s6_log_recv(fid, packet_ID, current_hop); // logging helper — kept
+                        lrad_rsu(current_hop, _s56_prev, packet_ID, fid,
+                                 LRADOBUFlags{}, Now().GetSeconds());
                         // §7.4 — Controller trust penalty for unauthorized FlowMod (eq:ctrl_trust)
                         if (_s56_prev < (uint32_t)total_size && _s56_prev >= N_Vehicles) {
                             ctrl_trust_update_negative(rsu_controller_assignment[_s56_prev]);
                         }
                     }
-                    // === END SIGNATURE S5/S6 DETECTION ===
+                    // === END LRAD at eavesdropper (Active HF) ===
                 }
             }
 
@@ -120988,25 +121030,17 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// the eavesdropper copy (fid | 0xDEAD0000) map to the same entry.
 				s6_log_recv(fid, packet_ID, current_hop);
 
-				// === SIGNATURE S2 DETECTION (MOBIGUARD) ===
-				// Eq. 3.5: t_recv_{u+1} − t_fwd_u > Δ_max  ∧  π_delay(u) = ⊥
-				// Controlled solely by s2_detection_active.
-				{
-					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					s2_detect_packet(sender_sim_index,
-					                 Now().GetSeconds(),
-					                 is_safety_critical_flow[fid],
-					                 current_hop,
-					                 packet_ID,
-					                 fid);
-				}
-				// === END SIGNATURE S2 DETECTION ===
+				// S2 detection moved into lrad_rsu() via the LRAD dispatcher below.
 
 				// === ML-DSA-87 VERIFY + STARK HOP PROOF (§7.3) ===
 				{
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
+					auto _t_verify = crypto_log_start();
 					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
+					crypto_log_event("verify", prev_sender, packet_ID, _t_verify, sig_ok);
+					auto _t_hop = crypto_log_start();
 					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
+					crypto_log_event("stark_hop", prev_sender, packet_ID, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
@@ -121023,6 +121057,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
 							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
 						}
+						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
+						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
+						// sig_ok gate excludes overheard broadcast packets.
+						if (hop_ok && timing_ok && g_batch_passed)
+							trust_update_positive(prev_sender);
+						else
+							trust_update_negative(prev_sender);
 					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
@@ -121048,41 +121089,38 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				}
 				// === END §7.6 WITNESS / VOLUME ===
 
-				// === SIGNATURE S1 DETECTION (MOBIGUARD) ===
-				// Eq. 3.4: δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
-				// Only runs when current_hop is an RSU. Controlled solely by s1_detection_active.
-				if (current_hop >= N_Vehicles && current_hop < N_Vehicles + N_RSUs)
+				// === LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu) ===
 				{
-					uint32_t sender_sim_index = tagmodified_routing.Getprevious_senderId();
-					double t_fwd_by_sender = (sender_sim_index < (uint32_t)total_size)
-					                         ? t_claimed_packet[sender_sim_index][packet_ID]
-					                         : 0.0;
-					if (t_fwd_by_sender > 0.0)
-					{
-						double packet_delay_s = Now().GetSeconds() - t_fwd_by_sender;
+					bool     _is_vehicle = (current_hop < (uint32_t)N_Vehicles);
+					bool     _is_rsu     = (!_is_vehicle &&
+					                        current_hop < (uint32_t)(N_Vehicles + N_RSUs));
+					uint32_t _prev       = tagmodified_routing.Getprevious_senderId();
 
-						// M7 TVR — Eq. tvr: count safety-critical packets and
-						// threshold violations at this RSU receive point.
-						// S2_DELTA_MAX (0.050 s = 50 ms) is the Δ_max used
-						// identically for S1/S2 detection; defined in s2_detection.h.
-						if (is_safety_critical_flow[fid])
-						{
-							g_tvr_crit_total++;
-							if (packet_delay_s > S2_DELTA_MAX)
-								g_tvr_violated++;
-						}
+					if (_is_vehicle) {
+						// OBU path: evaluate S1, S2-partial, S3, S4.
+						// delta_p anchored to T_ref per eq:time_consensus
+						double _t_claimed = (_prev < (uint32_t)total_size &&
+						                     packet_ID < (uint32_t)(Flow_size + 2))
+						                     ? t_claimed_packet[_prev][packet_ID] : 0.0;
+						double _t_now_ref  = Now().GetSeconds() - g_T_ref;
+						double _t_send_ref = (_t_claimed > 0.0) ? (_t_claimed - g_T_ref) : 0.0;
+						double _delta_p    = (_t_claimed > 0.0) ? (_t_now_ref - _t_send_ref) : 0.0;
+						bool   _hi_pri    = is_safety_critical_flow[fid];
+						uint32_t _assoc_rsu =
+						    lookup_vehicle_associated_rsu_local_idx(current_hop);
+						lrad_obu(current_hop, _prev, packet_ID, fid,
+						         _hi_pri, Now().GetSeconds(), _delta_p, _assoc_rsu);
+					}
 
-						uint32_t rsu_idx = current_hop - N_Vehicles;
-						s1_detect_packet(rsu_idx,
-						                 packet_delay_s,
-						                 is_safety_critical_flow[fid],
-						                 sender_sim_index,  // malicious RSU that applied the delay
-						                 current_hop,       // receiving RSU (EWMA baseline + logging)
-						                 packet_ID,
-						                 fid);
+					if (_is_rsu) {
+						// RSU path (normal delivery): evaluate S2-full, S5–S8.
+						// S5–S8 return false for non-eavesdropped packets — no false positives.
+						LRADOBUFlags _empty_obu_flags;
+						lrad_rsu(current_hop, _prev, packet_ID, fid,
+						         _empty_obu_flags, Now().GetSeconds());
 					}
 				}
-				// === END SIGNATURE S1 DETECTION ===
+				// === END LRAD ===
 
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1.
@@ -123091,9 +123129,14 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // eFADE: record outbound destination at the source
     fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
 
-    // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline
-    // for this hop (S1/S2 hop-delay = t_recv − t_claimed; TAP PPAT = t_claimed).
-    record_claimed_forward_timestamp(source, packet_ID);
+    // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline.
+    // Guard: skip if already stamped pre-delay by the vehicle attack path so
+    // S2 hop_delay = attack_delay + propagation rather than propagation only.
+    if (t_claimed_packet[source][packet_ID] == 0.0)
+        record_claimed_forward_timestamp(source, packet_ID);
+    // Guard: skip if already stamped pre-delay by the vehicle attack path.
+    if (g_hmac_tags.find({source, packet_ID}) == g_hmac_tags.end())
+        lrad_hmac_tag_packet(source, packet_ID, packet_ID);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
@@ -123607,6 +123650,14 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						
 						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
 						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
+
+						// Stamp BEFORE any attack delay so S2/S2-partial see the pre-delay time.
+						// Mirrors the RSU path at line 120457; without this, the vehicle path
+						// records the post-delay timestamp inside routing_dsrc_data_unicast and
+						// both S2-full (t_claimed_packet) and S2-partial (HMAC ts) see only
+						// propagation delay, never triggering.
+						record_claimed_forward_timestamp(source, packet_id);
+						lrad_hmac_tag_packet(source, packet_id, packet_id);
 
 						bool attacked = schedule_unified_selective_delay_attack(
 							present_selective_delay_attack_nodes,
@@ -142860,6 +142911,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			// Initialize dynamic attack configurations
 			declare_attack_states();
 			declare_attackers();
+			lrad_reset_state(); // reset LRAD counters/queues each run (lrad.h in scope here)
 
 			// Set unique tag for all per-run scratch-level CSV files AFTER
 			// declare_attack_states() has resolved active_attack_variant from
@@ -143364,6 +143416,7 @@ Simulator::Schedule(Seconds(1.0), &fade_detect_anomaly);
 
 
   OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
+  crypto_log_init();   // open crypto_timing_log.csv for per-operation timing
   Simulator::Run();
   export_tcam_snapshot_baseline();
 
@@ -143396,6 +143449,7 @@ if (fade_detection_active)
 // write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
 // and is called once per data-gathering cycle — no post-simulation call needed.
 
+  crypto_log_close();  // flush and close crypto_timing_log.csv
   Simulator::Destroy();
   
  

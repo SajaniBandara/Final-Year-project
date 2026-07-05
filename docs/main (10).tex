@@ -407,28 +407,54 @@ Objective 3: Evaluate the effectiveness of the proposed defense mechanism by mea
 \label{sec:rqs}
 
 \begin{enumerate}
-    \item \textbf{RQ1: }How can selective time delay attacks and hidden forwarding 
-    attacks be reliably detected in SDVN when legitimate handoff-induced 
-    delays and mobility-driven flow-rule churn produce statistical 
-    distributions that overlap with attack signatures?
     
-    \item \textbf{RQ2: }What is the minimum observation window and sample size 
-    required for a federated LSTM model to distinguish mobility-masked 
-    attack traffic from benign handoff transients with $\geq$95\% 
-    precision and $\leq$1\% false positive rate under highway-speed 
-    mobility conditions?
+    \item \textbf{RQ1:}
+    How does MOBIGUARD's detection quality, threshold
+    violation containment, and mitigation responsiveness
+    change as attack penetration increases from 0\% to
+    100\% of network nodes across three attack intensity
+    levels, compared against state-of-the-art defenses
+    that assume a fixed or single-adversary threat model?
     
-    \item \textbf{RQ3: }Can an ML-DSA-87 + randomized batch verification + STARK hybrid cryptographic 
-    scheme verify per-packet integrity and flow-rule compliance in SDVN 
-    within the latency budget of safety-critical V2X messages ($<$100\,ms 
-    end-to-end) while preserving vehicle identity privacy?
+    \item \textbf{RQ2:}
+    Does the mobility-adjusted threshold design maintain
+    detection quality and safety-critical packet
+    protection across the full vehicular speed range
+    from 10\,km/h to 140\,km/h, where increasing speed
+    progressively raises handoff-induced latency jitter
+    that masks attack signatures and causes
+    static-threshold baselines to fail?
     
-    \item \textbf{RQ4: }How does the proposed dual-mode (lightweight rule-based + full 
-    AI/crypto) detection architecture perform relative to centralized 
-    alternatives in terms of detection accuracy, latency overhead, and 
-    resilience to controller compromise under realistic SDVN mobility 
-    traces?
+    \item \textbf{RQ3:}
+    Can the \ac{MLDSA} + randomized batch verification
+    + \ac{STARK} cryptographic layer and blockchain
+    consensus pipeline maintain detection quality,
+    mitigation latency, and end-to-end latency within
+    the 100\,ms safety-critical bound as the network
+    scales from 100 to 400 vehicles?
+    
+    \item \textbf{RQ4:}
+    How does MOBIGUARD's detection quality and
+    unauthorized copy containment degrade as attack
+    observable evidence decreases from maximum
+    (high selectivity, adjacent copy destination)
+    to minimum (10\% selectivity, near-maximum
+    divergence copy destination), and does the
+    witness-based monitoring mechanism maintain
+    passive hidden forwarding detection at low
+    evidence levels where cryptographic proof
+    corroboration alone is insufficient?
+    
+    \item \textbf{RQ5:}
+    Across each of the eight individual attack variants
+    under default settings, does MOBIGUARD achieve
+    superior detection quality and mitigation performance
+    compared to state-of-the-art defenses, and what
+    detection gaps remain in the coverage of existing
+    baselines that a joint detection framework resolves?
+
 \end{enumerate}
+
 
 \vspace{0.5\baselineskip}
 
@@ -1159,6 +1185,20 @@ frameworks.
 
                         \hline
                         $\mathcal{L}_w, W, H(p)$ & Witness short-term cache, observation time window, and cryptographic packet hash, respectively. \\
+
+                        \hline
+                       $\mathcal{P}_{crit}$ &
+                        Set of safety-critical (high-priority) packets
+                        used in TVR computation
+                          (Eq.~\ref{eq:tvr}). \\
+                        \hline
+                        $\text{TVR}, \text{UCR}$ &
+                        Safety-Critical Threshold Violation Rate and
+                        Unauthorized Copy Rate; attack-class-specific
+                        evaluation metrics for selective time delay
+                        and hidden forwarding respectively
+                        (Eqs.~\ref{eq:tvr}, \ref{eq:ucr}). \\   
+                        
                         \hline
                         $\alpha_w, \beta_w, f$ & Signed duplication alert, signed non-forwarding alert, and maximum number of local Byzantine nodes, respectively. \\
                         \hline
@@ -3322,14 +3362,14 @@ The attacks will be simulated in ns-3 and data will be collected using simulated
 \label{sec:baselines}
 
 \subsection{External Baselines}
-Three post-2020 baselines are selected that directly address selective
+Three recent baselines are selected that directly address selective
 time delay or hidden forwarding attacks in SDN or SDVN.
 
-\textbf{B1 — FSDM}~\cite{Huang2020}: Closest prior art for
-control-plane saturation-induced timing delay (Variants~1--3).
-Represents the best centralized entropy-based approach; comparison
-exposes its failure under vehicular mobility and compromised controller
-conditions.
+\textbf{B1 — TAP}~\cite{Arsalan2018}: Closest prior art for
+selective packet timing delay detection (Variants~1--3).
+Represents the best physics-based, mobility-aware timing approach;
+comparison exposes its failure under hidden forwarding attacks and
+compromised controller conditions.
 
 \textbf{B2 — SFTO-Guard}~\cite{Tang2023SFTO}: Most recent dedicated
 defense against slow-rate TCAM exhaustion (Variants~3--4). Comparison
@@ -3344,84 +3384,1500 @@ demonstrates the short-observation-window limitation
 under vehicular mobility.
 
 \subsubsection{Internal Ablation Baselines}
-Component-ablated variants isolate each contribution's individual
-impact:
+Thirteen component-ablated configurations
+(AB1-A through AB13-B) are defined in
+Section~\ref{sec:ablation}. Each experiment
+isolates one formulated design component by
+replacing or removing it while holding all
+others fixed; the resulting performance change
+is attributed solely to that component.
 
-\begin{itemize}
-    \item \textbf{A1 — Rule-only}: Lightweight rule engine
-    (Alg.~\ref{alg:lrad_obu}) alone; no LSTM, no cryptographic layer.
-    \item \textbf{A2 — LSTM-only}: Federated LSTM
-    (Alg.~\ref{alg:brfa_v2}) alone; no rule pre-filtering, no ZKP
-    features in input vector~\eqref{eq:lstm_input}.
-    \item \textbf{A3 — No-ZKP}: Full system with ML-DSA-87 and aggregate
-    signatures but without ZKP proofs; isolates ZKP contribution to
-    both detection and mitigation.
-    \item \textbf{A4 — No-BC}: Full system without blockchain trust
-    management; detection retained but automated quarantine
-    (Eq.~\eqref{eq:quarantine}) and model validation
-    (Eq.~\eqref{eq:bc_model_verify}) disabled.
-    \item \textbf{A5 — Full MOBIGUARD}: Complete proposed framework.
-\end{itemize}
+\section{Performance Metrics}
+\label{sec:metrics}
 
-\subsection{Primary Performance Metrics}
-Four metrics are selected to evaluate both detection quality and
-mitigation effectiveness.
+Twelve metrics are defined to evaluate all formulated
+components of the proposed methodology, covering detection
+quality, attack-class-specific effectiveness, operational
+overhead, resilience of each security layer, and privacy
+preservation. Metrics~M5, M8, M9, and~M12 are evaluated
+exclusively in ablation studies since no state-of-the-art
+baseline implements the corresponding components; Metric~M7
+is reported for the proposed framework with baseline figures
+cited from published work as context only.
 
-\textbf{M1 — Matthews Correlation Coefficient (MCC)}: Primary
-detection quality metric, selected over accuracy and F1 because it
-remains reliable under the class imbalance inherent in attack
-detection datasets where benign packets vastly outnumber attack
-packets; the MCC is formally defined in
-Equation \ref{eq:mcc}:
+% ----------------------------------------------------------------
+% M1 — Detection Quality and Mobility Robustness
+% ----------------------------------------------------------------
+
+\textbf{M1 — Detection Quality and Mobility Robustness:}
+The Matthews Correlation Coefficient is computed both
+as an aggregate topline figure and stratified across
+attack variants, detection modes, and mobility regimes.
+The base \ac{MCC} formula is given in
+Equation~\eqref{eq:mcc} (reproduced for completeness).
 \begin{equation}
-\text{MCC} = \frac{TP \cdot TN - FP \cdot FN}
-{\sqrt{(TP+FP)(TP+FN)(TN+FP)(TN+FN)}}
+\text{MCC} =
+\frac{TP \cdot TN - FP \cdot FN}
+{\sqrt{(TP{+}FP)(TP{+}FN)(TN{+}FP)(TN{+}FN)}}
 \label{eq:mcc}
 \end{equation}
-As shown in Equation \eqref{eq:mcc}, the MCC is computed from
-all four cells of the confusion matrix: true positives $TP$, true
-negatives $TN$, false positives $FP$, and false negatives
-$FN$, producing a single scalar in $[-1, 1]$ where $+1$ indicates
-perfect classification, $0$ indicates performance no better than
-random guessing, and $-1$ indicates total misclassification; unlike
-accuracy, which can reach high values simply by predicting the
-majority benign class, and unlike F1, which ignores true negatives
-entirely, MCC remains informative even when attack packets constitute
-a small minority of the total traffic.
 
 
-\textbf{M2 — Per-Variant Detection Rate (DR)}: True positive rate
-evaluated independently for each of the eight attack variants,
-ensuring no variant is masked by aggregate accuracy figures.
 
-\textbf{M3 — False Positive Rate (FPR)}: Critical in vehicular
-safety contexts where false alarms trigger mitigation actions that
-themselves degrade network performance; evaluated separately for
-lightweight and full modes.
+As given in Equation~\eqref{eq:mcc}, MCC produces a
+scalar in $[-1,1]$ reliable under the severe class
+imbalance of attack detection datasets.
+The per-variant, per-mode score is given in
+Equation~\eqref{eq:mcc_variant}.
+\begin{equation}
+\text{MCC}_{s,m} = \text{MCC evaluated over variant }
+s \in \{S1,\ldots,S8\},\;
+m \in \{\text{OBU},\text{RSU}\}
+\label{eq:mcc_variant}
+\end{equation}
+As given in Equation~\eqref{eq:mcc_variant}, computing
+a separate score per variant and per mode prevents
+strong variants from masking weak ones in aggregate
+figures and exposes any mode-specific detection gap.
+To validate the mobility-adjusted thresholds
+(Eq.~\ref{eq:mobility_baseline}) against the static
+thresholds used by all three baselines, the mobility-
+stratified score is given in
+Equation~\eqref{eq:mcc_mobility}.
+\begin{equation}
+\text{MCC}_{s}[\rho_b, \bar{v}_b] =
+\text{MCC}_{s}\text{ computed when }
+\rho(t) \in \rho_b \;\land\;
+\bar{v}(t) \in \bar{v}_b
+\label{eq:mcc_mobility}
+\end{equation}
+As given in Equation~\eqref{eq:mcc_mobility},
+$\rho_b \in \{\text{low, medium, high}\}$ and
+$\bar{v}_b \in \{\text{low, high}\}$ are vehicle
+density and speed bins derived from the SUMO mobility
+traces. A drop in $\text{MCC}_{s}$ at high-density,
+high-speed conditions indicates that the mobility
+adjustment fails, while a stable score across all bins
+validates Equation~\eqref{eq:mobility_baseline}.
+The \ac{FPR} is evaluated as a hard constraint rather
+than a separate top-level metric: hyperparameters are
+rejected if the resulting FPR exceeds 1\% in either mode.
 
-\textbf{M4 — Mitigation Latency} ($L_{mit}$): Time from attack
-onset to smart contract quarantine execution
-(Eq.~\eqref{eq:quarantine}), measured against the 100\,ms
-safety-critical latency bound; directly evaluates mitigation
-effectiveness rather than detection alone.
 
-\textbf{M5 — Packet Delivery Ratio (PDR)}: Fraction of
-safety-critical packets successfully delivered to the final
-destination across the full multihop path, evaluated under active
-attack with and without MOBIGUARD. PDR directly captures the combined
-impact of both selective time delay (packets dropped after timeout)
-and hidden forwarding (packets corrupted or rerouted) on end-to-end
-delivery across all intermediate hops.
+% ----------------------------------------------------------------
+% M2 — Safety-Critical Threshold Violation Rate (TVR)
+% ----------------------------------------------------------------
 
-\textbf{M6 — End-to-End Latency} ($L_{e2e}$): Mean per-packet
-latency accumulated across all hops from source to final destination,
-compared against the 100\,ms safety-critical bound. Evaluated under
-attack and post-mitigation to quantify the latency restoration
-effectiveness of the proposed framework relative to the three external
-baselines.
+\textbf{M2 — Safety-Critical Threshold Violation Rate (TVR):}
+Definitively evaluates Selective Time Delay Attack
+containment (Variants~1--4). Unlike L$_{e2e}$, TVR
+is not diluted by best-effort traffic or legitimate
+handoff latency. The TVR is given in
+Equation~\eqref{eq:tvr}.
+\begin{equation}
+\text{TVR} =
+\frac{\left|\left\{
+p \in \mathcal{P}_{crit} :
+\delta_p(v,r,t) > \Delta_{max}
+\right\}\right|}{|\mathcal{P}_{crit}|}
+\label{eq:tvr}
+\end{equation}
+As given in Equation~\eqref{eq:tvr},
+$\mathcal{P}_{crit} = \{p :
+\text{Priority}(p) = \textsc{High}\}$ is the set
+of safety-critical packets, and $\delta_p(v,r,t)$
+is the per-hop forwarding delay anchored to the
+distributed time reference $T_{ref}(t)$
+(Eq.~\ref{eq:delay_updated}), so that handoff-induced
+latency is normalised out before the threshold
+comparison. Packets that are never forwarded within
+the observation window are assigned $\delta_p =
+\infty > \Delta_{max}$, capturing delay-equivalent
+non-delivery within the same formula
+(Eq.~\ref{eq:nfwd_detect}). Under no attack,
+TVR $\approx 0$; under Variants~1--4, TVR rises with
+attack intensity and returns toward 0 post-quarantine.
+Compared against baselines B1--B3, none of which
+enforce per-packet delay thresholds on safety-critical
+traffic.
+
+
+% ----------------------------------------------------------------
+% M3 — Unauthorized Copy Rate (UCR)
+% ----------------------------------------------------------------
+
+\textbf{M3 — Unauthorized Copy Rate (UCR):}
+Definitively evaluates Hidden Forwarding Attack
+containment (Variants~5--8), including passive variants
+where \ac{PDR} remains at 100\% and attack-induced
+overhead is zero, making UCR the only metric that
+exposes Variants~7--8. The UCR is given in
+Equation~\eqref{eq:ucr}.
+\begin{equation}
+\text{UCR} =
+\frac{\left|\left\{
+p \in \mathcal{P}_{total} :
+\exists\, d' \notin \mathcal{P}(s_p, d_p),\;
+p \in \mathcal{R}(d', W)
+\right\}\right|}{|\mathcal{P}_{total}|}
+\label{eq:ucr}
+\end{equation}
+As given in Equation~\eqref{eq:ucr},
+$\mathcal{P}(s_p, d_p)$ is the blockchain-committed
+authorised forwarding policy (Eq.~\ref{eq:policy_commit}),
+and $\mathcal{R}(d', W)$ is the set of packet hashes
+received at $d'$ within window $W$. UCR $= 0$ exactly
+under no attack; UCR $> 0$ under Variants~5--8;
+and UCR returns to 0 post-quarantine. For active
+variants (5, 6), the copy carries modified content
+confirmed by \textsc{ML-DSA-87.Verify}$= 0$; for
+passive variants (7, 8), the copy is unmodified
+but $d' \notin \mathcal{P}(s_p, d_p)$ remains
+detectable via the blockchain-committed policy.
+Compared against baselines B1--B3, none of which
+monitor unauthorized reception at off-path destinations.
+
+
+% ----------------------------------------------------------------
+% M4 — Node/Flow Mitigation Latency
+% ----------------------------------------------------------------
+
+\textbf{M4 — Node/Flow Mitigation Latency
+($L_{mit}$):}
+Measures the elapsed time from attack onset to
+successful smart contract quarantine of the offending
+node, directly evaluating the responsiveness of the
+trust management pipeline
+(Eq.~\ref{eq:trust_update}, \ref{eq:quarantine}).
+The mitigation latency is given in
+Equation~\eqref{eq:l_mit}.
+\begin{equation}
+L_{mit} = t_{quarantine} - t_{onset}
+\label{eq:l_mit}
+\end{equation}
+As given in Equation~\eqref{eq:l_mit},
+$t_{onset}$ is the timestamp of the first
+attack-conforming packet and $t_{quarantine}$ is the
+timestamp at which \textsc{SC.Quarantine}$(v)$ is
+executed by the smart contract. Target: $L_{mit}
+\leq 100$\,ms. Compared against baseline mitigation mechanisms: SIFT's probabilistic rule
+eviction, which reports post-attack RTT recovery times, and TAP's
+Controller-Defaulter-List mechanism, which reports duplicate emergency
+packet reduction over the simulation window rather than an explicit
+mitigation-latency figure~\cite{Arsalan2018}.
+
+
+% ----------------------------------------------------------------
+% M5 — Controller Failover Latency (ABLATION ONLY)
+% ----------------------------------------------------------------
+
+\textbf{M5 — Controller Failover Latency
+($L_{failover}$) [Ablation only]:}
+Evaluates the multi-controller zero-trust architecture
+(Eq.~\ref{eq:sc_revoke}, \ref{eq:ctrl_failover}).
+No state-of-the-art baseline implements trusted
+dynamic controller failover; all three baselines assume
+a permanently available trusted controller.
+The failover latency is given in
+Equation~\eqref{eq:l_failover}.
+\begin{equation}
+L_{failover} =
+\underset{k \in \mathcal{K}_{affected}}{\max}
+\left(
+t_{reassign}^{(k)} - t_{revoke}
+\right)
+\label{eq:l_failover}
+\end{equation}
+As given in Equation~\eqref{eq:l_failover},
+$t_{revoke}$ is the timestamp at which
+\textsc{SC.Revoke}$(c_i)$ fires, and
+$t_{reassign}^{(k)}$ is the timestamp at which
+\ac{RSU} $r_k$ completes reassignment to its new
+trusted controller (Eq.~\ref{eq:ctrl_failover}).
+The worst-case (maximum) over all affected RSUs
+$\mathcal{K}_{affected}$ is reported to capture
+stragglers under geographic dispersion. Target:
+$L_{failover} \leq 100$\,ms. Evaluated across
+0, 1, and 2 compromised controller scenarios.
+
+
+% ----------------------------------------------------------------
+% M6 — Overall System Latency (L_e2e)
+% ----------------------------------------------------------------
+
+\textbf{M6 — Overall System Latency ($L_{e2e}$):}
+Measures the mean per-packet latency accumulated
+across all hops including the framework's own
+cryptographic, detection, and blockchain processing
+overhead, benchmarked against the 100\,ms
+safety-critical bound. The end-to-end latency is
+given in Equation~\eqref{eq:l_e2e}.
+\begin{equation}
+L_{e2e} =
+\frac{1}{|\mathcal{P}_{total}|}
+\sum_{p \in \mathcal{P}_{total}}
+\left(
+t_{recv}^{final}(p) - t_{send}(p)
+\right)
+\label{eq:l_e2e}
+\end{equation}
+As given in Equation~\eqref{eq:l_e2e},
+$t_{send}(p)$ is the transmission timestamp at the
+source and $t_{recv}^{final}(p)$ is the reception
+timestamp at the final authorized destination,
+both anchored to $T_{ref}(t)$
+(Eq.~\ref{eq:delay_updated}). Evaluated under
+attack and post-mitigation and compared against
+all three baselines to quantify the latency cost
+of the framework's security mechanisms relative
+to simpler defenses.
+
+
+% ----------------------------------------------------------------
+% M7 — Security Processing and Consensus Overhead
+%        (Ablation/context only)
+% ----------------------------------------------------------------
+
+\textbf{M7 — Security Processing and Consensus
+Overhead [Ablation/context only]:}
+Combines the cryptographic communication overhead
+per packet, the RSU verification processing time
+as a function of batch size, and the blockchain
+consensus latency for FlowMod endorsement, jointly
+validating the $O(n)$ parallelism claim
+(Eq.~\ref{eq:batch_verify}) and the endorsement
+design (Eq.~\ref{eq:endorsed_commit}).
+The per-packet cryptographic communication overhead
+is given in Equation~\eqref{eq:o_crypto}.
+\begin{equation}
+O_{crypto}^{(n)} =
+n \cdot |\sigma_i|
++ |\pi_{delay}| + |\pi_{hop}|
+\label{eq:o_crypto}
+\end{equation}
+As given in Equation~\eqref{eq:o_crypto},
+$n$ is the number of hops, $|\sigma_i| =
+4{,}595$\,bytes is the \ac{MLDSA} signature
+size, and $|\pi_{delay}|$, $|\pi_{hop}|
+\leq 100$\,KB each are the \ac{STARK} proof
+sizes (Eq.~\ref{eq:overhead_full}).
+The \ac{RSU} batch verification processing time
+as a function of batch size $B$ is given in
+Equation~\eqref{eq:t_verify}.
+\begin{equation}
+T_{verify}(B) =
+T_{batch}(B) + T_{STARK}
+\label{eq:t_verify}
+\end{equation}
+As given in Equation~\eqref{eq:t_verify},
+$T_{batch}(B)$ is the wall-clock time for
+\textsc{BatchVerify} over $B$ packets
+(Eq.~\ref{eq:batch_verify}) and $T_{STARK}$
+is the \textsc{STARK.Verify} latency per packet.
+The blockchain endorsement consensus latency
+is given in Equation~\eqref{eq:t_consensus}.
+\begin{equation}
+T_{consensus} =
+t_{commit} - t_{FlowMod\_recv}
+\label{eq:t_consensus}
+\end{equation}
+As given in Equation~\eqref{eq:t_consensus},
+$t_{commit}$ is the timestamp at which
+$C_\mathcal{P}$ (Eq.~\ref{eq:endorsed_commit})
+is written to the blockchain after $f{+}1$
+endorsements are collected, and
+$t_{FlowMod\_recv}$ is the arrival timestamp
+of the FlowMod at the first endorsing \ac{RSU}.
+All three sub-metrics are reported as a function
+of network load; \ac{FTISCON} and \ac{BlockREV}
+figures cited as literature context for M7 only.
+
+
+% ----------------------------------------------------------------
+% M8 — Federated Model Poisoning Resistance
+%        (ABLATION ONLY)
+% ----------------------------------------------------------------
+
+\textbf{M8 — Federated Model Poisoning Resistance
+[Ablation only]:}
+Evaluates the Byzantine-robust aggregation layer
+(Algorithm~\ref{alg:brfa_v2}) by measuring
+degradation of the global model's detection
+quality as the fraction of malicious RSUs
+submitting poisoned gradients increases from 0
+to the PBFT Byzantine bound $f < n/3$.
+The poisoning degradation is given in
+Equation~\eqref{eq:delta_poison}.
+\begin{equation}
+\Delta_{poison}(\rho_{mal}) =
+\text{MCC}_{clean} -
+\text{MCC}(\rho_{mal})
+\label{eq:delta_poison}
+\end{equation}
+As given in Equation~\eqref{eq:delta_poison},
+$\text{MCC}_{clean}$ is the global model's MCC
+under zero malicious RSUs, and
+$\text{MCC}(\rho_{mal})$ is the MCC when a
+fraction $\rho_{mal}$ of the 64 RSUs submit
+gradient-poisoned updates. $\Delta_{poison}$
+is evaluated for BRFA-v2 versus naive FedAvg to
+isolate the contribution of trust-gating
+(Step~1), hash verification (Step~2), and Krum
+filtering (Step~3) in Algorithm~\ref{alg:brfa_v2}.
+Target: $\Delta_{poison}(\rho_{mal}) \approx 0$
+for $\rho_{mal} < 1/3$.
+
+
+% ----------------------------------------------------------------
+% M9 — Distributed Time Reference Robustness
+%        (ABLATION ONLY)
+% ----------------------------------------------------------------
+
+\textbf{M9 — Distributed Time Reference Robustness
+[Ablation only]:}
+Validates the formal guarantee of
+Equation~\eqref{eq:time_consensus} that $T_{ref}(t)$
+remains within honest clock range when up to
+$f < n_{RSU}/2$ RSU clocks are compromised.
+The time reference deviation under $f_{bad}$
+compromised clocks is given in
+Equation~\eqref{eq:eps_ref}.
+\begin{equation}
+\varepsilon_{ref}(f_{bad}) =
+\left|
+T_{ref}(t) - T_{ground}(t)
+\right|
+\text{ with } f_{bad}
+\text{ RSU clocks offset by } \delta_{attack}
+\label{eq:eps_ref}
+\end{equation}
+As given in Equation~\eqref{eq:eps_ref},
+$T_{ground}(t)$ is the \ac{GPS} ground truth
+timestamp available from the simulation,
+$f_{bad}$ is the number of RSU clocks
+artificially offset by a fixed attack value
+$\delta_{attack}$, and $\varepsilon_{ref}$
+is the absolute deviation of the computed
+median from ground truth. $\varepsilon_{ref}$
+is swept over $f_{bad} \in \{0, 1,
+\lfloor n_{RSU}/4 \rfloor,
+\lfloor n_{RSU}/2 \rfloor - 1\}$ to
+confirm the bound fails exactly at
+$f_{bad} = n_{RSU}/2$ and holds for all
+smaller values, validating
+Equation~\eqref{eq:time_consensus}.
+
+
+% ----------------------------------------------------------------
+% M10 — Privacy Leakage / Raw Data Exposure
+% ----------------------------------------------------------------
+
+\textbf{M10 — Privacy Leakage Score ($L_{priv}$):}
+Directly evaluates the privacy preservation
+claim — Gap~4 in the literature review —
+by quantifying the volume of raw re-identifying
+data categories transmitted outside the local
+RSU trust boundary, comparing the proposed
+framework against baselines that centralize
+raw metadata. The privacy leakage score is
+given in Equation~\eqref{eq:l_priv}.
+\begin{equation}
+L_{priv} =
+\sum_{d \in \mathcal{D}_{raw}}
+w_d \cdot
+\mathbb{1}\!\left[
+d \text{ transmitted beyond local trust boundary}
+\right]
+\label{eq:l_priv}
+\end{equation}
+As given in Equation~\eqref{eq:l_priv},
+$\mathcal{D}_{raw} = \{$location history,
+vehicle identity, trajectory, raw packet
+headers, raw flow metadata$\}$ is the set
+of re-identifying data categories, and
+$w_d \in [0,1]$ is the privacy-sensitivity
+weight of each category (location history
+and vehicle identity are assigned $w_d = 1$
+as highest sensitivity; flow metadata
+$w_d = 0.5$). This is an architectural
+evaluation computed from each baseline's
+published design rather than a runtime
+output: MOBIGUARD exposes only model weight
+deltas, hash commitments, and proof
+outcomes ($L_{priv} = 0$ for the five
+raw categories); HSA centralizes raw packet headers ($L_{priv} = w_{headers}
++ w_{trajectory}$); TAP centralizes only the
+vehicle ID of a detected attacker at the
+controller via the Controller-Defaulter-List
+($L_{priv} = w_{vehicle\_identity}$).
+
+
+% ----------------------------------------------------------------
+% M11 — Unauthorized FlowMod Containment Rate (UFCR)
+% ----------------------------------------------------------------
+
+\textbf{M11 — Unauthorized FlowMod Containment
+Rate (UFCR):}
+Directly evaluates the multi-RSU blockchain
+endorsement mechanism
+(Eqs.~\ref{eq:rsu_endorsement},
+\ref{eq:endorsed_commit},
+\ref{eq:unauth_flowmod}) against control-plane
+attacks (Variants~1, 3, 5, 7). UFCR measures
+the fraction of unauthorized FlowMod commands
+successfully blocked before RSU installation
+among all FlowMods flagged as unauthorized by
+$f_{unauth}$ (Eq.~\ref{eq:unauth_flowmod}).
+The UFCR is given in
+Equation~\eqref{eq:ufcr}.
+\begin{equation}
+\text{UFCR} =
+\frac{\left|\left\{
+FM \in \mathcal{FM}_{unauth} :
+FM \text{ blocked before installation}
+\right\}\right|}{|\mathcal{FM}_{unauth}|}
+\label{eq:ufcr}
+\end{equation}
+As given in Equation~\eqref{eq:ufcr},
+$\mathcal{FM}_{unauth} = \{FM :
+f_{unauth}(r_k, t) = 1\}$ is the set of
+FlowMods arriving without a valid
+blockchain commitment $C_\mathcal{P}$
+(Eq.~\ref{eq:endorsed_commit}). Under no
+attack, $|\mathcal{FM}_{unauth}| = 0$ so
+UFCR is undefined; under control-plane
+Variants~1, 3, 5, 7, target UFCR $= 1.0$,
+meaning all unauthorised FlowMods are
+blocked. FTISCON and BlockREV report
+partial containment figures in their
+published evaluations and are cited as
+context; baselines B1--B3 report UFCR $= 0$
+since none verify FlowMods before installation.
+
+
+% ----------------------------------------------------------------
+% M12 — Witness Alert Precision and Recall (WAP-R)
+%         (ABLATION ONLY)
+% ----------------------------------------------------------------
+
+\textbf{M12 — Witness Alert Precision and Recall
+(WAP-R) [Ablation only]:}
+Evaluates the witness-based passive hidden
+forwarding detection mechanism
+(Eqs.~\ref{eq:dup_alert_cond},
+\ref{eq:bft_penalty}) specifically against
+Variants~7 and~8, which are undetectable by
+ZKP alone and where UCR captures the outcome
+but not the witness mechanism's accuracy.
+Witness alert precision is given in
+Equation~\eqref{eq:wap}.
+\begin{equation}
+P_W =
+\frac{TP_W}{TP_W + FP_W}
+\label{eq:wap}
+\end{equation}
+As given in Equation~\eqref{eq:wap},
+$TP_W$ is the count of $2f{+}1$-threshold
+alert events that correctly identify a true
+passive hidden forwarding instance, and
+$FP_W$ is the count of threshold events
+triggered by a false witness coalition.
+Witness alert recall is given in
+Equation~\eqref{eq:war}.
+\begin{equation}
+R_W =
+\frac{TP_W}{TP_W + FN_W}
+\label{eq:war}
+\end{equation}
+As given in Equation~\eqref{eq:war},
+$FN_W$ is the count of true passive
+forwarding instances for which fewer than
+$2f{+}1$ valid alerts were submitted
+within window $W$ — representing cases
+where witness density was insufficient.
+$P_W$ validates the false-accusation
+resistance of the $2f{+}1$ threshold
+(Eq.~\ref{eq:bft_penalty}), and $R_W$
+validates the feasibility claim that
+$f{=}1$ (requiring 3 witnesses) is
+achievable under mean vehicle density of
+$\approx 3.1$ vehicles per RSU cell. No
+baseline has a witness mechanism;
+WAP-R is reported as ablation context only.
+
+
+% \subsection{Primary Performance Metrics}
+% Four metrics are selected to evaluate both detection quality and
+% mitigation effectiveness.
+
+% \textbf{M1 — Matthews Correlation Coefficient (MCC)}: Primary
+% detection quality metric, selected over accuracy and F1 because it
+% remains reliable under the class imbalance inherent in attack
+% detection datasets where benign packets vastly outnumber attack
+% packets; the MCC is formally defined in
+% Equation \ref{eq:mcc}:
+% \begin{equation}
+% \text{MCC} = \frac{TP \cdot TN - FP \cdot FN}
+% {\sqrt{(TP+FP)(TP+FN)(TN+FP)(TN+FN)}}
+% \label{eq:mcc}
+% \end{equation}
+% As shown in Equation \eqref{eq:mcc}, the MCC is computed from
+% all four cells of the confusion matrix: true positives $TP$, true
+% negatives $TN$, false positives $FP$, and false negatives
+% $FN$, producing a single scalar in $[-1, 1]$ where $+1$ indicates
+% perfect classification, $0$ indicates performance no better than
+% random guessing, and $-1$ indicates total misclassification; unlike
+% accuracy, which can reach high values simply by predicting the
+% majority benign class, and unlike F1, which ignores true negatives
+% entirely, MCC remains informative even when attack packets constitute
+% a small minority of the total traffic.
+
+
+% \textbf{M2 — Per-Variant Detection Rate (DR)}: True positive rate
+% evaluated independently for each of the eight attack variants,
+% ensuring no variant is masked by aggregate accuracy figures.
+
+% \textbf{M3 — False Positive Rate (FPR)}: Critical in vehicular
+% safety contexts where false alarms trigger mitigation actions that
+% themselves degrade network performance; evaluated separately for
+% lightweight and full modes.
+
+% \textbf{M4 — Mitigation Latency} ($L_{mit}$): Time from attack
+% onset to smart contract quarantine execution
+% (Eq.~\eqref{eq:quarantine}), measured against the 100\,ms
+% safety-critical latency bound; directly evaluates mitigation
+% effectiveness rather than detection alone.
+
+% \textbf{M5 — Packet Delivery Ratio (PDR)}: Fraction of
+% safety-critical packets successfully delivered to the final
+% destination across the full multihop path, evaluated under active
+% attack with and without MOBIGUARD. PDR directly captures the combined
+% impact of both selective time delay (packets dropped after timeout)
+% and hidden forwarding (packets corrupted or rerouted) on end-to-end
+% delivery across all intermediate hops.
+
+% \textbf{M6 — End-to-End Latency} ($L_{e2e}$): Mean per-packet
+% latency accumulated across all hops from source to final destination,
+% compared against the 100\,ms safety-critical bound. Evaluated under
+% attack and post-mitigation to quantify the latency restoration
+% effectiveness of the proposed framework relative to the three external
+% baselines.
+
+% \textbf{M7 — Safety-Critical Threshold Violation Rate (TVR):}
+% Existing metrics L$_{e2e}$ (M6) measure mean latency over all
+% packets, diluting extreme delays in safety-critical traffic with
+% normal traffic and conflating legitimate handoff latency with
+% attack-induced delay. TVR instead measures the fraction of
+% safety-critical packets whose per-hop forwarding delay
+% definitively exceeds the safety threshold $\Delta_{max}$ ---
+% the precise condition constituting a successful Selective Time
+% Delay Attack. The TVR is given in Equation~\eqref{eq:tvr}.
+% \begin{equation}
+% \text{TVR} = \frac{\left|\left\{
+% p \in \mathcal{P}_{crit} :
+% \delta_p(v,r,t) > \Delta_{max}
+% \right\}\right|}{|\mathcal{P}_{crit}|}
+% \label{eq:tvr}
+% \end{equation}
+% As given in Equation~\eqref{eq:tvr},
+% $\mathcal{P}_{crit} = \{p : \text{Priority}(p) =
+% \textsc{High}\}$ is the set of safety-critical packets,
+% and $\delta_p(v,r,t)$ is the per-hop forwarding delay
+% anchored to the distributed time reference $T_{ref}(t)$
+% (Eq.~\ref{eq:delay_updated}), ensuring that
+% handoff-induced delay is normalised out before the
+% threshold comparison. Under no attack, TVR $\approx 0$;
+% under Attack Variants~1--4, TVR rises directly
+% proportional to attack intensity; and post-quarantine,
+% TVR returns toward 0. TVR is evaluated per attack variant
+% and per attack percentage, and compared against all three
+% external baselines (B1--B3) to quantify their failure
+% to suppress threshold violations under mobility.
+
+% \textbf{M8 — Unauthorized Copy Rate (UCR):}
+% \ac{PDR} (M5) measures delivery to the authorized
+% destination, which remains at 100\% under passive hidden
+% forwarding (Attack Variants~7--8) because the original
+% packet path is unaffected --- the attack is entirely
+% invisible to PDR. UCR instead directly measures the
+% fraction of transmitted packets for which at least one
+% copy was received at an unauthorized destination,
+% definitively capturing all four hidden forwarding variants.
+% The UCR is given in Equation~\eqref{eq:ucr}.
+% \begin{equation}
+% \text{UCR} = \frac{\left|\left\{
+% p \in \mathcal{P}_{total} :
+% \exists\, d' \notin \mathcal{P}(s_p, d_p),\;
+% p \in \mathcal{R}(d', W)
+% \right\}\right|}{|\mathcal{P}_{total}|}
+% \label{eq:ucr}
+% \end{equation}
+% As given in Equation~\eqref{eq:ucr},
+% $\mathcal{P}(s_p, d_p)$ is the blockchain-committed
+% authorised forwarding policy for packet $p$ from
+% source $s_p$ to destination $d_p$
+% (Eq.~\ref{eq:policy_commit}),
+% $\mathcal{R}(d', W)$ is the set of packet hashes
+% received at node $d'$ within observation window $W$,
+% and $\mathcal{P}_{total}$ is the total set of
+% transmitted packets. Under no attack, UCR $= 0$ exactly;
+% under Attack Variants~5--8, UCR $> 0$; and
+% post-quarantine, UCR returns to 0. For active hidden
+% forwarding variants (5, 6), the unauthorized copy
+% carries modified content confirmed by
+% $\textsc{ML-DSA-87.Verify} = 0$; for passive
+% variants (7, 8), the content is unmodified but the
+% unauthorized destination $d' \notin \mathcal{P}(s_p, d_p)$
+% remains detectable via the blockchain-committed policy,
+% making UCR the only metric in the set that
+% definitively exposes passive hidden forwarding.
+% UCR is evaluated per attack variant and per attack
+% percentage, and compared against all three external
+% baselines (B1--B3).
+
+\section{Ablation Study}
+\label{sec:ablation}
+
+Thirteen ablation experiments are designed to isolate the
+contribution of each individual formulated component of the
+proposed framework. In each experiment, one component is
+replaced or removed while all others remain active; the
+resulting performance change is attributed solely to that
+component. The x variable in every experiment is categorical
+— configuration type — rather than a continuous parameter
+(parameter sensitivity is addressed separately). All
+applicable metrics from Section~\ref{sec:metrics} are
+evaluated per experiment.
+
+% ----------------------------------------------------------------
+% AB1 — Dual-Mode Architecture
+% ----------------------------------------------------------------
+\subsection{AB1 — Dual-Mode Detection Architecture}
+\label{sec:ab1}
+
+\textbf{Component isolated:}
+The dual-mode architecture pairing a lightweight rule-based
+engine on \ac{OBU}s (Algorithm~\ref{alg:lrad_obu}) with a
+full federated \ac{LSTM} detector on \ac{RSU}s
+(Algorithm~\ref{alg:lrad_rsu}).
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB1-A (Rule-only):} \texttt{LRAD-OBU}
+    evaluates S1, S2-partial, S3, S4 locally; no escalation
+    to RSU; no \ac{LSTM} inference.
+    \item \textbf{AB1-B (LSTM-only):} All packets forwarded
+    directly to RSU; \texttt{LRAD-OBU} disabled; full
+    \ac{LSTM} inference without rule pre-filtering.
+    \item \textbf{AB1-C (Full dual-mode):} Complete proposed
+    framework — \texttt{LRAD-OBU} pre-filters, escalates to
+    \texttt{LRAD-RSU} and BRFA-v2 \ac{LSTM}.
+\end{itemize}
+
+\textbf{x variable:} Configuration
+$\in \{\text{AB1-A}, \text{AB1-B}, \text{AB1-C}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M1 (per-variant, per-mode MCC),
+M2 (TVR for Variants~1--4), M3 (UCR for Variants~5--8),
+M4 (mitigation latency). AB1-A is expected to miss
+mobility-masked variants; AB1-B is expected to incur higher
+latency due to the absence of OBU pre-filtering.
+
+
+% ----------------------------------------------------------------
+% AB2 — Federated vs Centralised LSTM
+% ----------------------------------------------------------------
+\subsection{AB2 — Federated vs Centralised LSTM}
+\label{sec:ab2}
+
+\textbf{Component isolated:}
+The federated learning design in which each of the 64
+\ac{RSU}s trains a local model and shares only weight
+updates (Algorithm~\ref{alg:brfa_v2}), versus centralising
+all raw flow data at a single training server.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB2-A (Centralised):} All 64 RSUs
+    transmit raw per-packet feature logs to a central
+    training server; one global \ac{LSTM} is trained
+    on the pooled dataset.
+    \item \textbf{AB2-B (Federated — proposed):}
+    Each \ac{RSU} trains locally; only weight updates
+    with hash commitments are transmitted; BRFA-v2
+    aggregation applies.
+\end{itemize}
+
+\textbf{x variable:} Training architecture
+$\in \{\text{AB2-A}, \text{AB2-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M1 (MCC — confirms federated
+matches centralised detection quality), M3 (UCR), M10
+(privacy leakage score — AB2-A exposes raw flow metadata,
+AB2-B does not). M10 is the primary differentiating metric
+for this experiment, as it quantifies the privacy cost of
+centralisation directly.
+
+
+% ----------------------------------------------------------------
+% AB3 — ZKP Failure Features in LSTM Input
+% ----------------------------------------------------------------
+\subsection{AB3 — ZKP Failure Indicators as LSTM Features}
+\label{sec:ab3}
+
+\textbf{Component isolated:}
+The two novel binary \ac{ZKP} failure indicators
+$\mathbb{1}[\pi_{delay}{=}\bot]$ and
+$\mathbb{1}[\pi_{hop}{=}\bot]$ in the \ac{LSTM} input
+vector (Eq.~\ref{eq:lstm_input}), which feed cryptographic
+evidence of attacks directly into the detection layer.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB3-A (5-feature baseline):}
+    Input vector contains $[\delta_t, \lambda_{PI},
+    U_{TCAM}, \rho_t, \bar{v}_t]$ only — no
+    cryptographic feedback.
+    \item \textbf{AB3-B (7-feature proposed):}
+    Full input vector including both \ac{ZKP}
+    failure indicators (Eq.~\ref{eq:lstm_input}).
+\end{itemize}
+
+\textbf{x variable:} Feature configuration
+$\in \{\text{AB3-A}, \text{AB3-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M1 (per-variant MCC,
+particularly for Variants~5--8 where ZKP failures are the
+primary cryptographic signal), M3 (UCR). The improvement
+from AB3-A to AB3-B isolates the contribution of linking
+the cryptographic layer to the learning layer.
+
+
+% ----------------------------------------------------------------
+% AB4 — Individual STARK Proof Contributions
+% ----------------------------------------------------------------
+\subsection{AB4 — Individual STARK Proof Contributions}
+\label{sec:ab4}
+
+\textbf{Component isolated:}
+The two \ac{STARK} proof components — timing compliance
+$\pi_{delay}$ (Eq.~\ref{eq:stark_delay}) and next-hop
+legitimacy $\pi_{hop}$ (Eq.~\ref{eq:stark_hop}) —
+evaluated in isolation and in combination to identify
+which proof drives detection of which attack class.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB4-A (No ZKP):} ML-DSA-87 signatures
+    and batch verification retained; both \ac{STARK}
+    proofs removed entirely.
+    \item \textbf{AB4-B ($\pi_{delay}$ only):}
+    Timing compliance proof active; hop legitimacy
+    proof removed.
+    \item \textbf{AB4-C ($\pi_{hop}$ only):}
+    Hop legitimacy proof active; timing compliance
+    proof removed.
+    \item \textbf{AB4-D (Both proofs — proposed):}
+    Complete \ac{STARK} layer active.
+\end{itemize}
+
+\textbf{x variable:} Proof configuration
+$\in \{\text{AB4-A}, \text{AB4-B},
+\text{AB4-C}, \text{AB4-D}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M1 (per-variant MCC),
+M2 (TVR — expected sensitive to $\pi_{delay}$),
+M3 (UCR — expected sensitive to $\pi_{hop}$),
+M7 ($T_{verify}$ — overhead reduction without each proof).
+
+
+% ----------------------------------------------------------------
+% AB5 — Byzantine-Robust Aggregation vs FedAvg
+% ----------------------------------------------------------------
+\subsection{AB5 — Byzantine-Robust Aggregation}
+\label{sec:ab5}
+
+\textbf{Component isolated:}
+The four-step BRFA-v2 procedure (trust gate, hash
+verification, Krum filtering, weighted aggregation —
+Algorithm~\ref{alg:brfa_v2}) versus standard FedAvg
+under a fixed adversarial RSU fraction of
+$\rho_{mal} = 0.25$ (16 of 64 RSUs submit poisoned
+gradients), representing a realistic worst-case within
+the PBFT bound.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB5-A (Naive FedAvg):} Standard
+    weighted averaging with no trust gate, no hash
+    verification, no Krum filtering.
+    \item \textbf{AB5-B (BRFA-v2 — proposed):}
+    Full four-step Byzantine-robust procedure.
+\end{itemize}
+
+\textbf{x variable:} Aggregation algorithm
+$\in \{\text{AB5-A}, \text{AB5-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M8 ($\Delta_{poison}$
+at $\rho_{mal} = 0.25$), M1 (MCC — does the global
+model's detection quality hold under poisoning?).
+
+
+% ----------------------------------------------------------------
+% AB6 — Witness Monitoring Mechanism
+% ----------------------------------------------------------------
+\subsection{AB6 — Witness-Based Forwarding Verification}
+\label{sec:ab6}
+
+\textbf{Component isolated:}
+The witness monitoring mechanism for passive hidden
+forwarding detection (Eqs.~\ref{eq:dup_alert_cond},
+\ref{eq:nfwd_detect}, \ref{eq:bft_penalty}), which
+is the primary detector for Variants~7 and~8 where
+\ac{ZKP} corroboration alone is insufficient.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB6-A (No witness monitoring):}
+    Passive hidden forwarding detection relies solely
+    on $b_{hop} = 0$ as the corroborating indicator;
+    no witness alert submission or BFT threshold.
+    \item \textbf{AB6-B (Full witness mechanism —
+    proposed):} Witness vehicles log $(H(p), dst)$,
+    submit $\alpha_w$ or $\beta_w$ directly on-chain,
+    and \textsc{SC.PenalizeTrust} fires at $2f{+}1$
+    verified alerts.
+\end{itemize}
+
+\textbf{x variable:} Witness mechanism
+$\in \{\text{AB6-A}, \text{AB6-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M3 (UCR for Variants~7--8),
+M12 (WAP-R precision and recall — defined only for
+AB6-B; AB6-A reports UCR only). The UCR gap between
+AB6-A and AB6-B directly quantifies the contribution
+of witness monitoring to passive attack containment.
+
+
+% ----------------------------------------------------------------
+% AB7 — Blockchain Trust Scoring and Quarantine
+% ----------------------------------------------------------------
+\subsection{AB7 — Blockchain Trust Scoring and
+Automated Quarantine}
+\label{sec:ab7}
+
+\textbf{Component isolated:}
+The smart contract trust score update and automated
+quarantine pipeline (Eqs.~\ref{eq:trust_update},
+\ref{eq:quarantine}). Without this component,
+attacks are detected but the attacking node is never
+isolated, leaving the network vulnerable to continued
+attacks.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB7-A (Detection-only):}
+    \texttt{LRAD-RSU} and \ac{LSTM} detection active;
+    trust score update and \textsc{SC.Quarantine}
+    disabled — detection events are logged but no
+    node is isolated.
+    \item \textbf{AB7-B (Full pipeline — proposed):}
+    Complete trust update and quarantine pipeline active.
+\end{itemize}
+
+\textbf{x variable:} Quarantine mechanism
+$\in \{\text{AB7-A}, \text{AB7-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M1 (MCC — sustained
+attacks after initial detection reduce ongoing MCC in
+AB7-A), M4 (mitigation latency — undefined for AB7-A
+since no quarantine occurs), M6 ($L_{e2e}$ — without
+quarantine, attack overhead accumulates over time).
+
+
+% ----------------------------------------------------------------
+% AB8 — Multi-RSU FlowMod Endorsement
+% ----------------------------------------------------------------
+\subsection{AB8 — Multi-RSU FlowMod Endorsement}
+\label{sec:ab8}
+
+\textbf{Component isolated:}
+The $f{+}1$ independent \ac{RSU} endorsement requirement
+before blockchain FlowMod commitment
+(Eqs.~\ref{eq:rsu_endorsement},
+\ref{eq:endorsed_commit}, \ref{eq:unauth_flowmod}).
+Without endorsement, the controller can unilaterally
+commit arbitrary FlowMods.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB8-A (No endorsement):}
+    FlowMods committed to blockchain on controller
+    assertion alone — no RSU endorsement signatures
+    collected; $f_{unauth}$ cannot fire.
+    \item \textbf{AB8-B (Full endorsement —
+    proposed):} $f{+}1$ RSU endorsements required;
+    unauthorized FlowMods blocked before installation.
+\end{itemize}
+
+\textbf{x variable:} Endorsement mechanism
+$\in \{\text{AB8-A}, \text{AB8-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M11 (UFCR — zero in
+AB8-A by definition; target 1.0 in AB8-B), M4
+(mitigation latency for control-plane attacks),
+M7 ($T_{consensus}$).
+
+
+% ----------------------------------------------------------------
+% AB9 — Multi-Controller vs Single Controller
+% ----------------------------------------------------------------
+\subsection{AB9 — Multi-Controller Zero-Trust
+Architecture}
+\label{sec:ab9}
+
+\textbf{Component isolated:}
+The flat multi-controller set with SC-Revoke trusted
+failover (Eqs.~\ref{eq:trusted_ctrl_set},
+\ref{eq:sc_revoke}, \ref{eq:ctrl_failover}) versus
+a single centralised controller, directly testing the
+single-point-of-failure elimination claim.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB9-A (Single controller):}
+    One fixed controller; no trust scoring; no failover.
+    When the controller is compromised, the framework
+    operates with no control-plane oversight.
+    \item \textbf{AB9-B (Multi-controller —
+    proposed):} Flat registered controller set with
+    on-chain trust scoring, SC-Revoke, and dynamic
+    RSU reassignment.
+\end{itemize}
+
+\textbf{x variable:} Controller architecture
+$\in \{\text{AB9-A}, \text{AB9-B}\}$ (categorical),
+evaluated under one compromised controller.
+
+\textbf{y metrics evaluated:} M1 (MCC — does detection
+degrade when the controller is compromised?), M4
+(mitigation latency), M5 (controller failover latency —
+undefined for AB9-A since no failover exists), M11
+(UFCR — AB9-A cannot block unauthorized FlowMods from
+a compromised single controller).
+
+
+% ----------------------------------------------------------------
+% AB10 — DKG vs Controller-Managed Key Generation
+% ----------------------------------------------------------------
+\subsection{AB10 — Distributed Key Generation vs
+Controller-Managed Keys}
+\label{sec:ab10}
+
+\textbf{Component isolated:}
+The \ac{DKG} ceremony among \ac{RSU} ring members
+(Eq.~\ref{eq:vk_commit}) that removes the controller
+from the key plane entirely, versus a design where
+the controller issues \ac{ZKP} proving keys.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB10-A (Controller key authority):}
+    A compromised controller issues false proving keys
+    that allow arbitrary behaviour to be proven
+    compliant — no \ac{DKG} ceremony.
+    \item \textbf{AB10-B (\ac{DKG} — proposed):}
+    Keys generated jointly among honest \ac{RSU}s;
+    blockchain-committed $vk_{ZKP}$ is the only
+    accepted verification key.
+\end{itemize}
+
+\textbf{x variable:} Key generation architecture
+$\in \{\text{AB10-A}, \text{AB10-B}\}$ (categorical),
+evaluated under a compromised controller.
+
+\textbf{y metrics evaluated:} M3 (UCR — can a
+controller with false proving keys suppress valid
+$\pi_{hop}$ proofs and enable undetected hidden
+forwarding?), M11 (UFCR — can false keys allow
+unauthorized FlowMods to appear compliant?).
+
+
+% ----------------------------------------------------------------
+% AB11 — ZKP Key Rotation on RSU Revocation
+% ----------------------------------------------------------------
+\subsection{AB11 — ZKP Proving Key Rotation on
+RSU Revocation}
+\label{sec:ab11}
+
+\textbf{Component isolated:}
+The key rotation trigger mechanism
+(Eqs.~\ref{eq:key_rotation_trigger},
+\ref{eq:vk_commit_rotated}) that initiates a fresh
+\ac{DKG} ceremony when a revoked \ac{RSU} was a
+\ac{DKG} participant, preventing retained key
+material from being exploited post-revocation.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB11-A (No rotation):} Revoked
+    \ac{RSU} retains its \ac{DKG} key material;
+    existing $vk_{ZKP}$ remains in use after
+    revocation.
+    \item \textbf{AB11-B (With rotation —
+    proposed):} \textsc{SC.RotateKeys} triggers
+    immediately on revocation; fresh \ac{DKG}
+    among remaining honest \ac{RSU}s; new
+    $vk_{ZKP}^{new}$ committed to blockchain.
+\end{itemize}
+
+\textbf{x variable:} Key rotation policy
+$\in \{\text{AB11-A}, \text{AB11-B}\}$ (categorical),
+evaluated at $t = \{1, 2, 3, 4, 5\}$ time steps
+after RSU revocation.
+
+\textbf{y metrics evaluated:} M3 (UCR — does the
+revoked RSU exploit retained keys to produce valid
+$\pi_{hop}$ proofs enabling hidden forwarding in
+AB11-A?), M1 (MCC for hidden forwarding variants
+S5--S8 — does detection quality hold post-revocation
+in both configurations?).
+
+
+% ----------------------------------------------------------------
+% AB12 — Blockchain Write Restriction
+% ----------------------------------------------------------------
+\subsection{AB12 — Blockchain Write Restriction}
+\label{sec:ab12}
+
+\textbf{Component isolated:}
+The architectural constraint that only \ac{RSU}s
+may write to the blockchain
+(Eqs.~\ref{eq:rsu_write}, \ref{eq:flowmod_log}),
+directly testing the zero-trust principle that the
+controller is excluded from the audit trail.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB12-A (Controller write access):}
+    A compromised controller is permitted to write
+    to the blockchain — it can retroactively insert
+    false endorsement records and manipulate the
+    audit trail.
+    \item \textbf{AB12-B (RSU-only writes —
+    proposed):} Controller has read-only access;
+    all writes originate from \ac{RSU}s via
+    \ac{PBFT} endorsement.
+\end{itemize}
+
+\textbf{x variable:} Write access policy
+$\in \{\text{AB12-A}, \text{AB12-B}\}$ (categorical),
+evaluated under a compromised controller.
+
+\textbf{y metrics evaluated:} M11 (UFCR — can a
+controller with write access retroactively legitimize
+unauthorized FlowMods?), M1 (MCC — does the integrity
+of detection event logs hold when a compromised
+controller can alter the blockchain?), M4 (mitigation
+latency — can a controller with write access cancel
+quarantine instructions?).
+
+
+% ----------------------------------------------------------------
+% AB13 — Mobility-Adjusted vs Static Thresholds
+% ----------------------------------------------------------------
+\subsection{AB13 — Mobility-Adjusted vs Static
+Detection Thresholds}
+\label{sec:ab13}
+
+\textbf{Component isolated:}
+The mobility-adjusted baseline delay estimator
+$\bar{\delta}_r(t) = \delta_0 + \alpha_\rho \cdot
+\rho(t) + \alpha_v \cdot \bar{v}(t)^{-1}$
+(Eq.~\ref{eq:mobility_baseline}) and \ac{EWMA}
+variance estimator (Eq.~\ref{eq:ewma_variance}),
+which together constitute the paper's direct
+response to Gap~1 (mobility-induced vulnerability).
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB13-A (Static threshold):}
+    Delay baseline replaced with a fixed constant
+    $\bar{\delta}_{static}$; variance replaced
+    with a fixed $\sigma_{static}$, reproducing
+    the threshold design of all three baselines
+    (TAP, SFTO-Guard, FADE).
+    \item \textbf{AB13-B (Mobility-adjusted —
+    proposed):} Full $\bar{\delta}_r(t)$ and
+    $\sigma_r(t)$ estimators active.
+\end{itemize}
+
+\textbf{x variable:} Threshold design
+$\in \{\text{AB13-A}, \text{AB13-B}\}$ (categorical).
+
+\textbf{y metrics evaluated:} M1
+($\text{MCC}_s[\rho_b, \bar{v}_b]$ —
+Eq.~\ref{eq:mcc_mobility}, the mobility-stratified
+score which directly tests whether detection quality
+holds across density and speed regimes), M2 (TVR —
+do legitimate handoff delays cause false threshold
+violations in AB13-A?). This experiment is the
+direct ablation analog of the mobility-adjustment
+robustness metric M1 and together they constitute
+the complete evaluation of the paper's Gap~1 claim.
+
+\section{Benchmarking Against State-of-the-Art}
+\label{sec:benchmarking}
+
+Five benchmarking experiments are designed to evaluate
+the proposed framework against baselines B1 (TAP),
+B2 (SFTO-Guard), and B3 (FADE) at the system level.
+All eight attack variants operate simultaneously in
+every experiment unless otherwise stated. Metrics
+applicable only in ablation studies (M5, M8, M9, M12)
+are excluded from all benchmarking experiments.
+Default settings are held fixed for any variable not
+under variation in that experiment.
+
+% ================================================================
+% EXPERIMENT 1 — Attack Penetration x Attack Intensity
+% ================================================================
+
+\subsection{Experiment~1 — Attack Penetration Under
+Varying Attack Intensity}
+\label{sec:exp1}
+
+\textbf{Motivation:} Directly answers RQ1 by evaluating
+how detection quality, threshold violations, and
+mitigation responsiveness change as the number of
+attacking nodes increases under three distinct levels
+of attack intensity, capturing both the breadth
+(how many attackers) and the severity (how hard each
+attacks) of the threat.
+
+\textbf{x variable — Attack Penetration $p$:}
+$p \in \{0\%, 20\%, 40\%, 60\%, 80\%, 100\%\}$,
+six equidistant data points. At each value of $p$,
+$\lfloor 0.01p \times 264 \rfloor$ attacker nodes are
+allocated among the 200 vehicles and 64 \ac{RSU}s
+plane-specifically per attack variant; controller
+compromise follows the threshold rule defined in
+Section~\ref{sec:simulation} automatically.
+
+\textbf{Second dimension — Attack Intensity $\mathcal{I}$:}
+Three discrete levels produce three lines per metric
+graph. Attack intensity is defined separately for each
+attack class.
+
+For Selective Time Delay (Variants~1--4), intensity is
+the induced per-hop delay as a multiple of $\Delta_{max}$,
+given in Equation~\eqref{eq:intensity_td}.
+\begin{equation}
+\mathcal{I}_{TD} \in
+\left\{
+1.1\cdot\Delta_{max},\;
+2\cdot\Delta_{max},\;
+4\cdot\Delta_{max}
+\right\}
+\label{eq:intensity_td}
+\end{equation}
+As given in Equation~\eqref{eq:intensity_td},
+$1.1\cdot\Delta_{max}$ represents a sub-threshold
+stealth injection just above the detection boundary,
+$2\cdot\Delta_{max}$ represents a moderate injection,
+and $4\cdot\Delta_{max}$ represents an aggressive
+injection causing severe desynchronization.
+
+For Hidden Forwarding (Variants~5--8), intensity is
+the fraction of eligible flows that are secretly
+forwarded, given in Equation~\eqref{eq:intensity_hf}.
+\begin{equation}
+\mathcal{I}_{HF} \in
+\left\{25\%,\; 50\%,\; 100\%\right\}
+\;\text{of eligible flows}
+\label{eq:intensity_hf}
+\end{equation}
+As given in Equation~\eqref{eq:intensity_hf},
+$25\%$ represents stealthy selective duplication,
+$50\%$ moderate exposure, and $100\%$ full
+forwarding of all eligible flows.
+
+\textbf{Graph format:} Three lines per metric (one
+per intensity level), each with six equidistant
+data points at $p \in \{0\%, 20\%, 40\%, 60\%,
+80\%, 100\%\}$.
+
+\textbf{y metrics evaluated:}
+M1 (MCC), M2 (TVR), M3 (UCR), M4 ($L_{mit}$),
+M6 ($L_{e2e}$), M10 ($L_{priv}$), M11 (UFCR).
+
+\textbf{Baselines:} B1 (TAP), B2 (SFTO-Guard),
+B3 (FADE). Each baseline is expected to degrade
+significantly above $p = 20\%$ and under controller
+compromise, which is automatically activated at
+$p \geq 33\%$ per the threshold rule.
+
+
+% ================================================================
+% EXPERIMENT 2 — Vehicle Mobility Speed
+% ================================================================
+
+\subsection{Experiment~2 — Detection Quality Under
+Varying Vehicle Mobility}
+\label{sec:exp2}
+
+\textbf{Motivation:} Directly answers RQ2 by
+evaluating whether the mobility-adjusted threshold
+design maintains detection quality across the full
+speed range from near-stationary urban crawl to
+high-speed highway, the exact regime where
+static-threshold baselines are expected to fail
+due to handoff-masking of delay signatures.
+
+\textbf{x variable — Mean Vehicle Speed $\bar{v}$:}
+$\bar{v} \in \{10, 60, 100, 140\}$\,km/h,
+four data points corresponding to urban crawl,
+urban arterial, highway, and high-speed highway.
+The x variable is given in
+Equation~\eqref{eq:speed_x}.
+\begin{equation}
+\bar{v}_{SUMO} = \frac{\bar{v}_{km/h}}{3.6}
+\;\text{m/s} \;\in
+\{2.78,\; 16.67,\; 27.78,\; 38.89\}\;\text{m/s}
+\label{eq:speed_x}
+\end{equation}
+As given in Equation~\eqref{eq:speed_x}, all speeds
+are converted from km/h to m/s for \ac{SUMO}
+configuration. To ensure all vehicles travel at
+exactly the target speed without inter-vehicle speed
+variation, the following \ac{SUMO} \texttt{vType}
+parameters are set: \texttt{speedFactor="1.0"} and
+\texttt{speedDev="0.0"}. Both the \texttt{vType}
+\texttt{maxSpeed} attribute and the road/edge
+\texttt{speed} attribute are set to the same m/s
+value, ensuring every vehicle traverses every road
+segment at precisely $\bar{v}_{SUMO}$.
+
+\textbf{Experimental rationale:} At $\bar{v} = 10$\,km/h,
+handoff latency is minimal (long zone residence time
+of $\approx 90$--$220$\,s), providing a near-ideal
+detection baseline. At $\bar{v} = 140$\,km/h,
+zone residence time drops to $\approx 7.7$\,s,
+maximizing handoff-induced jitter and the
+Bhattacharyya distance overlap
+(Eq.~\ref{eq:bhattacharyya}). The mobility-adjusted
+baseline $\bar{\delta}_r(t)$ (Eq.~\ref{eq:mobility_baseline})
+should compensate for this jitter; static-threshold
+baselines cannot.
+
+\textbf{y metrics evaluated:}
+M1 ($\text{MCC}_s[\rho_b, \bar{v}_b]$ —
+Eq.~\ref{eq:mcc_mobility}), M2 (TVR), M3 (UCR),
+M4 ($L_{mit}$), M6 ($L_{e2e}$), M11 (UFCR).
+
+
+% ================================================================
+% EXPERIMENT 3 — Network Scalability
+% ================================================================
+
+\subsection{Experiment~3 — System Performance Under
+Network Scalability}
+\label{sec:exp3}
+
+\textbf{Motivation:} Directly answers RQ3 and RQ4
+by evaluating whether detection quality, mitigation
+responsiveness, and cryptographic overhead remain
+within safety-critical bounds as the network scales
+from 100 to 400 vehicles over the same fixed
+geographic area and \ac{RSU} infrastructure.
+
+\textbf{x variable — Number of Vehicles $N_v$:}
+$N_v \in \{100, 200, 300, 400\}$, four equidistant
+data points. The 64 \ac{RSU}s on the 8$\times$8
+grid and 4 controllers remain fixed across all
+points; only the vehicle count scales, increasing
+vehicle density from $\approx 23$ to $\approx 90$
+vehicles per km$^2$ over the
+2061\,m$\times$2137\,m simulation area.
+The vehicle density is given in
+Equation~\eqref{eq:density_x}.
+\begin{equation}
+\rho(N_v) =
+\frac{N_v}{A_{map}}
+\;\text{veh/m}^2,
+\quad A_{map} = 2061 \times 2137\;\text{m}^2
+\label{eq:density_x}
+\end{equation}
+As given in Equation~\eqref{eq:density_x},
+$\rho(N_v)$ increases proportionally with $N_v$,
+raising both legitimate FlowMod installation rates
+and the volume of detection events written to the
+blockchain, stressing the BRFA-v2 aggregation load,
+the blockchain consensus pipeline, and the
+\textsc{BatchVerify} processing budget simultaneously.
+Vehicle type ratios are maintained proportionally
+across all four points.
+
+\textbf{y metrics evaluated:}
+M1 (MCC), M2 (TVR), M3 (UCR), M4 ($L_{mit}$),
+M6 ($L_{e2e}$), M7 ($T_{verify}(B)$ and
+$T_{consensus}$ — the two overhead sub-metrics
+most sensitive to network scale), M11 (UFCR).
+
+
+% ================================================================
+% EXPERIMENT 4 — Attack Observable Evidence Index (AOEI)
+% ================================================================
+
+\subsection{Experiment~4 — Detection Under Varying
+Attack Observable Evidence}
+\label{sec:exp4}
+
+\textbf{Motivation:} Directly answers RQ5 by
+evaluating whether the framework detects attacks at
+the low-evidence extreme — the "low-rate stealthy"
+operating regime explicitly stated in the threat
+model — where every baseline fails because
+statistical evidence in the network is deliberately
+minimized. This experiment captures two defining
+attack characteristics simultaneously: the
+\textit{selectivity} of the attacker (how broadly
+it targets eligible traffic) and the
+\textit{copy destination divergence} (how far the
+unauthorized destination is from the authorized
+path in hop count, directly affecting witness
+monitoring coverage).
+
+\textbf{x variable — Attack Observable Evidence
+Index (AOEI):}
+AOEI is a composite index combining both attack
+characteristics on a unified scale. The AOEI is
+given in Equation~\eqref{eq:aoei}.
+\begin{equation}
+\text{AOEI} =
+\frac{1}{2}
+\left(
+\frac{n_{targeted}}{n_{eligible}}
++
+\frac{1}{1 + d_{div}/d_{max}}
+\right)
+\label{eq:aoei}
+\end{equation}
+As given in Equation~\eqref{eq:aoei},
+$n_{targeted}/n_{eligible}$ is the
+\textbf{selectivity ratio}: the fraction of
+eligible high-priority packets (for Variants~1--4)
+or eligible flows (for Variants~5--8) that the
+attacker actively targets. $d_{div}$ is the
+\textbf{copy destination divergence}: the
+topological hop distance between the unauthorized
+destination $d'$ and the authorized next-hop on
+the legitimate forwarding path. $d_{max}$ is the
+maximum hop distance across the simulated network
+topology. The second term $1/(1 + d_{div}/d_{max})$
+is a normalized proximity score: when $d' $ is
+adjacent to the authorized path ($d_{div} = 0$),
+this term equals 1 (maximum witness observability);
+when $d'$ is at maximum network divergence, this
+term approaches 0 (minimum witness observability).
+AOEI therefore equals 1.0 when the attack leaves
+maximum observable evidence (high selectivity,
+copy destination within witness range) and
+approaches 0 when the attack is maximally
+stealthy (low selectivity, copy destination
+outside witness range).
+
+The four equidistant data points are given in
+Equation~\eqref{eq:aoei_points}.
+\begin{equation}
+\text{AOEI} \in
+\{0.25,\; 0.50,\; 0.75,\; 1.0\}
+\label{eq:aoei_points}
+\end{equation}
+As given in Equation~\eqref{eq:aoei_points}, each
+data point is realized in simulation by jointly
+setting the selectivity ratio and $d_{div}$:
+\begin{itemize}
+    \item \textbf{AOEI = 0.25:}
+    $n_{targeted}/n_{eligible} = 0.10$,
+    $d_{div} = 0.8 \cdot d_{max}$.
+    Maximally stealthy — 10\% of eligible
+    traffic targeted, unauthorized copy sent
+    near maximum divergence from authorized path.
+
+    \item \textbf{AOEI = 0.50:}
+    $n_{targeted}/n_{eligible} = 0.25$,
+    $d_{div} = 0.5 \cdot d_{max}$.
+    Low-moderate evidence — 25\% targeting,
+    mid-range divergence.
+
+    \item \textbf{AOEI = 0.75:}
+    $n_{targeted}/n_{eligible} = 0.75$,
+    $d_{div} = 0.2 \cdot d_{max}$.
+    High evidence — 75\% targeting, copy
+    destination relatively close to authorized path.
+
+    \item \textbf{AOEI = 1.0:}
+    $n_{targeted}/n_{eligible} = 1.0$,
+    $d_{div} = 0$ (copy destination is adjacent
+    to authorized path).
+    Maximum evidence — full targeting, unauthorized
+    copy within direct witness radio range.
+\end{itemize}
+
+\textbf{Note:} For Variants~1--4 (Selective Time
+Delay), $d_{div}$ does not apply since there is
+no copy destination; only the selectivity ratio
+component contributes, and AOEI is computed as
+$n_{targeted}/n_{eligible}$ only. This is made
+explicit in results reporting.
+
+\textbf{y metrics evaluated:}
+M1 (MCC), M2 (TVR), M3 (UCR), M4 ($L_{mit}$),
+M12 (WAP-R — most sensitive to $d_{div}$ dimension
+since witness recall degrades as $d_{div}$ increases).
+
+
+% ================================================================
+% EXPERIMENT 5 — Per-Attack Variant Table
+% ================================================================
+
+\subsection{Experiment~5 — Per-Attack Variant
+Performance Under Default Settings}
+\label{sec:exp5}
+
+\textbf{Motivation:} Provides a single-table
+system-level comparison of per-variant detection
+performance under default settings, giving
+reviewers the attack-class-specific breakdown
+that Experiments~1--4 aggregate away. This
+experiment produces no graph — results are
+presented as a table.
+
+\textbf{Setup:} Default settings throughout.
+All 8 attack variants evaluated independently
+in separate simulation runs (one variant active
+at a time) to produce per-variant scores.
+
+\textbf{Table structure:} One row per attack
+variant S1--S8. Columns: M1 (MCC per variant,
+all frameworks), M2 (TVR — reported for S1--S4
+only; N/A for S5--S8), M3 (UCR — reported for
+S5--S8 only; N/A for S1--S4), M4 ($L_{mit}$,
+all frameworks), M6 ($L_{e2e}$, all frameworks).
+Each baseline (B1--B3) reports values only for
+the attack variants it was designed to address;
+cells are marked \textit{not evaluated} for
+out-of-scope variants, directly exposing the
+coverage gaps that Gap~2 in the literature
+review identified.
+
+
+
 
 
 \section{Simulation settings}
+\label{sec:simulation}
 
 Prior to all simulation runs, a one-time \ac{DKG}
 ceremony (Eq.~\ref{eq:vk_commit}) is executed among
@@ -3772,7 +5228,8 @@ One-time ceremony among 64 RSUs pre-simulation
             $T_{fwd}$ (forwarding deadline) & 50\,ms ($= \Delta_{max}$) \\
             \hline
             $W$ (witness observation window) & [tbd: $\{5, 10, 15\}$\,s]; $\leq 9$\,s zone residence bound \\
-
+                
+    
              \hline
             $T_{min}^{ctrl}$ (controller trust threshold,
             Eq.~\ref{eq:sc_revoke}) &
@@ -3796,6 +5253,21 @@ One-time ceremony among 64 RSUs pre-simulation
             0, 1, 2 compromised controllers evaluated;
             PBFT tolerates $f < n/3$ ($\leq 1$
             Byzantine controller) \\
+             \hline
+           TVR target (M2, Eq.~\ref{eq:tvr}) &
+            TVR $\approx 0$ under no attack;
+            evaluated per variant and attack percentage;
+            post-quarantine return to $\approx 0$
+            confirms mitigation effectiveness \\
+
+          \hline
+          UCR target (M3, Eq.~\ref{eq:ucr}) &
+            UCR $= 0$ under no attack;
+            UCR $> 0$ under Attacks~5--8;
+            post-quarantine return to 0 confirms
+            mitigation; only metric capturing passive
+            hidden forwarding (Attacks~7--8) \\
+        
 
 \end{longtable}
 

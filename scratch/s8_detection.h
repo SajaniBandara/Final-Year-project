@@ -93,17 +93,25 @@ inline bool s8_detect(uint32_t recv_flow_id,
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!passive_hf_malicious_nodes[prev_sender]) return false;
 
-    // Conjunctions 1/2: b_batch=1 ∧ ML-DSA-87.Verify=1
-    // Passive copy has NO fabrication marker. If the marker is present,
-    // this is an active copy and S8 must not fire.
-    bool b_batch = ((recv_flow_id & 0xDEAD0000u) == 0);
+    // Conjunctions 1/2: b_batch=1 ∧ ML-DSA-87.Verify=1 — content unmodified.
+    // Primary: sig_valid from g_packet_crypto set by mldsa87_verify() in MacRx.
+    // Fallback: absence of 0xDEAD0000 marker if crypto record not populated.
+    auto it_s8 = g_packet_crypto.find({prev_sender, packet_id});
+    bool b_batch;
+    if (it_s8 != g_packet_crypto.end() && it_s8->second.sig_len > 0)
+        b_batch = it_s8->second.sig_valid;
+    else
+        b_batch = ((recv_flow_id & 0xDEAD0000u) == 0);
     if (!b_batch) return false;
 
-    // Conjunction 3: b_hop(u) = 0 — inferred from passive malicious RSU flag.
-    // In deployed MOBIGUARD: STARK.Verify(π_hop(u), C_hop, H_SHA3) = 0
-    // because d' (the eavesdropper) is absent from the authorized next-hop
-    // policy P(s,d). The RSU cannot produce a valid proof for the covert hop.
-    bool b_hop_fails = true; // confirmed by passive_hf_malicious_nodes check above
+    // Conjunction 3: b_hop(u) = 0 — STARK hop proof fails.
+    // Primary: stark_hop_ok from g_packet_crypto set by stark_update_meta().
+    // Fallback: passive_hf_malicious_nodes ground truth.
+    bool b_hop_fails;
+    if (it_s8 != g_packet_crypto.end() && it_s8->second.sig_len > 0)
+        b_hop_fails = !it_s8->second.stark_hop_ok;
+    else
+        b_hop_fails = true; // passive_hf_malicious_nodes confirmed above
 
     cout << "[S8] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender

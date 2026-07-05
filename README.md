@@ -18,6 +18,9 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 10. [CLI Reference](#10-cli-reference)
 11. [Node Architecture](#11-node-architecture)
 12. [Troubleshooting](#12-troubleshooting)
+13. [Blockchain Integration (Hyperledger Fabric)](#13-blockchain-integration-hyperledger-fabric)
+
+> **New to this project?** Read Sections 2 and 2.1 first — the cryptographic layer added in v2 requires two extra dependencies (`liboqs` and `libssl-dev`) that must be installed before the first build.
 
 ---
 
@@ -37,6 +40,13 @@ Final-Year-project/
 │   ├── tcam_attack_helper.h         # TCAM attack injection helpers (Attacks 3 & 4)
 │   ├── efade_detection.h            # eFADE detector (Attacks 5–8, Hidden Forwarding)
 │   ├── hf_attack_helper.h           # Hidden Forwarding attack helpers (Attacks 5–8)
+│   ├── s5_detection.h               # MOBIGUARD Signature S5 — Active HF Control Plane detector
+│   ├── s6_detection.h               # MOBIGUARD Signature S6 — Active HF Data Plane detector
+│   ├── s7_detection.h               # MOBIGUARD Signature S7 — Passive HF Control Plane detector
+│   ├── s8_detection.h               # MOBIGUARD Signature S8 — Passive HF Data Plane detector
+│   ├── crypto_layer.h               # Hybrid crypto integrity layer (ML-DSA-87 + HMAC-SHA3-512)
+│   ├── blockchain_sim.h             # In-memory blockchain stubs (audit log, DKG, FlowMod commits)
+│   ├── dkg_setup.h                  # Distributed Key Generation ceremony (one-time at t=0)
 │   ├── optimization.py              # Link-lifetime route optimization helper
 │   └── optimization_lifetime.py     # Per-run lifetime optimization (reads tagged CSV from NS-3)
 ├── scripts/
@@ -45,6 +55,10 @@ Final-Year-project/
 │   └── run_attack2_sweep.sh         # Legacy shell sweep (superseded by run_std_attacks.py)
 ├── mobility/                        # SUMO-exported NS-2 mobility traces (.tcl files)
 ├── sumo_sim/                        # SUMO scenario folders (net, trips, sumocfg)
+├── blockchain/                      # Hyperledger Fabric integration, bridge, and chaincode assets
+│   ├── README.md                    # Blockchain setup and usage guide
+│   ├── bridge/                      # Node.js bridge (RSU log ingestion → Fabric transactions)
+│   └── fabric-samples/              # Fabric test-network, channel, and deployed chaincode workspace
 ├── logs/                            # Per-run simulation logs (auto-created by launcher)
 ├── docs/
 │   └── main (10).tex                # Thesis document
@@ -63,10 +77,71 @@ Final-Year-project/
 | NetAnim | 3.109 | bundled with ns-allinone |
 | SUMO | any recent | `sudo apt install sumo sumo-tools` |
 | Python | 3.8+ | for launcher and optimization scripts |
+| OpenSSL | 3.x+ | `sudo apt install libssl-dev` — provides `EVP_sha3_512()` and `HMAC()` |
+| liboqs | 0.10+ | must be **built from source** — see §2.1 below |
+
+### 2.1 — Crypto dependency setup (first-time only)
+
+These steps are required once per machine before you can build the simulation. The cryptographic layer (`crypto_layer.h`) uses real post-quantum cryptography via liboqs (ML-DSA-87) and OpenSSL (SHA3-512).
+
+**Step 1 — Install OpenSSL development headers:**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libssl-dev cmake git build-essential
+```
+
+**Step 2 — Build and install liboqs (Open Quantum Safe library):**
+
+```bash
+git clone --depth 1 https://github.com/open-quantum-safe/liboqs.git ~/liboqs
+cd ~/liboqs && mkdir build && cd build
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DBUILD_SHARED_LIBS=ON \
+      -DOQS_BUILD_ONLY_LIB=ON ..
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+```
+
+Verify the installation:
+
+```bash
+ls /usr/local/include/oqs/oqs.h    # should exist
+ls /usr/local/lib/liboqs.so        # should exist
+```
+
+**Step 3 — Create the NS-3 wscript to link against crypto libraries:**
+
+NS-3's waf build system needs a `wscript` file in the scratch subdirectory to know which external libraries to link. Create this file once, after your first `--build` run (which creates the `scratch/routing/` directory):
+
+```bash
+# First sync creates the directory:
+python3 scripts/run_std_attacks.py --build
+
+# Then write the wscript:
+cat > ~/ns-allinone-3.35/ns-3.35/scratch/routing/wscript << 'EOF'
+import os
+
+def build(bld):
+    obj = bld.create_ns3_program('routing', bld.env['NS3_ENABLED_MODULES'])
+    obj.source  = ['routing.cc']
+    obj.lib     = ['oqs', 'ssl', 'crypto']
+    obj.libpath = ['/usr/local/lib']
+    obj.rpath   = ['/usr/local/lib']
+EOF
+
+# Rebuild with the wscript in place:
+python3 scripts/run_std_attacks.py --build
+```
+
+> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns-allinone-3.35/ns-3.35`.
 
 ---
 
 ## 3. Quick Start
+
+**Prerequisites:** NS-3 3.35 installed, `mobility_urban_150.tcl` available, and crypto dependencies set up per §2.1 (liboqs + wscript). If this is your first time on a new machine, do §2.1 before anything below.
 
 If you already have a mobility trace (`mobility_urban_150.tcl`) and NS-3 is installed, the fastest way to run both attack variants across all six percentages in parallel:
 
@@ -193,6 +268,8 @@ grep -o '\$ns_ at [0-9.]*' /home/user/mobility/mobility_urban_150.tcl \
 
 ## 5. Building the Simulation
 
+> **First-time build?** Complete Section 2.1 (liboqs + wscript setup) before running `--build` for the first time, otherwise the linker will fail with "cannot find -loqs".
+
 The `--build` flag on the launcher handles syncing and building in one step:
 
 ```bash
@@ -203,7 +280,7 @@ What this does internally:
 1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
 2. Runs `./waf build`
 
-Every file inside `scratch/` is synced automatically — no explicit list to maintain.
+Every file inside `scratch/` is synced automatically — no explicit list to maintain. The `scratch/routing/wscript` is **not** synced — create it once manually as described in §2.1.
 
 To build manually without the launcher:
 
@@ -214,8 +291,7 @@ cd ~/ns-allinone-3.35/ns-3.35
 
 > **Note:** A manual `./waf build` compiles the code but does **not** copy the `.py` helper scripts. If you skip `--build`, run this once to copy them:
 > ```bash
-> cp ~/ns3_g13/g13_project_repo/Final-Year-project/scratch/*.py \
->    ~/ns-allinone-3.35/ns-3.35/scratch/
+> cp <path-to-this-repo>/scratch/*.py ~/ns-allinone-3.35/ns-3.35/scratch/
 > ```
 
 ---
@@ -543,6 +619,36 @@ RSU-to-controller assignment: each RSU is assigned to its nearest controller by 
 
 ## 12. Troubleshooting
 
+### Build error: "cannot find -loqs" or "oqs/oqs.h: No such file"
+
+liboqs is not installed or was not installed to `/usr/local`. Re-run the liboqs build from §2.1. Then confirm:
+
+```bash
+ls /usr/local/include/oqs/oqs.h    # header must exist
+ls /usr/local/lib/liboqs.so        # shared lib must exist
+sudo ldconfig                      # refresh linker cache
+```
+
+Also confirm that `scratch/routing/wscript` exists in the NS-3 tree (§2.1 Step 3). Without it, waf does not pass `-loqs -lssl -lcrypto` to the linker.
+
+### Build error: "EVP_sha3_512 undeclared" or "HMAC undeclared"
+
+OpenSSL development headers are not installed. Run:
+
+```bash
+sudo apt-get install libssl-dev
+```
+
+Verify by checking that `/usr/include/openssl/evp.h` exists.
+
+### Launcher fails: "No such file or directory: .../ns3_g13/..."
+
+The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns3_g13/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
+
+```python
+NS3_DIR = Path.home() / "ns-allinone-3.35/ns-3.35"   # personal laptop
+```
+
 ### Build error: "not declared in this scope"
 
 Caused by a VLA (Variable Length Array) if a non-`const` variable is used as an array dimension. Ensure `total_size` (a `const int`) is used for all static array sizes. `N_Controllers` must only appear in runtime expressions, never in type declarations like `type name[N_Controllers]`.
@@ -611,3 +717,70 @@ rm ~/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack*.csv
 - `data_transmission_frequency` is fixed at 1.0 (one routing cycle per second). Higher values cause proportional slowdown — do not change.
 - The S1 EWMA baseline requires approximately 10 seconds of benign traffic to converge. This is why `attack_start_time` defaults to 10.0 s. Do not lower it below ~5 s.
 - Attacks 1 and 2 are safe to run in parallel (separate processes, unique filenames). Other attack variants that share intermediate scratch files should not be parallelized without further filename isolation.
+
+---
+
+## 13. Blockchain Integration (Hyperledger Fabric)
+
+MobiGuard integrates a real-time blockchain audit-trail layer implemented in Hyperledger Fabric. When the NS-3 simulation runs, RSU nodes log FlowMod rule installations, verify endorsements, and log trust updates into `results_routing/`. A Node.js bridge tails these logs and invokes the Fabric smart contract (`mobiguard-cc`) to commit transactions on-chain.
+
+For complete fresh-machine setup instructions (Docker, Go, Node.js, and Fabric binaries), refer to `blockchain/README.md`.
+
+### Step-by-Step Execution Guide
+
+Run these steps in order when running a blockchain-enabled simulation session:
+
+#### Step 1: Deploy the Fabric Network
+From the project root directory, navigate to the test-network and run the deployment script:
+```bash
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+./deploy-mobiguard.sh
+```
+*This starts the Fabric nodes (peers, orderer, CAs, CouchDB), creates `mychannel`, and deploys the Go chaincode (`mobiguard-cc`). Wait for the success banner.*
+
+#### Step 2: Enroll RSU Identities (First-time only)
+Enroll the RSU nodes' Fabric CA certificates:
+```bash
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+./enroll_rsu_identities.sh stage1
+```
+*This generates public/private key wallets under `blockchain/bridge/wallet/`.*
+
+#### Step 3: Start the Bridge (Terminal 1)
+Run the bridge service to tail logs and publish to Fabric:
+```bash
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+node index.js
+```
+*Keep this terminal open. It will print blockchain transaction submissions in real time.*
+
+#### Step 4: Run the NS-3 Simulation (Terminal 2)
+In a separate terminal, run the NS-3 simulation as usual (either using the sweep scripts or manually via `./waf`):
+```bash
+cd /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35
+# Example: Run Attack 3 (Control Plane TCAM Flood)
+./waf --run "scratch/routing/routing --simTime=40 --attack_number=3 --attack_percentage=40"
+```
+*Watch Terminal 1 update with live `LogFlowMod`, `EndorseFlowMod`, and `UpdateTrust` transactions as the simulation progresses.*
+
+#### Step 5: Querying the Ledger (Optional)
+To query the current ledger state directly, set up the peer CLI environment variables and invoke peer commands:
+```bash
+export PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
+export FABRIC_CFG_PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
+export CORE_PEER_TLS_ENABLED=true
+export CORE_PEER_LOCALMSPID="Org1MSP"
+export CORE_PEER_ADDRESS=localhost:7051
+export CORE_PEER_MSPCONFIGPATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+export CORE_PEER_TLS_ROOTCERT_FILE="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+
+# Example: Check trust score for RSU 200
+peer chaincode query -C mychannel -n mobiguard-cc -c '{"function":"QueryTrust","Args":["200"]}'
+```
+
+#### Step 6: Shut Down and Clean up
+Stop the Node.js bridge using `Ctrl+C` in Terminal 1, then tear down the Fabric network:
+```bash
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+./network.sh down
+```

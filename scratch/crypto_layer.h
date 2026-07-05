@@ -27,10 +27,12 @@
 #pragma pop_macro("min")
 #pragma pop_macro("max")
 
-// Forward declarations — defined in blockchain_sim.h (included after this header).
-void bc_write_event(uint32_t rsu_idx, uint32_t event_type, uint32_t node, double ts);
+// Forward declarations — bc_commit_dkg defined in bc_blockchain_helper.h (included after this).
 void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                    uint32_t n_rsus, double ts_setup);
+// dkg_rotate_keys defined in dkg_setup.h (included after this) — called from trust_update_negative
+// per eq:key_rotation_trigger when a quarantined node is an RSU.
+inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
@@ -48,9 +50,24 @@ static std::string _hex4(const uint8_t* b) {
     return std::string(s);
 }
 
+// Formats first 8 bytes as hex — used in [PKT-CRYPTO] verbose field logs.
+static std::string _hex8(const uint8_t* b) {
+    char s[17];
+    snprintf(s, sizeof(s), "%02x%02x%02x%02x%02x%02x%02x%02x",
+             b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7]);
+    return std::string(s);
+}
+
+// Formats a uint32 as 8-char hex — for nonce / zone / next_hop in verbose logs.
+static std::string _hex32(uint32_t v) {
+    char s[9];
+    snprintf(s, sizeof(s), "%08x", v);
+    return std::string(s);
+}
+
 // ── SHA3-512 and HMAC-SHA3-512 via OpenSSL ───────────────────────────────────
 
-static bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
+static inline bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     if (!ctx) return false;
     unsigned int out_len = 64;
@@ -61,7 +78,7 @@ static bool sha3_512_hash(const uint8_t* data, size_t len, uint8_t* out_64) {
     return ok;
 }
 
-static bool hmac_sha3_512(const uint8_t* key, size_t klen,
+static inline bool hmac_sha3_512(const uint8_t* key, size_t klen,
                            const uint8_t* data, size_t dlen, uint8_t* out_64) {
     unsigned int out_len = 64;
     return HMAC(EVP_sha3_512(), key, (int)klen, data, dlen, out_64, &out_len) != nullptr
@@ -103,20 +120,16 @@ struct PacketCryptoMeta {
     double   sign_timestamp   = 0.0;
     uint32_t signed_next_hop  = (uint32_t)-1;  // intended next hop at sign time
     uint32_t signed_zone_id   = 0;             // zone_id at sign time (rsu_controller_assignment changes)
+    uint32_t nonce            = 0;             // fresh random nonce (η_i ← RAND()) — eq:mldsa_sign
     bool     sig_valid        = false;
     bool     stark_timing_ok  = false;
     bool     stark_hop_ok     = false;
 };
 std::map<std::pair<uint32_t,uint32_t>, PacketCryptoMeta> g_packet_crypto;
 
-struct SigningInput {
-    uint32_t msg_id;
-    uint32_t node_id;
-    uint32_t next_hop;
-    uint32_t seq;
-    uint32_t zone_id;
-    double   timestamp;
-};
+// Sign buffer layout per eq:mldsa_sign: msg_id(4)|ts(8)|η(4)|nh(4)|z(4) = 24 bytes
+// No node_id, no padding — explicit memcpy, not struct cast.
+static constexpr size_t MLDSA_SIGN_BUF = 4 + 8 + 4 + 4 + 4;
 
 struct DKGState {
     uint8_t  vk_zkp[64]  = {};
@@ -138,11 +151,13 @@ struct FlowModEndorsement {
 std::map<uint32_t, FlowModEndorsement> g_flowmod_endorsements;
 
 struct StarkTimingProof { uint8_t commitment[64] = {}; bool valid = false; };
-struct BatchVerifyResult { bool passed; uint32_t n_verified; double elapsed_s; };
+struct BatchVerifyResult { bool passed; uint32_t n_verified; double elapsed_s; uint8_t challenge[64]; };
 
 // Verification outcome counters — for sig_valid_rate metric
 static uint32_t g_verify_attempts = 0;
 static uint32_t g_verify_passed   = 0;
+// Batch challenge result — updated each 50ms tick; feeds LRAD b_batch (eq:batch_challenge)
+static bool g_batch_passed = true;
 
 struct WitnessLogEntry {
     uint8_t  pkt_hash[64] = {};
@@ -151,8 +166,11 @@ struct WitnessLogEntry {
 };
 
 struct WitnessAlert {
-    std::array<uint8_t,64> sig_hash = {};
-    uint8_t alert_type = 0; // 0 = α_w (DA), 1 = β_w (NFA)
+    uint32_t witness_id    = 0;
+    uint8_t  alert_type   = 0; // 0 = α_w (DA), 1 = β_w (NFA)
+    uint8_t  signed_digest[64] = {};                              // h_alert signed by witness
+    uint8_t  alert_sig[OQS_SIG_ml_dsa_87_length_signature] = {}; // full 4595-byte ML-DSA-87 sig
+    size_t   alert_sig_len = 0;
 };
 
 double g_trust_score[268]       = {};
@@ -228,16 +246,23 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
 
-    SigningInput inp = {};  // zero-init including padding bytes before double timestamp
-    inp.msg_id    = pkt_id;
-    inp.node_id   = signer;
-    inp.next_hop  = next_hop;
-    inp.seq       = seq;
-    inp.zone_id   = crypto_zone_id(signer);
-    inp.timestamp = ns3::Simulator::Now().GetSeconds();
+    // η_i ← RAND(): fresh per-signature nonce preventing replay (eq:mldsa_sign).
+    // The caller's `seq` argument is ignored for the digest — nonce is random.
+    uint32_t fresh_nonce = 0;
+    OQS_randombytes(reinterpret_cast<uint8_t*>(&fresh_nonce), sizeof(fresh_nonce));
+
+    // eq:mldsa_sign: H_SHA3-512(msg_id ‖ ts_i ‖ η_i ‖ nh_i ‖ z_i) — 24-byte explicit buffer
+    double   ts   = ns3::Simulator::Now().GetSeconds();
+    uint32_t zone = crypto_zone_id(signer);
+    uint8_t sign_buf[MLDSA_SIGN_BUF] = {};
+    memcpy(sign_buf,    &pkt_id,      4);
+    memcpy(sign_buf+4,  &ts,          8);
+    memcpy(sign_buf+12, &fresh_nonce, 4);
+    memcpy(sign_buf+16, &next_hop,    4);
+    memcpy(sign_buf+20, &zone,        4);
 
     uint8_t digest[64];
-    if (!sha3_512_hash(reinterpret_cast<const uint8_t*>(&inp), sizeof(inp), digest)) {
+    if (!sha3_512_hash(sign_buf, MLDSA_SIGN_BUF, digest)) {
         std::cerr << "[CRYPTO-ERROR] mldsa87_sign: SHA3-512 failed node=" << signer
                   << " pkt=" << pkt_id << "\n";
         return false;
@@ -253,26 +278,54 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
                   << " pkt=" << pkt_id << "\n";
         return false;
     }
-    meta.sign_timestamp  = inp.timestamp;
+    meta.sign_timestamp  = ts;
     meta.signed_next_hop = next_hop;
-    meta.signed_zone_id  = inp.zone_id;
+    meta.signed_zone_id  = zone;
+    meta.nonce           = fresh_nonce;
     meta.sig_valid = true;
-    if (CRYPTO_DEBUG_LOG)
+    if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
                   << " next_hop=" << next_hop
                   << " sig_len=" << meta.sig_len  // expected 4627
-                  << " zone=" << inp.zone_id
-                  << " t=" << inp.timestamp
+                  << " zone=" << zone
+                  << " t=" << ts
                   << " digest[0..3]=" << _hex4(digest)
                   << " sig[0..3]=" << _hex4(meta.sig) << "\n";
+        // [PKT-CRYPTO] — human-readable field-level breakdown for manual inspection
+        std::cout << "[PKT-CRYPTO] ── SIGN ─────────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   node      = " << signer << "  (signer)\n"
+                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   next_hop  = " << next_hop << "\n"
+                  << "[PKT-CRYPTO]   zone      = " << zone << "\n"
+                  << "[PKT-CRYPTO]   t_sign    = " << ts << " s  (NS-3 simulation time)\n"
+                  << "[PKT-CRYPTO]   nonce(η)  = 0x" << _hex32(fresh_nonce) << "  (random per-packet)\n"
+                  << "[PKT-CRYPTO]   -- Sign buffer (eq:mldsa_sign, 24 bytes) ----------\n"
+                  << "[PKT-CRYPTO]   buf[0..3]   msg_id   = " << pkt_id   << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[4..11]  ts       = " << ts       << "  (8 B double)\n"
+                  << "[PKT-CRYPTO]   buf[12..15] nonce    = 0x" << _hex32(fresh_nonce) << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[16..19] next_hop = " << next_hop << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[20..23] zone     = " << zone     << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   -- SHA3-512(buf) → 64-byte digest -----------------\n"
+                  << "[PKT-CRYPTO]   digest[0..7]  = " << _hex8(digest) << "\n"
+                  << "[PKT-CRYPTO]   digest[8..15] = " << _hex8(digest+8) << "\n"
+                  << "[PKT-CRYPTO]   -- ML-DSA-87 signature (FIPS 204, liboqs) ---------\n"
+                  << "[PKT-CRYPTO]   sig_len       = " << meta.sig_len << " bytes  (expected 4627)\n"
+                  << "[PKT-CRYPTO]   sig[0..7]     = " << _hex8(meta.sig) << "\n"
+                  << "[PKT-CRYPTO]   sig[8..15]    = " << _hex8(meta.sig+8) << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
     return true;
 }
 
 // ── ML-DSA-87 Verification ────────────────────────────────────────────────────
 
+// is_batch_call: true when called from batch_verify_mldsa87() (50ms tick),
+//                false when called at packet receive time (MacRx callback).
+//                Logged as batch=0/1 so timing tools can distinguish the two call sites.
 inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
-                            uint32_t next_hop, uint32_t seq) {
+                            uint32_t next_hop, uint32_t seq,
+                            bool is_batch_call = false) {
     if (claimed_signer >= (uint32_t)total_size) return false;
     auto it = g_packet_crypto.find({claimed_signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) {
@@ -298,16 +351,16 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     OQS_SIG* sig = get_oqs_ctx();
     if (!sig) return false;
 
-    SigningInput inp = {};  // zero-init including padding bytes before double timestamp
-    inp.msg_id    = pkt_id;
-    inp.node_id   = claimed_signer;
-    inp.next_hop  = next_hop;
-    inp.seq       = seq;
-    inp.zone_id   = it->second.signed_zone_id;  // use stored value — rsu_controller_assignment changes
-    inp.timestamp = it->second.sign_timestamp;
+    // Reconstruct eq:mldsa_sign buffer identically to sign: msg_id|ts|η|nh|z (24 bytes)
+    uint8_t sign_buf[MLDSA_SIGN_BUF] = {};
+    memcpy(sign_buf,    &pkt_id,                   4);
+    memcpy(sign_buf+4,  &it->second.sign_timestamp, 8);
+    memcpy(sign_buf+12, &it->second.nonce,          4);
+    memcpy(sign_buf+16, &next_hop,                  4);
+    memcpy(sign_buf+20, &it->second.signed_zone_id, 4);
 
     uint8_t digest[64];
-    if (!sha3_512_hash(reinterpret_cast<const uint8_t*>(&inp), sizeof(inp), digest))
+    if (!sha3_512_hash(sign_buf, MLDSA_SIGN_BUF, digest))
         return false;
 
     bool ok = OQS_SIG_verify(sig, digest, 64,
@@ -317,11 +370,37 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     g_verify_attempts++;
     if (ok) g_verify_passed++;
 
+    if (CRYPTO_DEBUG_LOG && !is_batch_call) {
+        // [PKT-CRYPTO] — human-readable field-level breakdown for manual inspection
+        std::cout << "[PKT-CRYPTO] ── VERIFY ────────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   claimed   = " << claimed_signer << "  (original signer)\n"
+                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   verifier  = " << next_hop << "  (this hop)\n"
+                  << "[PKT-CRYPTO]   -- Reconstructed sign buffer (must match signer) -\n"
+                  << "[PKT-CRYPTO]   msg_id    = " << pkt_id                        << "  ✓ (same as signed)\n"
+                  << "[PKT-CRYPTO]   ts_sign   = " << it->second.sign_timestamp     << " s  (from signed record)\n"
+                  << "[PKT-CRYPTO]   nonce(η)  = 0x" << _hex32(it->second.nonce)   << "  (from signed record)\n"
+                  << "[PKT-CRYPTO]   next_hop  = " << next_hop                      << "  (must equal signed_next_hop=" << it->second.signed_next_hop << ")\n"
+                  << "[PKT-CRYPTO]   zone      = " << it->second.signed_zone_id     << "  (from signed record)\n"
+                  << "[PKT-CRYPTO]   -- SHA3-512 recomputed digest ----------------------\n"
+                  << "[PKT-CRYPTO]   digest[0..7]  = " << _hex8(digest) << "\n"
+                  << "[PKT-CRYPTO]   digest[8..15] = " << _hex8(digest+8) << "\n"
+                  << "[PKT-CRYPTO]   -- OQS ML-DSA-87 verify result --------------------\n"
+                  << "[PKT-CRYPTO]   sig[0..7]  = " << _hex8(it->second.sig) << "\n"
+                  << "[PKT-CRYPTO]   pk[0..7]   = " << _hex8(g_node_keys[claimed_signer].pk) << "\n"
+                  << "[PKT-CRYPTO]   result     = " << (ok ? "PASS ✓  signature authentic" : "FAIL ✗  signature invalid") << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
+
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                   << " pkt=" << pkt_id
                   << " ok=" << ok
                   << " sig_len=" << it->second.sig_len  // expected 4627
+                  << " t_verify=" << ns3::Simulator::Now().GetSeconds()
+                  << " t_sign=" << it->second.sign_timestamp
+                  << " Δ=" << (ns3::Simulator::Now().GetSeconds() - it->second.sign_timestamp)
+                  << " batch=" << is_batch_call
                   << " attempts=" << g_verify_attempts
                   << " passed=" << g_verify_passed
                   << " rate=" << (g_verify_attempts > 0
@@ -341,9 +420,20 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {
     StarkTimingProof proof;
     proof.valid = (t_fwd - t_recv) <= STARK_DELTA_MAX;
-    uint8_t buf[20];
-    memcpy(buf, &t_recv, 8); memcpy(buf+8, &t_fwd, 8); memcpy(buf+16, &nonce, 4);
-    sha3_512_hash(buf, 20, proof.commitment);
+    // c_i = H_SHA3-512(ρ_i) — commit to blinding randomness only; timestamps are
+    // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
+    sha3_512_hash(reinterpret_cast<const uint8_t*>(&nonce), sizeof(nonce), proof.commitment);
+    if (CRYPTO_DEBUG_LOG) {
+        std::cout << "[PKT-CRYPTO] ── STARK-PROVE ────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   nonce(ρ_i)    = 0x" << _hex32(nonce) << "  (blinding randomness)\n"
+                  << "[PKT-CRYPTO]   t_recv        = " << t_recv << " s  (private witness)\n"
+                  << "[PKT-CRYPTO]   t_fwd         = " << t_fwd  << " s  (private witness)\n"
+                  << "[PKT-CRYPTO]   Δ = t_fwd-t_recv = " << (t_fwd - t_recv)*1000.0 << " ms\n"
+                  << "[PKT-CRYPTO]   STARK_DELTA_MAX  = " << STARK_DELTA_MAX*1000.0   << " ms\n"
+                  << "[PKT-CRYPTO]   timing_valid  = " << (proof.valid ? "YES ✓  within bound" : "NO ✗   DELAY EXCEEDS LIMIT") << "\n"
+                  << "[PKT-CRYPTO]   commitment    = H(ρ_i) = " << _hex8(proof.commitment) << "  (ZK: no ts in commit)\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
     return proof;
 }
 
@@ -361,7 +451,18 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
     auto it = g_packet_crypto.find({signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
         return true;  // no signing record — can't verify, assume valid
-    return current_hop == it->second.signed_next_hop;
+    bool hop_ok = (current_hop == it->second.signed_next_hop);
+    if (CRYPTO_DEBUG_LOG) {
+        std::cout << "[PKT-CRYPTO] ── STARK-HOP ─────────────────────────────────────\n"
+                  << "[PKT-CRYPTO]   signer          = " << signer << "\n"
+                  << "[PKT-CRYPTO]   pkt_id          = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   signed_next_hop = " << it->second.signed_next_hop << "  (embedded at sign time)\n"
+                  << "[PKT-CRYPTO]   current_hop     = " << current_hop << "  (actual receiver)\n"
+                  << "[PKT-CRYPTO]   hop_ok          = " << (hop_ok ? "YES ✓  packet on intended path"
+                                                                     : "NO ✗   packet misdirected!") << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
+    return hop_ok;
 }
 
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
@@ -376,6 +477,7 @@ inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[STARK] signer=" << signer
                   << " pkt=" << pkt_id
+                  << " t=" << ns3::Simulator::Now().GetSeconds()
                   << " timing_ok=" << timing_ok
                   << " hop_ok=" << hop_ok
                   << " | lstm_t_fails=" << g_lstm_stark_counts[signer].first
@@ -407,13 +509,18 @@ inline BatchVerifyResult batch_verify_mldsa87(
             combined.insert(combined.end(),
                             it->second.msg_digest, it->second.msg_digest + 64);
     }
-    uint8_t challenge[64];
+    // r = H(σ_1 ‖ … ‖ σ_n ‖ m_1 ‖ … ‖ m_n) — eq:batch_challenge shared binding
     if (!combined.empty())
-        sha3_512_hash(combined.data(), combined.size(), challenge);
+        sha3_512_hash(combined.data(), combined.size(), res.challenge);
 
     for (auto& [node, pkt] : node_pkt_pairs) {
         if (res.elapsed_s >= budget_s) break;
-        if (!mldsa87_verify(node, pkt, 0, 0)) res.passed = false;
+        // Use the stored signed_next_hop so the broadcast-skip guard in mldsa87_verify
+        // does not reject every packet when called with next_hop=0.
+        auto it_bv = g_packet_crypto.find({node, pkt});
+        uint32_t nh = (it_bv != g_packet_crypto.end())
+                      ? it_bv->second.signed_next_hop : 0;
+        if (!mldsa87_verify(node, pkt, nh, 0, /*is_batch_call=*/true)) res.passed = false;
         ++res.n_verified;
         res.elapsed_s += 0.001;
     }
@@ -421,7 +528,7 @@ inline BatchVerifyResult batch_verify_mldsa87(
     if (CRYPTO_DEBUG_LOG && res.n_verified > 0)
         std::cout << "[BATCH-VERIFY] n=" << res.n_verified
                   << " passed=" << res.passed
-                  << " challenge[0..3]=" << (combined.empty() ? "n/a" : _hex4(challenge))
+                  << " challenge[0..3]=" << (combined.empty() ? "n/a" : _hex4(res.challenge))
                   << " elapsed=" << res.elapsed_s << "s\n";
     return res;
 }
@@ -463,7 +570,7 @@ inline void trust_init_all() {
         g_trust_last_update[i] = 0.0;
         g_node_keys[i] = NodeKeyMaterial{};
     }
-    memset(&g_dkg, 0, sizeof(DKGState));
+    g_dkg = DKGState{};
     g_T_ref = g_T_ref_last_sync = 0.0;
     g_packet_crypto.clear(); g_flowmod_endorsements.clear();
     g_witness_log.clear(); g_witness_alert_pool.clear();
@@ -481,7 +588,8 @@ inline void trust_update_positive(uint32_t node) {
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[TRUST+] node=" << node
                   << " " << old_v << " → " << g_trust_score[node]
-                  << " (Δ_r=" << TRUST_DELTA_R << ")\n";
+                  << " (Δ_r=" << TRUST_DELTA_R << ")"
+                  << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
 }
 
 inline void trust_update_negative(uint32_t node) {
@@ -494,7 +602,8 @@ inline void trust_update_negative(uint32_t node) {
         std::cout << "[TRUST-] node=" << node
                   << " " << old_v << " → " << g_trust_score[node]
                   << " (Δ_p=" << TRUST_DELTA_P
-                  << " T_min=" << TRUST_T_MIN << ")\n";
+                  << " T_min=" << TRUST_T_MIN << ")"
+                  << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
     if (g_trust_score[node] < TRUST_T_MIN && !g_quarantined[node]) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
@@ -508,6 +617,9 @@ inline void trust_update_negative(uint32_t node) {
         NS_LOG_WARN("[TRUST] Quarantine: node=" << node
             << " trust=" << g_trust_score[node]
             << " t=" << ns3::Simulator::Now().GetSeconds());
+        // eq:key_rotation_trigger: if revoked node is an RSU, rotate all proving keys
+        if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
+            dkg_rotate_keys(node);
     }
 }
 
@@ -583,7 +695,6 @@ inline void update_T_ref() {
 
 inline void update_T_ref_recurring() {
     update_T_ref();
-    bc_write_event(N_Vehicles, 3 /*T_ref_sync*/, 0, g_T_ref);
     ns3::Simulator::Schedule(ns3::Seconds(T_SYNC_INTERVAL), &update_T_ref_recurring);
 }
 
@@ -622,6 +733,7 @@ inline void crypto_batch_verify_tick() {
             std::cout << "[BATCH-TICK] t=" << ns3::Simulator::Now().GetSeconds()
                       << " pending=" << pending.size() << " pkts in 50ms window\n";
         auto result = batch_verify_mldsa87(pending);
+        g_batch_passed = result.passed; // feed b_batch into LRAD (eq:batch_challenge)
         if (!result.passed) {
             std::cerr << "[CRYPTO-ERROR] Batch verify tick FAILED:"
                       << " " << pending.size() << " pkts"
@@ -670,31 +782,55 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                                               uint32_t pkt_id, uint32_t dst,
                                               uint32_t dup_dst) {
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
-    uint32_t sign_id = pkt_id * 1000 + dst;
-    if (!mldsa87_sign(witness, sign_id, dup_dst,
-                      (uint32_t)ns3::Simulator::Now().GetSeconds())) return;
-    auto it = g_packet_crypto.find({witness, sign_id});
-    if (it == g_packet_crypto.end() || it->second.sig_len == 0) return;
+    OQS_SIG* oqs = get_oqs_ctx();
+    if (!oqs) return;
+
+    // H(p) = SHA3-512 of target's ML-DSA-87 signature on the packet (eq:da_sign)
+    uint8_t h_p[64] = {};
+    auto it_pkt = g_packet_crypto.find({target_node, pkt_id});
+    if (it_pkt != g_packet_crypto.end() && it_pkt->second.sig_len > 0)
+        sha3_512_hash(it_pkt->second.sig, it_pkt->second.sig_len, h_p);
+
+    // α_w message: H(p)(64) ‖ dst(4) ‖ dst'(4) ‖ ts_w(8) = 80 bytes (eq:da_sign)
+    double ts_w = ns3::Simulator::Now().GetSeconds();
+    uint8_t msg[80] = {};
+    memcpy(msg,    h_p,      64);
+    memcpy(msg+64, &dst,     4);
+    memcpy(msg+68, &dup_dst, 4);
+    memcpy(msg+72, &ts_w,    8);
+    uint8_t h_alert[64];
+    sha3_512_hash(msg, sizeof(msg), h_alert);
+
     WitnessAlert alert;
-    memcpy(alert.sig_hash.data(), it->second.sig, 64);
-    alert.alert_type = 0;
+    alert.witness_id  = witness;
+    alert.alert_type  = 0;
+    memcpy(alert.signed_digest, h_alert, 64);
+    alert.alert_sig_len = OQS_SIG_ml_dsa_87_length_signature;
+    if (OQS_SIG_sign(oqs, alert.alert_sig, &alert.alert_sig_len,
+                     h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
+
     g_witness_alert_pool[target_node].push_back(alert);
-    bc_write_event(N_Vehicles, 2 /*witness_alert*/, target_node,
-                   ns3::Simulator::Now().GetSeconds());
-    uint32_t pool_sz  = (uint32_t)g_witness_alert_pool[target_node].size();
     uint32_t threshold = 2 * WITNESS_F + 1;
+
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[WITNESS-DA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
-                  << " sig_len=" << it->second.sig_len  // expected 4627
-                  << " sig[0..3]=" << _hex4(it->second.sig)
-                  << " pool=" << pool_sz << "/" << threshold << "\n";
-    if (pool_sz >= threshold) {
-        // Unconditional: BFT threshold reached is a high-importance detection event
-        std::cout << "[WITNESS-DA-BFT] BFT threshold reached: target=" << target_node
-                  << " alerts=" << pool_sz << " >= 2f+1=" << threshold
-                  << " → trust_update_negative\n";
+                  << " t_alert=" << ts_w
+                  << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
+
+    // BFT penalty: count only cryptographically verified alerts (eq:bft_penalty)
+    uint32_t verified = 0;
+    for (auto& wa : g_witness_alert_pool[target_node]) {
+        if (!g_node_keys[wa.witness_id].keys_generated) continue;
+        if (OQS_SIG_verify(oqs, wa.signed_digest, 64,
+                           wa.alert_sig, wa.alert_sig_len,
+                           g_node_keys[wa.witness_id].pk) == OQS_SUCCESS)
+            ++verified;
+    }
+    if (verified >= threshold) {
+        std::cout << "[WITNESS-DA-BFT] " << verified << " verified alerts >= 2f+1=" << threshold
+                  << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
     }
@@ -704,31 +840,56 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
 inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                                       uint32_t pkt_id, double T_fwd) {
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
-    uint32_t sign_id = pkt_id * 1000 + (uint32_t)(T_fwd * 1000) + 500000;
-    uint32_t ts_u    = (uint32_t)ns3::Simulator::Now().GetSeconds();
-    if (!mldsa87_sign(witness, sign_id, target_node, ts_u)) return;
-    auto it = g_packet_crypto.find({witness, sign_id});
-    if (it == g_packet_crypto.end() || it->second.sig_len == 0) return;
+    OQS_SIG* oqs = get_oqs_ctx();
+    if (!oqs) return;
+
+    // H(p) = SHA3-512 of target's ML-DSA-87 signature on the packet (eq:nfa_sign)
+    uint8_t h_p[64] = {};
+    auto it_pkt = g_packet_crypto.find({target_node, pkt_id});
+    if (it_pkt != g_packet_crypto.end() && it_pkt->second.sig_len > 0)
+        sha3_512_hash(it_pkt->second.sig, it_pkt->second.sig_len, h_p);
+
+    // β_w message: H(p)(64) ‖ v_i(4) ‖ ts_w(8) ‖ T_fwd(8) = 84 bytes (eq:nfa_sign)
+    double ts_w = ns3::Simulator::Now().GetSeconds();
+    uint8_t msg[84] = {};
+    memcpy(msg,    h_p,          64);
+    memcpy(msg+64, &target_node, 4);
+    memcpy(msg+68, &ts_w,        8);
+    memcpy(msg+76, &T_fwd,       8);
+    uint8_t h_alert[64];
+    sha3_512_hash(msg, sizeof(msg), h_alert);
+
     WitnessAlert alert;
-    memcpy(alert.sig_hash.data(), it->second.sig, 64);
-    alert.alert_type = 1;
+    alert.witness_id  = witness;
+    alert.alert_type  = 1;
+    memcpy(alert.signed_digest, h_alert, 64);
+    alert.alert_sig_len = OQS_SIG_ml_dsa_87_length_signature;
+    if (OQS_SIG_sign(oqs, alert.alert_sig, &alert.alert_sig_len,
+                     h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
+
     g_witness_alert_pool[target_node].push_back(alert);
-    bc_write_event(N_Vehicles, 4 /*nfa_alert*/, target_node,
-                   ns3::Simulator::Now().GetSeconds());
-    uint32_t pool_sz  = (uint32_t)g_witness_alert_pool[target_node].size();
     uint32_t threshold = 2 * WITNESS_F + 1;
+
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[WITNESS-NFA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " t_alert=" << ts_w
                   << " T_fwd=" << T_fwd << "s"
-                  << " sig_len=" << it->second.sig_len  // expected 4627
-                  << " pool=" << pool_sz << "/" << threshold << "\n";
-    if (pool_sz >= threshold) {
-        // Unconditional: BFT threshold reached
-        std::cout << "[WITNESS-NFA-BFT] BFT threshold reached: target=" << target_node
-                  << " alerts=" << pool_sz << " >= 2f+1=" << threshold
-                  << " → trust_update_negative\n";
+                  << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
+
+    // BFT penalty: count only cryptographically verified alerts (eq:bft_penalty)
+    uint32_t verified = 0;
+    for (auto& wa : g_witness_alert_pool[target_node]) {
+        if (!g_node_keys[wa.witness_id].keys_generated) continue;
+        if (OQS_SIG_verify(oqs, wa.signed_digest, 64,
+                           wa.alert_sig, wa.alert_sig_len,
+                           g_node_keys[wa.witness_id].pk) == OQS_SUCCESS)
+            ++verified;
+    }
+    if (verified >= threshold) {
+        std::cout << "[WITNESS-NFA-BFT] " << verified << " verified alerts >= 2f+1=" << threshold
+                  << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
     }
@@ -807,8 +968,16 @@ inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
 
     FlowModEndorsement& e = g_flowmod_endorsements[flow_id];
     if (e.endorsing_rsus.empty()) {
+        // First endorser: seed the accumulator with H(sig_1)
         memcpy(e.flowmod_hash, flowmod_hash, 64);
         sha3_512_hash(endorsement_sig, endorsement_sig_len, e.endorsement_hash);
+    } else {
+        // Each subsequent endorser: H_new = SHA3-512(H_prev ‖ sig_j)
+        // Binds all {ε_j} per eq:endorsed_commit: C_P = BC.Commit(H(FlowMod) ‖ {ε_j} ‖ ts)
+        uint8_t rolling[64 + OQS_SIG_ml_dsa_87_length_signature];
+        memcpy(rolling,    e.endorsement_hash, 64);
+        memcpy(rolling+64, endorsement_sig,    endorsement_sig_len);
+        sha3_512_hash(rolling, sizeof(rolling), e.endorsement_hash);
     }
     e.endorsing_rsus.push_back(rsu_idx);
     if (CRYPTO_DEBUG_LOG)
@@ -837,6 +1006,16 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
     cmd.AddValue("vol_rate_thresh",    "Volume rate threshold ε_vol (pkt/s)", VOL_RATE_THRESH);
+
+    // LRAD detection-active CLI overrides (ablation: disable individual
+    // signatures without recompiling — e.g. --attack_number=5 --s5_detection_active=0
+    // measures detection contribution of S5 in isolation).
+    cmd.AddValue("s1_detection_active", "Enable LRAD S1 (Selective Delay CP) detection",  s1_detection_active);
+    cmd.AddValue("s2_detection_active", "Enable LRAD S2 (Selective Delay DP) detection",  s2_detection_active);
+    cmd.AddValue("s5_detection_active", "Enable LRAD S5 (Active HF CP) detection",        s5_detection_active);
+    cmd.AddValue("s6_detection_active", "Enable LRAD S6 (Active HF DP) detection",        s6_detection_active);
+    cmd.AddValue("s7_detection_active", "Enable LRAD S7 (Passive HF CP) detection",       s7_detection_active);
+    cmd.AddValue("s8_detection_active", "Enable LRAD S8 (Passive HF DP) detection",       s8_detection_active);
 }
 
 #endif // CRYPTO_LAYER_H

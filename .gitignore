@@ -27,3 +27,15 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Blockchain / Hyperledger Fabric transient artifacts
+blockchain/fabric-samples/test-network/organizations/
+blockchain/fabric-samples/test-network/channel-artifacts/
+blockchain/fabric-samples/test-network/system-genesis-block/
+blockchain/fabric-samples/test-network/results_routing/
+blockchain/bridge/node_modules/
+blockchain/bridge/wallet/
+blockchain/mobiguard-cc/vendor/
+blockchain/mobiguard-cc/mobiguard-cc
+*.tar.gz
+*.block
