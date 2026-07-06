@@ -1,0 +1,22 @@
+Held-Out Seed Validation
+========================================
+
+Model trained on : RngRun=1 (120s simulation)
+Evaluated on     : RngRun=2 (120s simulation, independent seed)
+
+MCC (M1)   : 0.0000
+DR  (M2)   : 100.00%
+FPR (M3)   : 100.00%
+F1         : 60.24%
+Accuracy   : 43.10%
+n_snapshots: 116
+
+Confusion Matrix:
+              Pred Normal  Pred Attack
+True Normal    0            66
+True Attack    0            50
+
+Interpretation: Performance degrades on the independent seed,
+indicating the model may have overfit to seed-specific patterns
+in the RngRun=1 training data rather than learning a generalizable
+attack signature.

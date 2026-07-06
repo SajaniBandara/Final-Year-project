@@ -1,0 +1,32 @@
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "auc": 1.0,
+  "mcc": 1.0,
+  "fpr": 0.0,
+  "dr_attack4": 1.0,
+  "TP": 5,
+  "FP": 0,
+  "TN": 17,
+  "FN": 0,
+  "confusion_matrix": [
+    [
+      17,
+      0
+    ],
+    [
+      0,
+      5
+    ]
+  ],
+  "selected_features": [
+    "Time_kurt",
+    "APIT_CV",
+    "PSE",
+    "Time_skew",
+    "Time_median",
+    "CB_mean"
+  ]
+}
