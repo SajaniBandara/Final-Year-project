@@ -39,3 +39,8 @@ blockchain/mobiguard-cc/vendor/
 blockchain/mobiguard-cc/mobiguard-cc
 *.tar.gz
 *.block
+docs/main (10).synctex(busy)
+docs/main.aux
+docs/main.fdb_latexmk
+docs/main.synctex(busy)
+docs/main.fls
