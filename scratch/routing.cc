@@ -117280,7 +117280,7 @@ void write_security_metrics_csv()
 	if (fout.tellp() == 0) {
 		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
 			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
-			 << "# TP, FP, TN, FN";
+			 << "# TP, FP, TN, FN, cur_TVR, avg_TVR, cur_UCR, avg_UCR";
 		if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
 			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
 				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
@@ -117337,7 +117337,11 @@ void write_security_metrics_csv()
 		 << sec_TP[selected_variant] << ", "
 		 << sec_FP[selected_variant] << ", "
 		 << sec_TN[selected_variant] << ", "
-		 << sec_FN[selected_variant];
+		 << sec_FN[selected_variant] << ", "
+		 << (current_TVR * 100.0) << ", "
+		 << (average_TVR * 100.0) << ", "
+		 << (current_UCR * 100.0) << ", "
+		 << (average_UCR * 100.0);
 	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
 		fout << TcamDetectionCsvColumns(tcam_metrics);
 	fout << ", " << sig_valid_rate
