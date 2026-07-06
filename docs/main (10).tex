@@ -305,19 +305,37 @@ rule-based signature detector on resource-constrained on-board units with
 a full federated LSTM anomaly detector at RSU edge nodes, enabling
 privacy-preserving collaborative detection by sharing only model weights.
 Second, a hybrid cryptographic layer combines per-packet ML-DSA-87 signatures,
-aggregate signature batch verification, and zero-knowledge proofs for
-timing compliance---preventing spoofing, timestamp manipulation, and covert
-forwarding while preserving vehicle identity privacy. Third, a permissioned
-blockchain provides tamper-proof transaction recording and federated model
-validation via smart contracts, ensuring network integrity even when the
-SDVN controller or RSU is compromised and eliminating the single point of
-failure present in all existing centralized frameworks. 
+aggregate signature batch verification, and
+\ac{STARK} zero-knowledge proofs for timing
+compliance and next-hop legitimacy---preventing
+spoofing, timestamp manipulation, and covert
+forwarding while preserving vehicle identity privacy.
+Third, a two-tier permissioned blockchain with a flat
+multi-controller zero-trust architecture and
+distributed key generation enforces tamper-proof
+audit, automated quarantine, and Byzantine-robust
+federated model validation, ensuring integrity even
+under controller compromise and eliminating the
+single point of failure present in all existing
+centralized frameworks. Passive hidden forwarding
+variants undetectable by cryptographic proof alone
+are further addressed by a broadcast-radio
+witness-monitoring mechanism with Byzantine
+fault-tolerant alert consensus.
+
 % Evaluation under
 % realistic SUMO mobility traces demonstrates ${\geq}96\%$ detection
 % accuracy, ${\leq}1\%$ false positive rate, and end-to-end latency below
 % 85\,ms across all eight attack variants, satisfying the strict
 % requirements of safety-critical vehicular applications.
-The proposed framework will be evaluated under realistic SUMO mobility traces across all eight attack variants to validate its detection accuracy, false positive rate, and end-to-end latency against the strict requirements of safety-critical vehicular applications.
+MOBIGUARD is evaluated across twelve performance
+metrics under five benchmarking experiments---varying
+attack penetration, mobility speed from 10 to
+140\,km/h, network scale from 100 to 400 vehicles,
+and attack stealthiness---alongside thirteen ablation
+experiments isolating each security component's
+individual contribution.
+
 
 
 % Table of Contents
@@ -400,7 +418,13 @@ Objective 1: Design and simulate realistic Selective Time Delay and Hidden Forwa
 Objective 2: Develop a multi-layered security architecture that integrates blockchain for tamper-proof logging, cryptographic protocols for identity verification, and Federated LSTM models for decentralized anomaly detection.
 
 
-Objective 3: Evaluate the effectiveness of the proposed defense mechanism by measuring detection accuracy, false positive rates, and the computational overhead introduced by blockchain/crypto operations.
+Objective 3: Evaluate MOBIGUARD against three
+state-of-the-art baselines across twelve performance
+metrics spanning detection quality, attack-specific
+containment (TVR, UCR), overhead, and privacy, using
+five benchmarking experiments and thirteen ablation
+experiments that isolate each component's contribution.
+
 
 
 \subsection{Research Questions}
@@ -515,29 +539,67 @@ The principal contributions of this paper are:
     actions, providing decentralized accountability and eliminating 
     the single-point-of-failure inherent in centralized SDN 
     controllers.
+
+    \item \textbf{Multi-controller zero-trust architecture:}
+We design a flat registered controller set with
+blockchain-enforced trust scoring, smart
+contract-triggered failover (SC-Revoke), and a
+\ac{DKG} ceremony among \ac{RSU}s that removes the
+controller from the key plane entirely, ensuring
+control-plane continuity and cryptographic integrity
+even under controller compromise.
+
+\item \textbf{Witness-based passive attack detection:}
+We introduce a broadcast-radio witness monitoring
+mechanism that detects passive hidden forwarding
+variants (S7, S8) by collecting independently
+observed packet hashes from neighboring vehicles,
+triggering a smart contract trust penalty only after
+a $2f{+}1$ Byzantine fault-tolerant threshold of
+verified alerts is reached---providing detection that
+cryptographic proof corroboration alone cannot.
+
 \end{itemize}
 
 
-\textbf{Novelty:} 
+\textbf{Novelty:}
+To the best of our knowledge, this work makes five
+individually novel contributions that are further
+amplified in combination.
+First, the formal modeling of eight selective time
+delay and hidden forwarding attack variants that
+explicitly characterize how vehicular mobility
+amplifies each attack class is absent from prior
+literature, which addresses these attacks only in
+static SDN or treats them separately.
+Second, the dual-mode detection architecture---pairing
+lightweight rule-based attack signature detection with
+federated LSTM inference and broadcast-radio
+witness-based monitoring within a single adaptive
+framework---is the first to accommodate the full
+spectrum of vehicular node capabilities without
+sacrificing detection fidelity at either extreme,
+including against passive covert variants that produce
+no observable network anomaly.
+Third, the integration of \ac{MLDSA} per-packet
+integrity, randomized batch verification, and \ac{STARK}
+zero-knowledge proofs for both timing compliance and
+next-hop legitimacy into a unified post-quantum
+cryptographic layer designed specifically for \ac{SDVN}
+data-plane and flow-rule integrity is novel in both
+scope and target domain.
+Fourth, the flat multi-controller architecture with
+blockchain-enforced trust scoring, \ac{DKG} among
+\ac{RSU} ring members, and smart contract-triggered
+failover is the first controller-independent design
+in which the controller is excluded from the key
+plane entirely.
+Collectively, this is the first framework to jointly
+detect and mitigate both attack classes under a
+zero-trust, controller-independent architecture that
+simultaneously preserves driver privacy and satisfies
+vehicular latency constraints.
 
-To the best of our knowledge, this work makes three individually novel
-contributions that are further amplified in combination. First, the
-formal modeling of eight selective time delay and hidden forwarding attack
-variants that explicitly characterize how vehicular mobility amplifies
-each attack class is absent from prior literature, which addresses these
-attacks only in static SDN or treats them separately. Second, the
-dual-mode detection architecture---pairing lightweight rule-based attack
-signature detection with federated LSTM inference within a single
-adaptive framework---is the first to accommodate the full spectrum of
-vehicular node capabilities without sacrificing detection fidelity at
-either extreme. Third, the integration of ML-DSA-87 per-packet integrity,
-aggregate signature batch verification, and zero-knowledge behavioral
-proofs into a unified cryptographic layer designed specifically for
-SDVN data-plane and flow-rule integrity is novel in both scope and
-target domain. Collectively, this is the first framework to jointly
-detect and mitigate both attack classes under a zero-trust, controller-
-independent architecture that simultaneously preserves driver privacy
-and satisfies vehicular latency constraints.
 
 
 
@@ -547,20 +609,39 @@ The proposed framework demonstrates that decentralization can be done in high-mo
 \section{Paper Organization}
 
 The remainder of this research proposal is organized as follows to provide a comprehensive understanding of the proposed defense framework:
+\\
 
 Chapter 2 - Literature Review:
 This chapter reviews the existing research related with hidden forwarding  attack, selective time delay attack and their solutions in SDN and VANET domains. The chapter concludes by highlighting key limitations in current centralized and non-privacy-preserving defense mechanisms, and showing  the need for a decentralized and multi-layered security approach.
 \\ 
 
 Chapter 3 - Methodology:
-This chapter describes the proposed system architecture, which is designed as a four-layer framework that integrates the Data, Control, Intelligence, and Security planes. It includes eight specific attack scenarios with attack diagrams assuming both controller and data plane adversity. In addition, it includes high level functional block diagram explaining basic functions.
+This chapter presents the formal system design:
+eight attack variant signatures with mobility
+amplification analysis, dual-mode detection
+algorithms (rule engine and federated LSTM),
+a hybrid post-quantum cryptographic integrity
+pipeline, witness-based passive attack monitoring,
+a two-tier permissioned blockchain with zero-trust
+multi-controller architecture, and distributed key
+generation.
 \\
+
 Chapter 4 - Performance Evaluation and Benchmarking:
-This chapter outlines evaluation matrices and external benchmarks that should be achieved.
+This chapter defines twelve performance metrics with
+formal equations, presents thirteen ablation
+experiments that isolate each component's
+contribution, and five system-level benchmarking
+experiments against three state-of-the-art baselines
+varying attack penetration, mobility speed, network
+scale, and attack stealthiness. Full simulation
+settings are specified for reproducibility.
 \\
+
 Chapter 5 - Timeline and Resources Required:
 This chapter outlines the expected project schedule and the required resources.
 \\
+
 Chapter 6 - Conclusion:
 The final chapter summarizes the importance of the proposed framework and its benefits for the future of SDVNs.
 
@@ -3560,11 +3641,16 @@ $t_{onset}$ is the timestamp of the first
 attack-conforming packet and $t_{quarantine}$ is the
 timestamp at which \textsc{SC.Quarantine}$(v)$ is
 executed by the smart contract. Target: $L_{mit}
-\leq 100$\,ms. Compared against baseline mitigation mechanisms: SIFT's probabilistic rule
-eviction, which reports post-attack RTT recovery times, and TAP's
-Controller-Defaulter-List mechanism, which reports duplicate emergency
-packet reduction over the simulation window rather than an explicit
-mitigation-latency figure~\cite{Arsalan2018}.
+\leq 100$\,ms. Compared against baseline mitigation mechanisms:
+B1 (TAP) reports emergency packet duplication
+reduction via the Controller-Defaulter-List rather
+than an explicit quarantine-latency
+figure~\cite{Arsalan2018}; B2 (SFTO-Guard) reports
+eviction correction times under rule-count
+prediction~\cite{Tang2023SFTO}; B3 (FADE) reports no
+explicit node isolation mechanism, blocking attack
+flows via flow-rule removal
+only~\cite{Zhang2021FADE}.
 
 
 % ----------------------------------------------------------------
@@ -4917,6 +5003,15 @@ The dual-mode detection architecture parameters are established as follows:
 
 \begin{itemize}
     \item \textbf{Lightweight rule engine (OBU):} Hop-delay detection threshold $= 50$\,ms; forwarding-ratio deviation threshold $= 20$\%.
+    \item \textbf{Signature coverage:} Signatures~S1, S2-partial, S3, and S4 are evaluated
+locally at the \ac{OBU} using the mobility-adjusted
+thresholds above; Signature~S2-full and
+Signatures~S5--S8 escalate to the \ac{RSU}, since
+they require \ac{ZKP} timing ($\pi_{\text{delay}}$)
+and hop-legitimacy ($\pi_{\text{hop}}$) proof inputs
+unavailable on resource-constrained \ac{OBU}s
+(Section~\ref{sec:rule_based}).
+
      \item \textbf{Mobility baseline parameters
     $\delta_0$, $\alpha_\rho$, $\alpha_v$
     (Eq.~\ref{eq:mobility_baseline}):}
@@ -4967,7 +5062,22 @@ $p \geq 66\%$ assigns 3; $p = 100\%$ assigns all 4.
 The Federated LSTM parameters are structured as follows:
 
 \begin{itemize}
-    \item \textbf{Data collection:} Flow-level features (inter-packet delay, jitter, hop count, link-lifetime deviation) are logged from NS-3 runs across all attack variants and percentages, yielding a total of $6 \times 8 \times 5 = 240$ labeled run-instances.
+   \item \textbf{Data collection:}
+    Per-packet features
+    $[\delta_t,\, \lambda_{PI,t},\, U_{TCAM,t},\,
+    \mathbb{1}[\pi_{delay}{=}\bot],\,
+    \mathbb{1}[\pi_{hop}{=}\bot],\,
+    \rho_t,\, \bar{v}_t]$
+    (Eq.~\ref{eq:lstm_input}) logged per \ac{RSU}
+    from NS-3 runs across all attack variants and
+    percentages, yielding $6 \times 8 \times 5 = 240$
+    labelled run-instances.
+    $\mathbb{1}[\pi_{delay}{=}\bot]$ and
+    $\mathbb{1}[\pi_{hop}{=}\bot]$ are derived from
+    \ac{STARK} proof verification outcomes
+    (Eqs.~\ref{eq:stark_delay_verify},
+    \ref{eq:stark_hop_verify}) logged by the
+    cryptographic layer during each run.
     \item \textbf{Preprocessing:} Z-score normalisation is applied per RSU using benign-only (0\% attack) statistics across a sliding window of 10\,s with a 5\,s stride.
     \item \textbf{Train/validation/test split:} A 70\% / 15\% / 15\% split is enforced, partitioned by seed and stratified by attack variant and percentage.
     \item \textbf{LSTM architecture:} The model consists of 2 stacked LSTM layers (64 and 32 units respectively) followed by a fully connected sigmoid output layer.
@@ -4978,7 +5088,17 @@ The Federated LSTM parameters are structured as follows:
         \item \textit{Local epochs per FedAvg round ($E$):} $E \in \{1, 3, 5\}$ (tuned to balance local underfitting within the short 9--22\,s RSU window against weight drift).
         \item \textit{Global aggregation rounds ($R$):} $R \in \{50, 100, 150\}$, monitored via global loss convergence curves.
     \end{itemize}
-    \item \textbf{Detection threshold:} The base anomaly score threshold is set at $\geq 0.5$, with fine-tuning conducted on the validation split to strictly target $\geq$95\% precision and $\le$1\% FPR.
+    \item \textbf{LSTM detection threshold $\theta^{(k)}$ (Eq.~\ref{eq:lstm_threshold}):}
+        $z = 2.326$ ($z_{0.99}$, one-tailed Gaussian approximation~\cite{casella2002statistical}), targeting $\leq 1\%$ FPR per RSU; validated on the validation split for $\geq 95\%$ precision jointly with $\leq 1\%$ FPR. Sensitivity to the Gaussian approximation evaluated by comparing empirical FPR against the 1\% target on the held-out test set.
+    \item \textbf{BRFA-v2 trust gate and hash verification         (Algorithm~\ref{alg:brfa_v2}, Steps~1--2):} Trust gate applies $T_{min}$
+            (Eq.~\ref{eq:quarantine}) as the RSU eligibility threshold before Krum filtering; aggregation aborts if eligible RSUs $< 2f{+}1$. Hash verification confirms $H(\mathbf{W}_{local}^{(k)})$ matches the blockchain-committed hash
+            (Eq.~\ref{eq:bc_model_verify}) for each eligible RSU before the Krum step.
+            $T_{min}$ sweep: [tbd: $\{0.3, 0.5, 0.7\}$] as defined in the permissioned blockchain subsection above.
+    \item \textbf{Krum outlier rejection threshold $\gamma$ (Eq.~\ref{eq:fed_robust}):}
+        $\gamma$ \textbf{[tbd: $\{1.5,\, 2.0,\, 2.5,\,3.0\}$]} (multiples of coordinate-wise standard deviation of submitted weight updates across RSUs), selected
+        for best M8 ($\Delta_{poison}$ at $\rho_{mal} = 0.25$) on the validation split under ablation AB5 (Section~\ref{sec:ab5}).
+
+
 \end{itemize}
 
 \subsection{Hybrid cryptographic integrity layer}
@@ -5205,8 +5325,17 @@ One-time ceremony among 64 RSUs pre-simulation
             \hline
             Train/val/test split & 70\% / 15\% / 15\% (by seed, stratified by attack class \& \%) \\
             \hline
-            Detection threshold & Anomaly score $\geq 0.5$ (to be tuned for $\geq$95\% precision, $\leq$1\% FPR) \\
+            LSTM detection threshold $\theta^{(k)}$ (Eq.~\ref{eq:lstm_threshold}) &
+            $z = 2.326$ ($z_{0.99}$, one-tailed Gaussian); $\theta^{(k)} = \mu_{\mathcal{A}}^{(k)} + 2.326 \cdot \sigma_{\mathcal{A}}^{(k)}$;
+            validated for $\geq$95\% precision and $\leq$1\% FPR jointly on validation split \\            
             \hline
+              $\gamma$ (Krum outlier rejection threshold, Eq.~\ref{eq:fed_robust}) & [tbd: $\{1.5, 2.0, 2.5, 3.0\}$] multiples of coordinate-wise std.\ of weight updates;   selected for best poisoning resistance (M8) under 25\% malicious RSU fraction (AB5) \\
+            \hline
+              BRFA-v2 trust gate threshold (Step~1, Alg.~\ref{alg:brfa_v2}) &              $T_{min}$ [tbd: $\{0.3, 0.5, 0.7\}$] (shared with blockchain quarantine threshold, Eq.~\ref{eq:quarantine}); abort if eligible RSUs $< 2f{+}1$ \\
+             \hline
+              BRFA-v2 hash verification (Step~2, Alg.~\ref{alg:brfa_v2}) &              SHA3-512 hash equality check (Eq.~\ref{eq:bc_model_verify}); weights failing
+              verification excluded before Krum filtering \\
+              \hline
             Cryptographic layer & ML-DSA-87 (FIPS\,204) signatures (4,595\,B/pkt),
             HMAC-SHA3-512 lightweight mode (64\,B/pkt),
             batch verification $B$ [tbd: $\{10, 15, 20\}$\,pkts/batch];
