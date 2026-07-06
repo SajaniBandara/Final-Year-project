@@ -101,6 +101,16 @@ double   WITNESS_WINDOW     = 10.0;
 uint32_t WITNESS_F          = 1;
 double   VOL_RATE_THRESH    = 5.0;
 
+// Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
+// When set to 1, short-circuits the DKG ceremony's key generation and the
+// per-packet ML-DSA-87 sign/verify + STARK hop-proof (dkg_run_ceremony,
+// mldsa87_sign, mldsa87_verify, stark_verify_hop) so they no-op instead of
+// running real PQC operations for every node at startup and every packet/hop
+// at runtime. Useful for runs that only need TCAM/routing behavior (e.g. S3/S4
+// rate-and-capacity detection, which never reads crypto state) and don't
+// depend on crypto-derived metrics (trust score, S1/S2/S5-S8 detection).
+bool     g_disable_crypto   = false;
+
 // ── Data Structures ───────────────────────────────────────────────────────────
 
 struct NodeKeyMaterial {
@@ -241,6 +251,7 @@ inline bool mldsa87_keygen(uint32_t node_index) {
 
 inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
                           uint32_t next_hop, uint32_t seq) {
+    if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     if (signer >= (uint32_t)total_size) return false;
     if (!g_node_keys[signer].keys_generated && !mldsa87_keygen(signer)) return false;
     OQS_SIG* sig = get_oqs_ctx();
@@ -326,6 +337,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
 inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
                             uint32_t next_hop, uint32_t seq,
                             bool is_batch_call = false) {
+    if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     if (claimed_signer >= (uint32_t)total_size) return false;
     auto it = g_packet_crypto.find({claimed_signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) {
@@ -448,6 +460,7 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
 // change between send and receive. Using the signed_next_hop eliminates
 // false positives from routing churn while still catching misdirected packets.
 inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt_id) {
+    if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     auto it = g_packet_crypto.find({signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
         return true;  // no signing record — can't verify, assume valid
@@ -1006,6 +1019,11 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
     cmd.AddValue("vol_rate_thresh",    "Volume rate threshold ε_vol (pkt/s)", VOL_RATE_THRESH);
+    cmd.AddValue("disable_crypto",     "Disable DKG keygen + ML-DSA-87 sign/verify + STARK hop-proof "
+                                       "(0=crypto ON [default], 1=crypto OFF). Speeds up runs that don't "
+                                       "need crypto-derived metrics (trust score, S1/S2/S5-S8 detection) -- "
+                                       "S3/S4 TCAM detection is unaffected either way since it never reads "
+                                       "crypto state.", g_disable_crypto);
 
     // LRAD detection-active CLI overrides (ablation: disable individual
     // signatures without recompiling — e.g. --attack_number=5 --s5_detection_active=0

@@ -3,6 +3,13 @@
 
 inline void dkg_run_ceremony() {
     if (g_dkg.ceremony_done) return;
+    if (g_disable_crypto) {
+        // Crypto disabled via --disable_crypto: skip real PQC keygen entirely.
+        g_dkg.ceremony_done = true;
+        g_dkg.last_rotation = ns3::Simulator::Now().GetSeconds();
+        std::cout << "[DKG] Ceremony SKIPPED (--disable_crypto=1) -- no PQC keys generated\n";
+        return;
+    }
 
     // Phase 1: Real ML-DSA-87 keypairs for all RSUs + commitments Com_j = SHA3-512(pk_j)
     for (uint32_t r = 0; r < N_RSUs; ++r) {
@@ -71,6 +78,7 @@ inline void dkg_run_ceremony() {
 
 // Triggered by eq:key_rotation_trigger when T_{r_j} < T_min
 inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index) {
+    if (g_disable_crypto) return; // crypto disabled via --disable_crypto -- no keys to rotate
     std::vector<uint8_t> combined;
     uint32_t rekeyed = 0;
     for (uint32_t r = 0; r < N_RSUs; ++r) {
