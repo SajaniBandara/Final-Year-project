@@ -143,10 +143,25 @@ the current per-event-reset design is fundamentally incompatible with concurrent
 
 ---
 
-## Medium: M11 (UFCR) injection pollutes M7's `rsu_chain_len` when endorsement is disabled
+## Medium: M11 (UFCR) injection pollutes M7's `rsu_chain_len` when endorsement is disabled — FIXED (2026-07-07)
 
 **Severity: Medium. Introduced this session (M11 implementation). Cross-metric contamination, not a
 standalone correctness bug in M11 itself.**
+
+**Fix applied:** `ufcr_attempt_unauthorized_flowmod()` now records `g_rsu_commit_hashes.size()`
+immediately before calling `bc_commit_flowmod()`, and if the call succeeded *and* actually grew the
+chain, pops that one entry back off:
+```cpp
+size_t chain_len_before = g_rsu_commit_hashes.size();
+bool committed = bc_commit_flowmod(fake_e);
+if (committed && g_rsu_commit_hashes.size() > chain_len_before)
+    g_rsu_commit_hashes.pop_back();
+```
+This surgically undoes only the side effect of the synthetic injection, without touching
+`bc_commit_flowmod()` itself — the legitimate per-cycle FlowMod path (`transmit_delta_values()`) is
+completely unaffected, since it's a separate call site with its own (real) `FlowModEndorsement`.
+`rsu_chain_len` now reflects only genuine FlowMod traffic in both AB8-A and AB8-B runs, making M7
+comparable across both endorsement configurations. **Build verification pending.**
 
 `ufcr_attempt_unauthorized_flowmod()` calls `bc_commit_flowmod(fake_e)` once per second while a
 control-plane variant is active. When `enable_endorsement_requirement=false` (AB8-A), this call
@@ -170,10 +185,17 @@ commits in a separate counter (`g_ufcr_injected_commits`) and either exclude the
 
 ---
 
-## Low: `fed_aggregator.py` Krum filter rejects a lone eligible RSU (boundary edge case)
+## Low: `fed_aggregator.py` Krum filter rejects a lone eligible RSU (boundary edge case) — FIXED (2026-07-07)
 
 **Severity: Low. Introduced this session (M8 implementation). Only manifests at very small RSU
 counts (K≤2 after trust-gating), never triggered by the proposal's actual 64-RSU configuration.**
+
+**Fix applied:** `krum_filter()` now guards `len(flat_weights) < 2` at the top and auto-accepts the
+sole candidate (mask=`[True]`) rather than computing a degenerate `gamma=0` threshold that would
+reject it. Krum's geometric-outlier test is mathematically undefined with fewer than 2 points — there
+is nothing to compare a single model against — so auto-accepting is the correct behavior, not a
+weakening of the filter. **Syntax-checked; end-to-end pipeline run still pending** (same as the rest
+of M8).
 
 `krum_filter()` computes `gamma = median(dists) + gamma_factor * dists.std()`. If exactly one RSU
 survives the trust gate (Step 1) and is passed into `krum_filter()` alone, its distance to "the
@@ -248,16 +270,19 @@ columns was raised and not pursued — noted here for visibility, not re-propose
 |---|---|---|---|
 | TVR counters never incremented — metric always reports 0% | **Critical** | Pre-existing, before this session | ✅ **Fixed 2026-07-07** (build pending) |
 | M5 `g_failover_max_ms` reset race on overlapping controller revocations | **High** | This session (M5 implementation) | ✅ **Fixed 2026-07-07** (build pending) |
-| M11 injector inflates M7's `rsu_chain_len` under AB8-A + CP attacks | **Medium** | This session (M11 implementation) | Documented; fix optional, not applied |
-| Krum filter rejects a lone surviving RSU (small-K edge case) | **Low** | This session (M8 implementation) | Documented; fix optional, not applied |
+| M11 injector inflates M7's `rsu_chain_len` under AB8-A + CP attacks | **Medium** | This session (M11 implementation) | ✅ **Fixed 2026-07-07** (build pending) |
+| Krum filter rejects a lone surviving RSU (small-K edge case) | **Low** | This session (M8 implementation) | ✅ **Fixed 2026-07-07** (syntax-checked) |
 | Extra CSV columns (PDR, TCAM) outside the 12-metric list | **Informational** | Pre-existing | No action required |
 
-**Net assessment:** of the 12 metrics, 11 had correct core logic; the one critical finding (TVR) meant
-M2 was producing zero usable data despite appearing "implemented" in the CSV. **Both the Critical
-(TVR) and High (M5) findings have been fixed** — pending a `./waf build` confirmation from the user.
-The two remaining items (Medium: M11/M7 cross-contamination, Low: Krum single-RSU edge case) are
-documented but not fixed, since both are low-impact under the proposal's actual configuration
-(64 RSUs) and were left as optional follow-ups rather than urgent corrections.
+**Net assessment: all four code-level findings from this audit have been fixed.** Nothing identified
+in this pass remains open at the code level. The one item deliberately left unaddressed —
+`T_ref(t)` distributed-time anchoring for M2/M6 (they currently use `Simulator::Now().GetSeconds()`
+directly instead of the codebase's own existing `Now().GetSeconds() - g_T_ref` convention, already
+used elsewhere for LRAD-OBU's delay computation) — is a design-scope question, not a bug: it's a
+genuine equation-fidelity gap versus eq:delay_updated, well-defined and fixable using the exact
+pattern already established in the code, but changes what "delay" means for two metrics at once and
+was not part of what was asked to be fixed this round. Flagged here explicitly in case full
+equation-for-equation fidelity is wanted next.
 
 **Verification commands (after `./waf build` succeeds):**
 ```bash

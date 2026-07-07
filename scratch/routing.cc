@@ -117207,7 +117207,15 @@ void ufcr_attempt_unauthorized_flowmod()
     if (is_cp_variant)
     {
         FlowModEndorsement fake_e; // deliberately zero endorsers — always < f+1
+        size_t chain_len_before = g_rsu_commit_hashes.size();
         bool committed = bc_commit_flowmod(fake_e);
+        // This synthetic attempt must not pollute M7's rsu_chain_len: on a
+        // successful (AB8-A, unauthorized-bypass) commit, bc_commit_flowmod()
+        // pushes a hash onto the shared g_rsu_commit_hashes chain as a side
+        // effect. Undo exactly that push — UFCR only needs the block/allow
+        // outcome, not a chain entry (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
+        if (committed && g_rsu_commit_hashes.size() > chain_len_before)
+            g_rsu_commit_hashes.pop_back();
         g_ufcr_unauth_total++;
         if (!committed) g_ufcr_blocked++;
         if (CRYPTO_DEBUG_LOG)

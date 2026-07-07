@@ -148,7 +148,20 @@ def krum_filter(flat_weights: list[np.ndarray], n_samples: list[int],
     Step 3 (alg:brfa_v2, eq:fed_robust): filter models whose distance to
     coordinate-wise median exceeds gamma = median(d) + gamma_factor * std(d).
     Returns boolean mask of accepted models.
+
+    With fewer than 2 candidates, "distance to the median" is trivially 0
+    for the sole candidate, making gamma = 0 and the strict "<" comparison
+    reject it outright — Krum's geometric-outlier test is undefined with a
+    single point (there is nothing to compare it against). Auto-accept in
+    that case rather than let a lone honest RSU's own model be spuriously
+    rejected by its own filter (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
     """
+    if len(flat_weights) < 2:
+        print(f"  BRFA-v2: {len(flat_weights)} eligible RSU(s) after trust/hash gate — "
+              f"Krum distance filter is undefined with <2 candidates, auto-accepting.")
+        mask = np.ones(len(flat_weights), dtype=bool)
+        return mask, (flat_weights[0] if flat_weights else None)
+
     W = np.stack(flat_weights)                   # (K, D)
     W_tilde = np.median(W, axis=0)               # coordinate-wise median
     dists = np.array([np.linalg.norm(w - W_tilde) for w in flat_weights])
