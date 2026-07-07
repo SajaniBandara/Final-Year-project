@@ -7,6 +7,8 @@ Architecture (§Simulation settings):
   Score   : A_t = ||x_t − x̂_t||²₂    (eq:anomaly_score, per time-step mean)
 """
 
+import hashlib
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -74,3 +76,9 @@ class LSTMAutoencoder(nn.Module):
 def build_model(device: str = "cuda") -> LSTMAutoencoder:
     model = LSTMAutoencoder()
     return model.to(device if torch.cuda.is_available() else "cpu")
+
+
+def compute_weights_hash(state_dict: dict) -> str:
+    """SHA3-512 of flattened weights — BRFA-v2 SC.CommitModelHash / SC.VerifyModelHash (eq:bc_model_verify)."""
+    flat = np.concatenate([v.detach().cpu().numpy().ravel() for v in state_dict.values()])
+    return hashlib.sha3_512(flat.tobytes()).hexdigest()
