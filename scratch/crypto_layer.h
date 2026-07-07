@@ -778,9 +778,22 @@ inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
         return;
     }
     // t_revoke — SC.Revoke has just fired (eq:sc_revoke); the ControllerRevoked
-    // event broadcast starts now. Per-event max resets for eq:l_failover.
+    // event broadcast starts now.
+    //
+    // g_failover_max_ms is a MONOTONIC running max across the whole simulation
+    // (never reset here) — deliberately NOT reset per-event. An earlier version
+    // reset it to 0.0 on every call, which is race-prone whenever two
+    // revocations overlap in time (realistic under the proposal's "2
+    // compromised controllers" scenario, since the default broadcast
+    // completion delay is only ~10-15ms): a second revocation's reset could
+    // discard an in-flight first revocation's already-recorded latency, and
+    // the first revocation's still-pending completions would then update a
+    // max that was reset for an unrelated event, mixing two events' latencies
+    // together. Reporting the worst L_failover observed by ANY revocation
+    // event so far in the run avoids the race entirely and still answers the
+    // proposal's target-bound question (does L_failover stay <= 100ms across
+    // every event). See docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md.
     double t_revoke = ns3::Simulator::Now().GetSeconds();
-    g_failover_max_ms = 0.0;
     ++g_failover_events;
     uint32_t zone_size = N_RSUs / N_Controllers;
     uint32_t affected = 0;

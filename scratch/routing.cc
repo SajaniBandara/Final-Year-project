@@ -121237,6 +121237,22 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
 					bool timing_ok = (t_fwd_claimed > 0.0) &&
 					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
+
+					// M2 (TVR, eq:tvr) — safety-critical packet delay vs Δ_max, at RSU
+					// receive points. Reuses the same t_fwd_claimed/S2_DELTA_MAX check as
+					// S2's timing_ok above; runs regardless of sig_ok since TVR measures
+					// delay, not signature validity. Only counts hops where a claimed
+					// forward timestamp exists (t_fwd_claimed > 0) — "never forwarded ->
+					// δ_p=∞" (eq:nfwd_detect) is a separate, still-open enhancement
+					// (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
+					if (is_safety_critical_flow[fid] &&
+					    current_hop >= (uint32_t)N_Vehicles &&
+					    current_hop <  (uint32_t)(N_Vehicles + N_RSUs) &&
+					    t_fwd_claimed > 0.0) {
+						g_tvr_crit_total++;
+						if (!timing_ok) g_tvr_violated++;
+					}
+
 					// Only update STARK meta for the intended recipient.
 					// Broadcast MAC causes all nearby nodes to call MacRx; mldsa87_verify
 					// already returns false for overheard packets (wrong next_hop in digest),
