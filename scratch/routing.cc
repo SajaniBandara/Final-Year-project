@@ -116860,10 +116860,18 @@ void calculate_average_latency_routing()
 			double   _dst_offset = node_clock_offset(_l_e2e_dst);
 			for (uint32_t i=1; i<f_size+1;i++)
 			{
-				if (routing_packet_final_timestamp[fid][i] > routing_packet_initial_timestamp[fid][i])
+				// Anchor BEFORE the delivery guard, not after: comparing raw
+				// (unanchored) timestamps here risks a false negative under
+				// M9's Byzantine-clock scenario — a large destination offset
+				// relative to a small real delay could make a genuinely
+				// delivered packet's raw final timestamp appear <= its raw
+				// initial timestamp, silently dropping it from
+				// delivered_packet_counter/total_latency (see
+				// docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
+				double _t_send_anchored = routing_packet_initial_timestamp[fid][i] - _src_offset;
+				double _t_recv_anchored = routing_packet_final_timestamp[fid][i]   - _dst_offset;
+				if (_t_recv_anchored > _t_send_anchored)
 				{
-					double _t_send_anchored = routing_packet_initial_timestamp[fid][i] - _src_offset;
-					double _t_recv_anchored = routing_packet_final_timestamp[fid][i]   - _dst_offset;
 					packet_delay_routing[fid][i] = _t_recv_anchored - _t_send_anchored;
 					delivered_packet_counter++;
 					//cout<<"Flow id "<<fid<<" packet "<<i<<"latency is "<<1000.0*packet_delay_routing[fid][i]<<" ms"<<endl;

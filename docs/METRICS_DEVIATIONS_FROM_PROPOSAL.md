@@ -253,6 +253,50 @@ toolchain (`go build`, no local Go available in this session) and `test_syntheti
 test-network; bridge JS changes are syntax-checked clean (`node --check`). All pending user
 verification on the appropriate hosts.
 
+### Follow-up re-audit of this feature — three bugs found and fixed (2026-07-07)
+
+Immediately after implementing the above, a second pass specifically hunting for other consumers of
+the now-changed `t_claimed_packet`/`routing_packet_*_timestamp` arrays found three real gaps the
+initial implementation missed:
+
+1. **`s2_detect_packet()` (`s2_detection.h`) was missing the anchoring correction entirely.** This is
+   MOBIGUARD's *actual* S2 signature detector — the one that drives `record_detection_event()` for
+   M1's real confusion matrix — not the duplicate inline timing check in `routing.cc`'s MacRx block
+   that was fixed first. It read `t_claimed_packet[sender][id]` (now storing `node_local_time()`,
+   i.e. potentially inflated by the sender's own offset) and computed
+   `hop_delay = t_recv_now - t_fwd_by_sender` with no correction — meaning a Byzantine-compromised
+   sender's inflated claim would make MOBIGUARD's *own* S2 detector *more* evadable under M9's clock
+   scenario, the opposite of what eq:delay_updated is supposed to achieve. **Fixed** by anchoring
+   `t_fwd_by_sender` via `node_clock_offset(sender_sim_index)` before computing `hop_delay`, mirroring
+   the correction already applied to the other call site.
+
+2. **The STARK proof check immediately below it used the unanchored value**, creating an internal
+   inconsistency: `delay_exceeds` (conjunct 1) would use the corrected delay per item 1's fix, but
+   `stark_prove_timing`/`stark_verify_timing` (conjunct 2) would independently re-derive their own
+   pass/fail from the *uncorrected* interval — meaning the two conjuncts of S2's AND condition could
+   disagree under a compromised clock, potentially suppressing S2 detection even when the anchored
+   delay correctly identified a violation. **Fixed** by passing the same anchored timestamp to both
+   STARK calls.
+
+3. **M6 (L_e2e)'s delivery guard in `calculate_average_latency_routing()` compared *raw* (unanchored)
+   timestamps** (`final > initial`) before computing the anchored delay inside the `if` block. Under
+   M9's scenario, a large destination-RSU offset relative to a small real one-hop delay could make a
+   genuinely-delivered packet's raw final timestamp appear ≤ its raw initial timestamp, silently
+   dropping it from `delivered_packet_counter`/`total_latency` — a false negative in the delivery
+   check itself, not just an imprecise delay value. **Fixed** by computing the anchored send/receive
+   times *before* the guard and comparing those instead.
+
+**Deliberately left unfixed (out of scope, not one of the 12 metrics):** `calculate_average_packet_delivery_ratio_routing()`'s
+own delivery check (PDR) has the *same* raw-comparison pattern as item 3 and is subject to the same
+theoretical false-negative risk under M9's scenario. PDR is not one of the proposal's 12 official
+metrics (see the "Non-conformance note" below — it's a pre-revision metric superseded by UCR), so
+this was not fixed to avoid expanding scope into a metric outside main.tex §4.6's list. Flagged here
+for completeness in case PDR is used for any other purpose later.
+
+**Lesson for future changes to shared timestamp arrays:** any array feeding more than one metric or
+detector needs an exhaustive consumer search (not just "fix the call site you were looking at") —
+this is exactly the kind of gap a targeted fix can introduce while looking correct in isolation.
+
 ---
 
 ## Confirmed correct (no deviation found) — re-verified this session

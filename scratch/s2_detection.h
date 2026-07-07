@@ -75,15 +75,28 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     double t_fwd_by_sender = t_claimed_packet[sender_sim_index][packet_id];
     if (t_fwd_by_sender <= 0.0) return false;
 
-    double hop_delay = t_recv_now - t_fwd_by_sender;
+    // eq:delay_updated — t_fwd_by_sender is the sender's own (possibly
+    // Byzantine-compromised) clock reading (node_local_time(), M9
+    // TIME_REF_F_BAD/TIME_REF_DELTA_ATTACK); anchor it using the sender's
+    // known offset before computing the hop delay, so a compromised sender
+    // cannot inflate its own claim to hide a real delay from THIS signature's
+    // own detection decision (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md —
+    // this correction was originally missed here, fixed on re-audit).
+    double t_fwd_anchored = t_fwd_by_sender - node_clock_offset(sender_sim_index);
+    double hop_delay = t_recv_now - t_fwd_anchored;
 
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
     bool delay_exceeds = (hop_delay > S2_DELTA_MAX);
 
     // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥  (eq:stark_delay_verify)
-    StarkTimingProof proof = stark_prove_timing(t_fwd_by_sender, t_recv_now,
+    // Must use the same anchored timestamp as hop_delay above — otherwise a
+    // compromised sender's offset would make delay_exceeds and zkp_proof_fails
+    // disagree (STARK's own internal threshold re-check would see the raw,
+    // deceptively-small interval and could pass even when the anchored
+    // hop_delay correctly flags a violation), silently suppressing S2.
+    StarkTimingProof proof = stark_prove_timing(t_fwd_anchored, t_recv_now,
                                                 (uint32_t)packet_id);
-    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_by_sender, t_recv_now);
+    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_anchored, t_recv_now);
 
     cout << "[S2] sender=" << sender_sim_index
          << " receiver=" << current_hop
