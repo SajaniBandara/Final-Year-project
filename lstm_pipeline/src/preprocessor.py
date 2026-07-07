@@ -25,7 +25,7 @@ VAL_SEEDS   = {4}
 TEST_SEEDS  = {5}
 
 BASE = Path(os.environ.get("HOME", "/home/sdvn_hidden_attacks")) / \
-       "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+       "ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"
 REPO = Path(__file__).resolve().parents[2]
 OUT  = REPO / "lstm_pipeline" / "preprocessed"
 
