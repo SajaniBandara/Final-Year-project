@@ -117348,7 +117348,8 @@ void write_security_metrics_csv()
 			 << " d_obu_count, d_rsu_count, escalation_count,"
 			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned,"
 			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg,"
-			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall\n";
+			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
+			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117431,6 +117432,9 @@ void write_security_metrics_csv()
 		 << ", " << g_witness_FN_W
 		 << ", " << (current_WAP_precision * 100.0)
 		 << ", " << (current_WAP_recall * 100.0)
+		 << ", " << g_eps_ref
+		 << ", " << (g_eps_ref_samples ? g_eps_ref_cumulative / (double)g_eps_ref_samples : 0.0)
+		 << ", " << TIME_REF_F_BAD
 		 << "\n";
 
 	fout.close();

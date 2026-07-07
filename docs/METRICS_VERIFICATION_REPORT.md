@@ -9,9 +9,10 @@
 **Original finding (2026-07-06):** Eight of twelve performance metrics specified in the proposal were
 unimplemented or partially implemented.
 
-**Current status:** 7 of 12 metrics are now fully implemented and CSV-exported:
-- **✅ Implemented:** M1 (MCC, no mode stratification), M2 (TVR), M3 (UCR), M4 (Mitigation Latency),
-  M5 (Controller Failover Latency), M6 (L_e2e), M7 (Security/Consensus Overhead), M12 (WAP-R)
+**Current status:** 8 of 12 metrics are now fully implemented and CSV-exported:
+- **✅ Implemented:** M1 (MCC, including per-mode stratification via AB1-A/B/C run recipe — no new
+  code needed), M2 (TVR), M3 (UCR), M4 (Mitigation Latency), M5 (Controller Failover Latency),
+  M6 (L_e2e), M7 (Security/Consensus Overhead), M12 (WAP-R)
 - **✗ Still missing (needs new subsystems, not wiring):** M8 (Byzantine-robust LSTM aggregation),
   M9 (distributed time-reference robustness under clock attacks), M11 (control-plane FlowMod
   authorization/UFCR)
@@ -41,9 +42,9 @@ variant, sweep dimension encoded in filename).
 | **CSV export** | MCC, per-variant MCC, per-mode MCC, FPR written per cycle | ⚠ Partial | routing.cc:117329-117334 | **Only selected_variant written to CSV** (line 117233: `int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;`). All 8 variants computed in-memory (sec_TP[0..7], current_MCC[0..7], current_detection_rate[0..7], current_FPR[0..7]) but only one variant's data serialized. **7 variants' metrics discarded per cycle.** No mode stratification in CSV output |
 
 **Deviations:**
-- **CRITICAL:** All eight variants' metrics are computed correctly in memory every simulation cycle, but CSV writer (line 117233) selects only `selected_variant` and writes its confusion matrix and derived metrics to CSV. This means if you run with `active_attack_variant=0`, you get metrics for S1 only; metrics for S2–S8 are computed and thrown away. **This makes it impossible to extract per-variant MCC/DR/FPR from CSV output without modifying the writer.**
-- **HIGH:** No OBU/RSU mode stratification. Proposal calls for `MCC_{s,m}` where m ∈ {OBU, RSU}, but the code merges both modes' detections into single TP/FP/TN/FN before MCC computation.
-- **HIGH:** No mobility-stratified MCC (requires post-processing of simulation logs with vehicle density/speed bins; not computed at runtime).
+- ~~**CRITICAL:** All eight variants'... **This makes it impossible to extract per-variant MCC/DR/FPR from CSV output without modifying the writer.**~~ — **RESOLVED, NOT A BUG.** See Critical Cross-Metric Issue #1: single-variant export is the correct, proposal-specified design (separate simulation runs per variant).
+- ~~**HIGH:** No OBU/RSU mode stratification...~~ — **RESOLVED, NO CODE NEEDED (2026-07-07).** See Critical Cross-Metric Issue #4: each signature is evaluated by exactly one mode by design; per-mode MCC is obtained via the existing `enable_lrad_obu`/`enable_lrad_rsu` flags across 3 separate runs (AB1-A/B/C), not new instrumentation.
+- **HIGH (still open):** No mobility-stratified MCC (requires post-processing of simulation logs with vehicle density/speed bins; not computed at runtime).
 
 ---
 
@@ -265,7 +266,7 @@ comparison and metric computation, which is now wired end-to-end.
 
 | Metric | Proposal | Code | CSV | Ablation | Notes |
 |--------|----------|------|-----|----------|-------|
-| **M1 (MCC)** | ✓ Eq. mcc | ✓ routing.cc:117075 | ✓ Single variant (by design) | ✓ (partial) | Per-variant via separate runs → separate files (proposal + reference idiom); NOT a bug |
+| **M1 (MCC)** | ✓ Eq. mcc | ✓ routing.cc:117075 | ✓ Single variant (by design) | ✓ AB1-ready | Per-variant AND per-mode via separate runs (proposal + reference idiom); mode stratification needs zero new code — see Critical Issue #4 |
 | **M2 (TVR)** | ✓ Eq. tvr | ✓ routing.cc:117158 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; no T_ref normalization (open) |
 | **M3 (UCR)** | ✓ Eq. ucr | ✓ routing.cc:117186 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; aggregate only (per-variant via separate runs) |
 | **M4 (L_mit)** | ✓ Eq. l_mit | ✅ Wired (verified 2026-07-07) | ✓ Written | — | t_quarantine set via record_detection_event() + trust_update_negative(); see Tier 2 item 6 |
@@ -388,29 +389,50 @@ single natural chokepoint, all defaulting `true` (full proposed behavior), all r
   (never merged to A26); the Phase 3 spec was recovered via `git show A25:docs/...`.
 - Build verified clean (waf, 2026-07-07).
 
-### 4. **No Per-Mode Stratification (affects M1)**
+### 4. **No Per-Mode Stratification (affects M1) — RESOLVED: NO CODE NEEDED (2026-07-07)**
 
-**Problem:** M1 (MCC) requires per-mode scores (`MCC_{s,m}` where m ∈ {OBU, RSU}), but code merges both modes.
+**Original problem:** M1 (MCC) requires per-mode scores (`MCC_{s,m}` where m ∈ {OBU, RSU}), and it was
+assumed the code merges both modes' detections into one confusion matrix, requiring new per-packet
+detection-source tracking to separate them.
 
-```cpp
-// Code computes TP/FP/TN/FN by merging OBU and RSU detections
-for (int n = 0; n < active_topology_nodes; n++) {
-    bool malicious = is_malicious_node[v][n];
-    bool detected  = is_detected_node[v][n];  // Could be from OBU or RSU
-    if (malicious  && detected)  sec_TP[v]++;
-    // ...
-}
+**Investigation (2026-07-07):** Traced every `record_detection_event(v, n)` call site to see which
+mode actually drives each variant's `is_detected_node[v][n]`:
+
+| Variant | Detector | Called from | Mode |
+|---|---|---|---|
+| S1 (v=0) | `s1_detect_packet()` | `lrad_obu()` only | OBU-only |
+| S2 (v=1) | `s2_detect_packet()` | `lrad_rsu()` only | RSU-only |
+| S3/S4 (v=2,3) | TCAM checks | cycle-level (`ComputeTcamDetection()`), OBU-intended | OBU-only |
+| S5–S8 (v=4..7) | `s5_detect()`…`s8_detect()` | `lrad_rsu()` only | RSU-only |
+
+**Finding:** each variant is evaluated by **exactly one mode, never both** — there is no per-packet
+ambiguity for the current architecture to disambiguate, and therefore nothing being "merged." The
+assumption in the original report was incorrect.
+
+**What the proposal actually means by "per-mode MCC":** main.tex:4166 lists "M1 (per-variant,
+per-mode MCC)" as the y-metric for **AB1** (Dual-Mode Detection Architecture), whose three configs are:
+- **AB1-A (Rule-only):** OBU evaluates locally; no escalation to RSU; no LSTM inference
+- **AB1-B (LSTM-only):** OBU disabled; all packets forwarded directly to RSU
+- **AB1-C (Full dual-mode):** both active (today's default)
+
+So `MCC_{s,OBU}` and `MCC_{s,RSU}` are not two matrices computed *simultaneously within one run* —
+they are the per-variant MCC measured from **two separate ablation runs**, using the
+`enable_lrad_obu`/`enable_lrad_rsu` flags already implemented (Critical Issue #3, AB1 row). Verified
+both gates behave correctly for this: disabling one does not affect the other's independent
+per-packet call site (`lrad.h:271` for `enable_lrad_rsu`, `lrad.h:421` for `enable_lrad_obu`).
+
+**Resolution — no code change required.** Per-mode MCC is obtained via:
 ```
-
-**Impact:**
-- Proposal calls for separate OBU-mode and RSU-mode MCC curves (Tables 5.1–5.5 show "MOBIGUARD-OBU" and "MOBIGUARD-RSU" per variant)
-- Current code produces single aggregate MCC per variant
-- Cannot evaluate whether OBU detection is weaker than RSU (which proposal expects: OBU handles S1–S4, RSU handles S2f/S5–S8)
-
-**Fix required:**
-- Track detection source (OBU vs RSU) for each packet
-- Compute separate confusion matrices per mode per variant
-- Export separate M1_OBU[v] and M1_RSU[v] columns to CSV
+Run 1 (AB1-A): --enable_lrad_obu=true  --enable_lrad_rsu=false  → MCC_{s,OBU}  (meaningful for S1,S3,S4)
+Run 2 (AB1-B): --enable_lrad_obu=false --enable_lrad_rsu=true   → MCC_{s,RSU}  (meaningful for S2,S5-S8)
+Run 3 (AB1-C): --enable_lrad_obu=true  --enable_lrad_rsu=true   → MCC_{s,dual} (default; = current_MCC[v] today)
+```
+This mirrors exactly how Critical Issue #1 (single-variant CSV) was resolved: the proposal wants
+separate runs with the sweep dimension encoded in configuration/filename, not one run computing
+everything at once. For variants where a given mode never fires (e.g., `MCC_{S1,RSU}` — RSU never
+attempts S1), the resulting confusion matrix is trivially all-negative and should be reported as
+not-applicable for that (s,m) pair, consistent with the fixed one-mode-per-signature design of
+Algorithms LRAD-OBU/LRAD-RSU.
 
 ---
 
@@ -507,9 +529,14 @@ for (int n = 0; n < active_topology_nodes; n++) {
    - **Completed:** 2026-07-07. See M12 section above for full implementation notes (one-shot
      per-node TP_W/FP_W counters, FN_W snapshot, 5 new CSV columns). Build verified clean (waf).
 
-8. **Add M1 mode stratification** — Separate OBU vs RSU confusion matrices
-   - **Effort:** 2 hours (track detection source per packet)
+8. ✅ **DONE — Add M1 mode stratification** — Separate OBU vs RSU confusion matrices
+   - **Effort:** 2 hours estimated → **0 hours actual** (no code needed)
    - **Impact:** Enables per-mode MCC curves (validation that dual-mode works)
+   - **Completed:** 2026-07-07. Investigation found each signature (S1-S8) is evaluated by exactly
+     one mode by construction — nothing is merged. "Per-mode MCC" in the proposal refers to AB1's
+     three run configurations (AB1-A OBU-only, AB1-B RSU-only, AB1-C dual), not simultaneous
+     per-packet tracking within one run. Achieved entirely via the `enable_lrad_obu`/
+     `enable_lrad_rsu` flags already implemented in Step 4. See Critical Issue #4 above.
 
 9. **Implement M9 time-reference evaluation** — Clock offset injection and deviation measurement
    - **Effort:** 4 hours (Byzantine clock attack simulation)
@@ -536,12 +563,11 @@ for (int n = 0; n < active_topology_nodes; n++) {
 |----------|-------|---------|-------|
 | **Critical (open)** | 2 | M8, M11 | Completely unimplemented (Byzantine LSTM poisoning; control-plane UFCR) |
 | **High (open)** | 1 | M9 | update_T_ref() exists as stub; no clock-offset/deviation evaluation |
-| **Medium (open)** | 1 | M1 | No OBU/RSU mode stratification (single merged confusion matrix per variant) |
 | **Low (open)** | 1 | M10 | Architectural evaluation only — acceptable as literature citation, no code needed |
-| **Resolved** | 7 | M2, M3, M4, M5, M6\*, M7, M12 | Fixed 2026-07-06/07 (Steps 1, 3–7 below); M6 T_ref normalization still open but base metric works |
+| **Resolved** | 8 | M1, M2, M3, M4, M5, M6\*, M7, M12 | Fixed 2026-07-07 (M1 needed no code — see Critical Issue #4); rest fixed 2026-07-06/07; M6 T_ref normalization still open but base metric works |
 
-**Progress:** 7 of 12 metrics fully resolved; 4 remain open (M1 partial-but-usable, M8/M9/M11 need
-new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/12 to 4/12.
+**Progress:** 8 of 12 metrics fully resolved; 3 remain open (M8/M9/M11 need new subsystems, M10 is a
+documentation task). Coverage gap narrowed from 8/12 to 3/12.
 
 ---
 
@@ -562,8 +588,8 @@ new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/12 to
 **The proposal specifies 12 comprehensive metrics across detection quality (M1), attack-specific
 containment (M2–M3), operational latency (M4–M6), security overhead (M7), Byzantine robustness
 (M8–M9), privacy (M10), control-plane defense (M11), and witness mechanisms (M12). As of 2026-07-07,
-M2, M3, M4, M5, M6, M7, and M12 are implemented and exporting to CSV; M1 works but lacks OBU/RSU
-mode stratification.**
+M1, M2, M3, M4, M5, M6, M7, and M12 are implemented and exporting to CSV, including M1's per-mode
+(OBU/RSU) stratification via the existing AB1 ablation flags.**
 
 **Remaining gap: M8 (Byzantine-robust federated LSTM aggregation), M9 (distributed time-reference
 robustness under clock attacks), and M11 (control-plane FlowMod authorization/UFCR) require new

@@ -250,6 +250,20 @@ uint64_t g_m7_consensus_count     = 0;   // number of FlowMod consensus rounds
 
 double g_T_ref = 0.0, g_T_ref_last_sync = 0.0;
 
+// M9 — eq:eps_ref / eq:time_consensus instrumentation [Ablation only].
+// T_ref(t) is the coordinate-wise median across N_RSUs simulated RSU clocks.
+// The first TIME_REF_F_BAD RSUs (by index) have their clock offset by a fixed
+// TIME_REF_DELTA_ATTACK seconds, modeling f_bad Byzantine-compromised clocks;
+// the rest read true simulator time. eps_ref = |T_ref(t) - T_ground(t)| is
+// recomputed on every sync tick, where T_ground(t) is the simulator's own
+// clock (always available/authoritative in ns-3). Default f_bad=0 reproduces
+// the original all-honest stub exactly (eps_ref ≡ 0).
+uint32_t TIME_REF_F_BAD          = 0;    // number of compromised RSU clocks (CLI sweep var)
+double   TIME_REF_DELTA_ATTACK   = 0.5;  // fixed attack offset (s) injected into compromised RSUs
+double   g_eps_ref               = 0.0;  // |T_ref - T_ground| at most recent sync tick
+double   g_eps_ref_cumulative    = 0.0;
+uint32_t g_eps_ref_samples       = 0;
+
 std::map<uint32_t, std::vector<WitnessLogEntry>> g_witness_log;
 std::map<uint32_t, std::vector<WitnessAlert>>    g_witness_alert_pool;
 std::map<uint64_t, std::pair<uint32_t,double>>   g_msg_id_seen;
@@ -804,16 +818,29 @@ inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
 // ── Distributed Time Reference — eq:time_consensus ───────────────────────────
 
 inline void update_T_ref() {
+    double t_ground = ns3::Simulator::Now().GetSeconds(); // eq:eps_ref T_ground(t)
     std::vector<double> times;
     times.reserve(N_RSUs);
-    for (uint32_t r = 0; r < N_RSUs; ++r)
-        times.push_back(ns3::Simulator::Now().GetSeconds());
+    for (uint32_t r = 0; r < N_RSUs; ++r) {
+        // M9: first TIME_REF_F_BAD RSU clocks are Byzantine-compromised,
+        // offset by a fixed TIME_REF_DELTA_ATTACK seconds (eq:eps_ref sweep).
+        double offset = (r < TIME_REF_F_BAD) ? TIME_REF_DELTA_ATTACK : 0.0;
+        times.push_back(t_ground + offset);
+    }
     std::sort(times.begin(), times.end());
     g_T_ref           = times[times.size() / 2];
-    g_T_ref_last_sync = ns3::Simulator::Now().GetSeconds();
+    g_T_ref_last_sync = t_ground;
+
+    // M9 — eq:eps_ref: deviation of the consensus median from ground truth.
+    g_eps_ref = (g_T_ref > t_ground) ? (g_T_ref - t_ground) : (t_ground - g_T_ref);
+    g_eps_ref_cumulative += g_eps_ref;
+    ++g_eps_ref_samples;
+
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[T-REF] Distributed time synced T_ref=" << g_T_ref
-                  << " from " << N_RSUs << " RSUs t=" << g_T_ref_last_sync << "\n";
+                  << " from " << N_RSUs << " RSUs (f_bad=" << TIME_REF_F_BAD
+                  << ", delta_attack=" << TIME_REF_DELTA_ATTACK << "s)"
+                  << " eps_ref=" << g_eps_ref << "s t=" << g_T_ref_last_sync << "\n";
 }
 
 inline void update_T_ref_recurring() {
@@ -1153,6 +1180,12 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("trust_delta_r_ctrl", "Controller reward Δ_r^ctrl",          TRUST_DELTA_R_CTRL);
     cmd.AddValue("trust_delta_p_ctrl", "Controller penalty Δ_p^ctrl",         TRUST_DELTA_P_CTRL);
     cmd.AddValue("t_sync",             "T_ref sync interval (s)",             T_SYNC_INTERVAL);
+    cmd.AddValue("time_ref_f_bad",
+                 "M9: number of Byzantine-compromised RSU clocks (eq:eps_ref sweep var)",
+                 TIME_REF_F_BAD);
+    cmd.AddValue("time_ref_delta_attack",
+                 "M9: fixed clock offset (s) injected into compromised RSUs",
+                 TIME_REF_DELTA_ATTACK);
     cmd.AddValue("batch_size",         "Packets per batch verify cycle B",    BATCH_SIZE);
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
