@@ -967,6 +967,14 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                   << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
+        // M12 — WAP-R: count this threshold-crossing event once per node per run
+        if (!g_witness_threshold_fired[target_node]) {
+            g_witness_threshold_fired[target_node] = true;
+            if (present_passive_hf_attack && passive_hf_malicious_nodes[target_node])
+                ++g_witness_TP_W;
+            else
+                ++g_witness_FP_W;
+        }
     }
 }
 
@@ -1027,6 +1035,14 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
+        // M12 — WAP-R: count this threshold-crossing event once per node per run
+        if (!g_witness_threshold_fired[target_node]) {
+            g_witness_threshold_fired[target_node] = true;
+            if (present_passive_hf_attack && passive_hf_malicious_nodes[target_node])
+                ++g_witness_TP_W;
+            else
+                ++g_witness_FP_W;
+        }
     }
 }
 

@@ -114680,6 +114680,28 @@ double   current_UCR       = 0.0;
 double   average_UCR       = 0.0;
 double   g_ucr_cumulative  = 0.0;
 
+// M12: Witness Alert Precision and Recall (WAP-R) — Eq. wap, war [Ablation only]
+// Evaluated specifically against passive HF (Variants 7/8), which are
+// undetectable by cryptographic proof alone (proposal §M12).
+// Granularity: one "event" = one target_node's witness alert pool
+// (crypto_layer.h g_witness_alert_pool) crossing the 2f+1 BFT threshold
+// inside witness_submit_duplication_alert()/witness_submit_nfa_alert().
+// Guarded to fire once per node per run — mirrors the blockchain-side
+// WitnessAlert.Penalized single-fire guard (blockchain/SPEC.md).
+// TP_W: threshold event where the target is a true passive-HF malicious
+//       node (ground truth passive_hf_malicious_nodes[], populated by
+//       hf_attack_helper.h) while present_passive_hf_attack is active.
+// FP_W: threshold event on any other node (false accusation).
+// FN_W: true passive-HF malicious nodes whose pool never reached
+//       threshold — a snapshot recomputed every cycle (not cumulative)
+//       in calculate_witness_wapr_metric() below.
+std::map<uint32_t, bool> g_witness_threshold_fired;
+uint32_t g_witness_TP_W         = 0;
+uint32_t g_witness_FP_W         = 0;
+uint32_t g_witness_FN_W         = 0;
+double   current_WAP_precision  = 0.0;
+double   current_WAP_recall     = 0.0;
+
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
 #include "attack_variables.h"
@@ -117207,6 +117229,42 @@ void calculate_ucr_metric()
               << "  avg=" << 100.0 * average_UCR << "%" << std::endl;
 }
 
+// ============================================================
+// M12: Witness Alert Precision and Recall (WAP-R) — Eq. wap, war
+// [Ablation only] — evaluated specifically against passive HF
+// (Variants 7/8), which are undetectable by cryptographic proof alone.
+// P_W = TP_W / (TP_W + FP_W)   (eq:wap)
+// R_W = TP_W / (TP_W + FN_W)   (eq:war)
+// TP_W/FP_W are cumulative counters incremented once per node the first
+// time its witness alert pool crosses the 2f+1 threshold (see
+// crypto_layer.h witness_submit_duplication_alert/witness_submit_nfa_alert).
+// FN_W is a snapshot (not cumulative): true passive-HF malicious nodes
+// whose pool has not yet crossed threshold, recomputed every cycle.
+// ============================================================
+void calculate_witness_wapr_metric()
+{
+    uint32_t fn_w = 0;
+    if (present_passive_hf_attack) {
+        for (int n = 0; n < total_size; n++) {
+            if (passive_hf_malicious_nodes[n] && !g_witness_threshold_fired[(uint32_t)n])
+                fn_w++;
+        }
+    }
+    g_witness_FN_W = fn_w;
+
+    double p_denom = (double)(g_witness_TP_W + g_witness_FP_W);
+    current_WAP_precision = (p_denom > 0.0) ? (double)g_witness_TP_W / p_denom : 0.0;
+
+    double r_denom = (double)(g_witness_TP_W + g_witness_FN_W);
+    current_WAP_recall = (r_denom > 0.0) ? (double)g_witness_TP_W / r_denom : 0.0;
+
+    std::cout << "[SECURITY] WAP-R: TP_W=" << g_witness_TP_W
+              << " FP_W=" << g_witness_FP_W
+              << " FN_W=" << g_witness_FN_W
+              << " P_W=" << 100.0 * current_WAP_precision << "%"
+              << " R_W=" << 100.0 * current_WAP_recall << "%" << std::endl;
+}
+
 static const int TCAM_HW_SIZE = 256;
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
@@ -117289,7 +117347,8 @@ void write_security_metrics_csv()
 			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
 			 << " d_obu_count, d_rsu_count, escalation_count,"
 			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned,"
-			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg\n";
+			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg,"
+			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117367,6 +117426,11 @@ void write_security_metrics_csv()
 		 << ", " << (g_m7_batch_calls     ? g_m7_batch_wall_us_sum / (double)g_m7_batch_calls / 1000.0 : 0.0)
 		 << ", " << (g_m7_batch_calls     ? (double)g_m7_batch_pkts / (double)g_m7_batch_calls      : 0.0)
 		 << ", " << (g_m7_consensus_count ? g_m7_consensus_wall_us_sum / (double)g_m7_consensus_count / 1000.0 : 0.0)
+		 << ", " << g_witness_TP_W
+		 << ", " << g_witness_FP_W
+		 << ", " << g_witness_FN_W
+		 << ", " << (current_WAP_precision * 100.0)
+		 << ", " << (current_WAP_recall * 100.0)
 		 << "\n";
 
 	fout.close();
@@ -117575,6 +117639,8 @@ void calculate_performance_evaluation_metrics()
 	// M7 TVR and M8 UCR — fire after mitigation latency, before CSV write
 	Simulator::Schedule(Seconds(0.000091), calculate_tvr_metric);
 	Simulator::Schedule(Seconds(0.000092), calculate_ucr_metric);
+	// M12 WAP-R — fires after UCR, before CSV write
+	Simulator::Schedule(Seconds(0.000093), calculate_witness_wapr_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
