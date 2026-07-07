@@ -1,21 +1,30 @@
 # Metrics Implementation Verification Report
-**Date:** 2026-07-06  
+**Date:** 2026-07-06 (original) — **Last updated:** 2026-07-07
 **Scope:** Comprehensive line-by-line verification of performance metrics against docs/main.tex (Section 4.6, "Performance Metrics")
 
 ---
 
-## Executive Summary
+## Executive Summary (updated 2026-07-07)
 
-**Critical Finding:** Eight of twelve performance metrics specified in the proposal are **unimplemented or partially implemented**:
-- **✓ Implemented (4 metrics):** M1 (MCC), M2 (TVR), M3 (UCR), M4 (Mitigation Latency), M6 (L_e2e)
-- **✗ Completely Missing (7 metrics):** M5, M7 (full overhead breakdown), M8, M9, M10, M11, M12
-- **⚠ Partial (1 metric):** M7 has partial subcomponents (sig_valid_rate, flowmod_endorsement_rate) but missing comprehensive overhead analysis
+**Original finding (2026-07-06):** Eight of twelve performance metrics specified in the proposal were
+unimplemented or partially implemented.
 
-**Methodology Deviation:** Proposal specifies evaluation of 13 ablation studies (AB1–AB13) plus 5 benchmarking experiments (BE1–BE5) across all 12 metrics, but the current codebase has:
-1. No infrastructure to support concurrent multi-attack injection (required for BE1–BE4)
-2. No ablation-specific metric branches or conditional metric calculation
-3. No infrastructure to toggle M5/M8/M9/M10/M11/M12 on and off per ablation
-4. Single-variant CSV output (only one selected attack per run) instead of per-variant metric rows
+**Current status:** 7 of 12 metrics are now fully implemented and CSV-exported:
+- **✅ Implemented:** M1 (MCC, no mode stratification), M2 (TVR), M3 (UCR), M4 (Mitigation Latency),
+  M5 (Controller Failover Latency), M6 (L_e2e), M7 (Security/Consensus Overhead), M12 (WAP-R)
+- **✗ Still missing (needs new subsystems, not wiring):** M8 (Byzantine-robust LSTM aggregation),
+  M9 (distributed time-reference robustness under clock attacks), M11 (control-plane FlowMod
+  authorization/UFCR)
+- **⚠ Architectural only (no runtime code needed):** M10 (Privacy Leakage — literature citation)
+
+**Ablation infrastructure:** All 9 Phase-3 ablation gate flags (AB1, AB4, AB6, AB7, AB8, AB9, AB11)
+are implemented and CLI-registered (see Critical Issue #3 below). Multi-attack concurrent injection
+(for BE1–BE4) and per-ablation metric branching for M8/M9/M11 remain open — those three metrics
+need their underlying subsystems built first.
+
+**Single-variant CSV export was investigated and found to be correct, not a defect** — see Critical
+Issue #1 below for the full resolution (proposal + reference-code idiom both specify one run per
+variant, sweep dimension encoded in filename).
 
 ---
 
@@ -216,28 +225,39 @@ None of these are wired in the current codebase.
 
 ---
 
-### M12 — Witness Alert Precision and Recall (WAP-R) [Ablation only]
+### M12 — Witness Alert Precision and Recall (WAP-R) [Ablation only] — DONE (2026-07-07)
 
 | Aspect | Proposal Requirement | Implementation Status | Code Location | Notes |
 |--------|---------------------|----------------------|---|---|
-| **Definition (Precision)** | `P_W = TP_W / (TP_W + FP_W)` — fraction of 2f+1-threshold alert events that are true | ✗ Missing (incomplete computation) | — | Witness mechanism exists (crypto_layer.h:781–896, witness_submit_duplication_alert/witness_submit_nfa_alert) and alerts are logged in `g_witness_alert_pool`, but precision/recall metrics not computed |
-| **Definition (Recall)** | `R_W = TP_W / (TP_W + FN_W)` — fraction of true passive HF instances where 2f+1 valid alerts submitted | ✗ Missing (incomplete computation) | — | Same issue: alerts logged but not evaluated against ground truth |
-| **TP_W** | Count of 2f+1-threshold alert events that correctly identify true passive HF instance | ✗ Missing | — | No comparison between witness alert triggers and ground-truth passive HF attack status |
-| **FP_W** | Count of threshold events triggered by false witness coalition | ✗ Missing | — | No tracking of spurious alert coalitions vs legitimate attacks |
-| **FN_W** | Count of true passive HF instances where fewer than 2f+1 valid alerts submitted (witness density insufficient) | ✗ Missing | — | No measurement of detection miss rate due to insufficient witness coverage |
-| **Validation targets** | (1) `P_W` validates false-accusation resistance (threshold robustness); (2) `R_W` validates feasibility (f=1 requires 3 witnesses, achievable under mean vehicle density ≈ 3.1 vehicles per RSU) | ✗ Missing | — | No vehicle density binning; no per-RSU witness count statistics |
-| **Variants 7–8 specific** | Evaluated only against passive hidden forwarding (Variants 7–8) where cryptographic proof insufficient | ✓ Targeted | — | Code correctly targets S7/S8, but metric computation missing |
-| **CSV export** | P_W, R_W per cycle (Variants 7–8 only) | ✗ Missing | — | Not in CSV; `_da_count` and `_nfa_count` (duplication/non-forward alert counts) are exported but not precision/recall |
+| **Definition (Precision)** | `P_W = TP_W / (TP_W + FP_W)` — fraction of 2f+1-threshold alert events that are true | ✅ Implemented | routing.cc `calculate_witness_wapr_metric()` | Computed every cycle from cumulative `g_witness_TP_W`/`g_witness_FP_W` |
+| **Definition (Recall)** | `R_W = TP_W / (TP_W + FN_W)` — fraction of true passive HF instances where 2f+1 valid alerts submitted | ✅ Implemented | routing.cc `calculate_witness_wapr_metric()` | `g_witness_FN_W` recomputed as a snapshot each cycle |
+| **TP_W** | Count of 2f+1-threshold alert events that correctly identify true passive HF instance | ✅ Implemented | crypto_layer.h (both `witness_submit_*_alert()` threshold blocks) | Incremented once per node, first time its alert pool crosses 2f+1, when `present_passive_hf_attack && passive_hf_malicious_nodes[target_node]` |
+| **FP_W** | Count of threshold events triggered by false witness coalition | ✅ Implemented | crypto_layer.h (same blocks) | Incremented once per node when threshold crossed on a non-passive-HF-malicious target |
+| **FN_W** | Count of true passive HF instances where fewer than 2f+1 valid alerts submitted (witness density insufficient) | ✅ Implemented | routing.cc `calculate_witness_wapr_metric()` | Iterates `passive_hf_malicious_nodes[]`, counts those with `g_witness_threshold_fired[n] == false` |
+| **Validation targets** | (1) `P_W` validates false-accusation resistance (threshold robustness); (2) `R_W` validates feasibility (f=1 requires 3 witnesses, achievable under mean vehicle density ≈ 3.1 vehicles per RSU) | ⚠ Metric ready; density binning not done | — | P_W/R_W now computable per run; stratifying by vehicle density bin is a separate post-processing step, not part of this fix |
+| **Variants 7–8 specific** | Evaluated only against passive hidden forwarding (Variants 7–8) where cryptographic proof insufficient | ✓ Targeted | — | Ground-truth check uses `passive_hf_malicious_nodes[]` + `present_passive_hf_attack`, matching Attack 7/8 runs |
+| **CSV export** | P_W, R_W per cycle (Variants 7–8 only) | ✅ Implemented | routing.cc `write_security_metrics_csv()` | 5 new columns appended: `witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall` |
 
-**Summary:** M12 is **partially implemented** (witness mechanism exists and alerts are logged) but **metric evaluation missing**. The infrastructure to count TP_W/FP_W/FN_W and compute precision/recall does not exist.
+**Summary:** M12 is now **fully implemented**. Witness alerts were already being submitted and pooled
+against the 2f+1 BFT threshold (crypto_layer.h); the gap was purely the missing ground-truth
+comparison and metric computation, which is now wired end-to-end.
 
-**Current partial implementation:**
-- ✓ Witness alerts submitted via `witness_submit_duplication_alert()` and `witness_submit_nfa_alert()` (crypto_layer.h:781–896)
-- ✓ Alert pool (`g_witness_alert_pool`) accumulates alerts with 2f+1 BFT threshold (crypto_layer.h:147–167)
-- ✓ Trust penalties triggered on 2f+1 threshold (crypto_layer.h:750–780)
-- ✗ No comparison against ground truth (which packets are truly duplicated at unauthorized destinations?)
-- ✗ No per-attack-instance tracking (associate alerts with Variant 7/8 instances)
-- ✗ No metric computation (TP_W, FP_W, FN_W never counted)
+**Implementation notes (2026-07-07):**
+- **Granularity decision:** the proposal defines TP_W/FP_W/FN_W as counts of "alert events," but the
+  codebase's `g_witness_alert_pool[target_node]` accumulates without time decay (known gap WIT-1,
+  CRYPTO_CORRECTIONS.md) — once crossed, the threshold check re-fires on every subsequent alert push
+  for the same node. A per-node one-shot guard (`g_witness_threshold_fired`, mirroring the
+  blockchain-side `WitnessAlert.Penalized` single-fire guard from `blockchain/SPEC.md`) was added so
+  each node contributes at most one TP_W or FP_W count per run. This matches the per-node granularity
+  already used elsewhere in the codebase for M1's confusion matrix (`is_malicious_node[v][n]`).
+- **TP_W/FP_W are cumulative** (incremented once per node, never reset during a run); **FN_W is a
+  snapshot** recomputed every cycle from current pool state — consistent with "how many true
+  instances have not yet been caught as of now."
+- Both counting blocks are duplicated identically in `witness_submit_duplication_alert()` (α_w) and
+  `witness_submit_nfa_alert()` (β_w) since both alert types share the same pool and threshold check.
+- New scheduling call: `calculate_witness_wapr_metric()` fires at t+0.000093s, after UCR and before
+  the CSV write, alongside the other M-series calculators.
+- Build verified clean (waf, 2026-07-07).
 
 ---
 
@@ -256,7 +276,7 @@ None of these are wired in the current codebase.
 | **M9 (Time Ref)** | ✓ Eq. eps_ref | ✗ Missing (metric) | ✗ | ✗ AB9 | update_T_ref() exists as stub; no evaluation |
 | **M10 (Privacy)** | ✓ Eq. l_priv | ✗ N/A (architectural) | ✗ | — | Design review metric; not runtime-measurable |
 | **M11 (UFCR)** | ✓ Eq. ufcr | ✗ Missing | ✗ | — | No control-plane attack injection; no authorization checks |
-| **M12 (WAP-R)** | ✓ Eq. wap, war | ⚠ Partial | ✗ Missing | ✗ AB6 | Witness mechanism exists; metric computation missing |
+| **M12 (WAP-R)** | ✓ Eq. wap, war | ✅ crypto_layer.h + routing.cc | ✅ 5 new columns | ✓ AB6-ready | Implemented 2026-07-07: per-node TP_W/FP_W one-shot counters + FN_W snapshot + P_W/R_W |
 
 ---
 
@@ -481,9 +501,11 @@ for (int n = 0; n < active_topology_nodes; n++) {
    - The M4 section table above (t_quarantine "never populated") is superseded by this note.
 
 ### **Tier 3: Medium (needed for complete evaluation)**
-7. **Add M12 witness metric computation** — Compare witness alerts against ground-truth HF attack status
+7. ✅ **DONE — Add M12 witness metric computation** — Compare witness alerts against ground-truth HF attack status
    - **Effort:** 3 hours (post-processing of witness_alert_pool and ground truth attack flags)
    - **Impact:** Enables WAP-R evaluation for AB6 ablation
+   - **Completed:** 2026-07-07. See M12 section above for full implementation notes (one-shot
+     per-node TP_W/FP_W counters, FN_W snapshot, 5 new CSV columns). Build verified clean (waf).
 
 8. **Add M1 mode stratification** — Separate OBU vs RSU confusion matrices
    - **Effort:** 2 hours (track detection source per packet)
@@ -508,31 +530,43 @@ for (int n = 0; n < active_topology_nodes; n++) {
 
 ---
 
-## Deviations Summary (by Severity)
+## Deviations Summary (by Severity) — as of 2026-07-07
 
-| Severity | Count | Metrics | Issue |
+| Severity | Remaining | Metrics | Issue |
 |----------|-------|---------|-------|
-| **Critical** | 7 | M2, M3, M5, M8, M9, M11, M12 | Metrics computed but not exported, or completely unimplemented |
-| **High** | 4 | M1, M4, M6, M7 | Partial implementation; missing validation or proper CSV export |
-| **Medium** | 3 | M1, M10, M12 | Missing stratification or infrastructure |
-| **Low** | 1 | M10 | Architectural evaluation (acceptable as literature citation) |
+| **Critical (open)** | 2 | M8, M11 | Completely unimplemented (Byzantine LSTM poisoning; control-plane UFCR) |
+| **High (open)** | 1 | M9 | update_T_ref() exists as stub; no clock-offset/deviation evaluation |
+| **Medium (open)** | 1 | M1 | No OBU/RSU mode stratification (single merged confusion matrix per variant) |
+| **Low (open)** | 1 | M10 | Architectural evaluation only — acceptable as literature citation, no code needed |
+| **Resolved** | 7 | M2, M3, M4, M5, M6\*, M7, M12 | Fixed 2026-07-06/07 (Steps 1, 3–7 below); M6 T_ref normalization still open but base metric works |
+
+**Progress:** 7 of 12 metrics fully resolved; 4 remain open (M1 partial-but-usable, M8/M9/M11 need
+new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/12 to 4/12.
 
 ---
 
 ## Files Referenced
 
 - `docs/main.tex:3476–3993` — Performance metrics specification (M1–M12, Equations eq:mcc through eq:war)
-- `scratch/routing.cc:117031–117359` — Metrics calculation and CSV export
+- `scratch/routing.cc:117031–117440` — Metrics calculation and CSV export
 - `scratch/routing.cc:116782–116819` — Latency calculation (M6)
-- `scratch/crypto_layer.h:683–694` — Distributed time reference (M9 infrastructure, stub)
-- `scratch/crypto_layer.h:781–896` — Witness mechanism (M12 infrastructure, metric computation missing)
-- `docs/SIGNATURE_ATTACK_DECOUPLING_PLAN.md:Phase 3` — Ablation gate implementations (M5, M7, M8, M9, M11, M12)
-- `docs/CRYPTO_CORRECTIONS.md` — Cryptographic layer deviations (affects M4, M7, M11, M12 correctness)
+- `scratch/crypto_layer.h:683–694` — Distributed time reference (M9 infrastructure, stub — still open)
+- `scratch/crypto_layer.h` (`witness_submit_duplication_alert`/`witness_submit_nfa_alert`) — Witness mechanism + M12 TP_W/FP_W counting (done 2026-07-07)
+- `docs/SIGNATURE_ATTACK_DECOUPLING_PLAN.md:Phase 3` — Ablation gate implementations (done for AB1/4/6/7/8/9/11; M8/M9/M11 still need new subsystems beyond gating)
+- `docs/CRYPTO_CORRECTIONS.md` — Cryptographic layer deviations (M4/M7/M12 correctness gaps now resolved; referenced for historical context)
 
 ---
 
 ## Conclusion
 
-**The proposal specifies 12 comprehensive metrics across detection quality (M1), attack-specific containment (M2–M3), operational latency (M4–M6), security overhead (M7), Byzantine robustness (M8–M9), privacy (M10), control-plane defense (M11), and witness mechanisms (M12). Current implementation delivers only M1, M4, M6 at basic level, with M2, M3 computed but not exported, and M5, M7, M8, M9, M11, M12 largely unimplemented.**
+**The proposal specifies 12 comprehensive metrics across detection quality (M1), attack-specific
+containment (M2–M3), operational latency (M4–M6), security overhead (M7), Byzantine robustness
+(M8–M9), privacy (M10), control-plane defense (M11), and witness mechanisms (M12). As of 2026-07-07,
+M2, M3, M4, M5, M6, M7, and M12 are implemented and exporting to CSV; M1 works but lacks OBU/RSU
+mode stratification.**
 
-**This represents a **8/12 metrics coverage gap** that must be closed before evaluation tables (Section 5, Tables 5.1–5.18) can be populated from actual simulation runs. Without these metrics, the thesis claims about detection quality, threshold violation containment, unauthorized copy containment, mitigation latency, failover responsiveness, security overhead, Byzantine resilience, and witness effectiveness cannot be empirically validated.**
+**Remaining gap: M8 (Byzantine-robust federated LSTM aggregation), M9 (distributed time-reference
+robustness under clock attacks), and M11 (control-plane FlowMod authorization/UFCR) require new
+subsystems — not wiring fixes — and are the last blockers before evaluation tables (Section 5,
+Tables 5.1–5.18) can be fully populated. M10 is architectural/literature-citation only and needs no
+runtime code.**
