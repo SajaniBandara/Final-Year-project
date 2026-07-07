@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-verify_metrics.py — Automated post-run checker for MOBIGUARD's 12 performance
+verify_metrics.py -- Automated post-run checker for MOBIGUARD's 12 performance
 metrics (docs/main.tex Section 4.6), companion to docs/METRICS_VERIFICATION_RUNBOOK.md.
 
 write_security_metrics_csv() (scratch/routing.cc) writes a FIXED-ORDER,
 comma-separated row per cycle, with a multi-line '#'-prefixed comment block
-as a header (not a real CSV header pandas can auto-detect) — so this script
+as a header (not a real CSV header pandas can auto-detect) -- so this script
 parses by COLUMN POSITION, not by name lookup. Two possible row lengths:
   - 51 columns: all variants except 2, 3, and baseline (no TCAM block)
   - 60 columns: variants 2, 3 (TCAM attacks), and baseline (+9 TCAM columns)
@@ -25,7 +25,7 @@ import json
 import os
 import sys
 
-# ── Fixed column layouts (must match routing.cc:117447-117461 exactly) ──────
+# -- Fixed column layouts (must match routing.cc:117447-117461 exactly) ------
 
 COLUMNS_NO_TCAM = [
     "cycle", "cur_PDR", "avg_PDR", "cur_lat_ms", "avg_lat_ms", "cur_MCC", "avg_MCC",
@@ -51,7 +51,7 @@ COLUMNS_TCAM = COLUMNS_NO_TCAM[:21] + _TCAM_BLOCK + COLUMNS_NO_TCAM[21:]  # 60 c
 EXPECTED_LENGTHS = {len(COLUMNS_NO_TCAM): COLUMNS_NO_TCAM, len(COLUMNS_TCAM): COLUMNS_TCAM}
 
 
-# ── CSV parsing (positional, not pandas-header-based — see module docstring) ─
+# -- CSV parsing (positional, not pandas-header-based -- see module docstring) -
 
 def parse_mobiguard_csv(path: str) -> list[dict]:
     """Returns a list of {column_name: float_value} dicts, one per data row."""
@@ -65,7 +65,7 @@ def parse_mobiguard_csv(path: str) -> list[dict]:
             columns = EXPECTED_LENGTHS.get(len(parts))
             if columns is None:
                 print(f"  [WARN] {path}: row has {len(parts)} columns, "
-                      f"expected {sorted(EXPECTED_LENGTHS.keys())} — skipping row "
+                      f"expected {sorted(EXPECTED_LENGTHS.keys())} -- skipping row "
                       f"(did routing.cc's column list change without updating this script?)")
                 continue
             try:
@@ -80,7 +80,7 @@ def last_row(rows: list[dict]) -> dict | None:
     return rows[-1] if rows else None
 
 
-# ── Per-metric checks. Each returns (status, message); status in {PASS,WARN,FAIL} ──
+# -- Per-metric checks. Each returns (status, message); status in {PASS,WARN,FAIL} --
 
 def check_range(value, lo, hi, name):
     if value is None:
@@ -109,7 +109,7 @@ def m2_tvr(row: dict, expect_nonzero: bool):
     if not (0.0 <= tvr <= 100.0):
         return "FAIL", f"M2: cur_TVR={tvr:.4f} outside [0,100]"
     if expect_nonzero and tvr == 0.0:
-        return "FAIL", "M2: cur_TVR is exactly 0% under an active delay attack — " \
+        return "FAIL", "M2: cur_TVR is exactly 0% under an active delay attack -- " \
                        "the dead-counter bug may have regressed"
     return "PASS", f"M2: cur_TVR={tvr:.4f}%"
 
@@ -121,7 +121,7 @@ def m3_ucr(row: dict, expect_nonzero: bool):
     if not (0.0 <= ucr <= 100.0):
         return "FAIL", f"M3: cur_UCR={ucr:.4f} outside [0,100]"
     if expect_nonzero and ucr == 0.0:
-        return "WARN", "M3: cur_UCR is 0% under an HF attack — check attack actually fired"
+        return "WARN", "M3: cur_UCR is 0% under an HF attack -- check attack actually fired"
     return "PASS", f"M3: cur_UCR={ucr:.4f}%"
 
 
@@ -132,7 +132,7 @@ def m4_lmit(row: dict):
     if lmit < 0:
         return "FAIL", f"M4: cur_mit_ms={lmit:.4f} negative (impossible)"
     if lmit == 0:
-        return "WARN", "M4: cur_mit_ms=0 — no quarantine fired yet (may need longer simTime " \
+        return "WARN", "M4: cur_mit_ms=0 -- no quarantine fired yet (may need longer simTime " \
                         "or higher attack_percentage)"
     status = "PASS" if lmit <= 100.0 else "WARN"
     return status, f"M4: cur_mit_ms={lmit:.4f} (target <=100ms)"
@@ -158,7 +158,7 @@ def m6_le2e(row: dict):
     if lat < 0:
         return "FAIL", f"M6: cur_lat_ms={lat:.4f} negative (impossible)"
     if lat == 0:
-        return "WARN", "M6: cur_lat_ms=0 — no packets delivered this cycle"
+        return "WARN", "M6: cur_lat_ms=0 -- no packets delivered this cycle"
     status = "PASS" if lat <= 100.0 else "WARN"
     return status, f"M6: cur_lat_ms={lat:.4f} (target <=100ms)"
 
@@ -172,7 +172,7 @@ def m7_overhead(row: dict):
     # ML-DSA-87 sig (4627 B, CRYPTO_CORRECTIONS.md DOC-1) + 64 B pi_delay commitment
     expected = 4627 + 64
     if o_crypto == 0:
-        return "WARN", "M7: o_crypto_bytes_pkt=0 — no packets signed yet this run"
+        return "WARN", "M7: o_crypto_bytes_pkt=0 -- no packets signed yet this run"
     if abs(o_crypto - expected) > 1.0:
         return "WARN", f"M7: o_crypto_bytes_pkt={o_crypto:.1f}, expected ~{expected} " \
                         "(check mldsa87_sign()'s sig_len)"
@@ -204,7 +204,7 @@ def m11_ufcr(row: dict, expect: float | None):
     if ufcr is None:
         return "FAIL", "M11: UFCR missing"
     if total == 0:
-        return "WARN", "M11: no unauthorized FlowMod attempts recorded — " \
+        return "WARN", "M11: no unauthorized FlowMod attempts recorded -- " \
                        "check active_attack_variant is a control-plane variant (1,3,5,7)"
     if expect is not None and abs(ufcr - expect) > 1.0:
         return "FAIL", f"M11: UFCR={ufcr:.4f}, expected ~{expect}"
@@ -220,7 +220,7 @@ def m12_wapr(row: dict):
     if not (0.0 <= prec <= 100.0) or not (0.0 <= rec <= 100.0):
         return "FAIL", f"M12: precision={prec:.4f} or recall={rec:.4f} outside [0,100]"
     if (tp_w + fp_w) == 0:
-        return "WARN", "M12: no witness threshold events fired (TP_W+FP_W=0) — " \
+        return "WARN", "M12: no witness threshold events fired (TP_W+FP_W=0) -- " \
                        "check this is a passive HF run (Attack 7 or 8)"
     return "PASS", f"M12: precision={prec:.4f}% recall={rec:.4f}% (TP_W={tp_w:.0f} FP_W={fp_w:.0f})"
 
@@ -247,7 +247,7 @@ def m8_poisoning(json_path: str):
     return worst, "M8:\n    " + "\n    ".join(lines)
 
 
-# ── CLI / orchestration ──────────────────────────────────────────────────────
+# -- CLI / orchestration ------------------------------------------------------
 
 def find_one(pattern: str) -> str | None:
     matches = glob.glob(pattern)
@@ -291,7 +291,7 @@ def run_single_file(path: str, mode: str, args):
 def run_m9_sweep(directory: str):
     files = sorted(glob.glob(os.path.join(directory, "MOBIGUARD_baseline_fbad*.csv")))
     if not files:
-        print("[FAIL] M9: no MOBIGUARD_baseline_fbad*.csv files found — "
+        print("[FAIL] M9: no MOBIGUARD_baseline_fbad*.csv files found -- "
               "run Part 3's M9 sweep first")
         return 1
     rows_by_fbad = {}
@@ -339,10 +339,10 @@ def run_full_report(directory: str):
         print(f"  [{status}] {msg}")
         overall = overall or (1 if status == "FAIL" else 0)
     else:
-        print(f"  [WARN] {m8_path} not found — run Part 4 first")
+        print(f"  [WARN] {m8_path} not found -- run Part 4 first")
 
     print("\n" + "=" * 70)
-    print("OVERALL:", "FAIL — see above" if overall else "ALL CHECKS PASSED OR WARNED (no FAILs)")
+    print("OVERALL:", "FAIL -- see above" if overall else "ALL CHECKS PASSED OR WARNED (no FAILs)")
     print("=" * 70)
     return overall
 
