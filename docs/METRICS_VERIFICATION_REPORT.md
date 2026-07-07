@@ -262,9 +262,9 @@ None of these are wired in the current codebase.
 
 ## Critical Cross-Metric Issues
 
-### 1. **Single-Variant CSV Export (affects M1, M2, M3)**
+### 1. **Single-Variant CSV Export (affects M1, M2, M3) — RESOLVED: NOT A BUG**
 
-**Problem:** All 8 variants' metrics are computed every cycle but only `selected_variant` is written to CSV.
+**Original observation:** All 8 variants' metrics are computed every cycle but only `selected_variant` is written to CSV.
 
 ```cpp
 int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;
@@ -278,18 +278,37 @@ fout << current_MCC[selected_variant] << ", "
      << sec_FN[selected_variant];
 ```
 
-**Impact:**
-- If you run with `active_attack_variant=0`, you get M1/M2/M3 for S1 only
-- Metrics for S2–S8 are computed and thrown away every cycle
-- To get all 8 variants' metrics, you need 8 separate simulation runs with `active_attack_variant=0,1,...,7`
-- Proposal evaluation (Tables 5.1–5.5) shows results for all 8 variants per experiment; this would require 8 runs per experiment, not one
+**Resolution (2026-07-07):** This is **correct, intended behavior** — not a defect. Single-variant
+export is the right design, confirmed by three independent sources:
 
-**Fix required:** CSV writer must output per-variant rows (long/tidy format) or append all 8 variants' columns per cycle:
-```cpp
-for (int v = 0; v < NUM_ATTACK_VARIANTS; v++) {
-    fout << "," << current_MCC[v] << "," << current_detection_rate[v] << "," << current_FPR[v];
-}
-```
+1. **Proposal (main.tex:4945):** Experiment 5 explicitly states all 8 variants are evaluated
+   *"in separate simulation runs (one variant active at a time) to produce per-variant scores."*
+   The proposal expects **one active variant per run**, one file per variant.
+
+2. **Supervisor's reference code idiom** (`reference/routing.cc`, `write_csv_results_routing()` /
+   `write_csv_results()`): the sweep dimension (lambda, node count, mobility speed, framework) is
+   encoded in the **filename** via nested `switch` statements, NOT multiplied into columns. Each
+   run produces one file with a **fixed column schema**, one row per cycle. To sweep a variable,
+   the simulation is run multiple times — each run emits its own file. There is no loop that widens
+   a single row across configuration points.
+
+3. **Existing MOBIGUARD filename scheme** already follows this idiom:
+   `MOBIGUARD_Attack{N}_{pct}{suffix}.csv` — one file per (variant × percentage).
+
+**Why exporting all 8 variants per run would be WRONG:** When a specific attack is armed
+(`attack_number=1..8`), `declare_attack_states()` (attack_declaration.h:90-95) enables exactly one
+`s*_detection_active` gate and leaves the other seven off. The non-active variants therefore have
+`is_detected_node[v][n] = false` for all nodes, producing trivial/garbage confusion matrices
+(TP=0, FP=0, TN=all, FN=0). Serializing those 7 garbage variants alongside the 1 real one would
+pollute the CSV with meaningless columns.
+
+**Decision:** Keep `selected_variant` single-variant export. Per-variant breakdown (Tables 5.1–5.5)
+is produced by running 8 separate simulations → 8 files, exactly as the reference sweeps its
+lambda / node-count / mobility variables.
+
+**History:** A "widen to all 8 variants per row" change was briefly implemented (Step 2) and then
+**reverted** on 2026-07-07 after the reference-code idiom confirmed single-variant-per-file is the
+supervisor-aligned design. Step 1's TVR/UCR column additions (see Issue #2 below) were retained.
 
 ### 2. **Missing TVR and UCR in CSV (affects M2, M3)**
 
