@@ -9,19 +9,19 @@
 **Original finding (2026-07-06):** Eight of twelve performance metrics specified in the proposal were
 unimplemented or partially implemented.
 
-**Current status:** 8 of 12 metrics are now fully implemented and CSV-exported:
-- **✅ Implemented:** M1 (MCC, including per-mode stratification via AB1-A/B/C run recipe — no new
-  code needed), M2 (TVR), M3 (UCR), M4 (Mitigation Latency), M5 (Controller Failover Latency),
-  M6 (L_e2e), M7 (Security/Consensus Overhead), M12 (WAP-R)
-- **✗ Still missing (needs new subsystems, not wiring):** M8 (Byzantine-robust LSTM aggregation),
-  M9 (distributed time-reference robustness under clock attacks), M11 (control-plane FlowMod
-  authorization/UFCR)
-- **⚠ Architectural only (no runtime code needed):** M10 (Privacy Leakage — literature citation)
+**Current status: all 12 metrics are now implemented.** Three are code-complete but not yet
+build/run-verified by the user (flagged below); the other nine were implemented and confirmed
+building/running clean earlier in this session:
+- **✅ Implemented + verified:** M1 (MCC + per-mode via AB1-A/B/C run recipe — no new code needed),
+  M2 (TVR), M3 (UCR), M4 (Mitigation Latency), M5 (Controller Failover Latency), M6 (L_e2e),
+  M7 (Security/Consensus Overhead), M10 (Privacy — architectural analysis, no code needed), M12 (WAP-R)
+- **✅ Implemented, build/run pending:** M8 (Byzantine-robust LSTM aggregation — Python, needs a
+  `pipeline.py` run on the GPU host), M9 (distributed time-reference robustness — ns-3/C++, needs
+  `./waf build`), M11 (control-plane FlowMod authorization/UFCR — ns-3/C++, needs `./waf build`)
 
-**Ablation infrastructure:** All 9 Phase-3 ablation gate flags (AB1, AB4, AB6, AB7, AB8, AB9, AB11)
-are implemented and CLI-registered (see Critical Issue #3 below). Multi-attack concurrent injection
-(for BE1–BE4) and per-ablation metric branching for M8/M9/M11 remain open — those three metrics
-need their underlying subsystems built first.
+**Ablation infrastructure:** All 9 Phase-3 ns-3 ablation gate flags (AB1, AB4, AB6, AB7, AB8, AB9,
+AB11) plus the new AB5 BRFA-v2/FedAvg switch (Python, M8) are implemented. Multi-attack concurrent
+injection (for BE1–BE4) remains open — out of scope for the 12-metric plan this report tracks.
 
 **Single-variant CSV export was investigated and found to be correct, not a defect** — see Critical
 Issue #1 below for the full resolution (proposal + reference-code idiom both specify one run per
@@ -155,18 +155,65 @@ variant, sweep dimension encoded in filename).
 
 ---
 
-### M8 — Federated Model Poisoning Resistance [Ablation only]
+### M8 — Federated Model Poisoning Resistance [Ablation only] — DONE (2026-07-07)
+
+**Correction to the original finding:** the original report stated "no federated LSTM poisoning
+attack/defense infrastructure exists" and "current codebase has no LSTM training or aggregation
+code." This was **checking the wrong directory** — the search was scoped to `scratch/` (ns-3), but
+a full Python federated LSTM pipeline exists at `lstm_pipeline/src/` (`preprocessor.py`,
+`local_trainer.py`, `fed_aggregator.py`, `evaluator.py`, `pipeline.py`), separate from the ns-3
+simulation. `fed_aggregator.py` already implemented Krum-style coordinate-median distance filtering
+and weighted FedAvg — i.e., **half of BRFA-v2's four steps existed already.**
 
 | Aspect | Proposal Requirement | Implementation Status | Code Location | Notes |
 |--------|---------------------|----------------------|---|---|
-| **Definition** | `Δ_poison(ρ_mal) = MCC_clean - MCC(ρ_mal)` — MCC degradation as malicious RSUs poison gradients | ✗ Missing | — | **No implementation found** |
-| **Experiment setup** | (1) MCC_clean with 0 malicious RSUs; (2) MCC(ρ_mal) with ρ_mal ∈ {0.1, 0.2, ..., 0.3} (up to PBFT bound f < n/3) | ✗ Missing | — | No configuration to enable/disable gradient poisoning attacks per RSU; no separate training runs with varying poison fractions |
-| **Algorithm BRFA-v2 components** | Test three: (1) trust-gating (Step 1), (2) hash verification (Step 2), (3) Krum filtering (Step 3) | ✗ Missing | — | Algorithm BRFA-v2 federated aggregation not implemented in codebase; no Byzantine-robust aggregation layer in LSTM training pipeline |
-| **Comparison** | BRFA-v2 vs naive FedAvg | ✗ Missing | — | No baseline comparison; FedAvg not instrumented |
-| **Target bound** | Δ_poison(ρ_mal < 1/3) ≈ 0 (i.e., robustness to Byzantine fault tolerance bound) | ✗ Missing | — | No validation that robustness holds up to f < n/3 |
-| **CSV export** | Δ_poison per poisoning fraction | ✗ Missing | — | Not in CSV; would be separate LSTM evaluation output, not part of per-cycle security metrics CSV |
+| **Definition** | `Δ_poison(ρ_mal) = MCC_clean - MCC(ρ_mal)` | ✅ Implemented | `lstm_pipeline/src/poison_sweep.py` | New script computes this exactly, per mode, per ρ_mal |
+| **Experiment setup** | MCC_clean (ρ_mal=0) vs MCC(ρ_mal) for ρ_mal ∈ {0.1,0.2,0.3} | ✅ Implemented | `poison_sweep.py --rho` | Configurable sweep, default `[0.0, 0.1, 0.2, 0.3]` |
+| **Algorithm BRFA-v2 Step 1 (Trust gate)** | `K_e = {k : T_r_k >= T_min}` | ✅ Implemented (new) | `fed_aggregator.py::trust_gate()` | Optional `--trust_scores` JSON; defaults all RSUs to trust=1.0 (crypto_layer.h's `TRUST_INIT`) since no live ns-3→Python trust bridge exists yet — see caveat below |
+| **Algorithm BRFA-v2 Step 2 (Hash verification)** | `1_BC^(k) = SC.VerifyModelHash(W^(k))` | ✅ Implemented (new), scoped | `fed_aggregator.py::hash_verify_all()` | Real SHA-256 recompute-and-compare, always passes in this single-process simulation by construction — see scope caveat below |
+| **Algorithm BRFA-v2 Step 3 (Krum filter)** | reject if `d(W^(k), median) >= γ` | ✅ Already existed | `fed_aggregator.py::krum_filter()` | Unmodified from the pre-existing implementation |
+| **Algorithm BRFA-v2 Step 4 (Weighted aggregation)** | `ω_k = n_k · 1_BC^(k) · 1[d<γ]` | ✅ Generalized (new) | `fed_aggregator.py::run_aggregation()` | Composes all three upstream masks into `final_mask` before calling `weighted_fedavg()` |
+| **Poisoning injection** | Malicious RSUs submit corrupted gradients | ✅ Implemented (new) | `fed_aggregator.py::apply_poisoning()` | 3 attack models: `sign_flip` (negate), `scale` (×50), `random` (Gaussian replacement) |
+| **Comparison** | BRFA-v2 vs naive FedAvg | ✅ Implemented (new) | `fed_aggregator.py --mode {brfa,fedavg}` | `fedavg` mode skips Steps 1–3 entirely — pure naive weighted average, the AB5-A baseline |
+| **Target bound** | `Δ_poison(ρ_mal < 1/3) ≈ 0` | ✅ Checked automatically | `poison_sweep.py` | Prints a PASS/CHECK flag per swept ρ_mal below 1/3 for the `brfa` mode (`|Δ_poison| < 0.05` threshold) |
+| **CSV/JSON export** | Δ_poison per poisoning fraction | ✅ Implemented (new) | `lstm_pipeline/poison_sweep_results.json` | Per-mode, per-ρ_mal MCC, Δ_poison, accepted/rejected RSU lists |
 
-**Summary:** M8 is **completely unimplemented**. No federated LSTM poisoning attack/defense infrastructure exists in ns-3 scratch/ directory. Proposal requires federated learning pipeline with Byzantine-robust aggregation; current codebase has no LSTM training or aggregation code.
+**Ablation mapping correction:** the original report's remediation table said M8 maps to "AB8" — this
+was wrong. Per main.tex:4283 ("AB5 — Byzantine-Robust Aggregation"), M8 is the y-metric for **AB5**,
+not AB8 (which main.tex:4387 defines as "Multi-RSU FlowMod Endorsement," feeding M11/M7 instead).
+The `--mode brfa`/`--mode fedavg` flag added to `fed_aggregator.py` is the AB5-A/AB5-B switch.
+
+**Implementation notes (2026-07-07):**
+- **New file:** `lstm_pipeline/src/poison_sweep.py` — sweeps ρ_mal × {brfa, fedavg}, calls the
+  refactored `fed_aggregator.run_aggregation()` in-process (no disk writes during the sweep via
+  `out_suffix=None`), evaluates each resulting global model's MCC on the held-out test split, and
+  writes `poison_sweep_results.json`.
+- **Refactored:** `fed_aggregator.py`'s original `main()` logic was extracted into a reusable
+  `run_aggregation(...)` function so both the CLI (unchanged default behavior — still writes
+  `global.pt`/`rsu_{k}_global.pt`) and the sweep script can call the same code path.
+- **Poisoning model:** corrupts the first `round(ρ_mal · K)` RSUs by sorted `rsu_id` (deterministic).
+  Default attack is `sign_flip` (negate all weights) — the standard "worst-case Byzantine" model used
+  in the Krum literature; `scale` and `random` are also available via `--poison_mode`.
+- **Hash verification (Step 2) scope caveat:** in a single-process simulation reading local
+  checkpoint files, there is no network transit for an attacker to tamper with after a legitimate
+  commit — so Step 2, implemented faithfully, will always pass (it recomputes and compares a hash of
+  the same in-memory weights). This is **correct alg:brfa_v2 behavior, not a shortcut**: Step 2
+  defends against transit tampering/impersonation, while Step 3 (Krum) is the layer that must catch
+  a malicious RSU that self-consistently poisons and correctly self-hashes its own corrupted model.
+  Both are implemented; only Step 3 is expected to actually reject anything in this experiment.
+- **Trust gate (Step 1) scope caveat:** no live bridge exists yet to pull real per-RSU
+  `g_trust_score[]` values out of an ns-3 run into the Python pipeline, so `--trust_scores` is
+  optional and defaults every RSU to `1.0` (all pass). The gate is fully implemented and will use
+  real scores the moment such a CSV/JSON is supplied — wiring that bridge is a small follow-up
+  (loop over RSU indices in `write_security_metrics_csv()` and dump `g_trust_score[N_Vehicles+r]`
+  per RSU to a JSON), not part of this fix's scope.
+- **Pipeline integration:** added as optional Step 5 in `pipeline.py` (`--from-step 5`), after local
+  training (Step 2) has produced clean `rsu_{k}.pt` checkpoints. Does not require Steps 3–4 to have
+  run first since `poison_sweep.py` calls `run_aggregation()` directly per sweep point.
+- **Syntax-checked** (`python3 -c "import ast; ast.parse(...)"`) for all three modified/new files;
+  full execution requires the GPU-equipped training host (`local_trainer.py` needs the preprocessed
+  `.npy` splits and a trained checkpoint set) and has not been run end-to-end yet — pending user
+  test alongside the ns-3 build check.
 
 ---
 
@@ -206,21 +253,55 @@ independent clock readings with configurable Byzantine offsets.
 
 ---
 
-### M10 — Privacy Leakage / Raw Data Exposure (L_priv)
+### M10 — Privacy Leakage / Raw Data Exposure (L_priv) — DONE (2026-07-07, architectural analysis)
 
 | Aspect | Proposal Requirement | Implementation Status | Code Location | Notes |
 |--------|---------------------|----------------------|---|---|
-| **Definition** | `L_priv = Σ_{d ∈ D_raw} w_d · 𝟙[d transmitted beyond local trust boundary]` | ✗ Missing | — | **No implementation found** |
-| **Raw data categories** | `D_raw = {location history, vehicle identity, trajectory, raw packet headers, raw flow metadata}` | ✗ Missing | — | No tracking of which data is transmitted beyond RSU trust boundary |
-| **Privacy weights** | `w_d ∈ [0,1]` — location/identity w_d=1 (highest), flow metadata w_d=0.5 | ✗ Missing | — | No weighting scheme implemented |
-| **Evaluation approach** | Architectural analysis (not runtime output) — compare frameworks' published designs | — | — | Proposal states "computed from each baseline's published design rather than a runtime output." This is a **design review metric**, not a runtime metric. Current codebase only tracks runtime metrics, not architectural privacy evaluation |
-| **MOBIGUARD baseline** | L_priv = 0 (only model weights, hash commitments, proofs transmitted) | — | — | No verification that non-sensitive data is being sent; packet inspection not instrumented |
-| **Baseline comparisons** | HSA: L_priv = w_headers + w_trajectory; TAP: L_priv = w_vehicle_identity; FADE: L_priv = ? | ✗ Missing | — | No framework to compare against baselines' privacy claims |
-| **CSV export** | L_priv metric not expected (architectural, not runtime) | — | — | Not applicable for per-cycle CSV |
+| **Definition** | `L_priv = Σ_{d ∈ D_raw} w_d · 𝟙[d transmitted beyond local trust boundary]` | ✓ Evaluated below | — | Confirmed architectural, not runtime (proposal's own words: "computed from each baseline's published design rather than a runtime output") |
+| **Raw data categories** | `D_raw = {location history, vehicle identity, trajectory, raw packet headers, raw flow metadata}` | ✓ Verified against codebase | See analysis below | Checked what MOBIGUARD's security layer actually transmits, category by category |
+| **Privacy weights** | `w_d ∈ [0,1]` — location/identity w_d=1 (highest), flow metadata w_d=0.5 | ✓ Taken from proposal | — | Weights are a proposal-defined constant, not something the codebase computes |
+| **MOBIGUARD baseline** | L_priv = 0 (only model weights, hash commitments, proofs transmitted) | ✓ Confirmed, with one scoping caveat | See analysis below | Security layer transmits only hashes/signatures/booleans; **but** the underlying ns-3 routing tag layer transmits raw position/velocity/acceleration in cleartext — see caveat below |
+| **Baseline comparisons** | HSA: L_priv = w_headers + w_trajectory; TAP: L_priv = w_vehicle_identity | ✓ Reproduced from proposal | — | These are literature citations (HSA/TAP's own published designs), not something derivable from this codebase |
+| **CSV export** | Not expected (architectural, not runtime) | ✓ N/A confirmed | — | Correctly excluded from per-cycle CSV |
 
-**Summary:** M10 is **not applicable as runtime metric** in the current codebase. Proposal Eq. l_priv is explicitly an architectural evaluation ("computed from each baseline's published design"), not a per-cycle runtime measurement. Current code has no hooks for packet-level privacy tracking.
+**Summary:** M10 is an architectural/documentation metric per the proposal's own definition, not a
+runtime measurement. Rather than treat this as "nothing to verify," the security layer's actual
+message contents were checked against each `D_raw` category to confirm the `L_priv=0` claim holds
+for what MOBIGUARD's *security layer* (crypto, witness, blockchain, LSTM) transmits.
 
-**Note:** If privacy analysis is desired, it would require: (1) packet inspection hooks logging what data leaves each RSU, (2) comparison against baseline architectures' data flows (requires baseline code), (3) external privacy audit tooling.
+**Verification (2026-07-07) — what MOBIGUARD's security layer actually puts on the wire:**
+
+| `D_raw` category | Transmitted by MOBIGUARD's security layer? | Evidence |
+|---|---|---|
+| Location history | No | ML-DSA-87 signatures sign message digests (`msg_id`, `flow_id`, hashes) — no coordinates. STARK proofs are SHA3-512 commitments, not raw timing/position traces. |
+| Vehicle identity | Pseudonymous node index only | `witness_id`, `target_node`, `prev_sender`, `rsu_idx` are `uint32_t` simulation node indices, not real-world identifiers (VIN/plate) — consistent with how the proposal frames "vehicle identity" as a re-identifying credential, not an internal array index. Flagged as a modeling assumption, not a gap. |
+| Trajectory | No | No velocity/heading/position history included in any signed payload, witness alert, or blockchain commit. |
+| Raw packet headers | No | Witness alerts sign `H(p)` (a hash of the target's ML-DSA-87 signature) plus `dst`/`dst'`/timestamps — never the packet header itself. |
+| Raw flow metadata | No | FlowMod endorsement (`flowmod_endorse()`) signs `SHA3-512(flowmod_params ‖ ts ‖ T_rj)` — a hash digest, not the FlowMod parameters in the clear. |
+
+**Caveat — scoping boundary between the security layer and the base routing protocol:**
+The ns-3 network layer's own unicast routing tags (`CustomDataUnicastTag` and 25 numbered sibling
+tag classes, `routing.cc:6129` on) carry **raw `Vector` position, velocity, and acceleration in
+cleartext** on every data packet (confirmed at the `MacRx` log site, `routing.cc:95239`:
+`"...at position "<<*tag_routing.Getposition()<<"with velocity "<<*tag_routing.Getvelocity()...`).
+This is **not** part of MOBIGUARD's security contribution — it is the base geographic/predictive
+routing protocol's own positional requirement, present in the simulation infrastructure for *every*
+framework under test (MOBIGUARD, FADE, TAP baselines alike), since next-hop selection in this VANET
+routing scheme needs raw position. Eq. l_priv, per the proposal's own framing, measures what each
+*security/detection framework* additionally exposes beyond the local trust boundary, not the
+underlying routing substrate every scheme shares. Under that scoping, `L_priv = 0` for MOBIGUARD's
+security layer holds; it would be a **mischaracterization** to claim `L_priv = 0` for the full
+simulated stack including base routing telemetry, so this scoping distinction should be stated
+explicitly wherever M10 appears in the thesis (Section 5) rather than left implicit.
+
+**M10 result table (for Section 5, reproduced from proposal + verification above):**
+
+| Framework | $L_{priv}$ | Basis |
+|---|---|---|
+| MOBIGUARD (security layer) | 0 | Verified above: only hash commitments, signatures, and boolean proof outcomes cross the trust boundary |
+| HSA | $w_{headers} + w_{trajectory}$ | Proposal main.tex:3894 — centralizes raw packet headers |
+| TAP | $w_{vehicle\_identity}$ | Proposal main.tex:3895-3897 — Controller-Defaulter-List centralizes attacker vehicle ID |
+| FADE | Not specified in proposal | main.tex M10 text only covers HSA/TAP as privacy baselines; FADE's $L_{priv}$ would need a literature citation from its own paper if included in Section 5's table |
 
 ---
 
@@ -293,9 +374,9 @@ comparison and metric computation, which is now wired end-to-end.
 | **M5 (L_failover)** | ✓ Eq. l_failover | ✅ crypto_layer.h (Step 3) | ✅ In CSV (Step 3) | ✓ AB9-ready | Implemented 2026-07-07: broadcast-propagation delay model + t_revoke/t_reassign stamps + 3 CSV columns |
 | **M6 (L_e2e)** | ✓ Eq. l_e2e | ✓ routing.cc:116782 | ✓ Written | — | No T_ref normalization; no before/after split |
 | **M7 (Overhead)** | ✓ Eq. o_crypto, t_verify, t_consensus | ✅ Instrumented (Step 5) | ✅ 4 new columns | ✓ | O_crypto + T_batch(B) + T_consensus wall-clock; per-op rows in crypto_timing_log.csv; see Tier 2 item 5 |
-| **M8 (Poisoning)** | ✓ Eq. delta_poison | ✗ Missing | ✗ | ✗ AB8 | No Byzantine poisoning attack/defense in LSTM |
+| **M8 (Poisoning)** | ✓ Eq. delta_poison | ✅ lstm_pipeline/src (test pending) | ✅ poison_sweep_results.json | ✓ AB5-ready | Implemented 2026-07-07: full BRFA-v2 (4 steps) + poisoning injection + FedAvg baseline + Δ_poison sweep; correct mapping is AB5, not AB8 |
 | **M9 (Time Ref)** | ✓ Eq. eps_ref | ✅ crypto_layer.h (build pending) | ✅ 3 new columns | ✓ sweepable | Implemented 2026-07-07: per-RSU clock offset model + eps_ref deviation tracking |
-| **M10 (Privacy)** | ✓ Eq. l_priv | ✗ N/A (architectural) | ✗ | — | Design review metric; not runtime-measurable |
+| **M10 (Privacy)** | ✓ Eq. l_priv | ✅ Architectural analysis done | N/A (by design) | — | L_priv=0 verified against actual security-layer message contents; scoping caveat re: base routing tags documented |
 | **M11 (UFCR)** | ✓ Eq. ufcr | ✗ Missing | ✗ | — | No control-plane attack injection; no authorization checks |
 | **M12 (WAP-R)** | ✓ Eq. wap, war | ✅ crypto_layer.h + routing.cc | ✅ 5 new columns | ✓ AB6-ready | Implemented 2026-07-07: per-node TP_W/FP_W one-shot counters + FN_W snapshot + P_W/R_W |
 
@@ -565,18 +646,31 @@ Algorithms LRAD-OBU/LRAD-RSU.
      implementation notes (per-RSU offset model, eps_ref computation, boundary-behavior proof,
      2 new CLI flags, 3 new CSV columns).
 
-10. **Implement M8 Byzantine-robust aggregation** — Federated LSTM with Krum filtering
-    - **Effort:** 8 hours (requires LSTM training pipeline; out of ns-3 scope)
-    - **Impact:** Enables poisoning resistance validation for AB8
+10. ✅ **DONE — Implement M8 Byzantine-robust aggregation** — Federated LSTM with Krum filtering
+    - **Effort:** 8 hours estimated → ~3 hours actual (Krum filter + weighted FedAvg already existed
+      in `lstm_pipeline/src/fed_aggregator.py`; only trust-gate, hash-verify, poisoning injection,
+      FedAvg-baseline mode, and the sweep script were net-new)
+    - **Impact:** Enables poisoning resistance validation for AB5 (not AB8 — corrected mapping,
+      see M8 section above)
+    - **Completed:** 2026-07-07 (pipeline execution pending — syntax-checked only, needs a run on
+      the GPU training host). See M8 section above for full implementation notes.
 
 ### **Tier 4: Low (design review, not runtime)**
-11. **M10 Privacy Leakage** — Architectural review (not runtime metric); cite baseline designs from literature
-    - **Effort:** 2 hours (literature review + design document)
+11. ✅ **DONE — M10 Privacy Leakage** — Architectural review (not runtime metric); cite baseline designs from literature
+    - **Effort:** 2 hours
     - **Impact:** Qualitative privacy analysis (no code change needed)
+    - **Completed:** 2026-07-07. Verified `L_priv=0` for MOBIGUARD's security layer against actual
+      transmitted message contents (signatures, hashes, boolean outcomes only across all 5 D_raw
+      categories); documented a scoping caveat that the base ns-3 routing tag layer separately
+      carries raw position/velocity/acceleration in cleartext, but that's shared VANET routing
+      infrastructure common to all frameworks under test, not part of MOBIGUARD's security-layer
+      contribution the metric is scoped to. See M10 section above for full analysis + result table.
 
-12. **M11 UFCR (control-plane attacks)** — Requires control-plane attack injection (Variants 1, 3, 5, 7)
-    - **Effort:** 6 hours (implement FlowMod authorization checks + control-plane attack variants)
-    - **Impact:** Complete coverage of all 8 attack variants (currently only data-plane variants 0–7 implemented)
+12. ✅ **DONE — M11 UFCR (control-plane attacks)** — Control-plane attack injection + FlowMod authorization
+    - **Effort:** 6 hours estimated → ~2 hours actual (existing `bc_commit_flowmod()` quorum check
+      already implemented the authorization gate; only needed an unauthorized-attempt injector)
+    - **Impact:** Complete coverage of the 4 control-plane variants for M11 evaluation
+    - **Completed:** 2026-07-07 (build verification pending). See M11 section above.
 
 ---
 
@@ -584,12 +678,12 @@ Algorithms LRAD-OBU/LRAD-RSU.
 
 | Severity | Remaining | Metrics | Issue |
 |----------|-------|---------|-------|
-| **Critical (open)** | 2 | M8, M11 | Completely unimplemented (Byzantine LSTM poisoning; control-plane UFCR) |
-| **Low (open)** | 1 | M10 | Architectural evaluation only — acceptable as literature citation, no code needed |
-| **Resolved** | 9 | M1, M2, M3, M4, M5, M6\*, M7, M9\*\*, M12 | Fixed 2026-07-07 (M1 needed no code — see Critical Issue #4); rest fixed 2026-07-06/07; M6 T_ref normalization still open but base metric works; \*\*M9 build verification pending |
+| **Resolved** | 12 | M1, M2, M3, M4, M5, M6\*, M7, M8\*\*\*, M9\*\*, M10, M11\*\*, M12 | All 12 metrics now implemented. M6 T_ref normalization still open but base metric works. \*\*M9/M11 (ns-3/C++) pending `waf build`. \*\*\*M8 (Python) pending end-to-end pipeline run — syntax-checked only. |
 
-**Progress:** 9 of 12 metrics fully resolved (1 pending build confirmation); 2 remain open (M8/M11
-need new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/12 to 2/12.
+**Progress: 12 of 12 metrics implemented.** Three items (M8, M9, M11) are code-complete but await
+your build/run pass: M9 and M11 need `./waf build` (ns-3/C++), M8 needs a full `pipeline.py` run on
+the GPU training host (Python, untouched by the ns-3 build). Everything else has already been
+verified building/running clean in earlier steps of this session.
 
 ---
 
@@ -600,8 +694,10 @@ need new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/
 - `scratch/routing.cc:116782–116819` — Latency calculation (M6)
 - `scratch/crypto_layer.h` (`update_T_ref()`) — Distributed time reference + M9 eps_ref instrumentation (done 2026-07-07)
 - `scratch/crypto_layer.h` (`witness_submit_duplication_alert`/`witness_submit_nfa_alert`) — Witness mechanism + M12 TP_W/FP_W counting (done 2026-07-07)
-- `docs/SIGNATURE_ATTACK_DECOUPLING_PLAN.md:Phase 3` — Ablation gate implementations (done for AB1/4/6/7/8/9/11; M8/M9/M11 still need new subsystems beyond gating)
+- `docs/SIGNATURE_ATTACK_DECOUPLING_PLAN.md:Phase 3` — ns-3 ablation gate implementations (done for AB1/4/6/7/8/9/11)
 - `docs/CRYPTO_CORRECTIONS.md` — Cryptographic layer deviations (M4/M7/M12 correctness gaps now resolved; referenced for historical context)
+- `lstm_pipeline/src/fed_aggregator.py`, `poison_sweep.py` — BRFA-v2 (4 steps) + M8 Δ_poison sweep (done 2026-07-07)
+- `scratch/routing.cc` (`ufcr_attempt_unauthorized_flowmod`, `calculate_ufcr_metric`) — M11 UFCR (done 2026-07-07)
 
 ---
 
@@ -610,14 +706,16 @@ need new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/
 **The proposal specifies 12 comprehensive metrics across detection quality (M1), attack-specific
 containment (M2–M3), operational latency (M4–M6), security overhead (M7), Byzantine robustness
 (M8–M9), privacy (M10), control-plane defense (M11), and witness mechanisms (M12). As of 2026-07-07,
-M1, M2, M3, M4, M5, M6, M7, M9, and M12 are implemented and exporting to CSV, including M1's per-mode
-(OBU/RSU) stratification via the existing AB1 ablation flags and M9's clock-offset injection +
-eps_ref deviation tracking (build verification pending).**
+all 12 metrics are implemented.** M1, M2, M3, M4, M5, M6, M7, M10, and M12 have been verified
+building/running clean during this session. M8 (Python, `lstm_pipeline/`), M9, and M11 (both ns-3/C++,
+`scratch/`) are code-complete and syntax/logic-reviewed but await the user's build/run pass — M9 and
+M11 need `./waf build`, M8 needs a `pipeline.py --from-step 5` run on the GPU training host (or
+the full pipeline from step 1 if no trained checkpoints exist yet).
 
-**Remaining gap: M8 (Byzantine-robust federated LSTM aggregation) and M11 (control-plane FlowMod
-authorization/UFCR) require new subsystems — not wiring fixes — and are the last blockers before
-evaluation tables (Section 5, Tables 5.1–5.18) can be fully populated. M10 is
-architectural/literature-citation only and needs no runtime code.**
+**No metric requires further design work.** The coverage gap identified in the original report
+(8 of 12 unimplemented or partial) has been closed to 0 pending-design / 3 pending-verification.
+Once the three pending items are confirmed running clean, every metric in Section 4.6 is available
+to populate the evaluation tables in Section 5.**
 
 ---
 
@@ -692,3 +790,39 @@ for n in 1 2 3 4 5 6 7 8; do
 done
 ./waf --run "scratch/routing/routing --active_attack_variant=-1"   # baseline
 ```
+
+### M11 — Unauthorized FlowMod Containment Rate (UFCR)
+Only meaningful under control-plane attacks (Attacks 1, 3, 5, 7). Run each endorsement mode (AB8):
+```bash
+# AB8-B (proposed): endorsement required -> unauthorized FlowMods rejected -> UFCR ~= 1.0
+./waf --run "scratch/routing/routing --attack_number=1 --attack_percentage=40 --enable_endorsement_requirement=true"
+
+# AB8-A (baseline): no endorsement -> controller commits unilaterally -> UFCR = 0
+./waf --run "scratch/routing/routing --attack_number=1 --attack_percentage=40 --enable_endorsement_requirement=false"
+```
+Check `ufcr_unauth_total, ufcr_blocked, UFCR` columns. Repeat for `--attack_number=3,5,7` to cover
+all four control-plane variants.
+
+### M8 — Federated Model Poisoning Resistance (BRFA-v2 vs FedAvg)
+Run on the GPU training host, from `lstm_pipeline/src/`. Requires clean per-RSU models first
+(steps 1–2 of the pipeline) if not already trained:
+```bash
+# One-time setup (skip if lstm_pipeline/models/rsu_*.pt already exist):
+python3 pipeline.py --from-step 1     # preprocess + train clean local models (steps 1-2), then stops before step 3
+
+# M8 sweep — compares BRFA-v2 vs naive FedAvg across malicious-RSU fractions:
+python3 poison_sweep.py --rho 0.0 0.1 0.2 0.3 --modes brfa fedavg
+
+# Try a stronger/weaker attack model:
+python3 poison_sweep.py --poison_mode scale     # or: sign_flip (default), random
+```
+**Expected result:** for `--modes brfa`, `Delta_poison` should stay near 0 (script prints a
+PASS/CHECK flag automatically) for every `rho_mal < 1/3`; for `--modes fedavg`, `Delta_poison`
+should grow monotonically with `rho_mal` since naive FedAvg has no rejection mechanism. Results
+written to `lstm_pipeline/poison_sweep_results.json`.
+
+**Note:** `pipeline.py --from-step 1` runs the full STEPS list starting at step 1 (preprocess),
+which will also execute steps 2, 3, 4 unless interrupted — if you only want the clean per-RSU
+checkpoints (steps 1–2) without immediately overwriting `global.pt` via step 3, either stop the
+process after step 2's `local_trainer.py` completes, or run `preprocessor.py` and `local_trainer.py`
+directly instead of through `pipeline.py`.
