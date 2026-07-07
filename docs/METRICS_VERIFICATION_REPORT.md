@@ -170,19 +170,39 @@ variant, sweep dimension encoded in filename).
 
 ---
 
-### M9 — Distributed Time Reference Robustness [Ablation only]
+### M9 — Distributed Time Reference Robustness [Ablation only] — DONE (2026-07-07, build pending)
 
 | Aspect | Proposal Requirement | Implementation Status | Code Location | Notes |
 |--------|---------------------|----------------------|---|---|
-| **Definition** | `ε_ref(f_bad) = \|T_ref(t) - T_ground(t)\|` — time reference deviation under f_bad compromised RSU clocks | ✗ Missing | — | **No implementation found** |
-| **Formal guarantee** | `T_ref(t)` remains within honest clock range when `f_bad < n_RSU/2` RSU clocks compromised | ✗ Missing | — | Equation eq:time_consensus (time consensus algorithm bound) not validated |
-| **T_ground(t)** | GPS ground truth timestamp from simulation | ✗ Missing | — | No ground-truth time source integrated; no simulation-time reference available for comparison |
-| **Attack variation** | `f_bad ∈ {0, 1, ⌊n_RSU/4⌋, ⌊n_RSU/2⌋ - 1}` — sweep to confirm bound failure at f_bad = n_RSU/2 | ✗ Missing | — | No configuration to selectively corrupt f_bad RSU clocks |
-| **Validation** | Confirm robustness holds for all f_bad < n_RSU/2, fails at f_bad = n_RSU/2 | ✗ Missing | — | No validation infrastructure |
-| **CSV export** | ε_ref per compromised-clock count | ✗ Missing | — | Not in CSV; would be separate distributed-sync ablation output |
-| **Implementation status** | `update_T_ref()` function exists (crypto_layer.h:683–694) | ⚠ Partial | crypto_layer.h:683-694 | Function computes median of N RSU clocks (comment says "stub, not real distributed sync"), but: (1) No clock offset injection for Byzantine scenario; (2) No deviation measurement against ground truth; (3) Called internally but metric not exported |
+| **Definition** | `ε_ref(f_bad) = \|T_ref(t) - T_ground(t)\|` — time reference deviation under f_bad compromised RSU clocks | ✅ Implemented | crypto_layer.h `update_T_ref()` | `g_eps_ref` recomputed on every sync tick |
+| **Formal guarantee** | `T_ref(t)` remains within honest clock range when `f_bad < n_RSU/2` RSU clocks compromised | ✅ Reproduced by design | crypto_layer.h `update_T_ref()` | Coordinate-wise median over N_RSUs offsets — honest majority pins the median at 0 offset for any `f_bad < N_RSUs/2` |
+| **T_ground(t)** | GPS ground truth timestamp from simulation | ✅ Implemented | crypto_layer.h `update_T_ref()` | `t_ground = Simulator::Now().GetSeconds()`, the simulator's own authoritative clock |
+| **Attack variation** | `f_bad ∈ {0, 1, ⌊n_RSU/4⌋, ⌊n_RSU/2⌋ - 1}` — sweep to confirm bound failure at f_bad = n_RSU/2 | ✅ CLI-sweepable | `--time_ref_f_bad`, `--time_ref_delta_attack` | First `f_bad` RSU indices get a fixed offset; run once per sweep value (same separate-runs idiom as M1/variant sweeps) |
+| **Validation** | Confirm robustness holds for all f_bad < n_RSU/2, fails at f_bad = n_RSU/2 | ✅ Verifiable | — | With `f_bad < N_RSUs/2`: median lands on an honest (0-offset) entry → `eps_ref=0`. At `f_bad = N_RSUs/2` exactly: median index lands on the first compromised entry → `eps_ref = delta_attack`, reproducing the proposal's claimed failure point exactly |
+| **CSV export** | ε_ref per compromised-clock count | ✅ Implemented | routing.cc `write_security_metrics_csv()` | 3 new columns: `eps_ref_s, avg_eps_ref_s, time_ref_f_bad` |
+| **Implementation status** | `update_T_ref()` function exists (crypto_layer.h) | ✅ Upgraded from stub | crypto_layer.h `update_T_ref()` | Previously pushed `N_RSUs` identical copies of the same simulator clock (no per-RSU divergence possible at all); now models per-RSU offset and computes real deviation |
 
-**Summary:** M9 is **completely unimplemented** as an evaluation metric. The underlying `update_T_ref()` function exists as a stub (documented in CRYPTO_CORRECTIONS.md), but the metric evaluation framework—clock offset injection, deviation measurement, and per-corruption-count reporting—is absent.
+**Summary:** M9 is now **fully implemented**, pending build verification. The `update_T_ref()` stub
+previously had no way to represent per-RSU clock divergence — every "RSU clock" was just the same
+global `Simulator::Now()` value, so no offset could ever be injected. It now models `N_RSUs`
+independent clock readings with configurable Byzantine offsets.
+
+**Implementation notes (2026-07-07):**
+- **Design choice:** compromised RSUs are the first `TIME_REF_F_BAD` indices (0..f_bad-1), each
+  offset by a fixed `TIME_REF_DELTA_ATTACK` seconds (default 0.5s) — mirrors the proposal's
+  "f_bad RSU clocks offset by a fixed attack value δ_attack" framing exactly, and matches the
+  simple index-based selection pattern used elsewhere in the codebase (e.g. TCAM malicious RSUs).
+- **Why the bound reproduces correctly:** `times[]` is sorted; `g_T_ref = times[size/2]`. For
+  `f_bad < N_RSUs/2`, honest (offset-0) entries are strictly more than half the array, so the median
+  index always falls on an honest entry regardless of how large `delta_attack` is. At
+  `f_bad = N_RSUs/2` (even N_RSUs), the median index lands exactly on the boundary between the
+  honest and compromised halves — landing on the first compromised entry — which is the exact
+  "fails exactly at f_bad = n_RSU/2" behavior the proposal specifies for validation.
+- **Default `f_bad=0`** reproduces the original all-honest behavior exactly (`eps_ref ≡ 0`), so this
+  change is backward-compatible with every existing run/CSV that doesn't pass the new flags.
+- Two new CLI flags registered in `crypto_register_cli_params()`: `--time_ref_f_bad`,
+  `--time_ref_delta_attack`.
+- **Build check:** pending — user to run `./waf build 2>&1 | grep -i error` and confirm clean.
 
 ---
 
@@ -274,7 +294,7 @@ comparison and metric computation, which is now wired end-to-end.
 | **M6 (L_e2e)** | ✓ Eq. l_e2e | ✓ routing.cc:116782 | ✓ Written | — | No T_ref normalization; no before/after split |
 | **M7 (Overhead)** | ✓ Eq. o_crypto, t_verify, t_consensus | ✅ Instrumented (Step 5) | ✅ 4 new columns | ✓ | O_crypto + T_batch(B) + T_consensus wall-clock; per-op rows in crypto_timing_log.csv; see Tier 2 item 5 |
 | **M8 (Poisoning)** | ✓ Eq. delta_poison | ✗ Missing | ✗ | ✗ AB8 | No Byzantine poisoning attack/defense in LSTM |
-| **M9 (Time Ref)** | ✓ Eq. eps_ref | ✗ Missing (metric) | ✗ | ✗ AB9 | update_T_ref() exists as stub; no evaluation |
+| **M9 (Time Ref)** | ✓ Eq. eps_ref | ✅ crypto_layer.h (build pending) | ✅ 3 new columns | ✓ sweepable | Implemented 2026-07-07: per-RSU clock offset model + eps_ref deviation tracking |
 | **M10 (Privacy)** | ✓ Eq. l_priv | ✗ N/A (architectural) | ✗ | — | Design review metric; not runtime-measurable |
 | **M11 (UFCR)** | ✓ Eq. ufcr | ✗ Missing | ✗ | — | No control-plane attack injection; no authorization checks |
 | **M12 (WAP-R)** | ✓ Eq. wap, war | ✅ crypto_layer.h + routing.cc | ✅ 5 new columns | ✓ AB6-ready | Implemented 2026-07-07: per-node TP_W/FP_W one-shot counters + FN_W snapshot + P_W/R_W |
@@ -538,9 +558,12 @@ Algorithms LRAD-OBU/LRAD-RSU.
      per-packet tracking within one run. Achieved entirely via the `enable_lrad_obu`/
      `enable_lrad_rsu` flags already implemented in Step 4. See Critical Issue #4 above.
 
-9. **Implement M9 time-reference evaluation** — Clock offset injection and deviation measurement
-   - **Effort:** 4 hours (Byzantine clock attack simulation)
+9. ✅ **DONE — Implement M9 time-reference evaluation** — Clock offset injection and deviation measurement
+   - **Effort:** 4 hours
    - **Impact:** Enables T_ref robustness validation for distributed consensus
+   - **Completed:** 2026-07-07 (build verification pending). See M9 section above for full
+     implementation notes (per-RSU offset model, eps_ref computation, boundary-behavior proof,
+     2 new CLI flags, 3 new CSV columns).
 
 10. **Implement M8 Byzantine-robust aggregation** — Federated LSTM with Krum filtering
     - **Effort:** 8 hours (requires LSTM training pipeline; out of ns-3 scope)
@@ -562,12 +585,11 @@ Algorithms LRAD-OBU/LRAD-RSU.
 | Severity | Remaining | Metrics | Issue |
 |----------|-------|---------|-------|
 | **Critical (open)** | 2 | M8, M11 | Completely unimplemented (Byzantine LSTM poisoning; control-plane UFCR) |
-| **High (open)** | 1 | M9 | update_T_ref() exists as stub; no clock-offset/deviation evaluation |
 | **Low (open)** | 1 | M10 | Architectural evaluation only — acceptable as literature citation, no code needed |
-| **Resolved** | 8 | M1, M2, M3, M4, M5, M6\*, M7, M12 | Fixed 2026-07-07 (M1 needed no code — see Critical Issue #4); rest fixed 2026-07-06/07; M6 T_ref normalization still open but base metric works |
+| **Resolved** | 9 | M1, M2, M3, M4, M5, M6\*, M7, M9\*\*, M12 | Fixed 2026-07-07 (M1 needed no code — see Critical Issue #4); rest fixed 2026-07-06/07; M6 T_ref normalization still open but base metric works; \*\*M9 build verification pending |
 
-**Progress:** 8 of 12 metrics fully resolved; 3 remain open (M8/M9/M11 need new subsystems, M10 is a
-documentation task). Coverage gap narrowed from 8/12 to 3/12.
+**Progress:** 9 of 12 metrics fully resolved (1 pending build confirmation); 2 remain open (M8/M11
+need new subsystems, M10 is a documentation task). Coverage gap narrowed from 8/12 to 2/12.
 
 ---
 
@@ -576,7 +598,7 @@ documentation task). Coverage gap narrowed from 8/12 to 3/12.
 - `docs/main.tex:3476–3993` — Performance metrics specification (M1–M12, Equations eq:mcc through eq:war)
 - `scratch/routing.cc:117031–117440` — Metrics calculation and CSV export
 - `scratch/routing.cc:116782–116819` — Latency calculation (M6)
-- `scratch/crypto_layer.h:683–694` — Distributed time reference (M9 infrastructure, stub — still open)
+- `scratch/crypto_layer.h` (`update_T_ref()`) — Distributed time reference + M9 eps_ref instrumentation (done 2026-07-07)
 - `scratch/crypto_layer.h` (`witness_submit_duplication_alert`/`witness_submit_nfa_alert`) — Witness mechanism + M12 TP_W/FP_W counting (done 2026-07-07)
 - `docs/SIGNATURE_ATTACK_DECOUPLING_PLAN.md:Phase 3` — Ablation gate implementations (done for AB1/4/6/7/8/9/11; M8/M9/M11 still need new subsystems beyond gating)
 - `docs/CRYPTO_CORRECTIONS.md` — Cryptographic layer deviations (M4/M7/M12 correctness gaps now resolved; referenced for historical context)
@@ -588,11 +610,85 @@ documentation task). Coverage gap narrowed from 8/12 to 3/12.
 **The proposal specifies 12 comprehensive metrics across detection quality (M1), attack-specific
 containment (M2–M3), operational latency (M4–M6), security overhead (M7), Byzantine robustness
 (M8–M9), privacy (M10), control-plane defense (M11), and witness mechanisms (M12). As of 2026-07-07,
-M1, M2, M3, M4, M5, M6, M7, and M12 are implemented and exporting to CSV, including M1's per-mode
-(OBU/RSU) stratification via the existing AB1 ablation flags.**
+M1, M2, M3, M4, M5, M6, M7, M9, and M12 are implemented and exporting to CSV, including M1's per-mode
+(OBU/RSU) stratification via the existing AB1 ablation flags and M9's clock-offset injection +
+eps_ref deviation tracking (build verification pending).**
 
-**Remaining gap: M8 (Byzantine-robust federated LSTM aggregation), M9 (distributed time-reference
-robustness under clock attacks), and M11 (control-plane FlowMod authorization/UFCR) require new
-subsystems — not wiring fixes — and are the last blockers before evaluation tables (Section 5,
-Tables 5.1–5.18) can be fully populated. M10 is architectural/literature-citation only and needs no
-runtime code.**
+**Remaining gap: M8 (Byzantine-robust federated LSTM aggregation) and M11 (control-plane FlowMod
+authorization/UFCR) require new subsystems — not wiring fixes — and are the last blockers before
+evaluation tables (Section 5, Tables 5.1–5.18) can be fully populated. M10 is
+architectural/literature-citation only and needs no runtime code.**
+
+---
+
+## Testing / Run Recipes (for later verification)
+
+Commands to run once each feature's build is confirmed clean. All paths assume the ns-3 tree at
+`/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35` — adjust `NS3_DIR` if different.
+
+### Build check (run after every code change in this doc)
+```bash
+cd /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
+./waf build 2>&1 | grep -i error
+```
+No output = clean build.
+
+### M9 — Distributed Time Reference Robustness sweep
+Run once per `f_bad` value to populate `eps_ref_s` / `avg_eps_ref_s` / `time_ref_f_bad` columns
+across the sweep the proposal specifies (`f_bad ∈ {0, 1, ⌊N_RSUs/4⌋, ⌊N_RSUs/2⌋-1, N_RSUs/2}`).
+With default `N_RSUs=64`: {0, 1, 16, 31, 32}.
+```bash
+./waf --run "scratch/routing/routing --routing_test=1 --active_attack_variant=-1 --time_ref_f_bad=0  --time_ref_delta_attack=0.5"
+./waf --run "scratch/routing/routing --routing_test=1 --active_attack_variant=-1 --time_ref_f_bad=1  --time_ref_delta_attack=0.5"
+./waf --run "scratch/routing/routing --routing_test=1 --active_attack_variant=-1 --time_ref_f_bad=16 --time_ref_delta_attack=0.5"
+./waf --run "scratch/routing/routing --routing_test=1 --active_attack_variant=-1 --time_ref_f_bad=31 --time_ref_delta_attack=0.5"
+./waf --run "scratch/routing/routing --routing_test=1 --active_attack_variant=-1 --time_ref_f_bad=32 --time_ref_delta_attack=0.5"
+```
+**Expected result:** `eps_ref_s ≈ 0` for f_bad ∈ {0,1,16,31}; `eps_ref_s ≈ 0.5` (= delta_attack) at
+f_bad=32 — confirming the bound holds below N_RSUs/2 and fails exactly at N_RSUs/2.
+
+### M1 — Per-mode MCC stratification (AB1-A / AB1-B / AB1-C)
+Run each config against the same attack variant (example: Attack 6, Active HF Data Plane) and
+compare `cur_MCC`/`avg_MCC` across the three output files.
+```bash
+# AB1-A: Rule-only (OBU evaluates locally, RSU engine off)
+./waf --run "scratch/routing/routing --attack_number=6 --attack_percentage=40 --enable_lrad_obu=true  --enable_lrad_rsu=false"
+
+# AB1-B: LSTM-only (OBU disabled, RSU evaluates every packet)
+./waf --run "scratch/routing/routing --attack_number=6 --attack_percentage=40 --enable_lrad_obu=false --enable_lrad_rsu=true"
+
+# AB1-C: Full dual-mode (default — both true)
+./waf --run "scratch/routing/routing --attack_number=6 --attack_percentage=40 --enable_lrad_obu=true  --enable_lrad_rsu=true"
+```
+**Note:** S1/S3/S4 (OBU-only signatures) will show `MCC=0`/undefined under AB1-B since RSU never
+evaluates them; S2/S5–S8 (RSU-only signatures) will show `MCC=0`/undefined under AB1-A since OBU
+never evaluates them. This is expected — see Critical Issue #4 for why each signature is
+single-mode by design.
+
+### M12 — Witness Alert Precision/Recall (WAP-R)
+Only meaningful under passive HF attacks (Attack 7 or 8):
+```bash
+./waf --run "scratch/routing/routing --attack_number=7 --attack_percentage=40"   # S7, passive HF CP
+./waf --run "scratch/routing/routing --attack_number=8 --attack_percentage=40"   # S8, passive HF DP
+```
+Check `witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall` columns in the resulting
+`MOBIGUARD_Attack7_40.csv` / `MOBIGUARD_Attack8_40.csv`.
+
+### M5 — Controller Failover Latency
+Requires a controller-compromise scenario (attack variants that trigger `SC.Revoke`); check
+`ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned` columns. Target: max ≤ 100ms.
+
+### M7 — Security/Consensus Overhead
+No special flags needed — `o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg` are
+populated on every run once packets are signed/batch-verified/consensus-committed. Also check
+`crypto_timing_log.csv` for per-operation wall-clock rows (`sign`, `verify`, `stark_hop`,
+`batch_verify`, `consensus`, `lrad_obu`, `lrad_rsu`).
+
+### Full per-variant sweep (M1/M2/M3 baseline coverage)
+Per Critical Issue #1, each variant needs its own run to populate meaningful per-variant metrics:
+```bash
+for n in 1 2 3 4 5 6 7 8; do
+  ./waf --run "scratch/routing/routing --attack_number=$n --attack_percentage=40"
+done
+./waf --run "scratch/routing/routing --active_attack_variant=-1"   # baseline
+```

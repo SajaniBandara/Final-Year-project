@@ -114702,6 +114702,22 @@ uint32_t g_witness_FN_W         = 0;
 double   current_WAP_precision  = 0.0;
 double   current_WAP_recall     = 0.0;
 
+// M11: Unauthorized FlowMod Containment Rate (UFCR) — Eq. ufcr
+// Evaluated against control-plane attack Variants 1,3,5,7 (0-indexed
+// active_attack_variant 0,2,4,6). ufcr_attempt_unauthorized_flowmod() (defined
+// after crypto_layer.h is included) fires once per second while one of those
+// variants is active, submitting a synthetic FlowMod with zero RSU endorsers
+// (always < f+1, i.e. genuinely unauthorized per eq:unauth_flowmod) to
+// bc_commit_flowmod(). Whether it is rejected depends entirely on
+// enable_endorsement_requirement (AB8): required → rejected → BLOCKED;
+// not required → committed unilaterally → NOT blocked. Reproduces the
+// proposal's AB8-A UFCR=0 / AB8-B UFCR=1.0 expectation without any new
+// authorization pipeline — bc_commit_flowmod()'s existing quorum check IS
+// the authorization mechanism eq:ufcr measures.
+uint32_t g_ufcr_unauth_total = 0; // FM_unauth: attempted unauthorized FlowMods
+uint32_t g_ufcr_blocked      = 0; // of those, rejected before "installation"
+double   current_UFCR        = 0.0;
+
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
 #include "attack_variables.h"
@@ -114948,6 +114964,10 @@ void initialise_stub_attack_state()
 	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
 	Simulator::Schedule(Seconds(0.050),           &crypto_batch_verify_tick);
 	Simulator::Schedule(Seconds(5.0),             &crypto_evict_old_entries_recurring);
+	// M11 (UFCR) — defined further below (needs FlowModEndorsement/bc_commit_flowmod,
+	// both already visible via crypto_layer.h/bc_blockchain_helper.h included above).
+	extern void ufcr_attempt_unauthorized_flowmod();
+	Simulator::Schedule(Seconds(1.0),             &ufcr_attempt_unauthorized_flowmod);
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
@@ -117171,6 +117191,50 @@ void calculate_mitigation_latency_metric()
 }
 
 // ============================================================
+// M11: Unauthorized FlowMod Containment Rate (UFCR) — Eq. ufcr
+// Scoped to control-plane attack Variants 1,3,5,7 (0-indexed
+// active_attack_variant 0,2,4,6). Every second while one of those variants
+// is active, submits a synthetic FlowMod with zero RSU endorsers (always
+// < f+1, i.e. genuinely unauthorized per eq:unauth_flowmod) to the existing
+// bc_commit_flowmod() quorum check. That function already implements
+// eq:endorsed_commit's authorization gate — this only needs to attempt an
+// unauthorized commit and record the outcome, not build a new pipeline.
+// ============================================================
+void ufcr_attempt_unauthorized_flowmod()
+{
+    bool is_cp_variant = (active_attack_variant == 0 || active_attack_variant == 2 ||
+                          active_attack_variant == 4 || active_attack_variant == 6);
+    if (is_cp_variant)
+    {
+        FlowModEndorsement fake_e; // deliberately zero endorsers — always < f+1
+        bool committed = bc_commit_flowmod(fake_e);
+        g_ufcr_unauth_total++;
+        if (!committed) g_ufcr_blocked++;
+        if (CRYPTO_DEBUG_LOG)
+            std::cout << "[UFCR] unauthorized FlowMod attempt variant="
+                      << active_attack_variant
+                      << " committed=" << committed
+                      << " blocked_total=" << g_ufcr_blocked
+                      << "/" << g_ufcr_unauth_total << std::endl;
+    }
+    if (Simulator::Now().GetSeconds() < simTime)
+        Simulator::Schedule(Seconds(1.0), &ufcr_attempt_unauthorized_flowmod);
+}
+
+// UFCR = |{FM ∈ FM_unauth : FM blocked before installation}| / |FM_unauth|
+// Undefined (reported as 0) when no unauthorized attempts have occurred yet
+// (matches proposal: "under no attack, |FM_unauth|=0 so UFCR is undefined").
+void calculate_ufcr_metric()
+{
+    current_UFCR = (g_ufcr_unauth_total > 0)
+                   ? (double)g_ufcr_blocked / (double)g_ufcr_unauth_total
+                   : 0.0;
+    std::cout << "[SECURITY] UFCR=" << 100.0 * current_UFCR << "%"
+              << "  (blocked=" << g_ufcr_blocked
+              << " / unauth_attempts=" << g_ufcr_unauth_total << ")" << std::endl;
+}
+
+// ============================================================
 // M7: Safety-Critical Threshold Violation Rate (TVR)
 // TVR = |{p ∈ P_crit : δ_p(v,r,t) > Δ_max}| / |P_crit|
 // Counters g_tvr_crit_total / g_tvr_violated are incremented
@@ -117349,7 +117413,8 @@ void write_security_metrics_csv()
 			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned,"
 			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg,"
 			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
-			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad\n";
+			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
+			 << " ufcr_unauth_total, ufcr_blocked, UFCR\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117435,6 +117500,9 @@ void write_security_metrics_csv()
 		 << ", " << g_eps_ref
 		 << ", " << (g_eps_ref_samples ? g_eps_ref_cumulative / (double)g_eps_ref_samples : 0.0)
 		 << ", " << TIME_REF_F_BAD
+		 << ", " << g_ufcr_unauth_total
+		 << ", " << g_ufcr_blocked
+		 << ", " << (current_UFCR * 100.0)
 		 << "\n";
 
 	fout.close();
@@ -117645,6 +117713,8 @@ void calculate_performance_evaluation_metrics()
 	Simulator::Schedule(Seconds(0.000092), calculate_ucr_metric);
 	// M12 WAP-R — fires after UCR, before CSV write
 	Simulator::Schedule(Seconds(0.000093), calculate_witness_wapr_metric);
+	// M11 UFCR — fires after WAP-R, before CSV write
+	Simulator::Schedule(Seconds(0.000094), calculate_ufcr_metric);
 	// Write per-cycle row; fires after PDR/latency/security metrics are updated
 	Simulator::Schedule(Seconds(0.000095), write_security_metrics_csv);
 
