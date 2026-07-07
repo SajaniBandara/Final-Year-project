@@ -245,9 +245,9 @@ None of these are wired in the current codebase.
 
 | Metric | Proposal | Code | CSV | Ablation | Notes |
 |--------|----------|------|-----|----------|-------|
-| **M1 (MCC)** | ✓ Eq. mcc | ✓ routing.cc:117075 | ⚠ Single variant only | ✓ (partial) | Computed per variant but only selected_variant exported |
-| **M2 (TVR)** | ✓ Eq. tvr | ✓ routing.cc:117158 | ✗ Not in CSV | — | Computed but not exported; no T_ref normalization |
-| **M3 (UCR)** | ✓ Eq. ucr | ✓ routing.cc:117186 | ✗ Not in CSV | — | Computed aggregate only; no per-variant breakdown |
+| **M1 (MCC)** | ✓ Eq. mcc | ✓ routing.cc:117075 | ✓ Single variant (by design) | ✓ (partial) | Per-variant via separate runs → separate files (proposal + reference idiom); NOT a bug |
+| **M2 (TVR)** | ✓ Eq. tvr | ✓ routing.cc:117158 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; no T_ref normalization (open) |
+| **M3 (UCR)** | ✓ Eq. ucr | ✓ routing.cc:117186 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; aggregate only (per-variant via separate runs) |
 | **M4 (L_mit)** | ✓ Eq. l_mit | ⚠ routing.cc:117111 | ✓ Written | — | t_quarantine never populated; metric always 0 |
 | **M5 (L_failover)** | ✓ Eq. l_failover | ✗ Missing | ✗ | ✗ AB9 | No controller failover tracking |
 | **M6 (L_e2e)** | ✓ Eq. l_e2e | ✓ routing.cc:116782 | ✓ Written | — | No T_ref normalization; no before/after split |
@@ -310,27 +310,30 @@ lambda / node-count / mobility variables.
 **reverted** on 2026-07-07 after the reference-code idiom confirmed single-variant-per-file is the
 supervisor-aligned design. Step 1's TVR/UCR column additions (see Issue #2 below) were retained.
 
-### 2. **Missing TVR and UCR in CSV (affects M2, M3)**
+### 2. **Missing TVR and UCR in CSV (affects M2, M3) — DONE (Step 1, 2026-07-06)**
 
-**Problem:** TVR and UCR are computed every cycle but not written to CSV.
+**Problem (was):** TVR and UCR were computed every cycle but not written to CSV.
 
 ```cpp
 // calculate_tvr_metric() computes current_TVR and prints to console
 // calculate_ucr_metric() computes current_UCR and prints to console
-// But write_security_metrics_csv() does NOT include these columns
+// But write_security_metrics_csv() did NOT include these columns
 ```
 
-**Impact:**
+**Impact (was):**
 - Proposal evaluation tables (5.1–5.5) show TVR and UCR per experiment
-- Current CSV only has MCC, DR, FPR for detection quality
+- CSV only had MCC, DR, FPR for detection quality
 - TVR and UCR data only available in console logs (requires manual parsing)
-- Baseline comparison (B1–B3) cannot be done from CSV (baselines' TVR/UCR figures must be cited from literature)
 
-**Fix required:** Add TVR and UCR columns to CSV:
+**Fix applied (Step 1):** Added four columns to the fixed CSV schema — header
+(routing.cc:117283) and data row (routing.cc:117341-344):
 ```cpp
-fout << ", " << current_TVR << ", " << average_TVR
-     << ", " << current_UCR << ", " << average_UCR;
+fout << ", " << (current_TVR * 100.0) << ", " << (average_TVR * 100.0)
+     << ", " << (current_UCR * 100.0) << ", " << (average_UCR * 100.0);
 ```
+Values are written as percentages (0–100) to match the FPR format. This is a clean widening of the
+single-variant fixed schema and is fully consistent with the reference-code idiom (Issue #1).
+**Status: implemented and verified.**
 
 ### 3. **No Ablation Study Infrastructure**
 
@@ -379,17 +382,22 @@ for (int n = 0; n < active_topology_nodes; n++) {
 ## Recommended Remediation Priority
 
 ### **Tier 1: Critical (blocks validation of any evaluation results)**
-1. **Fix TVR/UCR CSV export** — Add 4 columns (cur_TVR, avg_TVR, cur_UCR, avg_UCR) to CSV writer
+1. ✅ **DONE — Fix TVR/UCR CSV export** — Added 4 columns (cur_TVR, avg_TVR, cur_UCR, avg_UCR) to CSV writer
    - **Effort:** 1 hour
    - **Impact:** Enables M2/M3 evaluation from single CSV (no console log parsing)
-   
-2. **Fix single-variant metric export** — Widen CSV to include all 8 variants' MCC/DR/FPR/TP/FP/TN/FN
-   - **Effort:** 2 hours
-   - **Impact:** Enables per-variant M1 evaluation without 8 separate simulation runs per experiment
+   - **Completed:** 2026-07-06 (routing.cc:117283 header, 117341-344 data row)
+
+2. ~~**Fix single-variant metric export** — Widen CSV to include all 8 variants~~ — **CANCELLED (not a bug)**
+   - Single-variant export is the **correct, intended design** — confirmed by proposal
+     (main.tex:4945, "separate simulation runs, one variant active at a time") and by the
+     supervisor's reference-code idiom (sweep dimension in filename, fixed columns, one file per run).
+   - A widening change was implemented then **reverted** on 2026-07-07. See Critical Issue #1 above.
+   - Per-variant tables come from 8 separate runs → 8 files, not one wide CSV.
 
 3. **Wire controller failover for M5** — Implement `enable_controller_failover` flag and timestamp tracking
    - **Effort:** 4 hours (depends on controller logic in attack_declaration.h)
    - **Impact:** Enables M5 (L_failover) measurement for AB9 ablation
+   - **Status:** NOT STARTED — next Tier 1 item
 
 ### **Tier 2: High (needed for ablation studies)**
 4. **Implement ablation gate flags (Phase 3)** — Add 7 CLI flags for AB1, AB4, AB6, AB7, AB8, AB9, AB11
