@@ -117288,7 +117288,8 @@ void write_security_metrics_csv()
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
 			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
 			 << " d_obu_count, d_rsu_count, escalation_count,"
-			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned\n";
+			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned,"
+			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117360,6 +117361,12 @@ void write_security_metrics_csv()
 		 << ", " << g_failover_max_ms
 		 << ", " << g_failover_events
 		 << ", " << g_failover_reassigned
+		 // M7 (eq:o_crypto / eq:t_verify / eq:t_consensus) — running averages since
+		 // sim start; wall-clock timings in ms, overhead in bytes per signed packet
+		 << ", " << (g_m7_signed_pkts     ? g_m7_crypto_bytes_sum / (double)g_m7_signed_pkts        : 0.0)
+		 << ", " << (g_m7_batch_calls     ? g_m7_batch_wall_us_sum / (double)g_m7_batch_calls / 1000.0 : 0.0)
+		 << ", " << (g_m7_batch_calls     ? (double)g_m7_batch_pkts / (double)g_m7_batch_calls      : 0.0)
+		 << ", " << (g_m7_consensus_count ? g_m7_consensus_wall_us_sum / (double)g_m7_consensus_count / 1000.0 : 0.0)
 		 << "\n";
 
 	fout.close();
@@ -117955,13 +117962,26 @@ void transmit_delta_values()
 	// §7.4 — FlowMod pre-installation audit: log → endorse → commit (eq:rsu_endorsement)
 	{
 		uint32_t fid = 0;
+		// M7 eq:t_consensus — T_consensus = t_commit − t_FlowMod_recv. The whole
+		// endorse→commit sequence runs at a single simulator timestamp, so the
+		// honest measurable quantity is its wall-clock processing time (same
+		// rationale as the batch-verify timing; report Tier-2 item 5).
+		auto _ct0 = crypto_log_start();
 		for (uint32_t rsu = N_Vehicles; rsu < (uint32_t)(N_Vehicles + N_RSUs); rsu++) {
 			uint8_t params[4]; memcpy(params, &rsu, 4);
 			flowmod_endorse(rsu, fid, params, 4);
 		}
 		FlowModEndorsement& e = g_flowmod_endorsements[fid];
 		bc_log_flowmod(e, N_Vehicles);
-		if (!bc_commit_flowmod(e) && N_RSUs > 0) {
+		bool _committed = bc_commit_flowmod(e);
+		auto _ct1 = std::chrono::high_resolution_clock::now();
+		g_m7_consensus_wall_us_sum +=
+			std::chrono::duration<double, std::micro>(_ct1 - _ct0).count();
+		++g_m7_consensus_count;
+		// per-op row: node_id carries endorser count, pkt_id carries fid
+		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
+		                 _ct0, _committed);
+		if (!_committed && N_RSUs > 0) {
 			ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
 		}
 	}

@@ -248,10 +248,10 @@ None of these are wired in the current codebase.
 | **M1 (MCC)** | ✓ Eq. mcc | ✓ routing.cc:117075 | ✓ Single variant (by design) | ✓ (partial) | Per-variant via separate runs → separate files (proposal + reference idiom); NOT a bug |
 | **M2 (TVR)** | ✓ Eq. tvr | ✓ routing.cc:117158 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; no T_ref normalization (open) |
 | **M3 (UCR)** | ✓ Eq. ucr | ✓ routing.cc:117186 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; aggregate only (per-variant via separate runs) |
-| **M4 (L_mit)** | ✓ Eq. l_mit | ⚠ routing.cc:117111 | ✓ Written | — | t_quarantine never populated; metric always 0 |
+| **M4 (L_mit)** | ✓ Eq. l_mit | ✅ Wired (verified 2026-07-07) | ✓ Written | — | t_quarantine set via record_detection_event() + trust_update_negative(); see Tier 2 item 6 |
 | **M5 (L_failover)** | ✓ Eq. l_failover | ✅ crypto_layer.h (Step 3) | ✅ In CSV (Step 3) | ✓ AB9-ready | Implemented 2026-07-07: broadcast-propagation delay model + t_revoke/t_reassign stamps + 3 CSV columns |
 | **M6 (L_e2e)** | ✓ Eq. l_e2e | ✓ routing.cc:116782 | ✓ Written | — | No T_ref normalization; no before/after split |
-| **M7 (Overhead)** | ✓ Eq. o_crypto, t_verify, t_consensus | ⚠ Partial | ⚠ Partial | ✓ (partial) | Only sig_valid_rate, flowmod_endorsement_rate; missing T_verify, T_consensus |
+| **M7 (Overhead)** | ✓ Eq. o_crypto, t_verify, t_consensus | ✅ Instrumented (Step 5) | ✅ 4 new columns | ✓ | O_crypto + T_batch(B) + T_consensus wall-clock; per-op rows in crypto_timing_log.csv; see Tier 2 item 5 |
 | **M8 (Poisoning)** | ✓ Eq. delta_poison | ✗ Missing | ✗ | ✗ AB8 | No Byzantine poisoning attack/defense in LSTM |
 | **M9 (Time Ref)** | ✓ Eq. eps_ref | ✗ Missing (metric) | ✗ | ✗ AB9 | update_T_ref() exists as stub; no evaluation |
 | **M10 (Privacy)** | ✓ Eq. l_priv | ✗ N/A (architectural) | ✗ | — | Design review metric; not runtime-measurable |
@@ -443,13 +443,42 @@ for (int n = 0; n < active_topology_nodes; n++) {
    - **Completed:** 2026-07-07 — see Critical Issue #3 above for the full flag table,
      gate locations, and the stark_verify_timing deviation note. Build verified clean.
 
-5. **Add M7 wall-clock timing** — Instrument `batch_verify_mldsa87()`, `stark_verify_*()`, blockchain consensus with timers
+5. ✅ **DONE — Add M7 wall-clock timing** — Instrumented batch verify, FlowMod consensus, and O_crypto
    - **Effort:** 3 hours (add std::chrono calls around crypto functions)
    - **Impact:** Enables overhead breakdown for M7 (required for security layer cost analysis)
+   - **Completed:** 2026-07-07. Implementation notes:
+     - **Pre-existing coverage found first:** `crypto_event_log.h` already logs per-op wall-clock
+       µs (`sign`, `verify`, `stark_hop`, `lrad_obu`, `lrad_rsu`) to `crypto_timing_log.csv` —
+       the report's "not instrumented" claim was stale for individual ops. The real gaps were
+       the three M7 aggregates:
+     - **T_batch(B) (eq:t_verify):** `crypto_batch_verify_tick()` now times `batch_verify_mldsa87()`
+       with `std::chrono` (the function's own `elapsed_s` is a simulated 1 ms/pkt budget counter,
+       NOT wall time — deliberately left untouched) and emits a `batch_verify` row to
+       `crypto_timing_log.csv` (node_id column = batch size B, pkt_id = n_verified).
+     - **T_consensus (eq:t_consensus):** the endorse→commit sequence in `transmit_delta_values()`
+       runs at a single simulator timestamp (sim-time Δ would be identically 0 — same trap M5 had),
+       so the honest measurable quantity is its wall-clock processing time. Timed with
+       `std::chrono`; emits a `consensus` row (node_id = endorser count, pkt_id = fid).
+     - **O_crypto (eq:o_crypto):** accumulated at sign time in `mldsa87_sign()` as the bytes the
+       simulation actually attaches: `sig_len` (ML-DSA-87, 4627 B) + 64 B π_delay commitment
+       (the simulated STARK proof is a SHA3-512 commitment, NOT the proposal's conservative
+       ≤100 KB FRI bound; π_hop is embedded in σ via signed_next_hop → 0 extra bytes on-wire).
+     - **New CSV columns** (fixed-schema append, running averages since sim start):
+       `o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg`.
+     - **Include-order note:** `crypto_event_log.h` is included after `crypto_layer.h` in
+       routing.cc, so the batch tick uses a forward declaration of `crypto_log_event()`
+       (same translation unit — legal and resolved at link of the inline definition).
+     - Build verified clean (waf, 2026-07-07).
 
-6. **Add M4 blockchain integration** — Set `t_quarantine[n]` when smart contract fires (requires blockchain simulator bridge)
-   - **Effort:** 4 hours (depends on blockchain simulator callback mechanism)
-   - **Impact:** Enables L_mit measurement (critical for assessing mitigation responsiveness)
+6. ✅ **DONE (already wired — report was stale)** — M4 `t_quarantine[n]` population
+   - Verified 2026-07-07: `t_quarantine[n]` IS set on two paths — (1) `record_detection_event()`
+     (routing.cc:115112, called from inside each `s*_detect()` when its equation fires) and
+     (2) the quarantine branch of `trust_update_negative()` (crypto_layer.h, T_min crossing,
+     which also stamps SC.Quarantine semantics). `t_onset[n]` is set by attack injection
+     (attack_declaration.h:180/245, hf_attack_helper.h:639). `calculate_mitigation_latency_metric()`
+     guards `t_quarantine > t_onset` correctly. **No blockchain bridge needed for the ns-3-side
+     metric** — the original "always 0" claim predates the trust/quarantine wiring.
+   - The M4 section table above (t_quarantine "never populated") is superseded by this note.
 
 ### **Tier 3: Medium (needed for complete evaluation)**
 7. **Add M12 witness metric computation** — Compare witness alerts against ground-truth HF attack status

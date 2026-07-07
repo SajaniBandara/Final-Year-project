@@ -18,6 +18,7 @@
 #include <array>
 #include <map>
 #include <algorithm>
+#include <chrono>   // M7: wall-clock timing of batch verification (eq:t_verify)
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -33,6 +34,14 @@ void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
 // dkg_rotate_keys defined in dkg_setup.h (included after this) — called from trust_update_negative
 // per eq:key_rotation_trigger when a quarantined node is an RSU.
 inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
+
+// crypto_log_event defined in crypto_event_log.h (included after this header in
+// routing.cc, same translation unit) — forward-declared so crypto_batch_verify_tick
+// can emit a "batch_verify" row into crypto_timing_log.csv (M7, eq:t_verify).
+// CryptoTimePoint alias must match crypto_event_log.h exactly (legal redeclaration).
+using CryptoTimePoint = std::chrono::high_resolution_clock::time_point;
+inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
+                             CryptoTimePoint t0, bool result);
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
@@ -223,6 +232,22 @@ double   g_failover_max_ms     = 0.0; // max_k(t_reassign^(k) − t_revoke), mos
 uint32_t g_failover_events     = 0;   // SC.Revoke events fired (ControllerRevoked broadcasts)
 uint32_t g_failover_reassigned = 0;   // RSU reassignment completions across all events
 
+// M7 — eq:o_crypto / eq:t_verify / eq:t_consensus instrumentation state.
+// All wall-clock (std::chrono) sums in microseconds; cumulative since sim start
+// (CSV exports running averages, matching the avg_* idiom of the metrics CSV).
+// O_crypto counts the bytes the simulation actually attaches per signed packet:
+// |σ| = sig_len (ML-DSA-87, 4627 B per CRYPTO_CORRECTIONS.md DOC-1) plus the
+// 64-byte SHA3-512 π_delay commitment (the simulated STARK proof — NOT the
+// proposal's conservative ≤100 KB FRI bound; π_hop is embedded in σ via
+// signed_next_hop, contributing 0 extra bytes on-wire).
+double   g_m7_crypto_bytes_sum    = 0.0; // Σ (sig_len + 64) over signed packets
+uint64_t g_m7_signed_pkts         = 0;   // packets signed (O_crypto denominator)
+double   g_m7_batch_wall_us_sum   = 0.0; // Σ wall-clock µs of batch_verify_mldsa87 calls
+uint64_t g_m7_batch_calls         = 0;   // number of batch verify invocations
+uint64_t g_m7_batch_pkts          = 0;   // Σ batch sizes B (for mean B)
+double   g_m7_consensus_wall_us_sum = 0.0; // Σ wall-clock µs of endorse→commit sequences
+uint64_t g_m7_consensus_count     = 0;   // number of FlowMod consensus rounds
+
 double g_T_ref = 0.0, g_T_ref_last_sync = 0.0;
 
 std::map<uint32_t, std::vector<WitnessLogEntry>> g_witness_log;
@@ -328,6 +353,10 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     meta.signed_zone_id  = zone;
     meta.nonce           = fresh_nonce;
     meta.sig_valid = true;
+    // M7 eq:o_crypto — per-packet crypto bytes actually attached at this hop:
+    // |σ| (sig_len) + 64 B π_delay commitment (π_hop embedded in σ, 0 extra)
+    g_m7_crypto_bytes_sum += (double)meta.sig_len + 64.0;
+    ++g_m7_signed_pkts;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
@@ -627,6 +656,9 @@ inline void trust_init_all() {
     g_msg_id_seen.clear(); g_dst_volume_prev.clear(); g_dst_volume_curr.clear();
     g_lstm_pkt_counts.clear(); g_lstm_stark_counts.clear();
     g_failover_max_ms = 0.0; g_failover_events = 0; g_failover_reassigned = 0;
+    g_m7_crypto_bytes_sum = 0.0; g_m7_signed_pkts = 0;
+    g_m7_batch_wall_us_sum = 0.0; g_m7_batch_calls = 0; g_m7_batch_pkts = 0;
+    g_m7_consensus_wall_us_sum = 0.0; g_m7_consensus_count = 0;
     if (g_oqs_sig) { OQS_SIG_free(g_oqs_sig); g_oqs_sig = nullptr; }
 }
 
@@ -823,7 +855,17 @@ inline void crypto_batch_verify_tick() {
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[BATCH-TICK] t=" << ns3::Simulator::Now().GetSeconds()
                       << " pending=" << pending.size() << " pkts in 50ms window\n";
+        // M7 eq:t_verify — T_batch(B): real wall-clock time of BatchVerify over B pkts
+        auto _bt0 = std::chrono::high_resolution_clock::now();
         auto result = batch_verify_mldsa87(pending);
+        auto _bt1 = std::chrono::high_resolution_clock::now();
+        double _b_us = std::chrono::duration<double, std::micro>(_bt1 - _bt0).count();
+        g_m7_batch_wall_us_sum += _b_us;
+        ++g_m7_batch_calls;
+        g_m7_batch_pkts += pending.size();
+        // per-op row: node_id column carries B (batch size), pkt_id carries n_verified
+        crypto_log_event("batch_verify", (uint32_t)pending.size(),
+                         result.n_verified, _bt0, result.passed);
         g_batch_passed = result.passed; // feed b_batch into LRAD (eq:batch_challenge)
         if (!result.passed) {
             std::cerr << "[CRYPTO-ERROR] Batch verify tick FAILED:"
