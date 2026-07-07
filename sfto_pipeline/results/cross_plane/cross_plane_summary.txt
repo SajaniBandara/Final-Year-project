@@ -1,0 +1,15 @@
+SFTO-Guard Cross-Plane Generalization Test
+=======================================================
+
+Model trained on: Attack 4 — Data Plane TCAM Exhaustion
+Cross-plane test: Attack 3 — Control Plane TCAM Exhaustion
+
+Condition                         MCC      DR%     FPR%     F1%
+------------------------------------------------------------
+Attack 4 DP (trained)          1.0000  100.00%    0.00% 100.00%
+Attack 3 CP (unseen)           1.0000  100.00%    0.00% 100.00%
+Baseline (no attack)           0.0000    0.00%    0.00%   0.00%
+
+
+Paper interpretation:
+SFTO-Guard's statistical detector generalizes to the control-plane variant, suggesting the flow-table occupancy signature is plane-agnostic. However, it still covers only 2 of 8 attack variants and provides no cryptographic mitigation (M4/M5/M6 unavailable).

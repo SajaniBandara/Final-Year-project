@@ -1,0 +1,21 @@
+{
+  "accuracy": 0.9655172413793104,
+  "precision": 0.9230769230769231,
+  "recall": 1.0,
+  "f1": 0.96,
+  "auc": 0.997549019607843,
+  "confusion_matrix": [
+    [
+      16,
+      1
+    ],
+    [
+      0,
+      12
+    ]
+  ],
+  "selected_features": [
+    "CB_median",
+    "CP_median"
+  ]
+}
