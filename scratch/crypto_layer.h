@@ -101,6 +101,18 @@ double   WITNESS_WINDOW     = 10.0;
 uint32_t WITNESS_F          = 1;
 double   VOL_RATE_THRESH    = 5.0;
 
+// M5 — Controller failover latency modeling (eq:sc_revoke → eq:ctrl_failover).
+// Per the proposal, SC.Revoke commits the revocation on-chain and broadcasts a
+// ControllerRevoked event; each affected RSU re-executes failover on receipt
+// ("immediately" on arrival — the arg-min compute itself is instantaneous), so
+// L_failover is dominated by event propagation under geographic dispersion.
+// Modeled as a base broadcast latency plus a per-zone-distance increment to the
+// RSU's NEW controller (same 1-D zone-index proxy ctrl_reassign_rsus already
+// uses for d(r_k,c_j)); distant RSUs finish later, giving eq:l_failover's max
+// real straggler content. Both CLI-exposed.
+double   FAILOVER_BCAST_BASE_MS     = 10.0;  // on-chain commit + event emission
+double   FAILOVER_BCAST_PER_ZONE_MS = 1.0;   // per unit zone-index distance
+
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
 // per-packet ML-DSA-87 sign/verify + STARK hop-proof (dkg_run_ceremony,
@@ -188,6 +200,11 @@ double g_trust_last_update[268] = {};
 bool   g_quarantined[268]       = {};
 double g_ctrl_trust_score[268]  = {};
 bool   g_ctrl_revoked[268]      = {};
+
+// M5 — eq:l_failover instrumentation state
+double   g_failover_max_ms     = 0.0; // max_k(t_reassign^(k) − t_revoke), most recent revocation event
+uint32_t g_failover_events     = 0;   // SC.Revoke events fired (ControllerRevoked broadcasts)
+uint32_t g_failover_reassigned = 0;   // RSU reassignment completions across all events
 
 double g_T_ref = 0.0, g_T_ref_last_sync = 0.0;
 
@@ -589,6 +606,7 @@ inline void trust_init_all() {
     g_witness_log.clear(); g_witness_alert_pool.clear();
     g_msg_id_seen.clear(); g_dst_volume_prev.clear(); g_dst_volume_curr.clear();
     g_lstm_pkt_counts.clear(); g_lstm_stark_counts.clear();
+    g_failover_max_ms = 0.0; g_failover_events = 0; g_failover_reassigned = 0;
     if (g_oqs_sig) { OQS_SIG_free(g_oqs_sig); g_oqs_sig = nullptr; }
 }
 
@@ -660,6 +678,24 @@ inline void ctrl_trust_update_negative(uint32_t ctrl) {
     }
 }
 
+// M5 completion handler — fires when the ControllerRevoked broadcast reaches
+// RSU r. Applies the failover target chosen at revocation time (eq:ctrl_failover
+// arg-min over C_trusted(t)\{c_i}) and stamps t_reassign^(k) for eq:l_failover.
+inline void ctrl_complete_rsu_reassign(uint32_t r, uint32_t best,
+                                       uint32_t revoked_ctrl, double t_revoke) {
+    rsu_controller_assignment[r] = (int)best;
+    ++g_failover_reassigned;
+    double lat_ms = (ns3::Simulator::Now().GetSeconds() - t_revoke) * 1000.0;
+    if (lat_ms > g_failover_max_ms) g_failover_max_ms = lat_ms;
+    NS_LOG_WARN("[CTRL-FAILOVER] RSU " << r << " ctrl " << revoked_ctrl
+        << " → " << best << " L=" << lat_ms << "ms");
+    // eq:l_failover target: L_failover ≤ 100 ms (proposal Table, M5)
+    if (lat_ms > 100.0)
+        std::cout << "[CTRL-FAILOVER] WARNING: RSU " << r
+                  << " reassignment latency " << lat_ms
+                  << " ms EXCEEDS 100ms bound\n";
+}
+
 inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
     std::vector<uint32_t> trusted;
     for (uint32_t c = 0; c < N_Controllers; ++c)
@@ -670,25 +706,42 @@ inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
         NS_LOG_ERROR("[CTRL] All controllers revoked — no failover possible");
         return;
     }
+    // t_revoke — SC.Revoke has just fired (eq:sc_revoke); the ControllerRevoked
+    // event broadcast starts now. Per-event max resets for eq:l_failover.
+    double t_revoke = ns3::Simulator::Now().GetSeconds();
+    g_failover_max_ms = 0.0;
+    ++g_failover_events;
     uint32_t zone_size = N_RSUs / N_Controllers;
-    uint32_t reassigned = 0;
+    uint32_t affected = 0;
     for (uint32_t r = 0; r < N_RSUs; ++r) {
         if ((uint32_t)rsu_controller_assignment[r] != revoked_ctrl) continue;
         uint32_t rsu_zone = r / (zone_size > 0 ? zone_size : 1);
+        // eq:ctrl_failover — target selected from C_trusted(t)\{c_i} at t_revoke
         uint32_t best = trusted[0], min_d = UINT32_MAX;
         for (uint32_t c : trusted) {
             uint32_t d = (rsu_zone > c) ? rsu_zone - c : c - rsu_zone;
             if (d < min_d) { min_d = d; best = c; }
         }
-        rsu_controller_assignment[r] = (int)best;
-        ++reassigned;
-        NS_LOG_WARN("[CTRL-FAILOVER] RSU " << r << " ctrl " << revoked_ctrl
-            << " → " << best);
+        // Reassignment completes when the ControllerRevoked event reaches RSU r
+        // and it re-attaches to its new controller: base broadcast latency plus
+        // a geographic-dispersion increment proportional to the zone distance
+        // min_d to that new controller. Until the event fires, the RSU still
+        // points at the revoked controller — the realistic vulnerability window
+        // whose worst case eq:l_failover's max is designed to capture.
+        double delay_ms = FAILOVER_BCAST_BASE_MS
+                        + FAILOVER_BCAST_PER_ZONE_MS * (double)min_d;
+        ns3::Simulator::Schedule(ns3::Seconds(delay_ms / 1000.0),
+                                 &ctrl_complete_rsu_reassign,
+                                 r, best, revoked_ctrl, t_revoke);
+        ++affected;
     }
     // Unconditional: failover summary
-    std::cout << "[CTRL-FAILOVER] Revoked ctrl=" << revoked_ctrl
-              << " reassigned " << reassigned << " RSUs to trusted controllers"
-              << " (trusted_count=" << trusted.size() << ")\n";
+    std::cout << "[CTRL-FAILOVER] SC.Revoke ctrl=" << revoked_ctrl
+              << " t_revoke=" << t_revoke
+              << " ControllerRevoked broadcast to " << affected
+              << " affected RSUs (trusted_count=" << trusted.size()
+              << "); completions scheduled at " << FAILOVER_BCAST_BASE_MS
+              << "ms + " << FAILOVER_BCAST_PER_ZONE_MS << "ms/zone\n";
 }
 
 // ── Distributed Time Reference — eq:time_consensus ───────────────────────────
@@ -1019,6 +1072,12 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
     cmd.AddValue("vol_rate_thresh",    "Volume rate threshold ε_vol (pkt/s)", VOL_RATE_THRESH);
+    cmd.AddValue("failover_bcast_base_ms",
+                 "M5: ControllerRevoked broadcast base latency (ms)",
+                 FAILOVER_BCAST_BASE_MS);
+    cmd.AddValue("failover_bcast_per_zone_ms",
+                 "M5: added broadcast latency per zone-distance unit (ms)",
+                 FAILOVER_BCAST_PER_ZONE_MS);
     cmd.AddValue("disable_crypto",     "Disable DKG keygen + ML-DSA-87 sign/verify + STARK hop-proof "
                                        "(0=crypto ON [default], 1=crypto OFF). Speeds up runs that don't "
                                        "need crypto-derived metrics (trust score, S1/S2/S5-S8 detection) -- "

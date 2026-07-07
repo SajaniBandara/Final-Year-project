@@ -249,7 +249,7 @@ None of these are wired in the current codebase.
 | **M2 (TVR)** | ✓ Eq. tvr | ✓ routing.cc:117158 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; no T_ref normalization (open) |
 | **M3 (UCR)** | ✓ Eq. ucr | ✓ routing.cc:117186 | ✅ In CSV (Step 1) | — | Exported 2026-07-06; aggregate only (per-variant via separate runs) |
 | **M4 (L_mit)** | ✓ Eq. l_mit | ⚠ routing.cc:117111 | ✓ Written | — | t_quarantine never populated; metric always 0 |
-| **M5 (L_failover)** | ✓ Eq. l_failover | ✗ Missing | ✗ | ✗ AB9 | No controller failover tracking |
+| **M5 (L_failover)** | ✓ Eq. l_failover | ✅ crypto_layer.h (Step 3) | ✅ In CSV (Step 3) | ✓ AB9-ready | Implemented 2026-07-07: broadcast-propagation delay model + t_revoke/t_reassign stamps + 3 CSV columns |
 | **M6 (L_e2e)** | ✓ Eq. l_e2e | ✓ routing.cc:116782 | ✓ Written | — | No T_ref normalization; no before/after split |
 | **M7 (Overhead)** | ✓ Eq. o_crypto, t_verify, t_consensus | ⚠ Partial | ⚠ Partial | ✓ (partial) | Only sig_valid_rate, flowmod_endorsement_rate; missing T_verify, T_consensus |
 | **M8 (Poisoning)** | ✓ Eq. delta_poison | ✗ Missing | ✗ | ✗ AB8 | No Byzantine poisoning attack/defense in LSTM |
@@ -394,10 +394,32 @@ for (int n = 0; n < active_topology_nodes; n++) {
    - A widening change was implemented then **reverted** on 2026-07-07. See Critical Issue #1 above.
    - Per-variant tables come from 8 separate runs → 8 files, not one wide CSV.
 
-3. **Wire controller failover for M5** — Implement `enable_controller_failover` flag and timestamp tracking
-   - **Effort:** 4 hours (depends on controller logic in attack_declaration.h)
+3. ✅ **DONE — Wire controller failover for M5** — Timestamp tracking + propagation-delay model + CSV export
+   - **Effort:** 4 hours
    - **Impact:** Enables M5 (L_failover) measurement for AB9 ablation
-   - **Status:** NOT STARTED — next Tier 1 item
+   - **Completed:** 2026-07-07. Implementation notes:
+     - **Problem found first:** `ctrl_reassign_rsus()` originally ran synchronously inside
+       `ctrl_trust_update_negative()` — revoke and reassignment shared the same simulator
+       timestamp, so eq:l_failover would always compute 0 ms (meaningless).
+     - **Proposal-derived model:** eq:sc_revoke (main.tex:3356) states revocation is committed
+       on-chain and a **ControllerRevoked event is broadcast**; each RSU re-executes failover
+       *on receipt*. So the latency lives in event propagation under geographic dispersion —
+       which is exactly why eq:l_failover takes the **max over affected RSUs** (stragglers).
+     - **Implementation** (crypto_layer.h): failover target still chosen at `t_revoke` from
+       `C_trusted(t)\{c_i}` (eq:ctrl_failover), but each RSU's reassignment completion is now
+       `Simulator::Schedule`d at `FAILOVER_BCAST_BASE_MS + FAILOVER_BCAST_PER_ZONE_MS × min_d`
+       (min_d = zone-index distance to the new controller — the same d(r_k,c_j) proxy the
+       function already used, per CRYPTO_CORRECTIONS.md TRUST-4). New completion handler
+       `ctrl_complete_rsu_reassign()` stamps t_reassign^(k), tracks the running max, and warns
+       if > 100 ms (proposal target).
+     - **New CLI params:** `--failover_bcast_base_ms` (default 10), `--failover_bcast_per_zone_ms`
+       (default 1) — both registered in `crypto_register_cli_params()`.
+     - **New CSV columns** (fixed-schema append, per reference idiom):
+       `ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned`.
+     - **Semantics:** `ctrl_failover_max_ms` holds L_failover of the most recent revocation
+       event (0 if none — check `ctrl_failover_events` to distinguish "no failover" from fast
+       failover). During the propagation window an RSU still points at the revoked controller —
+       the realistic vulnerability window the metric is designed to expose.
 
 ### **Tier 2: High (needed for ablation studies)**
 4. **Implement ablation gate flags (Phase 3)** — Add 7 CLI flags for AB1, AB4, AB6, AB7, AB8, AB9, AB11

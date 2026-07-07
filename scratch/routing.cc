@@ -117287,7 +117287,8 @@ void write_security_metrics_csv()
 		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
 			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
-			 << " d_obu_count, d_rsu_count, escalation_count\n";
+			 << " d_obu_count, d_rsu_count, escalation_count,"
+			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -117356,6 +117357,9 @@ void write_security_metrics_csv()
 		 << ", " << g_d_obu_count
 		 << ", " << g_d_rsu_count
 		 << ", " << g_escalation_count
+		 << ", " << g_failover_max_ms
+		 << ", " << g_failover_events
+		 << ", " << g_failover_reassigned
 		 << "\n";
 
 	fout.close();
