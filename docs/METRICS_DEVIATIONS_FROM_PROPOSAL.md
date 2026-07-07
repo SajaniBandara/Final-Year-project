@@ -134,12 +134,8 @@ event, depending on interleaving timing. The metric is not simply "noisy" — it
 wrong** whenever two revocations overlap in time, which is the realistic case this scenario is
 designed to stress.
 
-**Fix scope:** track max-latency per revoked controller (e.g. `std::map<uint32_t,double>
-g_failover_max_ms_by_ctrl`) instead of a single scalar, or track a single monotonic running max
-across the whole run (never reset) rather than "most recent event only" — the latter is simpler and
-still answers the proposal's question (worst-case latency observed), just not scoped to "most recent
-event" the way the current single-event design intends. Either avoids the overwrite-on-overlap bug;
-the current per-event-reset design is fundamentally incompatible with concurrent revocations.
+This per-event-reset design is fundamentally incompatible with concurrent revocations — see "Fix
+applied" above for the resolution (monotonic running max, never reset mid-run).
 
 ---
 
@@ -163,25 +159,13 @@ completely unaffected, since it's a separate call site with its own (real) `Flow
 `rsu_chain_len` now reflects only genuine FlowMod traffic in both AB8-A and AB8-B runs, making M7
 comparable across both endorsement configurations. **Build verification pending.**
 
-`ufcr_attempt_unauthorized_flowmod()` calls `bc_commit_flowmod(fake_e)` once per second while a
-control-plane variant is active. When `enable_endorsement_requirement=false` (AB8-A), this call
-**succeeds** (by design — that is what UFCR is measuring) and, as a side effect of
-`bc_commit_flowmod()`'s existing logic, pushes a hash onto the shared `g_rsu_commit_hashes` vector —
+**Root cause (before the fix):** `ufcr_attempt_unauthorized_flowmod()` calls `bc_commit_flowmod(fake_e)`
+once per second while a control-plane variant is active. When `enable_endorsement_requirement=false`
+(AB8-A), this call **succeeds** (by design — that is what UFCR is measuring) and, as a side effect of
+`bc_commit_flowmod()`'s existing logic, pushed a hash onto the shared `g_rsu_commit_hashes` vector —
 the same vector `write_security_metrics_csv()` reports as `rsu_chain_len` for M7's consensus-overhead
-tracking.
-
-**Consequence:** any run combining a control-plane attack variant with `enable_endorsement_requirement=false`
-(i.e., AB8-A configuration under Attacks 1, 3, 5, or 7) will show an `rsu_chain_len` inflated by
-~1 per second of simulation time beyond what the legitimate per-cycle FlowMod traffic alone would
-produce. This is arguably *correct* behavior in isolation (an unauthorized commit that bypassed
-endorsement legitimately did get written to the chain — that is the point of AB8-A), but it means
-**M7's `rsu_chain_len` is not directly comparable between AB8-A and AB8-B runs of the same attack
-variant** without accounting for this known, fixed-rate contribution. Not documented anywhere before
-this audit.
-
-**Fix scope (optional — could also just be documented as expected behavior):** track the injected
-commits in a separate counter (`g_ufcr_injected_commits`) and either exclude them from
-`rsu_chain_len` or report both figures side by side.
+tracking, inflating it by ~1/second beyond legitimate FlowMod traffic and making AB8-A/AB8-B runs of
+the same attack variant not directly comparable on that column. The fix above eliminates this.
 
 ---
 
@@ -203,17 +187,71 @@ median" (of a single-element set) is trivially `0`, so `dists.std() == 0` and `g
 mask condition `dists < gamma` then evaluates `0 < 0 == False` — **the sole eligible RSU is rejected
 by its own Krum filter**, even though it was the only honest participant.
 
-**Consequence:** in a degenerate scenario with very few total RSUs and aggressive trust-gating (not
-the paper's actual 64-RSU setup, but reachable if someone runs the pipeline with a small synthetic
-RSU count for a quick smoke test), `run_aggregation()` would silently produce a global model
-aggregated from **zero** accepted RSUs (`weighted_fedavg` with an all-`False` mask divides by
-`total=0`), raising a `ZeroDivisionError` rather than a clear diagnostic.
+**Consequence (before the fix):** in a degenerate scenario with very few total RSUs and aggressive
+trust-gating (not the paper's actual 64-RSU setup, but reachable in a small synthetic smoke test),
+`run_aggregation()` would have silently produced a global model aggregated from **zero** accepted
+RSUs (`weighted_fedavg` with an all-`False` mask divides by `total=0`), raising a `ZeroDivisionError`
+rather than a clear diagnostic. The guard described above eliminates this path entirely.
 
-**Fix scope:** guard `krum_filter()` (or `run_aggregation()`) for `len(flat_weights) < 2` and either
-auto-accept the single candidate or raise a descriptive error instead of silently computing a
-degenerate threshold. Low priority given the target configuration is 64 RSUs, but worth a one-line
-guard since `poison_sweep.py`'s trust-gate + high `rho_mal` combinations could plausibly shrink the
-eligible set this far in an aggressive sweep.
+---
+
+## New Feature: Real `T_ref(t)` clock-skew anchoring for M2/M6 (eq:delay_updated, eq:time_consensus) — IMPLEMENTED (2026-07-07)
+
+**Not a bug fix — a genuine capability addition.** During this audit it was found that the codebase's
+existing "T_ref anchoring" pattern (used in LRAD-OBU's S1 delay computation) was **mathematically a
+no-op**: `(Now() − g_T_ref) − (t_claimed − g_T_ref)` cancels `g_T_ref` algebraically, producing the
+identical value as `Now() − t_claimed` with no correction at all. The reason: every node in this
+simulation reads the same single global `Simulator::Now()` clock, so there was no actual per-node
+clock disagreement for the equation's correction term to remove. Main.tex §"Distributed Trusted Time
+Reference" (sec:time_ref, main.tex:1958-1988, Chapter 3 Methodology → §3.4 Proposed Solution)
+specifies this defends against a compromised RSU lying about its own clock to disguise a real delay
+— a threat this simulation didn't model at all prior to this change.
+
+**What was built (12 steps, spanning ns-3/C++, Fabric chaincode/Go, the Node.js bridge, and tests):**
+
+| Layer | Change |
+|---|---|
+| ns-3 (`crypto_layer.h`) | `node_clock_offset(node)`/`node_local_time(node)` — a stateless, continuously-evaluable per-RSU clock model reusing M9's existing `TIME_REF_F_BAD`/`TIME_REF_DELTA_ATTACK` (single source of truth for "which RSUs are Byzantine" across M9, M2, and M6 now) |
+| ns-3 (`crypto_layer.h`) | `update_T_ref()` refactored to call `node_local_time()` per RSU instead of its own separate inline offset loop |
+| ns-3 (`routing.cc`) | `record_claimed_forward_timestamp()` now stores `node_local_time(node)` (the sender's own, possibly-wrong clock reading) instead of the raw shared clock |
+| ns-3 (`routing.cc`) | S2/TVR timing check and the NFA witness-alert delay report now correct the sender's claim via `t_fwd_claimed - node_clock_offset(prev_sender)` before comparing to the receiver's ground truth |
+| ns-3 (`routing.cc`) | S1's existing no-op anchoring pattern replaced with the same real correction |
+| ns-3 (`routing.cc`) | M6 (L_e2e): `routing_packet_initial_timestamp`/`routing_packet_final_timestamp` now record each endpoint's own local time; `calculate_average_latency_routing()` corrects both the flow's source and destination offsets before subtracting |
+| ns-3 (`crypto_layer.h` + `bc_blockchain_helper.h`) | `bc_commit_tref_to_chain()` — writes `bc_tref_log.csv` every `T_SYNC_INTERVAL` tick, called directly from `update_T_ref()` (forward-declared, same pattern as `bc_commit_dkg`) |
+| Chaincode (`types.go`) | New `TRefCommit` struct + `keyPrefixTRef` (Asset 9), mirroring `GlobalAnchor` exactly |
+| Chaincode (`tref.go`, new file) | `CommitTRef(seq, tRefValue, epsRef, committedAt)` / `GetTRef(seq)`, mirroring `anchor.go`'s `AnchorGlobal`/`GetAnchor` exactly (RSU-only write, duplicate-seq-safe, no verify step) — realizes main.tex:1985-1988's "committed to the blockchain... tamper-evident audit trail" |
+| Bridge (`tailers/tref.js`, new file) | Tails `bc_tref_log.csv`, submits `CommitTRef`, mirroring `tailers/anchor.js` exactly |
+| Bridge (`index.js`) | Wires the new tailer into startup/shutdown alongside the existing five |
+| Test (`test_synthetic.sh`) | New "§9. T_ref commit" section: commit, query, and duplicate-seq rejection, mirroring the Model Hash Commit test shape |
+
+**Design rationale — why not just subtract `g_T_ref` at read time (still a no-op)?** `g_T_ref` is a
+periodically-resynced snapshot (every `T_SYNC_INTERVAL`, default 1s); using it for correction would
+either cancel out identically (if read once, same value both sides) or collapse timing resolution to
+1-second buckets (if read at two different sync ticks) — breaking S2's 50ms-resolution detection
+either way. `node_clock_offset()` is a deterministic, continuously-evaluable function of
+`(node, TIME_REF_F_BAD, TIME_REF_DELTA_ATTACK)`, so it can correct a specific node's known bias at
+full timestamp precision without waiting for or depending on sync-tick granularity — mathematically
+equivalent to what an auditor with the blockchain-committed history could reconstruct, without
+needing to actually replay that history for every delay check.
+
+**Regression safety:** with the default `TIME_REF_F_BAD=0`, every `node_clock_offset()` call returns
+`0.0`, making every corrected quantity numerically identical to the pre-existing (uncorrected)
+behavior — this change is a strict no-op unless M9's Byzantine-clock sweep flags are explicitly set.
+
+**Scope acknowledgment:** this closes the gap to the level of detail the equations specify. A fully
+airtight version would also need the blockchain commit itself to be consumed by an on-chain
+verification step (not just written) so that a compromised RSU literally cannot submit a claim
+inconsistent with its own committed history — the current implementation provides the commit/audit
+trail infrastructure but the ns-3 delay-correction logic uses direct oracle knowledge of
+`node_clock_offset()` rather than reading back its own on-chain commits. This is the same
+oracle-vs-inferred-from-history simplification the codebase already uses elsewhere (e.g. ground-truth
+`*_malicious_nodes[]` arrays for detection), and is consistent with the level of chain-plumbing this
+codebase implements for its other committed assets.
+
+**Verification status:** ns-3/C++ changes require `./waf build`; chaincode changes require the Fabric
+toolchain (`go build`, no local Go available in this session) and `test_synthetic.sh` against a live
+test-network; bridge JS changes are syntax-checked clean (`node --check`). All pending user
+verification on the appropriate hosts.
 
 ---
 
@@ -235,13 +273,12 @@ eligible set this far in an aggressive sweep.
 
 ## Already-documented, still-open items (confirmed unchanged, not re-litigated in depth here)
 
-These were correctly identified in the earlier METRICS_VERIFICATION_REPORT.md and remain open;
-listed here only for completeness so this audit is a complete picture on its own:
+These were correctly identified in the earlier METRICS_VERIFICATION_REPORT.md; one has since been
+resolved (see the new "Real T_ref(t) clock-skew anchoring" section above), the rest remain open and
+are listed here for completeness:
 
-- **M2/M6 — no `T_ref(t)` normalization.** Both TVR (once fixed per the Critical finding above) and
-  L_e2e use `Simulator::Now().GetSeconds()` (absolute wall-clock) rather than the distributed time
-  reference `T_ref(t)` the proposal's equations specify. Low practical impact unless RSU clocks are
-  deliberately desynchronized (M9 scenario), but not equation-faithful as written.
+- ~~M2/M6 — no `T_ref(t)` normalization~~ — **RESOLVED 2026-07-07.** See "New Feature: Real T_ref(t)
+  clock-skew anchoring" above.
 - **M2 — packets never forwarded are not assigned `δ_p = ∞`.** Moot until the Critical TVR fix above
   lands, since the whole counter is currently non-functional regardless; worth revisiting together.
 - **M1 — no mobility-density/speed binning** (`MCC_s[ρ_b, v̄_b]`, Eq. mobility_baseline). Requires

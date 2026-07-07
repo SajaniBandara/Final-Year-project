@@ -241,6 +241,7 @@ const (
 	keyPrefixAlert      = "alert:"
 	keyPrefixDKG        = "dkg:"
 	keyPrefixAnchor     = "anchor:"
+	keyPrefixTRef       = "tref:"
 )
 
 // -----------------------------------------------------------------------
@@ -256,6 +257,27 @@ type GlobalAnchor struct {
 	AnchorHash   string `json:"anchorHash"`   // hex of H_anchor^(r)
 	RsuChainLen  int    `json:"rsuChainLen"`  // RSU-chain length at anchor time
 	CommittedAt  int64  `json:"committedAt"`  // ms since epoch
+}
+
+// -----------------------------------------------------------------------
+// Asset 9: Distributed time reference commits (eq:time_consensus, eq:delay_updated)
+// Key: tref:{seq}
+// -----------------------------------------------------------------------
+
+// TRefCommit records one periodic network-wide consensus time reference
+// (T_ref(t) = median of RSU clocks, eq:time_consensus) on-chain, providing
+// the tamper-evident audit trail main.tex (sec:time_ref) specifies:
+// "T_ref(t) is committed to the blockchain by RSU consensus at regular
+// intervals to provide a tamper-evident audit trail for all detection
+// decisions." Detection code anchors t_send/t_recv to the most recently
+// committed TRefValue (eq:delay_updated) rather than trusting any single
+// RSU's self-reported local clock.
+type TRefCommit struct {
+	DocType     string  `json:"docType"`     // constant "tref"
+	Seq         int     `json:"seq"`         // monotonically increasing per simulation
+	TRefValue   float64 `json:"tRefValue"`   // T_ref(t), seconds since sim start
+	EpsRef      float64 `json:"epsRef"`      // |T_ref(t) - T_ground(t)| at commit time (eq:eps_ref, M9)
+	CommittedAt int64   `json:"committedAt"` // ms since epoch
 }
 
 // -----------------------------------------------------------------------

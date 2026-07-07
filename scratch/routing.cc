@@ -114780,15 +114780,28 @@ double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 double t_claimed_packet[total_size][Flow_size+2];
 
 
+// node_local_time() — defined in crypto_layer.h (included below); forward
+// declared so record_claimed_forward_timestamp() can use it here. Returns
+// this node's own (possibly Byzantine-compromised) clock reading — eq:time_consensus
+// tau_j(t) — rather than the raw simulator clock every node would otherwise
+// share identically.
+inline double node_local_time(uint32_t node);
+
 // Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
 // fired immediately at forwarding-decision time — i.e., BEFORE any
 // attack-injected delay is applied. This deliberately does NOT wait for
 // total_tx_delay, since a malicious node has no reason to honestly
 // self-report the buffering delay it is about to introduce; it claims the
 // timestamp of when it received the packet, same as an honest node would.
+//
+// Uses node_local_time(node) rather than the raw simulator clock so a
+// Byzantine-compromised node's claim (per crypto_layer.h TIME_REF_F_BAD/
+// TIME_REF_DELTA_ATTACK, M9) is genuinely wrong — eq:delay_updated's
+// "t_send anchored to T_ref(t)" only has something to correct if the claim
+// itself can disagree with ground truth (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
 inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 {
-    t_claimed_packet[node][packet_id] = Simulator::Now().GetSeconds();
+    t_claimed_packet[node][packet_id] = node_local_time(node);
 }
 
 // Detection functions and the array they read (t_claimed_packet):
@@ -116832,11 +116845,26 @@ void calculate_average_latency_routing()
 		if (f_size > 0)
 		{
 			flow_counter++;
+			// eq:l_e2e — t_send/t_recv_final anchored to T_ref(t): correct each
+			// endpoint's own claim using its own known clock offset
+			// (node_clock_offset, M9 TIME_REF_F_BAD/TIME_REF_DELTA_ATTACK), the
+			// same model driving eq:eps_ref, so a Byzantine-compromised source
+			// or destination cannot hide latency behind a lying local clock.
+			// This function acts as the network-wide auditor here (it already
+			// has cross-node visibility this loop needs), matching the
+			// proposal's "T_ref committed to the blockchain... tamper-evident
+			// audit trail" framing (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
+			uint32_t _l_e2e_src = (demanding_flow_struct_nodes_inst+fid)->source;
+			uint32_t _l_e2e_dst = (demanding_flow_struct_nodes_inst+fid)->destination;
+			double   _src_offset = node_clock_offset(_l_e2e_src);
+			double   _dst_offset = node_clock_offset(_l_e2e_dst);
 			for (uint32_t i=1; i<f_size+1;i++)
 			{
 				if (routing_packet_final_timestamp[fid][i] > routing_packet_initial_timestamp[fid][i])
 				{
-					packet_delay_routing[fid][i] = routing_packet_final_timestamp[fid][i] - routing_packet_initial_timestamp[fid][i];
+					double _t_send_anchored = routing_packet_initial_timestamp[fid][i] - _src_offset;
+					double _t_recv_anchored = routing_packet_final_timestamp[fid][i]   - _dst_offset;
+					packet_delay_routing[fid][i] = _t_recv_anchored - _t_send_anchored;
 					delivered_packet_counter++;
 					//cout<<"Flow id "<<fid<<" packet "<<i<<"latency is "<<1000.0*packet_delay_routing[fid][i]<<" ms"<<endl;
 				}
@@ -121243,8 +121271,17 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					// eq:delay_updated — anchor the sender's claim using its own known
+					// clock offset (node_clock_offset), so a Byzantine-compromised
+					// sender (M9 TIME_REF_F_BAD/TIME_REF_DELTA_ATTACK) cannot hide a
+					// real delay behind a lying local clock. The receiver-side ground
+					// truth is exactly Now().GetSeconds() — node_local_time(current_hop)
+					// minus its own offset cancels to this (see
+					// docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md for the derivation).
+					double t_fwd_claimed_anchored = (t_fwd_claimed > 0.0)
+					    ? (t_fwd_claimed - node_clock_offset(prev_sender)) : 0.0;
 					bool timing_ok = (t_fwd_claimed > 0.0) &&
-					                 ((Now().GetSeconds() - t_fwd_claimed) <= S2_DELTA_MAX);
+					                 ((Now().GetSeconds() - t_fwd_claimed_anchored) <= S2_DELTA_MAX);
 
 					// M2 (TVR, eq:tvr) — safety-critical packet delay vs Δ_max, at RSU
 					// receive points. Reuses the same t_fwd_claimed/S2_DELTA_MAX check as
@@ -121269,7 +121306,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
 						// β_w NFA alert: valid sig but delay exceeded S2 threshold
 						if (t_fwd_claimed > 0.0 && !timing_ok) {
-							double t_fwd = Now().GetSeconds() - t_fwd_claimed;
+							double t_fwd = Now().GetSeconds() - t_fwd_claimed_anchored;
 							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
 						}
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
@@ -121317,9 +121354,16 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						double _t_claimed = (_prev < (uint32_t)total_size &&
 						                     packet_ID < (uint32_t)(Flow_size + 2))
 						                     ? t_claimed_packet[_prev][packet_ID] : 0.0;
-						double _t_now_ref  = Now().GetSeconds() - g_T_ref;
-						double _t_send_ref = (_t_claimed > 0.0) ? (_t_claimed - g_T_ref) : 0.0;
-						double _delta_p    = (_t_claimed > 0.0) ? (_t_now_ref - _t_send_ref) : 0.0;
+						// eq:delay_updated — anchor _prev's claim using its own known
+						// clock offset (was: "Now()-g_T_ref minus t_claimed-g_T_ref",
+						// which cancels g_T_ref algebraically and is a no-op; see
+						// docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md). node_clock_offset()
+						// is the same per-RSU model driving M9's eps_ref, so a
+						// Byzantine-compromised _prev's claim is genuinely corrected here.
+						double _t_claimed_anchored = (_t_claimed > 0.0)
+						    ? (_t_claimed - node_clock_offset(_prev)) : 0.0;
+						double _delta_p = (_t_claimed > 0.0)
+						    ? (Now().GetSeconds() - _t_claimed_anchored) : 0.0;
 						bool   _hi_pri    = is_safety_critical_flow[fid];
 						uint32_t _assoc_rsu =
 						    lookup_vehicle_associated_rsu_local_idx(current_hop);
@@ -121349,7 +121393,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				if(destination == current_hop)
 				{
 					destination_counter[fid]++;
-					routing_packet_final_timestamp[fid][packet_ID] = Now().GetSeconds();
+					// eq:l_e2e t_recv_final(p) — this node's own (possibly
+					// Byzantine-compromised) clock reading; corrected at read
+					// time in calculate_average_latency_routing() via
+					// node_clock_offset(destination).
+					routing_packet_final_timestamp[fid][packet_ID] = node_local_time(current_hop);
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
@@ -123895,7 +123943,11 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						}
 						
 						Simulator::Schedule (Seconds (tg+0.000050+rand_delay), check_and_transmit, fid, source, total_packets, total_packet_counter, nid, arguments);
-						routing_packet_initial_timestamp[fid][packet_id] = Now().GetSeconds();
+						// eq:l_e2e t_send(p) — this node's own (possibly
+						// Byzantine-compromised) clock reading; corrected at
+						// read time in calculate_average_latency_routing() via
+						// node_clock_offset(source).
+						routing_packet_initial_timestamp[fid][packet_id] = node_local_time(source);
 						sent_IDS[fid][source][packet_id] = true;
 						routing_packet_general_initial_timestamp[fid][source][packet_id] = Now().GetSeconds();
 						// pd_all_inst[fid].pd_inst[nid].attempts[arguments.channel][packet_id]++;

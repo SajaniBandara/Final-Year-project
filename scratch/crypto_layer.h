@@ -31,6 +31,12 @@
 // Forward declarations — bc_commit_dkg defined in bc_blockchain_helper.h (included after this).
 void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                    uint32_t n_rsus, double ts_setup);
+// bc_commit_tref_to_chain defined in bc_blockchain_helper.h (included after this) —
+// called from update_T_ref() below so every T_SYNC_INTERVAL tick's T_ref(t) is
+// committed on-chain (main.tex sec:time_ref: "T_ref(t) is committed to the
+// blockchain by RSU consensus at regular intervals to provide a tamper-evident
+// audit trail"), same pattern as bc_commit_dkg above.
+void bc_commit_tref_to_chain(double t_ref_value, double eps_ref, double ts);
 // dkg_rotate_keys defined in dkg_setup.h (included after this) — called from trust_update_negative
 // per eq:key_rotation_trigger when a quarantined node is an RSU.
 inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
@@ -263,6 +269,29 @@ double   TIME_REF_DELTA_ATTACK   = 0.5;  // fixed attack offset (s) injected int
 double   g_eps_ref               = 0.0;  // |T_ref - T_ground| at most recent sync tick
 double   g_eps_ref_cumulative    = 0.0;
 uint32_t g_eps_ref_samples       = 0;
+
+// node_clock_offset()/node_local_time() — eq:time_consensus tau_j(t).
+// This node's own (possibly Byzantine-compromised) clock offset from true
+// simulator time. Only RSUs can have a non-zero offset (vehicles/controllers
+// always read true time). Stateless — a pure function of TIME_REF_F_BAD /
+// TIME_REF_DELTA_ATTACK and the RSU's local index, so it cannot drift out of
+// sync with update_T_ref()'s own per-RSU model; both now call this same
+// function (single source of truth, eq:eps_ref M9 report Tier-2 item).
+inline double node_clock_offset(uint32_t node) {
+    if (node < N_Vehicles || node >= N_Vehicles + N_RSUs) return 0.0;
+    uint32_t rsu_local_idx = node - N_Vehicles;
+    return (rsu_local_idx < TIME_REF_F_BAD) ? TIME_REF_DELTA_ATTACK : 0.0;
+}
+
+// This node's own local clock reading — true simulator time plus this
+// node's own (possibly wrong) offset. Per-packet "claimed" timestamps
+// (eq:delay_updated t_send/t_recv) should be recorded via this function,
+// not raw Simulator::Now(), so a compromised RSU's self-reported claim is
+// genuinely wrong rather than always reading the same global clock as
+// everyone else.
+inline double node_local_time(uint32_t node) {
+    return ns3::Simulator::Now().GetSeconds() + node_clock_offset(node);
+}
 
 std::map<uint32_t, std::vector<WitnessLogEntry>> g_witness_log;
 std::map<uint32_t, std::vector<WitnessAlert>>    g_witness_alert_pool;
@@ -835,10 +864,10 @@ inline void update_T_ref() {
     std::vector<double> times;
     times.reserve(N_RSUs);
     for (uint32_t r = 0; r < N_RSUs; ++r) {
-        // M9: first TIME_REF_F_BAD RSU clocks are Byzantine-compromised,
-        // offset by a fixed TIME_REF_DELTA_ATTACK seconds (eq:eps_ref sweep).
-        double offset = (r < TIME_REF_F_BAD) ? TIME_REF_DELTA_ATTACK : 0.0;
-        times.push_back(t_ground + offset);
+        // eq:time_consensus tau_j(t): each RSU's own local clock reading,
+        // via the same node_clock_offset() every per-packet timestamp uses
+        // (single source of truth — see M9 report Tier-2 item).
+        times.push_back(node_local_time(N_Vehicles + r));
     }
     std::sort(times.begin(), times.end());
     g_T_ref           = times[times.size() / 2];
@@ -848,6 +877,10 @@ inline void update_T_ref() {
     g_eps_ref = (g_T_ref > t_ground) ? (g_T_ref - t_ground) : (t_ground - g_T_ref);
     g_eps_ref_cumulative += g_eps_ref;
     ++g_eps_ref_samples;
+
+    // sec:time_ref — commit this tick's T_ref(t) to the blockchain (tamper-evident
+    // audit trail), same T_SYNC_INTERVAL cadence as bc_anchor_to_global().
+    bc_commit_tref_to_chain(g_T_ref, g_eps_ref, t_ground);
 
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[T-REF] Distributed time synced T_ref=" << g_T_ref
