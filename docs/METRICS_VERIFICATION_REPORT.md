@@ -335,23 +335,38 @@ Values are written as percentages (0–100) to match the FPR format. This is a c
 single-variant fixed schema and is fully consistent with the reference-code idiom (Issue #1).
 **Status: implemented and verified.**
 
-### 3. **No Ablation Study Infrastructure**
+### 3. **No Ablation Study Infrastructure — DONE (Step 4, 2026-07-07)**
 
-**Problem:** Proposal defines 13 ablation studies (AB1–AB13) and SIGNATURE_ATTACK_DECOUPLING_PLAN.md Phase 3 specifies concrete gate implementations, but codebase has no ablation flags wired.
+**Problem (was):** Proposal defines 13 ablation studies (AB1–AB13) and SIGNATURE_ATTACK_DECOUPLING_PLAN.md Phase 3 specifies concrete gate implementations, but codebase had no ablation flags wired.
 
-**Impact:**
-- Proposal evaluation (Section 5.2, Tables 5.6–5.18) shows per-ablation metrics
-- Current code has single monolithic configuration; no way to toggle components on/off
-- All 13 ablations require different runs with different compiled code, not runtime flags
+**Fix applied (Step 4):** All 9 Phase-3 gate flags implemented, each a guard clause at the
+single natural chokepoint, all defaulting `true` (full proposed behavior), all registered in
+`crypto_register_cli_params()`:
 
-**Fix required:** Implement Phase 3 flags from SIGNATURE_ATTACK_DECOUPLING_PLAN.md:
-- AB1: `enable_lrad_obu`, `enable_lrad_rsu` (split detection mode)
-- AB4: `enable_stark_delay`, `enable_stark_hop` (STARK proof gates)
-- AB6: `enable_witness_mechanism` (witness alerts)
-- AB7: `enable_quarantine` (trust-based quarantine)
-- AB8: `enable_endorsement_requirement` (FlowMod f+1 endorsement)
-- AB9: `enable_controller_failover` (multi-controller failover)
-- AB11: `enable_key_rotation` (DKG key rotation)
+| Flag | Ablation | Gate location |
+|---|---|---|
+| `enable_lrad_obu` | AB1 | top of `lrad_obu()` (lrad.h) — returns all-false flags, no escalation |
+| `enable_lrad_rsu` | AB1 | top of `lrad_rsu()` (lrad.h) — returns all-false flags |
+| `enable_stark_delay` | AB4 | `stark_prove_timing()` **and** `stark_verify_timing()` (crypto_layer.h) — vacuous PASS |
+| `enable_stark_hop` | AB4 | `stark_verify_hop()` (crypto_layer.h) — vacuous PASS |
+| `enable_witness_mechanism` | AB6 | both `witness_submit_*_alert()` (crypto_layer.h) |
+| `enable_quarantine` | AB7 | `trust_update_positive()` / `trust_update_negative()` (crypto_layer.h) |
+| `enable_endorsement_requirement` | AB8 | f+1 quorum check in `bc_commit_flowmod()` (bc_blockchain_helper.h) — off ⇒ unilateral commit via the existing commit path |
+| `enable_controller_failover` | AB9 | `ctrl_trust_update_positive()` / `negative()` (crypto_layer.h) |
+| `enable_key_rotation` | AB11 | the `dkg_rotate_keys()` call inside `trust_update_negative()` |
+
+**Implementation notes:**
+- **Deviation from plan spec (deliberate):** the plan gated only `stark_prove_timing()`, but
+  `stark_verify_timing()` independently re-checks `(t_fwd − t_recv) ≤ STARK_DELTA_MAX`, so a
+  vacuously-valid proof would still fail verification. Both functions are gated so "π_delay
+  removed ⇒ vacuously passes" actually holds end-to-end.
+- STARK gates are placed **before** the `g_disable_crypto` check and produce vacuous PASS
+  (proof contributes nothing), never vacuous FAIL — per the plan's AB4 semantics.
+- AB13 needs no new flag: `--s1_alpha_rho=0 --s1_alpha_v=0` already collapses to static thresholds.
+- AB10/AB12 are chaincode/architecture-side, not ns-3 flags (per plan §"Phase 2 mapping").
+- **Provenance note:** `docs/SIGNATURE_ATTACK_DECOUPLING_PLAN.md` exists only on branch **A25**
+  (never merged to A26); the Phase 3 spec was recovered via `git show A25:docs/...`.
+- Build verified clean (waf, 2026-07-07).
 
 ### 4. **No Per-Mode Stratification (affects M1)**
 
@@ -422,9 +437,11 @@ for (int n = 0; n < active_topology_nodes; n++) {
        the realistic vulnerability window the metric is designed to expose.
 
 ### **Tier 2: High (needed for ablation studies)**
-4. **Implement ablation gate flags (Phase 3)** — Add 7 CLI flags for AB1, AB4, AB6, AB7, AB8, AB9, AB11
+4. ✅ **DONE — Implement ablation gate flags (Phase 3)** — 9 CLI flags for AB1, AB4, AB6, AB7, AB8, AB9, AB11
    - **Effort:** 6 hours (code gating already sketched in SIGNATURE_ATTACK_DECOUPLING_PLAN.md)
    - **Impact:** Enables all 13 ablation experiments (Table 5.6–5.18)
+   - **Completed:** 2026-07-07 — see Critical Issue #3 above for the full flag table,
+     gate locations, and the stark_verify_timing deviation note. Build verified clean.
 
 5. **Add M7 wall-clock timing** — Instrument `batch_verify_mldsa87()`, `stark_verify_*()`, blockchain consensus with timers
    - **Effort:** 3 hours (add std::chrono calls around crypto functions)

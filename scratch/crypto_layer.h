@@ -113,6 +113,23 @@ double   VOL_RATE_THRESH    = 5.0;
 double   FAILOVER_BCAST_BASE_MS     = 10.0;  // on-chain commit + event emission
 double   FAILOVER_BCAST_PER_ZONE_MS = 1.0;   // per unit zone-index distance
 
+// ── Ablation gate flags (Phase 3, SIGNATURE_ATTACK_DECOUPLING_PLAN.md) ──────
+// One boolean per ablated component, all defaulting to the full/proposed
+// behavior (true), each checked at the single natural chokepoint for that
+// component. Disabling a STARK proof makes it vacuously PASS (contributes
+// nothing) rather than vacuously fail, so signatures fall back to their
+// other, non-STARK conjuncts (AB4-A/B/C in docs/main.tex). All CLI-exposed
+// via crypto_register_cli_params().
+bool enable_lrad_obu               = true;  // AB1: OBU rule engine (lrad_obu)
+bool enable_lrad_rsu               = true;  // AB1: RSU full-mode engine (lrad_rsu)
+bool enable_stark_delay            = true;  // AB4: π_delay timing proof
+bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
+bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
+bool enable_quarantine             = true;  // AB7: trust updates + SC.Quarantine
+bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
+bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
+bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
+
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
 // per-packet ML-DSA-87 sign/verify + STARK hop-proof (dkg_run_ceremony,
@@ -448,6 +465,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {
     StarkTimingProof proof;
+    if (!enable_stark_delay) { proof.valid = true; return proof; } // AB4: π_delay removed — vacuously passes
     proof.valid = (t_fwd - t_recv) <= STARK_DELTA_MAX;
     // c_i = H_SHA3-512(ρ_i) — commit to blinding randomness only; timestamps are
     // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
@@ -468,6 +486,7 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
 
 inline bool stark_verify_timing(const StarkTimingProof& proof,
                                  double t_recv, double t_fwd) {
+    if (!enable_stark_delay) return true; // AB4: π_delay removed — vacuously passes
     return proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
 }
 
@@ -477,6 +496,7 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
 // change between send and receive. Using the signed_next_hop eliminates
 // false positives from routing churn while still catching misdirected packets.
 inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt_id) {
+    if (!enable_stark_hop) return true; // AB4: π_hop removed — vacuously passes
     if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     auto it = g_packet_crypto.find({signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
@@ -611,6 +631,7 @@ inline void trust_init_all() {
 }
 
 inline void trust_update_positive(uint32_t node) {
+    if (!enable_quarantine) return; // AB7-A: detection-only — trust never moves
     if (node >= (uint32_t)total_size) return;
     double old_v = g_trust_score[node];
     double v = old_v + TRUST_DELTA_R;
@@ -624,6 +645,7 @@ inline void trust_update_positive(uint32_t node) {
 }
 
 inline void trust_update_negative(uint32_t node) {
+    if (!enable_quarantine) return; // AB7-A: detection-only — no SC.Quarantine
     if (node >= (uint32_t)total_size) return;
     double old_v = g_trust_score[node];
     double v = old_v - TRUST_DELTA_P;
@@ -649,18 +671,21 @@ inline void trust_update_negative(uint32_t node) {
             << " trust=" << g_trust_score[node]
             << " t=" << ns3::Simulator::Now().GetSeconds());
         // eq:key_rotation_trigger: if revoked node is an RSU, rotate all proving keys
-        if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
+        // AB11-A (enable_key_rotation=false): revoked RSU's key material stays live
+        if (enable_key_rotation && node >= N_Vehicles && node < N_Vehicles + N_RSUs)
             dkg_rotate_keys(node);
     }
 }
 
 inline void ctrl_trust_update_positive(uint32_t ctrl) {
+    if (!enable_controller_failover) return; // AB9-A: controller trust scoring inert
     if (ctrl >= N_Controllers || g_ctrl_revoked[ctrl]) return;
     double v = g_ctrl_trust_score[ctrl] + TRUST_DELTA_R_CTRL;
     g_ctrl_trust_score[ctrl] = (v < 1.0 ? v : 1.0);
 }
 
 inline void ctrl_trust_update_negative(uint32_t ctrl) {
+    if (!enable_controller_failover) return; // AB9-A: no trust scoring, no revoke/failover
     if (ctrl >= N_Controllers) return;
     double old_v = g_ctrl_trust_score[ctrl];
     double v = old_v - TRUST_DELTA_P_CTRL;
@@ -847,6 +872,7 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
 inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_node,
                                               uint32_t pkt_id, uint32_t dst,
                                               uint32_t dup_dst) {
+    if (!enable_witness_mechanism) return; // AB6-A: no alerts submitted or pooled
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
     OQS_SIG* oqs = get_oqs_ctx();
     if (!oqs) return;
@@ -905,6 +931,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
 // β_w: non-forwarding alert — packet received but not forwarded within T_fwd (eq:nfa_sign)
 inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                                       uint32_t pkt_id, double T_fwd) {
+    if (!enable_witness_mechanism) return; // AB6-A: no alerts submitted or pooled
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
     OQS_SIG* oqs = get_oqs_ctx();
     if (!oqs) return;
@@ -1093,6 +1120,18 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("s6_detection_active", "Enable LRAD S6 (Active HF DP) detection",        s6_detection_active);
     cmd.AddValue("s7_detection_active", "Enable LRAD S7 (Passive HF CP) detection",       s7_detection_active);
     cmd.AddValue("s8_detection_active", "Enable LRAD S8 (Passive HF DP) detection",       s8_detection_active);
+
+    // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
+    // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.
+    cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
+    cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
+    cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
+    cmd.AddValue("enable_stark_hop",              "AB4: enable STARK hop-legitimacy proof π_hop",  enable_stark_hop);
+    cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
+    cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);
+    cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
+    cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
+    cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
 }
 
 #endif // CRYPTO_LAYER_H

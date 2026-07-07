@@ -77,7 +77,11 @@ inline bool bc_log_flowmod(const FlowModEndorsement& /*e*/, uint32_t /*rsu_idx*/
 inline bool bc_commit_flowmod(FlowModEndorsement& e) {
     // f = floor((N_RSUs-1)/3) Byzantine faults tolerated; require f+1 endorsers (eq:endorsed_commit)
     uint32_t f_plus_1 = (N_RSUs > 0) ? ((N_RSUs - 1) / 3) + 1 : 1;
-    if ((uint32_t)e.endorsing_rsus.size() < f_plus_1) {
+    // AB8-A (enable_endorsement_requirement=false): controller commits unilaterally —
+    // quorum check skipped, every FlowMod commits, so bc_query_flowmod() always finds
+    // a committed entry and f_unauth (S3/S5 blockchain conjunct) can never fire.
+    if (enable_endorsement_requirement &&
+        (uint32_t)e.endorsing_rsus.size() < f_plus_1) {
         std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
                   << e.endorsing_rsus.size() << " < required f+1=" << f_plus_1
                   << " → S1 detection signal\n";
