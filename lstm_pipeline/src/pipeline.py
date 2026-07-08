@@ -3,8 +3,10 @@ pipeline.py — MOBIGUARD Federated LSTM full pipeline orchestrator
 
 Steps:
   1. preprocessor.py  — load CSVs, Z-score, window, split
-  2. local_trainer.py — per-RSU LSTM autoencoder training
-  3. fed_aggregator.py — BRFA-v2 Byzantine-robust FedAvg
+  2. local_trainer.py — per-RSU hyperparameter grid search (MCC, FPR<=1%)
+  3. fed_aggregator.py — federated training loop (R rounds, local update from
+                         current global weights each round) + BRFA-v2
+                         Byzantine-robust aggregation every round
   4. evaluator.py     — M1–M8 metrics
 
 Run all steps:
@@ -26,8 +28,8 @@ PYTHON  = sys.executable
 
 STEPS = [
     (1, "preprocessor.py",  [],                        "Load CSVs → Z-score → windows"),
-    (2, "local_trainer.py", ["--epochs", "30"],        "Per-RSU LSTM training (GPU)"),
-    (3, "fed_aggregator.py",["--gamma_factor", "2.0"], "BRFA-v2 federated aggregation"),
+    (2, "local_trainer.py", [],                        "Per-RSU hyperparameter grid search (GPU)"),
+    (3, "fed_aggregator.py",["--gamma_factor", "2.0"], "Federated training (R rounds) + BRFA-v2"),
     (4, "evaluator.py",     [],                        "M1–M8 metric evaluation"),
 ]
 
