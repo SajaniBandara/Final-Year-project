@@ -3,8 +3,12 @@ pipeline.py — MOBIGUARD Federated LSTM full pipeline orchestrator
 
 Steps:
   1. preprocessor.py  — load CSVs, Z-score, window, split
-  2. local_trainer.py — per-RSU LSTM autoencoder training
-  3. fed_aggregator.py — BRFA-v2 Byzantine-robust FedAvg
+  2. local_trainer.py — per-RSU hyperparameter grid search (MCC, FPR<=1%)
+  3. fed_aggregator.py — federated training loop (R rounds, local update from
+                         current global weights each round) + BRFA-v2
+                         Byzantine-robust aggregation every round; also saves
+                         each RSU's own local model at the selected round R
+                         (rsu_{k}.pt) for step 5
   4. evaluator.py     — M1–M8 metrics (evaluator.py's own pre-revision
                         numbering: MCC/DR/FPR/L_mit/PDR/L_e2e/TVR/UCR —
                         not the current proposal's M8 = poisoning resistance)
@@ -33,8 +37,8 @@ PYTHON  = sys.executable
 
 STEPS = [
     (1, "preprocessor.py",  [],                        "Load CSVs → Z-score → windows"),
-    (2, "local_trainer.py", ["--epochs", "30"],        "Per-RSU LSTM training (GPU)"),
-    (3, "fed_aggregator.py",["--gamma_factor", "2.0"], "BRFA-v2 federated aggregation"),
+    (2, "local_trainer.py", [],                        "Per-RSU hyperparameter grid search (GPU)"),
+    (3, "fed_aggregator.py",["--gamma_factor", "2.0"], "Federated training (R rounds) + BRFA-v2"),
     (4, "evaluator.py",     [],                        "M1–M8 metric evaluation (legacy numbering)"),
     (5, "poison_sweep.py",  [],                        "M8 Delta_poison(rho_mal) sweep, BRFA-v2 vs FedAvg"),
 ]
