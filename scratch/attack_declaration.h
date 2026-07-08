@@ -32,6 +32,7 @@
 // =========================================================================
 
 #include <iostream>
+#include <vector>
 #include "ns3/simulator.h"
 
 using namespace ns3;
@@ -44,6 +45,7 @@ using namespace std;
 // definition should be added in this header.
 extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
+extern void ShuffleNodeIndices(std::vector<uint32_t>& indices);
 extern void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay);
 extern void record_attack_onset(int v, int n);
 
@@ -153,7 +155,14 @@ inline void declare_attack_states()
 
 // declare_attackers():
 // Per-run "who is malicious" derivation for both attacks, driven entirely
-// by attack_percentage. Attack 2: independent stochastic draw per node.
+// by attack_percentage. Attack 2: deterministic count floor(0.01*p*var)
+// (main.tex simulation_table: attacker allocation = floor(0.01*p*264) nodes),
+// with only WHICH nodes are attackers randomized per seed via a seeded
+// Fisher-Yates shuffle (ShuffleNodeIndices) — NOT the count itself. An
+// earlier version drew an independent Bernoulli(p) coin per node, which
+// gives the right count only in expectation (binomial variance of ~+-8
+// nodes at p=40%), confounding attack_percentage sweeps across the "5 fixed
+// pseudorandom seeds" the proposal specifies per configuration.
 // Attack 1: deterministic threshold ladder over N_Controllers, always
 // leaving at least one controller honest.
 inline void declare_attackers()
@@ -169,20 +178,28 @@ inline void declare_attackers()
 
     for (uint32_t i = 0; i < (uint32_t)var; i++)
     {
-        bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
-        if (present_selective_delay_attack_nodes == true)
+        selective_delay_malicious_nodes[i] = false;
+        is_malicious_node[1][i]            = false;
+    }
+
+    if (present_selective_delay_attack_nodes == true)
+    {
+        uint32_t n_candidates = (uint32_t)var;
+        uint32_t n_atk = (uint32_t)(0.01 * attack_percentage * (double)n_candidates);
+        if (n_atk > n_candidates) n_atk = n_candidates; // guard p=100 rounding
+
+        std::vector<uint32_t> candidates(n_candidates);
+        for (uint32_t i = 0; i < n_candidates; i++) candidates[i] = i;
+        if (n_atk > 0) ShuffleNodeIndices(candidates);
+
+        for (uint32_t k = 0; k < n_atk; k++)
         {
-            selective_delay_malicious_nodes[i] = attacking_state;
-            
+            uint32_t idx = candidates[k];
+            selective_delay_malicious_nodes[idx] = true;
+
             // Sync ground-truth for TAP Detection (Attack 2 is variant index 1)
-            is_malicious_node[1][i] = attacking_state;
-            if (attacking_state) {
-                t_onset[i] = attack_start_time;
-            }
-        }
-        else
-        {
-            selective_delay_malicious_nodes[i] = false;
+            is_malicious_node[1][idx] = true;
+            t_onset[idx] = attack_start_time;
         }
     }
 
@@ -207,8 +224,12 @@ inline void declare_attackers()
         // Below 100%, always leave at least one controller honest.
         uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers
                                                                  : N_Controllers - 1;
+        // main.tex simulation_table: "<33%:1; 33-66%:2; >=66%:3; 100%:4" — three
+        // bands only. p==0 (no attack) is the sole zero-compromise case; an
+        // earlier "<10% -> step 0" band left attack_percentage in [1,10) with
+        // zero controllers compromised, contradicting the table's "<33% -> 1".
         uint32_t step;
-        if (attack_percentage < 10)       step = 0;
+        if (attack_percentage == 0)       step = 0;
         else if (attack_percentage < 33)  step = 1;
         else if (attack_percentage < 66)  step = 2;
         else                              step = 3;

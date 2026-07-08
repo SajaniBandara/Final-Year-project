@@ -241,18 +241,42 @@ uint32_t g_failover_reassigned = 0;   // RSU reassignment completions across all
 // M7 — eq:o_crypto / eq:t_verify / eq:t_consensus instrumentation state.
 // All wall-clock (std::chrono) sums in microseconds; cumulative since sim start
 // (CSV exports running averages, matching the avg_* idiom of the metrics CSV).
-// O_crypto counts the bytes the simulation actually attaches per signed packet:
-// |σ| = sig_len (ML-DSA-87, 4627 B per CRYPTO_CORRECTIONS.md DOC-1) plus the
-// 64-byte SHA3-512 π_delay commitment (the simulated STARK proof — NOT the
-// proposal's conservative ≤100 KB FRI bound; π_hop is embedded in σ via
-// signed_next_hop, contributing 0 extra bytes on-wire).
-double   g_m7_crypto_bytes_sum    = 0.0; // Σ (sig_len + 64) over signed packets
+//
+// eq:overhead_full / main.tex:5124: "proof size is modelled as ≤100KB per
+// verification cycle (FRI-STARK, conservative blowup)". The ZKP layer's
+// PROOF OUTCOME is intentionally modelled via the t_fwd-t_recv<=Delta_max
+// constraint check (main.tex:5128-5130 — no real FRI polynomial commitments
+// are constructed), but the proposal still specifies a concrete conservative
+// BYTE-SIZE bound for the overhead/bandwidth characterisation in
+// eq:overhead_full. STARK_PROOF_SIZE_MODELED_BYTES applies that same
+// proposal-specified bound to O_crypto, rather than a smaller ad-hoc
+// SHA3-512-commitment-sized placeholder unconnected to the modeled figure.
+const double STARK_PROOF_SIZE_MODELED_BYTES = 100.0 * 1024.0; // 100 KB, main.tex:5124
+
+// O_crypto counts the bytes the simulation attaches per signed packet, per
+// eq:overhead_full: |σ_i| (real, measured ML-DSA-87 signature) plus
+// |π_delay,i| and |π_hop,i|, each the proposal's own modeled ≤100KB bound.
+// Both proofs are generated once per hop per Algorithm FCIP (alg:fcip,
+// main.tex:2686-2726) regardless of which signature check later consumes
+// them, so both contribute here.
+double   g_m7_crypto_bytes_sum    = 0.0; // Σ (sig_len + 2*STARK_PROOF_SIZE_MODELED_BYTES)
 uint64_t g_m7_signed_pkts         = 0;   // packets signed (O_crypto denominator)
 double   g_m7_batch_wall_us_sum   = 0.0; // Σ wall-clock µs of batch_verify_mldsa87 calls
 uint64_t g_m7_batch_calls         = 0;   // number of batch verify invocations
 uint64_t g_m7_batch_pkts          = 0;   // Σ batch sizes B (for mean B)
 double   g_m7_consensus_wall_us_sum = 0.0; // Σ wall-clock µs of endorse→commit sequences
 uint64_t g_m7_consensus_count     = 0;   // number of FlowMod consensus rounds
+// eq:o_crypto / main.tex:5123 "Proof generation overhead is modelled as
+// <=10ms per packet". This measures the REAL wall-clock cost of the
+// simulation's own stark_prove_timing()/stark_verify_timing()/
+// stark_verify_hop() calls (a SHA3-512 hash + constraint check, so far
+// smaller than the modeled 10ms bound) — a characterisation metric only,
+// same as g_m7_batch_wall_us_sum/g_m7_consensus_wall_us_sum. Deliberately
+// NOT injected as an artificial Simulator::Schedule delay into the packet
+// forwarding pipeline, since that would change M2/M6/S1/S2 detection
+// outcomes network-wide rather than simply reporting overhead.
+double   g_m7_stark_wall_us_sum   = 0.0; // Σ wall-clock µs of STARK prove/verify calls
+uint64_t g_m7_stark_calls         = 0;   // number of STARK prove/verify invocations
 
 double g_T_ref = 0.0, g_T_ref_last_sync = 0.0;
 
@@ -396,9 +420,10 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     meta.signed_zone_id  = zone;
     meta.nonce           = fresh_nonce;
     meta.sig_valid = true;
-    // M7 eq:o_crypto — per-packet crypto bytes actually attached at this hop:
-    // |σ| (sig_len) + 64 B π_delay commitment (π_hop embedded in σ, 0 extra)
-    g_m7_crypto_bytes_sum += (double)meta.sig_len + 64.0;
+    // M7 eq:o_crypto — per-packet crypto bytes attached at this hop:
+    // |σ_i| (real, measured sig_len) + |π_delay,i| + |π_hop,i|, both proofs
+    // at the proposal's own modeled ≤100KB bound (main.tex:5124, eq:overhead_full).
+    g_m7_crypto_bytes_sum += (double)meta.sig_len + 2.0 * STARK_PROOF_SIZE_MODELED_BYTES;
     ++g_m7_signed_pkts;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
@@ -538,10 +563,17 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {
     StarkTimingProof proof;
     if (!enable_stark_delay) { proof.valid = true; return proof; } // AB4: π_delay removed — vacuously passes
+    // M7 eq:o_crypto / main.tex:5123 "Proof generation overhead is modelled as
+    // <=10ms per packet" — measures the real wall-clock cost of this simulated
+    // proof-generation step (see g_m7_stark_wall_us_sum comment for scope).
+    auto _st0 = std::chrono::high_resolution_clock::now();
     proof.valid = (t_fwd - t_recv) <= STARK_DELTA_MAX;
     // c_i = H_SHA3-512(ρ_i) — commit to blinding randomness only; timestamps are
     // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
     sha3_512_hash(reinterpret_cast<const uint8_t*>(&nonce), sizeof(nonce), proof.commitment);
+    auto _st1 = std::chrono::high_resolution_clock::now();
+    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    ++g_m7_stark_calls;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[PKT-CRYPTO] ── STARK-PROVE ────────────────────────────────────\n"
                   << "[PKT-CRYPTO]   nonce(ρ_i)    = 0x" << _hex32(nonce) << "  (blinding randomness)\n"
@@ -559,7 +591,12 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
 inline bool stark_verify_timing(const StarkTimingProof& proof,
                                  double t_recv, double t_fwd) {
     if (!enable_stark_delay) return true; // AB4: π_delay removed — vacuously passes
-    return proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
+    auto _st0 = std::chrono::high_resolution_clock::now();
+    bool ok = proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
+    auto _st1 = std::chrono::high_resolution_clock::now();
+    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    ++g_m7_stark_calls;
+    return ok;
 }
 
 // Verify that current_hop is the node the sender intended as its next hop
@@ -573,7 +610,11 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
     auto it = g_packet_crypto.find({signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
         return true;  // no signing record — can't verify, assume valid
+    auto _st0 = std::chrono::high_resolution_clock::now();
     bool hop_ok = (current_hop == it->second.signed_next_hop);
+    auto _st1 = std::chrono::high_resolution_clock::now();
+    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    ++g_m7_stark_calls;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[PKT-CRYPTO] ── STARK-HOP ─────────────────────────────────────\n"
                   << "[PKT-CRYPTO]   signer          = " << signer << "\n"
@@ -702,6 +743,7 @@ inline void trust_init_all() {
     g_m7_crypto_bytes_sum = 0.0; g_m7_signed_pkts = 0;
     g_m7_batch_wall_us_sum = 0.0; g_m7_batch_calls = 0; g_m7_batch_pkts = 0;
     g_m7_consensus_wall_us_sum = 0.0; g_m7_consensus_count = 0;
+    g_m7_stark_wall_us_sum = 0.0; g_m7_stark_calls = 0;
     if (g_oqs_sig) { OQS_SIG_free(g_oqs_sig); g_oqs_sig = nullptr; }
 }
 

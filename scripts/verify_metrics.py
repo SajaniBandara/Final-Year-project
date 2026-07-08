@@ -7,8 +7,8 @@ write_security_metrics_csv() (scratch/routing.cc) writes a FIXED-ORDER,
 comma-separated row per cycle, with a multi-line '#'-prefixed comment block
 as a header (not a real CSV header pandas can auto-detect) -- so this script
 parses by COLUMN POSITION, not by name lookup. Two possible row lengths:
-  - 51 columns: all variants except 2, 3, and baseline (no TCAM block)
-  - 60 columns: variants 2, 3 (TCAM attacks), and baseline (+9 TCAM columns)
+  - 52 columns: all variants except 2, 3, and baseline (no TCAM block)
+  - 61 columns: variants 2, 3 (TCAM attacks), and baseline (+9 TCAM columns)
 
 If you add/remove a column in routing.cc's write_security_metrics_csv(),
 update COLUMNS_NO_TCAM / COLUMNS_TCAM below to match, in the same order.
@@ -35,18 +35,18 @@ COLUMNS_NO_TCAM = [
     "flowmod_endorsement_rate", "rsu_chain_len", "global_chain_len",
     "witness_da_count", "witness_nfa_count", "d_obu_count", "d_rsu_count", "escalation_count",
     "ctrl_failover_max_ms", "ctrl_failover_events", "ctrl_failover_reassigned",
-    "o_crypto_bytes_pkt", "t_batch_ms_avg", "batch_B_avg", "t_consensus_ms_avg",
+    "o_crypto_bytes_pkt", "t_batch_ms_avg", "batch_B_avg", "t_consensus_ms_avg", "t_stark_ms_avg",
     "witness_TP_W", "witness_FP_W", "witness_FN_W", "WAP_precision", "WAP_recall",
     "eps_ref_s", "avg_eps_ref_s", "time_ref_f_bad",
     "ufcr_unauth_total", "ufcr_blocked", "UFCR",
-]  # 51 columns
+]  # 52 columns
 
 _TCAM_BLOCK = [
     "max_tcam_util", "avg_tcam_util", "total_lambda_fm", "total_lambda_pi",
     "total_malicious", "s3_fired_count", "s4_fired_count", "any_s3", "any_s4",
 ]
 
-COLUMNS_TCAM = COLUMNS_NO_TCAM[:21] + _TCAM_BLOCK + COLUMNS_NO_TCAM[21:]  # 60 columns
+COLUMNS_TCAM = COLUMNS_NO_TCAM[:21] + _TCAM_BLOCK + COLUMNS_NO_TCAM[21:]  # 61 columns
 
 EXPECTED_LENGTHS = {len(COLUMNS_NO_TCAM): COLUMNS_NO_TCAM, len(COLUMNS_TCAM): COLUMNS_TCAM}
 
@@ -167,18 +167,28 @@ def m7_overhead(row: dict):
     o_crypto = row.get("o_crypto_bytes_pkt")
     t_batch  = row.get("t_batch_ms_avg")
     t_cons   = row.get("t_consensus_ms_avg")
+    t_stark  = row.get("t_stark_ms_avg")
     if o_crypto is None:
         return "FAIL", "M7: o_crypto_bytes_pkt missing"
-    # ML-DSA-87 sig (4627 B, CRYPTO_CORRECTIONS.md DOC-1) + 64 B pi_delay commitment
-    expected = 4627 + 64
+    # ML-DSA-87 sig (4627 B, CRYPTO_CORRECTIONS.md DOC-1) + pi_delay + pi_hop,
+    # each at the proposal's own modeled <=100KB bound (main.tex:5124,
+    # eq:overhead_full) -- fixed 2026-07-08, see docs/METHODOLOGY_CHAPTER_DEVIATIONS.md
+    # and docs/SIMULATION_SETTINGS_DEVIATIONS.md Finding 6.
+    expected = 4627 + 2 * 100 * 1024
     if o_crypto == 0:
         return "WARN", "M7: o_crypto_bytes_pkt=0 -- no packets signed yet this run"
     if abs(o_crypto - expected) > 1.0:
         return "WARN", f"M7: o_crypto_bytes_pkt={o_crypto:.1f}, expected ~{expected} " \
-                        "(check mldsa87_sign()'s sig_len)"
+                        "(check mldsa87_sign()'s sig_len / STARK_PROOF_SIZE_MODELED_BYTES)"
     if t_batch is None or t_batch < 0 or t_cons is None or t_cons < 0:
         return "FAIL", "M7: t_batch_ms_avg/t_consensus_ms_avg missing or negative"
-    return "PASS", f"M7: o_crypto={o_crypto:.1f}B t_batch={t_batch:.4f}ms t_consensus={t_cons:.4f}ms"
+    if t_stark is None or t_stark < 0:
+        return "FAIL", "M7: t_stark_ms_avg missing or negative"
+    if t_stark > 10.0:
+        return "WARN", f"M7: t_stark_ms_avg={t_stark:.4f}ms exceeds the modeled " \
+                        "<=10ms bound (main.tex:5123) -- unexpected for a SHA3-512-based stub"
+    return "PASS", f"M7: o_crypto={o_crypto:.1f}B t_batch={t_batch:.4f}ms " \
+                    f"t_consensus={t_cons:.4f}ms t_stark={t_stark:.4f}ms"
 
 
 def m9_eps_ref(rows_by_fbad: dict[int, float], n_rsus: int = 64):

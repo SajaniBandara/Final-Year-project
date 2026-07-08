@@ -115185,6 +115185,30 @@ bool GetBooleanWithProbability(double probabilityPercent, int /*nodeID*/) {
     return rng->GetValue() < probabilityPercent;
 }
 
+// ShuffleNodeIndices() — Fisher-Yates shuffle driven by the same seeded
+// ns-3 RNG infrastructure as GetBooleanWithProbability() (both governed by
+// RngSeedManager::SetSeed/SetRun in main()), so the permutation is
+// reproducible per sim_seed + sim_run.
+//
+// Used by declare_attackers() (attack_declaration.h) to select WHICH nodes
+// are attackers while keeping the attacker COUNT deterministic — proposal
+// simulation table: attacker allocation = floor(0.01*p*264) nodes, a fixed
+// count per attack_percentage, with only node selection randomized across
+// the "5 fixed pseudorandom seeds" per configuration.
+void ShuffleNodeIndices(std::vector<uint32_t>& indices) {
+    static Ptr<UniformRandomVariable> shuffle_rng = nullptr;
+    if (!shuffle_rng) {
+        shuffle_rng = CreateObject<UniformRandomVariable>();
+        shuffle_rng->SetAttribute("Min", DoubleValue(0.0));
+        shuffle_rng->SetAttribute("Max", DoubleValue(1.0));
+    }
+    for (size_t i = indices.size(); i > 1; --i) {
+        size_t j = (size_t)(shuffle_rng->GetValue() * (double)i);
+        if (j >= i) j = i - 1; // guard the [0,1) edge case landing exactly on 1.0
+        std::swap(indices[i - 1], indices[j]);
+    }
+}
+
 #include "selective_time_delay.h"
 
 
@@ -117455,7 +117479,7 @@ void write_security_metrics_csv()
 			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
 			 << " d_obu_count, d_rsu_count, escalation_count,"
 			 << " ctrl_failover_max_ms, ctrl_failover_events, ctrl_failover_reassigned,"
-			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg,"
+			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg, t_stark_ms_avg,"
 			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
 			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
 			 << " ufcr_unauth_total, ufcr_blocked, UFCR\n";
@@ -117536,6 +117560,7 @@ void write_security_metrics_csv()
 		 << ", " << (g_m7_batch_calls     ? g_m7_batch_wall_us_sum / (double)g_m7_batch_calls / 1000.0 : 0.0)
 		 << ", " << (g_m7_batch_calls     ? (double)g_m7_batch_pkts / (double)g_m7_batch_calls      : 0.0)
 		 << ", " << (g_m7_consensus_count ? g_m7_consensus_wall_us_sum / (double)g_m7_consensus_count / 1000.0 : 0.0)
+		 << ", " << (g_m7_stark_calls     ? g_m7_stark_wall_us_sum / (double)g_m7_stark_calls / 1000.0 : 0.0)
 		 << ", " << g_witness_TP_W
 		 << ", " << g_witness_FP_W
 		 << ", " << g_witness_FN_W
@@ -118165,8 +118190,18 @@ void transmit_delta_values()
 		// per-op row: node_id carries endorser count, pkt_id carries fid
 		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
 		                 _ct0, _committed);
-		if (!_committed && N_RSUs > 0) {
-			ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
+		// eq:ctrl_trust_update — reward branch (conflict evidence < f+1, i.e.
+		// the FlowMod collected f+1 honest endorsements and committed cleanly)
+		// vs. penalty branch (conflict evidence >= f+1, commit failed). Both
+		// branches read the same _committed outcome from the same per-cycle
+		// endorsement round, so the reward fires at the identical cadence the
+		// penalty already used — closing the gap where ctrl_trust_update_positive()
+		// was defined but never called (see docs/METHODOLOGY_CHAPTER_DEVIATIONS.md).
+		if (N_RSUs > 0) {
+			if (_committed)
+				ctrl_trust_update_positive(rsu_controller_assignment[N_Vehicles]);
+			else
+				ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
 		}
 	}
 
