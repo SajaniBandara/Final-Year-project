@@ -121245,6 +121245,15 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
             // === END ATTACK 7 ===
 
             // Active HF receive confirmation
+            // _active_hf_lrad_already_ran: set below when this reception event's
+            // lrad_rsu() call already ran via the active-HF eavesdropper path, so
+            // the generic "if (_is_rsu)" dispatcher further down (which handles the
+            // SAME packet_ID/current_hop for normal delivery) does not call
+            // lrad_rsu() a second time for it — s2_detect_packet() ->
+            // stark_prove_timing()/stark_verify_timing() would otherwise fire twice
+            // per packet, double-counting the M7 O_crypto/T_STARK instrumentation
+            // (see code review finding, 2026-07-08).
+            bool _active_hf_lrad_already_ran = false;
             if (present_active_hf_attack)
             {
                 bool is_active_eavesdropper = (current_hop == active_hf_eavesdropper_index);
@@ -121279,6 +121288,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         s6_log_recv(fid, packet_ID, current_hop); // logging helper — kept
                         lrad_rsu(current_hop, _s56_prev, packet_ID, fid,
                                  LRADOBUFlags{}, Now().GetSeconds());
+                        _active_hf_lrad_already_ran = true;
                         // §7.4 — Controller trust penalty for unauthorized FlowMod (eq:ctrl_trust)
                         if (_s56_prev < (uint32_t)total_size && _s56_prev >= N_Vehicles) {
                             ctrl_trust_update_negative(rsu_controller_assignment[_s56_prev]);
@@ -121414,9 +121424,12 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						         _hi_pri, Now().GetSeconds(), _delta_p, _assoc_rsu);
 					}
 
-					if (_is_rsu) {
+					if (_is_rsu && !_active_hf_lrad_already_ran) {
 						// RSU path (normal delivery): evaluate S2-full, S5–S8.
 						// S5–S8 return false for non-eavesdropped packets — no false positives.
+						// Skipped when the active-HF eavesdropper block above already
+						// ran lrad_rsu() for this exact reception event (see the
+						// _active_hf_lrad_already_ran declaration for why).
 						LRADOBUFlags _empty_obu_flags;
 						lrad_rsu(current_hop, _prev, packet_ID, fid,
 						         _empty_obu_flags, Now().GetSeconds());

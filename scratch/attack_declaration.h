@@ -185,7 +185,15 @@ inline void declare_attackers()
     if (present_selective_delay_attack_nodes == true)
     {
         uint32_t n_candidates = (uint32_t)var;
-        uint32_t n_atk = (uint32_t)(0.01 * attack_percentage * (double)n_candidates);
+        // +1e-9 epsilon guards the truncating cast against floating-point
+        // rounding landing infinitesimally below an exact integer boundary
+        // (e.g. 0.01*100.0*264.0 should equal exactly 264.0, but is not
+        // guaranteed to under all compilers/optimization levels/FMA
+        // behavior) — without it, a boundary case could silently truncate
+        // to one fewer attacker than main.tex's floor(0.01p*264) specifies,
+        // at exactly the sweep points {0,20,40,60,80,100} main.tex tests
+        // (main.tex:5041, code review finding, 2026-07-08).
+        uint32_t n_atk = (uint32_t)(0.01 * attack_percentage * (double)n_candidates + 1e-9);
         if (n_atk > n_candidates) n_atk = n_candidates; // guard p=100 rounding
 
         std::vector<uint32_t> candidates(n_candidates);
