@@ -132,6 +132,15 @@ inline void calculate_tap_security_metrics()
 	tap_previous_cumulative_DR  += tap_current_DR;
 	tap_previous_cumulative_FPR += tap_current_FPR;
 
+	// M2 (TVR, eq:tvr) — ground truth, accumulated per-packet in
+	// tap_process_packet() below (not per-cycle here); this just derives the
+	// current/cumulative rate from the running counters, mirroring how
+	// MOBIGUARD's own g_tvr_crit_total/g_tvr_violated are read in
+	// write_security_metrics_csv().
+	tap_current_TVR = (tap_tvr_crit_total > 0)
+	                  ? ((double)tap_tvr_violated / (double)tap_tvr_crit_total) : 0.0;
+	tap_previous_cumulative_TVR += tap_current_TVR;
+
 	double total_latency = 0.0;
 	uint32_t valid_count = 0;
 	for (int n = 0; n < total_size; n++)
@@ -184,7 +193,9 @@ inline void write_tap_csv()
 		 << (tap_previous_cumulative_FPR / cycle) * 100.0 << ", "
 		 << tap_current_mitigation_ms << ", "
 		 << (tap_previous_cumulative_mit / cycle) << ", "
-		 << tap_TP << ", " << tap_FP << ", " << tap_TN << ", " << tap_FN << "\n";
+		 << tap_TP << ", " << tap_FP << ", " << tap_TN << ", " << tap_FN << ", "
+		 << (tap_current_TVR * 100.0) << ", "
+		 << (tap_previous_cumulative_TVR / cycle) * 100.0 << "\n";
 	fout.close();
 	cout << "[TAP] written to file successfully: " << filename << endl;
 }
@@ -203,6 +214,8 @@ inline void tap_reset_state(int total_size_val)
 	tap_current_FPR=0.0; tap_current_mitigation_ms=0.0;
 	tap_previous_cumulative_MCC=0.0; tap_previous_cumulative_DR=0.0;
 	tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
+	tap_tvr_crit_total=0; tap_tvr_violated=0;
+	tap_current_TVR=0.0; tap_previous_cumulative_TVR=0.0;
 	if (tap_detection_active)
 		cout << "[TAP] All TAP state reset and ready for simulation run." << endl;
 }
@@ -214,7 +227,28 @@ inline void tap_process_packet(uint32_t receiver_current_hop,
                                uint32_t flow_id)
 {
 	if (!tap_detection_active) return;
-	
+
+	// M2 (TVR, eq:tvr) — ground truth, computed identically to MOBIGUARD's
+	// own TVR increment (routing.cc MacRx, S2 block): anchored hop delay vs
+	// S2_DELTA_MAX at RSU arrival, for a fair apples-to-apples comparison.
+	// Independent of TAP's own v/PPAT detection decision below — TVR
+	// measures raw attack impact (was the packet actually late), not
+	// detection outcome.
+	if (is_safety_critical_flow[flow_id] &&
+	    receiver_current_hop >= (uint32_t)N_Vehicles &&
+	    receiver_current_hop <  (uint32_t)(N_Vehicles + N_RSUs) &&
+	    sender_current_hop   <  (uint32_t)total_size &&
+	    packet_id            <  (uint32_t)(Flow_size + 2))
+	{
+		double t_fwd_claimed = t_claimed_packet[sender_current_hop][packet_id];
+		if (t_fwd_claimed > 0.0) {
+			double t_fwd_claimed_anchored = t_fwd_claimed - node_clock_offset(sender_current_hop);
+			bool timing_ok = (Simulator::Now().GetSeconds() - t_fwd_claimed_anchored) <= S2_DELTA_MAX;
+			tap_tvr_crit_total++;
+			if (!timing_ok) tap_tvr_violated++;
+		}
+	}
+
 	// Algorithm 1 Line 10: check Controller-Defaulter-List first
 	if (tap_check_defaulter_list(sender_current_hop))
 	{

@@ -9,6 +9,22 @@ Follows supervisor's MATLAB style:
   - Properly labelled axes with units
   - FontSize 22 (matching supervisor's MATLAB)
 
+Metric scope: plots only the current, active main.tex performance metrics
+applicable to a TAP-vs-MOBIGUARD comparison on Attack 2 (Selective Time
+Delay, Data Plane) — M1 (MCC), M2 (TVR), M4 (Mitigation Latency), M6
+(Overall Latency) — plus PDR as a supplementary QoS sanity-check panel
+(PDR is not one of the 12 numbered metrics in the current main.tex
+revision; it only existed as "M5" in an old, now-commented-out numbering).
+Detection Rate and FPR were dropped: FPR is explicitly a hyperparameter
+hard-constraint in main.tex (not a top-level metric), and DR doesn't
+appear under any current M1-M12 title — both are sub-components MCC
+already summarizes. M3/M5/M7-M12 are excluded: M3 (UCR) only applies to
+hidden-forwarding attacks (Attack 2 never produces unauthorized copies);
+M5/M8/M9/M12 are ablation-only, excluded from all benchmarking per
+main.tex:4623; M7/M11 have no TAP-side equivalent (TAP has no
+crypto/blockchain layer); M10 is a static architectural claim, not a
+runtime metric.
+
 Usage:
     python3 plot_tap_results.py
 
@@ -33,6 +49,8 @@ CSV column order (columns are 0-indexed):
     14: FP
     15: TN
     16: FN
+    17: current TVR% (M2, eq:tvr — ground truth, same definition for both methods)
+    18: average TVR%
 """
 
 import numpy as np
@@ -51,17 +69,14 @@ OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
 
 ATTACK_PERCENTAGES = [0, 20, 40, 60, 80, 100]
 
-# Column indices in CSV
+# Column indices in CSV — only the columns feeding an official metric (or the
+# PDR supplementary panel) are kept here; COL_DR_CUR/COL_FPR_CUR intentionally
+# removed along with the panels that used them.
 COL_PDR_AVG    = 2
 COL_LAT_AVG    = 4
 COL_MCC_CUR    = 5
-COL_DR_CUR     = 7
-COL_FPR_CUR    = 9
 COL_MIT_CUR    = 11
-COL_TP         = 13
-COL_FP         = 14
-COL_TN         = 15
-COL_FN         = 16
+COL_TVR_AVG    = 18
 
 ALPHA     = 0.05   # significance level for 95% CI
 
@@ -129,26 +144,35 @@ def load_method_data(prefix):
 def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
                 ylim=None, yticks=None):
     """
-        Plot one metric panel with:
+        Plot one metric panel comparing both methods:
             - TAP (red solid -o)
+            - MOBIGUARD (blue dashed -s)
       - 95% CI error bars (CapSize=18, matching supervisor's MATLAB)
       - Grid, font size 22, proper axis labels
+
+        Returns (p1, p2): the TAP and MOBIGUARD errorbar handles, for callers
+        that build a shared figure-level legend.
     """
     x = np.array(ATTACK_PERCENTAGES)
 
-    tap_means = []
-    tap_cis   = []
+    tap_means, tap_cis = [], []
+    mob_means, mob_cis = [], []
 
     for pct in ATTACK_PERCENTAGES:
         tap_vals = extract_column(tap_data[pct], col)
-
         tm, tc = mean_and_ci(tap_vals)
-
         tap_means.append(tm)
         tap_cis.append(tc)
 
+        mob_vals = extract_column(mob_data[pct], col)
+        mm, mc = mean_and_ci(mob_vals)
+        mob_means.append(mm)
+        mob_cis.append(mc)
+
     tap_means = np.array(tap_means)
     tap_cis   = np.array(tap_cis)
+    mob_means = np.array(mob_means)
+    mob_cis   = np.array(mob_cis)
 
     # ── TAP line — red solid with circle markers (matches supervisor's p1 style)
     p1 = ax.errorbar(x, tap_means, yerr=tap_cis,
@@ -160,6 +184,17 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
                      capsize=18,
                      linestyle='-',
                      label='TAP (Arsalan & Rehman 2018)')
+
+    # ── MOBIGUARD line — blue dashed with square markers
+    p2 = ax.errorbar(x, mob_means, yerr=mob_cis,
+                     fmt='-s',
+                     color='blue',
+                     markerfacecolor='blue',
+                     markersize=9,
+                     linewidth=2,
+                     capsize=18,
+                     linestyle='--',
+                     label='MOBIGUARD (Proposed)')
 
     # ── Grid (matches supervisor: grid on, GridAlpha=0.2)
     ax.grid(True, linestyle='-', alpha=0.2, linewidth=1.0)
@@ -179,7 +214,7 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 
     ax.set_title(title, fontsize=20, pad=10)
 
-    return p1
+    return p1, p2
 
 
 # ─── Main plotting function ───────────────────────────────────────────────────
@@ -196,133 +231,123 @@ def main():
         n_mob = len(mob_data[pct])
         print(f"  Attack {pct}%: TAP={n_tap} rows, MOBIGUARD={n_mob} rows")
 
-    print("\nGenerating Figure 1: Performance Evaluation of Attack 2 (Selective Time Delay — Data Plane)")
+    print("\nGenerating Figure 1: Detection Quality (M1 MCC, M2 TVR)")
 
-    # ── Figure 1: Three-subplot figure matching supervisor's example ──────────
-    fig, axes = plt.subplots(1, 3, figsize=(21, 7))
-    fig.suptitle("Performance Evaluation of Attack 2\n"
+    # ── Figure 1: Detection-quality metrics — M1 (MCC), M2 (TVR) ─────────────
+    fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+    fig.suptitle("Detection Quality — Attack 2\n"
                  "(Selective Time Delay Attack — Data Plane)",
                  fontsize=22, fontweight='bold', y=1.02)
 
-    # Subplot (a): Packet Delivery Ratio
-    p1 = plot_metric(
+    # Subplot (a): Matthews Correlation Coefficient (M1)
+    p1, p2 = plot_metric(
         axes[0], tap_data, mob_data,
-        col    = COL_PDR_AVG,
-        ylabel = "Packet Delivery Ratio (%)",
-        title  = "(a) Packet Delivery Ratio",
-        ylim   = [-5, 115],
-        yticks = [0, 20, 40, 60, 80, 100]
-    )
-
-    # Subplot (b): Matthews Correlation Coefficient
-    plot_metric(
-        axes[1], tap_data, mob_data,
         col    = COL_MCC_CUR,
         ylabel = "Matthews Correlation Coefficient",
-        title  = "(b) Matthews Correlation Coefficient",
+        title  = "(a) MCC [M1]",
         ylim   = [-1.1, 1.1],
         yticks = [-1.0, -0.5, 0.0, 0.5, 1.0]
     )
 
-    # Subplot (c): False Positive Rate
+    # Subplot (b): Safety-Critical Threshold Violation Rate (M2)
     plot_metric(
-        axes[2], tap_data, mob_data,
-        col    = COL_FPR_CUR,
-        ylabel = "False Positive Rate (%)",
-        title  = "(c) False Positive Rate",
+        axes[1], tap_data, mob_data,
+        col    = COL_TVR_AVG,
+        ylabel = "Threshold Violation Rate (%)",
+        title  = "(b) TVR [M2]",
         ylim   = [-5, 115],
         yticks = [0, 20, 40, 60, 80, 100]
     )
 
     # Shared legend at top (matching supervisor's NumColumns=2 style)
     legend_handle = fig.legend(
-        [p1],
-        ['TAP (Arsalan & Rehman 2018)'],
+        [p1, p2],
+        ['TAP (Arsalan & Rehman 2018)', 'MOBIGUARD (Proposed)'],
         loc='upper right',
-        ncol=1,
+        ncol=2,
         fontsize=20,
         bbox_to_anchor=(0.98, 1.08),
         markerscale=1.5
     )
 
     plt.tight_layout()
-    fig1_path = os.path.join(OUTPUT_DIR, "Figure1_Attack2_PDR_MCC_FPR.png")
+    fig1_path = os.path.join(OUTPUT_DIR, "Figure1_Attack2_MCC_TVR.png")
     fig.savefig(fig1_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {fig1_path}")
     plt.close(fig)
 
-    # ── Figure 2: Detection Rate and Mitigation Latency ──────────────────────
-    print("\nGenerating Figure 2: Detection Rate and Mitigation Latency")
+    # ── Figure 2: Timing metrics — M4 (Mitigation Latency), M6 (Latency) ─────
+    print("\nGenerating Figure 2: Mitigation & Overall Latency (M4, M6)")
 
     fig2, axes2 = plt.subplots(1, 2, figsize=(14, 7))
-    fig2.suptitle("Detection Performance of Attack 2\n"
+    fig2.suptitle("Mitigation and Latency Performance — Attack 2\n"
                   "(Selective Time Delay Attack — Data Plane)",
                   fontsize=22, fontweight='bold', y=1.02)
 
-    # Subplot (a): Detection Rate
-    p1b = plot_metric(
+    # Subplot (a): Mitigation Latency (M4)
+    p1b, p2b = plot_metric(
         axes2[0], tap_data, mob_data,
-        col    = COL_DR_CUR,
-        ylabel = "Detection Rate (%)",
-        title  = "(a) Detection Rate",
-        ylim   = [-5, 115],
-        yticks = [0, 20, 40, 60, 80, 100]
-    )
-
-    # Subplot (b): Mitigation Latency
-    plot_metric(
-        axes2[1], tap_data, mob_data,
         col    = COL_MIT_CUR,
         ylabel = "Mitigation Latency (ms)",
-        title  = "(b) Mitigation Latency",
+        title  = "(a) Mitigation Latency [M4]",
+        ylim   = None,
+        yticks = None
+    )
+
+    # Subplot (b): Overall System Latency (M6)
+    plot_metric(
+        axes2[1], tap_data, mob_data,
+        col    = COL_LAT_AVG,
+        ylabel = "End-to-End Latency (ms)",
+        title  = "(b) Overall Latency [M6]",
         ylim   = None,
         yticks = None
     )
 
     legend_handle2 = fig2.legend(
-        [p1b],
-        ['TAP (Arsalan & Rehman 2018)'],
+        [p1b, p2b],
+        ['TAP (Arsalan & Rehman 2018)', 'MOBIGUARD (Proposed)'],
         loc='upper right',
-        ncol=1,
+        ncol=2,
         fontsize=20,
         bbox_to_anchor=(0.98, 1.08),
         markerscale=1.5
     )
 
     plt.tight_layout()
-    fig2_path = os.path.join(OUTPUT_DIR, "Figure2_Attack2_DR_Mitigation.png")
+    fig2_path = os.path.join(OUTPUT_DIR, "Figure2_Attack2_Mitigation_Latency.png")
     fig2.savefig(fig2_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {fig2_path}")
     plt.close(fig2)
 
-    # ── Figure 3: All six metrics in one 6-panel figure ─────────────────────
+    # ── Figure 3: Complete evaluation — M1, M2, M4, M6 + PDR (supplementary) ─
     print("\nGenerating Figure 3: All metrics combined")
 
-    fig3, axes3 = plt.subplots(1, 6, figsize=(42, 7))
-    fig3.suptitle("Complete Performance Evaluation — Attack 2 (Selective Time Delay, Data Plane)\n"
-                  "TAP (Arsalan & Rehman FIT 2018)",
-                  fontsize=22, fontweight='bold', y=1.02)
-
     metrics = [
-        (COL_PDR_AVG, "Packet Delivery Ratio (%)",         "(a) PDR",         [-5, 115],  [0,20,40,60,80,100]),
-        (COL_LAT_AVG, "End-to-End Latency (ms)",           "(b) Latency",     None,       None),
-        (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(c) MCC",         [-1.1, 1.1], [-1.0, -0.5, 0.0, 0.5, 1.0]),
-        (COL_DR_CUR,  "Detection Rate (%)",                "(d) DR",          [-5, 115],  [0,20,40,60,80,100]),
-        (COL_FPR_CUR, "False Positive Rate (%)",           "(e) FPR",         [-5, 115],  [0,20,40,60,80,100]),
-        (COL_MIT_CUR, "Mitigation Latency (ms)",           "(f) Mitigation",  None,       None),
+        (COL_PDR_AVG, "Packet Delivery Ratio (%)",         "(a) PDR [supplementary]", [-5, 115],  [0,20,40,60,80,100]),
+        (COL_MCC_CUR, "Matthews Correlation Coefficient",  "(b) MCC [M1]",            [-1.1, 1.1], [-1.0, -0.5, 0.0, 0.5, 1.0]),
+        (COL_TVR_AVG, "Threshold Violation Rate (%)",      "(c) TVR [M2]",            [-5, 115],  [0,20,40,60,80,100]),
+        (COL_MIT_CUR, "Mitigation Latency (ms)",           "(d) Mitigation [M4]",     None,       None),
+        (COL_LAT_AVG, "End-to-End Latency (ms)",           "(e) Latency [M6]",        None,       None),
     ]
 
-    first_p1 = None
+    fig3, axes3 = plt.subplots(1, len(metrics), figsize=(7 * len(metrics), 7))
+    fig3.suptitle("Complete Performance Evaluation — Attack 2 (Selective Time Delay, Data Plane)\n"
+                  "TAP (Arsalan & Rehman FIT 2018) vs MOBIGUARD (Proposed)",
+                  fontsize=22, fontweight='bold', y=1.02)
+
+    first_p1, first_p2 = None, None
     for ax, (col, ylabel, title, ylim, yticks) in zip(axes3, metrics):
-        p1c = plot_metric(ax, tap_data, mob_data,
-                          col=col, ylabel=ylabel, title=title,
-                          ylim=ylim, yticks=yticks)
+        p1c, p2c = plot_metric(ax, tap_data, mob_data,
+                               col=col, ylabel=ylabel, title=title,
+                               ylim=ylim, yticks=yticks)
         if first_p1 is None:
-            first_p1 = p1c
+            first_p1, first_p2 = p1c, p2c
 
     fig3.legend(
-        ['TAP (Arsalan & Rehman 2018)'],
-        loc='upper right', ncol=1, fontsize=20,
+        [first_p1, first_p2],
+        ['TAP (Arsalan & Rehman 2018)', 'MOBIGUARD (Proposed)'],
+        loc='upper right', ncol=2, fontsize=20,
         bbox_to_anchor=(0.98, 1.08), markerscale=1.5
     )
 
@@ -335,8 +360,8 @@ def main():
     print("\n✅ All figures generated successfully.")
     print(f"   Output directory: {OUTPUT_DIR}")
     print("   Files created:")
-    print(f"   - Figure1_Attack2_PDR_MCC_FPR.png")
-    print(f"   - Figure2_Attack2_DR_Mitigation.png")
+    print(f"   - Figure1_Attack2_MCC_TVR.png")
+    print(f"   - Figure2_Attack2_Mitigation_Latency.png")
     print(f"   - Figure3_Attack2_AllMetrics.png")
 
 

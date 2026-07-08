@@ -114903,7 +114903,19 @@ double tap_previous_cumulative_MCC = 0.0;
 double tap_previous_cumulative_DR  = 0.0;
 double tap_previous_cumulative_FPR = 0.0;
 double tap_previous_cumulative_mit = 0.0;
-#include "tap_detection.h"
+
+// M2 (TVR, eq:tvr) ground truth for TAP — computed identically to
+// MOBIGUARD's own TVR (routing.cc S2 block: anchored hop delay vs
+// S2_DELTA_MAX at RSU arrival) so both baselines are scored on the same
+// ground truth. Independent of TAP's own detection decision (v vs PPAT) —
+// TVR measures raw attack impact, not detection outcome.
+uint32_t tap_tvr_crit_total = 0;
+uint32_t tap_tvr_violated   = 0;
+double   tap_current_TVR            = 0.0;
+double   tap_previous_cumulative_TVR = 0.0;
+// #include "tap_detection.h" moved below (after crypto_layer.h / s2_detection.h) —
+// TAP's TVR ground-truth check needs node_clock_offset() (crypto_layer.h) and
+// S2_DELTA_MAX (s2_detection.h), neither of which is declared yet at this point.
 
 
 // ============================================================
@@ -114940,6 +114952,8 @@ void record_detection_event(int v, int n); // defined at ~line 115476; forward-d
 #include "crypto_event_log.h"  // per-operation timing log (supervisor timing verification)
 #include "lrad_hmac.h"         // HmacTag + g_hmac_tags + lrad_hmac_tag_packet (S2-partial, early include)
 #include "s2_detection.h"           // S2 (DP) MOBIGUARD detection — Signature S2, Eq. 3.5
+#include "tap_detection.h"          // TAP baseline (Arsalan & Rehman FIT 2018) — needs node_clock_offset()
+                                    // (crypto_layer.h) and S2_DELTA_MAX (s2_detection.h), hence included here
 #include "s5_detection.h"           // S5 (Active HF CP)  MOBIGUARD detection — Signature S5, Eq. sig_s5
 #include "s6_detection.h"           // S6 (Active HF DP)  MOBIGUARD detection — Signature S6, Eq. sig_s6
 #include "s7_detection.h"           // S7 (Passive HF CP) MOBIGUARD detection — Signature S7, Eq. sig_s7
@@ -141347,6 +141361,10 @@ int main(int argc, char *argv[])
     cmd.AddValue ("flow_size", "Number of packets per flow (default 55)", flow_size);
     cmd.AddValue ("single_cycle", "1 = one packet per flow, clear logs for attack verification", single_cycle);
     cmd.AddValue ("use_sumo_mobility", "use_sumo_mobility", use_sumo_mobility);
+    cmd.AddValue ("enable_tap", "1 = run TAP (Arsalan & Rehman FIT 2018) baseline detector on Attack 2 "
+                  "instead of MOBIGUARD S1-S8 (default 0=off). Pass alongside --enable_lrad_obu=0 "
+                  "--enable_lrad_rsu=0 to disable MOBIGUARD's own signature detectors for a clean "
+                  "TAP-only baseline run.", tap_detection_active);
     
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
