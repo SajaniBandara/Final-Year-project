@@ -1,0 +1,24 @@
+Held-Out Seed Validation
+========================================
+
+Model trained on : RngRun=1 (120s simulation)
+Evaluated on     : RngRun=2 (120s simulation, independent seed)
+
+MCC (M1)   : 1.0000
+DR  (M2)   : 100.00%
+FPR (M3)   : 0.00%
+F1         : 100.00%
+Accuracy   : 100.00%
+n_snapshots: 236
+
+Confusion Matrix:
+              Pred Normal  Pred Attack
+True Normal    126          0
+True Attack    0            110
+
+Interpretation: Model generalizes to an independent simulation
+seed with no meaningful degradation. Detection remains near-perfect
+under fixed-density conditions across multiple random instantiations.
+SUMO-based density variation remains necessary to observe realistic
+degradation, as fixed-density traffic patterns are structurally
+similar across seeds.

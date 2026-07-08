@@ -1,0 +1,2 @@
+Method,Data,Attack_Variants,Accuracy (%),Precision (%),Recall (%),F1 (%),AUC,N_features_selected,Selected_features,Paper_feature_overlap
+SFTO-Guard (reproduced),SDVN NS-3 traces,"3, 4 (TCAM Exhaustion only)",100.0,100.0,100.0,100.0,1.0,2,CB_mean|CP_median,2/8

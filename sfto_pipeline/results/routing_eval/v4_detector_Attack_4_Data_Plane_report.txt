@@ -1,0 +1,36 @@
+Model: v4_detector
+Dataset: Attack_4_Data_Plane
+========================================
+
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00       126
+           1       1.00      1.00      1.00       110
+
+    accuracy                           1.00       236
+   macro avg       1.00      1.00      1.00       236
+weighted avg       1.00      1.00      1.00       236
+
+{
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mcc": 1.0,
+  "fpr": 0.0,
+  "dr": 1.0,
+  "TP": 110,
+  "FP": 0,
+  "TN": 126,
+  "FN": 0,
+  "confusion_matrix": [
+    [
+      126,
+      0
+    ],
+    [
+      0,
+      110
+    ]
+  ]
+}
