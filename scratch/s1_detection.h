@@ -20,8 +20,10 @@
 //   before the global declarations.
 //
 // INDEPENDENCE:
-//   S1 uses its own s1_detection_active flag (declared in routing.cc),
-//   independent of s2_detection_active. Disabling S2 does not affect S1.
+//   S1 has no individual master-enable flag — gated solely by
+//   enable_lrad_obu (AB1, lrad.h), matching main.tex's only mode-level
+//   ablation for this part of the architecture. No per-signature toggle is
+//   specified anywhere in main.tex; removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -125,16 +127,13 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4)
     if (!is_safety_crit) return false;
 
-    // Training-mode: accumulate real delays BEFORE the detection-active gate so
-    // obs_delay is populated even when s1_detection_active=false (uncalibrated).
-    // Without this, the gate fires first and the accumulator is never seeded.
+    // Training-mode: accumulate real delays regardless of downstream detection
+    // logic, so obs_delay is populated even before the baseline is calibrated.
     if (training && packet_delay_s > 0.0)
     {
         s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
         s1_rsu_obs_count[rsu_idx] += 1;
     }
-
-    if (!s1_detection_active) return false;
 
     double delta_bar = s1_delta_bar[rsu_idx];
     double sigma     = std::sqrt(s1_sigma2[rsu_idx]);
@@ -210,8 +209,7 @@ inline void s1_init_state(uint32_t n_rsus)
     s1_sigma2.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
-    if (s1_detection_active)
-        cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs." << endl;
+    cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs." << endl;
 }
 
 // =========================================================================
@@ -225,8 +223,7 @@ inline void s1_reset_state()
     std::fill(s1_sigma2.begin(),        s1_sigma2.end(),        0.0);
     std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
     std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
-    if (s1_detection_active)
-        cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
+    cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
 }
 
 #endif // S1_DETECTION_H

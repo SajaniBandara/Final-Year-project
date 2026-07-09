@@ -37,7 +37,12 @@
 //   Both calls strip 0xDEAD0000 so both copies map to the same key.
 //
 // INDEPENDENCE:
-//   Controlled solely by s6_detection_active (declared in routing.cc).
+//   S6 has no individual master-enable flag. s6_log_recv() (below) runs
+//   unconditionally on every delivery so the duplication-observation window
+//   is always populated; s6_detect() itself is gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via its only call site inside lrad_rsu().
+//   No per-signature toggle is specified anywhere in main.tex; removed
+//   2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -70,12 +75,12 @@ static std::map<std::pair<uint32_t,uint32_t>,
 // s6_log_recv():
 // Records that current_hop received (fid, packet_id) at the current sim time.
 // Expires entries older than S6_WINDOW_S before inserting, implementing the
-// finite observation window W from Eq. sig_s6 (R(d,W) / R(d',W)).
-// Safe to call when s6_detection_active is false — exits immediately.
+// finite observation window W from Eq. sig_s6 (R(d,W) / R(d',W)). Runs
+// unconditionally on every delivery (called from routing.cc regardless of
+// attack type) so the log is always populated when s6_detect() needs it.
 // =========================================================================
 inline void s6_log_recv(uint32_t recv_flow_id, uint32_t packet_id, uint32_t current_hop)
 {
-    if (!s6_detection_active) return;
     uint32_t base_fid = recv_flow_id & 0xFFFFu;
     double   t_now    = Simulator::Now().GetSeconds();
     auto     key      = std::make_pair(base_fid, packet_id);
@@ -118,8 +123,6 @@ inline bool s6_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
-    if (!s6_detection_active) return false;
-
     // Conjunction 5: DP variant only (Attack 6, index 5)
     if (active_attack_variant != 5) return false;
 
@@ -201,8 +204,7 @@ inline bool s6_detect(uint32_t recv_flow_id,
 inline void s6_reset_state()
 {
     s6_msg_recv_log.clear();
-    if (s6_detection_active)
-        cout << "[S6] Duplication log cleared (window W=" << S6_WINDOW_S << "s)." << endl;
+    cout << "[S6] Duplication log cleared (window W=" << S6_WINDOW_S << "s)." << endl;
 }
 
 #endif // S6_DETECTION_H

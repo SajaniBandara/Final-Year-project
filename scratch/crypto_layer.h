@@ -1290,15 +1290,13 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
                                        "S3/S4 TCAM detection is unaffected either way since it never reads "
                                        "crypto state.", g_disable_crypto);
 
-    // LRAD detection-active CLI overrides (ablation: disable individual
-    // signatures without recompiling — e.g. --attack_number=5 --s5_detection_active=0
-    // measures detection contribution of S5 in isolation).
-    cmd.AddValue("s1_detection_active", "Enable LRAD S1 (Selective Delay CP) detection",  s1_detection_active);
-    cmd.AddValue("s2_detection_active", "Enable LRAD S2 (Selective Delay DP) detection",  s2_detection_active);
-    cmd.AddValue("s5_detection_active", "Enable LRAD S5 (Active HF CP) detection",        s5_detection_active);
-    cmd.AddValue("s6_detection_active", "Enable LRAD S6 (Active HF DP) detection",        s6_detection_active);
-    cmd.AddValue("s7_detection_active", "Enable LRAD S7 (Passive HF CP) detection",       s7_detection_active);
-    cmd.AddValue("s8_detection_active", "Enable LRAD S8 (Passive HF DP) detection",       s8_detection_active);
+    // Per-signature (S1/S2/S5-S8) CLI overrides removed 2026-07-09: main.tex
+    // specifies no such ablation anywhere (the only mode-level ablation for
+    // this part of the architecture is AB1 — enable_lrad_obu/enable_lrad_rsu
+    // below). Signatures now evaluate continuously whenever their owning
+    // engine (OBU or RSU) is on, matching alg:lrad_obu/alg:lrad_rsu's own
+    // OR-across-all-signatures composite and main.tex:4621's "all eight
+    // attack variants operate simultaneously in every experiment."
 
     // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
     // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.

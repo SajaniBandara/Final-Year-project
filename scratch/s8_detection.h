@@ -50,7 +50,10 @@
 //   Do NOT include before the global declarations.
 //
 // INDEPENDENCE:
-//   Controlled solely by s8_detection_active (declared in routing.cc).
+//   S8 has no individual master-enable flag — gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via s8_detect()'s only call path (inside
+//   lrad_rsu(), invoked from every one of its call sites). No per-signature
+//   toggle is specified anywhere in main.tex; removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -84,8 +87,6 @@ inline bool s8_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
-    if (!s8_detection_active) return false;
-
     // Conjunction 1: DP passive variant only (Attack 8, index 7)
     if (active_attack_variant != 7) return false;
 

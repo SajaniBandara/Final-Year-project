@@ -20,8 +20,10 @@
 //   before the global declarations.
 //
 // INDEPENDENCE:
-//   S2 uses its own s2_detection_active flag (declared in routing.cc),
-//   independent of s1_detection_active. Disabling S1 does not affect S2.
+//   S2 has no individual master-enable flag — gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via s2_detect_packet()'s only call site
+//   inside lrad_rsu(). No per-signature toggle is specified anywhere in
+//   main.tex; removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -61,7 +63,6 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
                               uint32_t packet_id,
                               uint32_t flow_id)
 {
-    if (!s2_detection_active) return false;
     if (sender_sim_index >= (uint32_t)var) return false;
     if (packet_id >= (uint32_t)(Flow_size + 2)) return false;
 

@@ -46,7 +46,10 @@
 //   Do NOT include before the global declarations.
 //
 // INDEPENDENCE:
-//   Controlled solely by s7_detection_active (declared in routing.cc).
+//   S7 has no individual master-enable flag — gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via s7_detect()'s only call path (inside
+//   lrad_rsu(), invoked from every one of its call sites). No per-signature
+//   toggle is specified anywhere in main.tex; removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -101,8 +104,6 @@ inline bool s7_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
-    if (!s7_detection_active) return false;
-
     // Conjunction 1: CP passive variant only (Attack 7, index 6)
     if (active_attack_variant != 6) return false;
 
@@ -205,8 +206,7 @@ inline void s7_reset_state()
 {
     s7_vol_count.clear();
     s7_window_start.clear();
-    if (s7_detection_active)
-        cout << "[S7] Per-node volume state cleared." << endl;
+    cout << "[S7] Per-node volume state cleared." << endl;
 }
 
 #endif // S7_DETECTION_H

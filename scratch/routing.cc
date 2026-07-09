@@ -114808,13 +114808,15 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 //   s1_detect_packet()  (s1_detection.h) — hop-delay = t_recv − t_claimed
 //   s2_detect_packet()  (s2_detection.h) — hop-delay = t_recv − t_claimed
 //   tap_run_detection() (tap_detection.h) — PPAT = t_claimed
-bool s1_detection_active = false;    // master enable for S1 — read by s1_detection.h
-bool s2_detection_active = false;    // master enable for S2 — read by s2_detection.h
+//
+// S1/S2/S5-S8 no longer have individual master-enable flags: main.tex's only
+// mode-level ablation for this part of the architecture is AB1
+// (enable_lrad_obu / enable_lrad_rsu — see lrad.h), which gates the entire
+// OBU/RSU detection stage. Per-signature toggles were never specified by
+// any of the 13 ablation studies or the 5 benchmarking experiments (main.tex
+// explicitly requires "all eight attack variants operate simultaneously" —
+// i.e. all signature checks active continuously); removed 2026-07-09.
 bool tap_detection_active = false;   // master enable for TAP — read by tap_detection.h
-bool s5_detection_active = false;    // master enable for S5 (Active HF CP)  — read by s5_detection.h
-bool s6_detection_active = false;    // master enable for S6 (Active HF DP)  — read by s6_detection.h
-bool s7_detection_active = false;    // master enable for S7 (Passive HF CP) — read by s7_detection.h
-bool s8_detection_active = false;    // master enable for S8 (Passive HF DP) — read by s8_detection.h
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -114875,7 +114877,7 @@ double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
 // === TAP BASELINE GLOBALS ===
-// tap_detection_active already declared earlier alongside s2_detection_active.
+// tap_detection_active already declared earlier.
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
