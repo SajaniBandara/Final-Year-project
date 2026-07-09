@@ -11,7 +11,7 @@
 // Function 1: tap_check_defaulter_list
 inline bool tap_check_defaulter_list(uint32_t sender_current_hop)
 {
-	if (!tap_detection_active) return false;
+	if (!enable_tap) return false;
 	if (sender_current_hop >= (uint32_t)total_size) return false;
 	if (tap_defaulter_list[sender_current_hop])
 	{
@@ -46,7 +46,7 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 					   uint32_t sender_current_hop,
 					   uint32_t packet_id)
 {
-	if (!tap_detection_active) return;
+	if (!enable_tap) return;
 	if (sender_current_hop >= (uint32_t)total_size) return;
 	if (receiver_current_hop >= (uint32_t)total_size) return;
 	if (sender_current_hop >= (uint32_t)wifidevices.GetN()) return;
@@ -109,7 +109,7 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 // Function 4: calculate_tap_security_metrics
 inline void calculate_tap_security_metrics()
 {
-	if (!tap_detection_active) return;
+	if (!enable_tap) return;
 
 	tap_TP = tap_FP = tap_TN = tap_FN = 0;
 	for (int n = 0; n < total_size; n++)
@@ -170,7 +170,7 @@ inline void calculate_tap_security_metrics()
 // Function 5: write_tap_csv
 inline void write_tap_csv()
 {
-	if (!tap_detection_active) return;
+	if (!enable_tap) return;
 
 	double cycle = (data_gathering_cycle_number - 1.0 > 1.0) ? 
 	               (data_gathering_cycle_number - 1.0) : 1.0;
@@ -180,6 +180,17 @@ inline void write_tap_csv()
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
+
+	// Self-documenting column header, written once when the file is empty.
+	// Uses the same "#"-comment style and shared column names as the MOBIGUARD
+	// writer (routing.cc write_security_metrics_csv) so the leading 19 columns
+	// line up 1:1; parsers that skip "#" lines (plot_tap_results.py) ignore it.
+	if (fout.tellp() == 0) {
+		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
+			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
+			 << "# TP, FP, TN, FN, cur_TVR, avg_TVR\n";
+	}
+
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
@@ -216,7 +227,7 @@ inline void tap_reset_state(int total_size_val)
 	tap_previous_cumulative_FPR=0.0; tap_previous_cumulative_mit=0.0;
 	tap_tvr_crit_total=0; tap_tvr_violated=0;
 	tap_current_TVR=0.0; tap_previous_cumulative_TVR=0.0;
-	if (tap_detection_active)
+	if (enable_tap)
 		cout << "[TAP] All TAP state reset and ready for simulation run." << endl;
 }
 
@@ -226,7 +237,7 @@ inline void tap_process_packet(uint32_t receiver_current_hop,
                                uint32_t packet_id,
                                uint32_t flow_id)
 {
-	if (!tap_detection_active) return;
+	if (!enable_tap) return;
 
 	// M2 (TVR, eq:tvr) — ground truth, computed identically to MOBIGUARD's
 	// own TVR increment (routing.cc MacRx, S2 block): anchored hop delay vs

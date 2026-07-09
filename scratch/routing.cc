@@ -114816,7 +114816,7 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 // any of the 13 ablation studies or the 5 benchmarking experiments (main.tex
 // explicitly requires "all eight attack variants operate simultaneously" —
 // i.e. all signature checks active continuously); removed 2026-07-09.
-bool tap_detection_active = false;   // master enable for TAP — read by tap_detection.h
+bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -114877,7 +114877,7 @@ double previous_cumulative_FPR[NUM_ATTACK_VARIANTS]            = {0.0};
 double previous_cumulative_mitigation_latency                  = 0.0;
 
 // === TAP BASELINE GLOBALS ===
-// tap_detection_active already declared earlier.
+// enable_tap already declared earlier.
 
 static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed in m/s — exactly as in TAP paper Algorithm 1 Line 12
 
@@ -117428,6 +117428,17 @@ uint32_t g_escalation_count = 0;
 
 void write_security_metrics_csv()
 {
+	// Framework selector guard (mirrors write_tap_csv()'s own guard):
+	// during a TAP baseline run (enable_tap=1, MOBIGUARD's S1-S8 disabled via
+	// enable_lrad_obu=0/enable_lrad_rsu=0) this writer must NOT emit a
+	// MOBIGUARD_Attack*_*.csv row. Otherwise the TAP run's detector-off rows
+	// pollute the MOBIGUARD result file that the real (enable_tap=0) run writes
+	// to the same path. main.tex treats TAP (B1) as a separate external
+	// baseline reporting its own values in its own run (§Benchmarking), so each
+	// run must produce exactly one framework's file. A normal MOBIGUARD run has
+	// enable_tap=false and is unaffected.
+	if (enable_tap) return;
+
 	fstream fout;
 	string filename;
 	double cycle = data_gathering_cycle_number - 1.0;
@@ -121455,7 +121466,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 				// === TAP BASELINE DETECTION ===
 				// Implements TAP paper (Arsalan & Rehman FIT 2018) Algorithm 1.
-				// Only on safety-critical flows. Controlled solely by tap_detection_active.
+				// Only on safety-critical flows. Controlled solely by enable_tap.
 				if (is_safety_critical_flow[fid])
 				{
 					tap_process_packet(current_hop, tagmodified_routing.Getprevious_senderId(), tagmodified_routing.GetpacketId(), tagmodified_routing.GetflowId());
@@ -141366,7 +141377,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("enable_tap", "1 = run TAP (Arsalan & Rehman FIT 2018) baseline detector on Attack 2 "
                   "instead of MOBIGUARD S1-S8 (default 0=off). Pass alongside --enable_lrad_obu=0 "
                   "--enable_lrad_rsu=0 to disable MOBIGUARD's own signature detectors for a clean "
-                  "TAP-only baseline run.", tap_detection_active);
+                  "TAP-only baseline run.", enable_tap);
     
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);

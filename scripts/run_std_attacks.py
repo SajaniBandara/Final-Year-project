@@ -25,8 +25,9 @@ Usage examples:
   # Run all 12 combinations (both attacks × 6 percentages) in parallel:
   python3 scripts/run_std_attacks.py
 
-  # Sync headers + rebuild first, then run:
+  # Sync headers + rebuild only, then exit (run again without --build to simulate):
   python3 scripts/run_std_attacks.py --build
+  python3 scripts/run_std_attacks.py            # now launch the sweep with the fresh binary
 
   # Run only Attack 1 at 40%:
   python3 scripts/run_std_attacks.py --attack 1 --percentage 40
@@ -288,7 +289,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--build", action="store_true",
-        help="Sync project headers to scratch and run ./waf build before simulating.",
+        help="Build-only: sync project files to scratch, run ./waf build, then EXIT "
+             "without simulating. Re-run the script without --build to launch the sweep.",
     )
     parser.add_argument(
         "--clean", action="store_true",
@@ -338,10 +340,16 @@ def main() -> None:
     args = parser.parse_args()
 
     # ── Optional sync + build ────────────────────────────────────────────────
+    # --build is build-ONLY: it syncs, compiles, then EXITS. It deliberately does
+    # NOT fall through into the sweep — otherwise `--build` (intended as a compile
+    # check) silently launches a full multi-hour run. To actually simulate, re-run
+    # the script without --build (the freshly built binary is reused).
     if args.build:
         sync_files()
         if not build_simulation():
             sys.exit(1)
+        print("Build complete. Re-run without --build to launch the simulations.")
+        sys.exit(0)
 
     # ── Resolve scope ────────────────────────────────────────────────────────
     scope_attacks = [args.attack] if args.attack else [a["attack_number"] for a in ATTACKS]
