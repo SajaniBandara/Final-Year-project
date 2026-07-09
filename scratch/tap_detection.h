@@ -180,6 +180,17 @@ inline void write_tap_csv()
 
 	fstream fout;
 	fout.open(filename, ios::out | ios::app);
+
+	// Self-documenting column header, written once when the file is empty.
+	// Uses the same "#"-comment style and shared column names as the MOBIGUARD
+	// writer (routing.cc write_security_metrics_csv) so the leading 19 columns
+	// line up 1:1; parsers that skip "#" lines (plot_tap_results.py) ignore it.
+	if (fout.tellp() == 0) {
+		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
+			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
+			 << "# TP, FP, TN, FN, cur_TVR, avg_TVR\n";
+	}
+
 	fout << (uint32_t)cycle << ", "
 		 << current_packet_delivery_ratio * 100.0 << ", "
 		 << average_packet_delivery_ratio_dsrc * 100.0 << ", "
