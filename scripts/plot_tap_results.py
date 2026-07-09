@@ -53,6 +53,7 @@ CSV column order (columns are 0-indexed):
     18: average TVR%
 """
 
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -68,6 +69,18 @@ PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
 
 ATTACK_PERCENTAGES = [0, 20, 40, 60, 80, 100]
+
+# The simulation appends a "_d<delay>ms" suffix to every Attack 1/2 result file
+# whenever --attack_number is set (routing.cc, g_delay_suffix). run_std_attacks.py
+# always passes --attack_number and defaults the delay to 80 ms, so the CSVs it
+# produces are named e.g. TAP_Attack2_40_d80ms.csv. This must match, or no data
+# is found. Override with --delay to plot a different point of a delay sweep.
+DEFAULT_DELAY_MS = 80
+
+
+def delay_suffix(delay_ms):
+    """Return the filename suffix for a fixed delay, e.g. '_d80ms', or '' if None."""
+    return f"_d{int(delay_ms)}ms" if delay_ms is not None else ""
 
 # Column indices in CSV — only the columns feeding an official metric (or the
 # PDR supplementary panel) are kept here; COL_DR_CUR/COL_FPR_CUR intentionally
@@ -127,14 +140,15 @@ def mean_and_ci(values):
 
 # ─── Load data for all attack percentages ────────────────────────────────────
 
-def load_method_data(prefix):
+def load_method_data(prefix, suffix=""):
     """
     Load data for one method (TAP or MOBIGUARD) across all attack percentages.
-    Returns dict: {attack_pct: rows_list}
+    `suffix` is the delay tag (e.g. '_d80ms') the simulation appends to the
+    filename. Returns dict: {attack_pct: rows_list}
     """
     data = {}
     for pct in ATTACK_PERCENTAGES:
-        filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack2_{pct}.csv")
+        filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack2_{pct}{suffix}.csv")
         data[pct] = read_csv(filepath)
     return data
 
@@ -220,9 +234,30 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 # ─── Main plotting function ───────────────────────────────────────────────────
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Plot TAP vs MOBIGUARD comparison for Attack 2.",
+    )
+    parser.add_argument(
+        "--delay", type=int, default=DEFAULT_DELAY_MS, metavar="MS",
+        help=(
+            "Attack delay (ms) of the run to plot; selects the '_d<MS>ms' CSV "
+            f"filename suffix (default {DEFAULT_DELAY_MS}, matching run_std_attacks.py). "
+            "Use --no-suffix for legacy files written without a delay tag."
+        ),
+    )
+    parser.add_argument(
+        "--no-suffix", action="store_true",
+        help="Read files with no '_d<delay>ms' suffix (legacy naming).",
+    )
+    args = parser.parse_args()
+
+    suffix = "" if args.no_suffix else delay_suffix(args.delay)
+
     print("Loading CSV data...")
-    tap_data = load_method_data("TAP")
-    mob_data = load_method_data("MOBIGUARD")
+    if suffix:
+        print(f"  Using filename suffix '{suffix}'")
+    tap_data = load_method_data("TAP", suffix)
+    mob_data = load_method_data("MOBIGUARD", suffix)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # Verify files loaded
@@ -230,6 +265,12 @@ def main():
         n_tap = len(tap_data[pct])
         n_mob = len(mob_data[pct])
         print(f"  Attack {pct}%: TAP={n_tap} rows, MOBIGUARD={n_mob} rows")
+
+    if all(len(tap_data[p]) == 0 for p in ATTACK_PERCENTAGES) and \
+       all(len(mob_data[p]) == 0 for p in ATTACK_PERCENTAGES):
+        print(f"\n⚠  No data found in {RESULTS_DIR}")
+        print(f"   Expected files like  TAP_Attack2_40{suffix}.csv")
+        print( "   Check the --delay value matches the runs, or pass --no-suffix.")
 
     print("\nGenerating Figure 1: Detection Quality (M1 MCC, M2 TVR)")
 
