@@ -42,8 +42,10 @@
 //   Do NOT include this header before the global declarations.
 //
 // INDEPENDENCE:
-//   Controlled solely by s5_detection_active (declared in routing.cc).
-//   Disabling any other detection switch does not affect S5.
+//   S5 has no individual master-enable flag — gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via s5_detect()'s only call site inside
+//   lrad_rsu(). No per-signature toggle is specified anywhere in main.tex;
+//   removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -85,8 +87,6 @@ inline bool s5_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
-    if (!s5_detection_active) return false;
-
     // Conjunction 1: FlowMod not committed to blockchain — unauthorized (eq:unauth_flowmod).
     // bc_query_flowmod returns true iff the FlowMod was f+1 endorsed and committed.
     // If committed, the FlowMod is legitimate → S5 does not fire.

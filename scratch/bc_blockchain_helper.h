@@ -53,8 +53,11 @@ static std::ofstream g_bc_dkg_csv;
 static bool          g_bc_dkg_open       = false;
 static std::ofstream g_bc_anchor_csv;
 static bool          g_bc_anchor_open    = false;
+static std::ofstream g_bc_tref_csv;
+static bool          g_bc_tref_open      = false;
 static int           g_dkg_round         = 0;
 static int           g_anchor_seq        = 0;
+static int           g_tref_seq          = 0;
 static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 
 static const std::string BC_RESULTS_DIR =
@@ -77,7 +80,11 @@ inline bool bc_log_flowmod(const FlowModEndorsement& /*e*/, uint32_t /*rsu_idx*/
 inline bool bc_commit_flowmod(FlowModEndorsement& e) {
     // f = floor((N_RSUs-1)/3) Byzantine faults tolerated; require f+1 endorsers (eq:endorsed_commit)
     uint32_t f_plus_1 = (N_RSUs > 0) ? ((N_RSUs - 1) / 3) + 1 : 1;
-    if ((uint32_t)e.endorsing_rsus.size() < f_plus_1) {
+    // AB8-A (enable_endorsement_requirement=false): controller commits unilaterally —
+    // quorum check skipped, every FlowMod commits, so bc_query_flowmod() always finds
+    // a committed entry and f_unauth (S3/S5 blockchain conjunct) can never fire.
+    if (enable_endorsement_requirement &&
+        (uint32_t)e.endorsing_rsus.size() < f_plus_1) {
         std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
                   << e.endorsing_rsus.size() << " < required f+1=" << f_plus_1
                   << " → S1 detection signal\n";
@@ -386,6 +393,13 @@ static void bc_open_anchor_csv() {
         g_bc_anchor_csv << "rsu_id,seq,anchor_hash,rsu_chain_len,timestamp_ms\n";
     g_bc_anchor_open = true;
 }
+static void bc_open_tref_csv() {
+    if (g_bc_tref_open) return;
+    g_bc_tref_csv.open(BC_RESULTS_DIR + "bc_tref_log.csv", std::ios::trunc);
+    if (g_bc_tref_csv.is_open())
+        g_bc_tref_csv << "rsu_id,seq,t_ref_value,eps_ref,timestamp_ms\n";
+    g_bc_tref_open = true;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // bc_write_detection_event() — eq:rsu_write
@@ -592,6 +606,35 @@ inline void bc_anchor_to_global() {
 inline void bc_anchor_recurring() {
     bc_anchor_to_global();
     Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bc_commit_tref_to_chain() — sec:time_ref (CommitTRef on Fabric)
+// Commits this tick's T_ref(t) = median_j tau_j(t) to the blockchain, per
+// main.tex: "T_ref(t) is committed to the blockchain by RSU consensus at
+// regular intervals to provide a tamper-evident audit trail for all
+// detection decisions." Called directly from update_T_ref() (crypto_layer.h)
+// on every T_SYNC_INTERVAL tick — same cadence as bc_anchor_to_global(), no
+// separate recurring schedule needed since it always reads a freshly
+// computed T_ref/eps_ref rather than risking a stale value from an
+// independently-phased timer.
+// ─────────────────────────────────────────────────────────────────────────────
+inline void bc_commit_tref_to_chain(double t_ref_value, double eps_ref, double ts) {
+    int seq = ++g_tref_seq;
+    long long ts_ms = (long long)(ts * 1000.0);
+
+    bc_open_tref_csv();
+    if (g_bc_tref_csv.is_open()) {
+        g_bc_tref_csv << N_Vehicles << "," << seq << ","
+                      << t_ref_value << "," << eps_ref << "," << ts_ms << "\n";
+        g_bc_tref_csv.flush();
+    }
+
+    if (CRYPTO_DEBUG_LOG)
+        std::cout << "[BC-TREF] T_ref committed (Fabric seq=" << seq << ")"
+                  << " T_ref=" << t_ref_value
+                  << " eps_ref=" << eps_ref
+                  << " t=" << ts << "\n";
 }
 
 #endif // BC_BLOCKCHAIN_HELPER_H

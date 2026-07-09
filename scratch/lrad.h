@@ -268,6 +268,7 @@ inline LRADRSUFlags lrad_rsu(
     uint32_t     obu_assoc_rsu_node_id  /* = UINT32_MAX */)  // S3/S4 suspect
 {
     LRADRSUFlags flags;
+    if (!enable_lrad_rsu) return flags; // AB1-A: RSU engine off — all-false, no escalation processing
     auto _t0 = crypto_log_start();
 
     // Use .find() — never operator[] — to avoid silently inserting a
@@ -417,6 +418,7 @@ inline LRADOBUFlags lrad_obu(
     uint32_t assoc_rsu_local_idx)   // RSU local index (0..N_RSUs-1)
 {
     LRADOBUFlags flags;
+    if (!enable_lrad_obu) return flags; // AB1-B: OBU engine off — all-false, no escalation
     auto _t0 = crypto_log_start();
 
     // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────

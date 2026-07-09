@@ -6,14 +6,23 @@ Steps:
   2. local_trainer.py — per-RSU hyperparameter grid search (MCC, FPR<=1%)
   3. fed_aggregator.py — federated training loop (R rounds, local update from
                          current global weights each round) + BRFA-v2
-                         Byzantine-robust aggregation every round
-  4. evaluator.py     — M1–M8 metrics
+                         Byzantine-robust aggregation every round; also saves
+                         each RSU's own local model at the selected round R
+                         (rsu_{k}.pt) for step 5
+  4. evaluator.py     — M1–M8 metrics (evaluator.py's own pre-revision
+                        numbering: MCC/DR/FPR/L_mit/PDR/L_e2e/TVR/UCR —
+                        not the current proposal's M8 = poisoning resistance)
+  5. poison_sweep.py  — M8 (current numbering) Delta_poison(rho_mal) sweep,
+                        BRFA-v2 vs naive FedAvg (optional, run explicitly)
 
-Run all steps:
+Run all steps (1-4):
   python3 pipeline.py
 
 Run from a specific step:
   python3 pipeline.py --from-step 3
+
+Run the M8 poisoning sweep (after steps 1-2 have produced clean rsu_*.pt):
+  python3 pipeline.py --from-step 5
 
 GPU is used automatically when available (RTX 5090 / CUDA).
 """
@@ -30,7 +39,8 @@ STEPS = [
     (1, "preprocessor.py",  [],                        "Load CSVs → Z-score → windows"),
     (2, "local_trainer.py", [],                        "Per-RSU hyperparameter grid search (GPU)"),
     (3, "fed_aggregator.py",["--gamma_factor", "2.0"], "Federated training (R rounds) + BRFA-v2"),
-    (4, "evaluator.py",     [],                        "M1–M8 metric evaluation"),
+    (4, "evaluator.py",     [],                        "M1–M8 metric evaluation (legacy numbering)"),
+    (5, "poison_sweep.py",  [],                        "M8 Delta_poison(rho_mal) sweep, BRFA-v2 vs FedAvg"),
 ]
 
 
@@ -73,6 +83,7 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--from-step", type=int, default=1, choices=[1, 2, 3, 4],
-                    help="Resume from this step (1=preprocess, 2=train, 3=federate, 4=evaluate)")
+    ap.add_argument("--from-step", type=int, default=1, choices=[1, 2, 3, 4, 5],
+                    help="Resume from this step (1=preprocess, 2=train, 3=federate, "
+                         "4=evaluate, 5=M8 poisoning sweep)")
     main(ap.parse_args())

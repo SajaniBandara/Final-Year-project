@@ -18,6 +18,7 @@
 #include <array>
 #include <map>
 #include <algorithm>
+#include <chrono>   // M7: wall-clock timing of batch verification (eq:t_verify)
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -30,9 +31,23 @@
 // Forward declarations — bc_commit_dkg defined in bc_blockchain_helper.h (included after this).
 void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][64],
                    uint32_t n_rsus, double ts_setup);
+// bc_commit_tref_to_chain defined in bc_blockchain_helper.h (included after this) —
+// called from update_T_ref() below so every T_SYNC_INTERVAL tick's T_ref(t) is
+// committed on-chain (main.tex sec:time_ref: "T_ref(t) is committed to the
+// blockchain by RSU consensus at regular intervals to provide a tamper-evident
+// audit trail"), same pattern as bc_commit_dkg above.
+void bc_commit_tref_to_chain(double t_ref_value, double eps_ref, double ts);
 // dkg_rotate_keys defined in dkg_setup.h (included after this) — called from trust_update_negative
 // per eq:key_rotation_trigger when a quarantined node is an RSU.
 inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
+
+// crypto_log_event defined in crypto_event_log.h (included after this header in
+// routing.cc, same translation unit) — forward-declared so crypto_batch_verify_tick
+// can emit a "batch_verify" row into crypto_timing_log.csv (M7, eq:t_verify).
+// CryptoTimePoint alias must match crypto_event_log.h exactly (legal redeclaration).
+using CryptoTimePoint = std::chrono::high_resolution_clock::time_point;
+inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
+                             CryptoTimePoint t0, bool result);
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
@@ -100,6 +115,35 @@ uint32_t BATCH_SIZE         = 15;
 double   WITNESS_WINDOW     = 10.0;
 uint32_t WITNESS_F          = 1;
 double   VOL_RATE_THRESH    = 5.0;
+
+// M5 — Controller failover latency modeling (eq:sc_revoke → eq:ctrl_failover).
+// Per the proposal, SC.Revoke commits the revocation on-chain and broadcasts a
+// ControllerRevoked event; each affected RSU re-executes failover on receipt
+// ("immediately" on arrival — the arg-min compute itself is instantaneous), so
+// L_failover is dominated by event propagation under geographic dispersion.
+// Modeled as a base broadcast latency plus a per-zone-distance increment to the
+// RSU's NEW controller (same 1-D zone-index proxy ctrl_reassign_rsus already
+// uses for d(r_k,c_j)); distant RSUs finish later, giving eq:l_failover's max
+// real straggler content. Both CLI-exposed.
+double   FAILOVER_BCAST_BASE_MS     = 10.0;  // on-chain commit + event emission
+double   FAILOVER_BCAST_PER_ZONE_MS = 1.0;   // per unit zone-index distance
+
+// ── Ablation gate flags (Phase 3, SIGNATURE_ATTACK_DECOUPLING_PLAN.md) ──────
+// One boolean per ablated component, all defaulting to the full/proposed
+// behavior (true), each checked at the single natural chokepoint for that
+// component. Disabling a STARK proof makes it vacuously PASS (contributes
+// nothing) rather than vacuously fail, so signatures fall back to their
+// other, non-STARK conjuncts (AB4-A/B/C in docs/main.tex). All CLI-exposed
+// via crypto_register_cli_params().
+bool enable_lrad_obu               = true;  // AB1: OBU rule engine (lrad_obu)
+bool enable_lrad_rsu               = true;  // AB1: RSU full-mode engine (lrad_rsu)
+bool enable_stark_delay            = true;  // AB4: π_delay timing proof
+bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
+bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
+bool enable_quarantine             = true;  // AB7: trust updates + SC.Quarantine
+bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
+bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
+bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
 
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
@@ -189,7 +233,89 @@ bool   g_quarantined[268]       = {};
 double g_ctrl_trust_score[268]  = {};
 bool   g_ctrl_revoked[268]      = {};
 
+// M5 — eq:l_failover instrumentation state
+double   g_failover_max_ms     = 0.0; // max_k(t_reassign^(k) − t_revoke), most recent revocation event
+uint32_t g_failover_events     = 0;   // SC.Revoke events fired (ControllerRevoked broadcasts)
+uint32_t g_failover_reassigned = 0;   // RSU reassignment completions across all events
+
+// M7 — eq:o_crypto / eq:t_verify / eq:t_consensus instrumentation state.
+// All wall-clock (std::chrono) sums in microseconds; cumulative since sim start
+// (CSV exports running averages, matching the avg_* idiom of the metrics CSV).
+//
+// eq:overhead_full / main.tex:5124: "proof size is modelled as ≤100KB per
+// verification cycle (FRI-STARK, conservative blowup)". The ZKP layer's
+// PROOF OUTCOME is intentionally modelled via the t_fwd-t_recv<=Delta_max
+// constraint check (main.tex:5128-5130 — no real FRI polynomial commitments
+// are constructed), but the proposal still specifies a concrete conservative
+// BYTE-SIZE bound for the overhead/bandwidth characterisation in
+// eq:overhead_full. STARK_PROOF_SIZE_MODELED_BYTES applies that same
+// proposal-specified bound to O_crypto, rather than a smaller ad-hoc
+// SHA3-512-commitment-sized placeholder unconnected to the modeled figure.
+const double STARK_PROOF_SIZE_MODELED_BYTES = 100.0 * 1024.0; // 100 KB, main.tex:5124
+
+// O_crypto counts the bytes the simulation attaches per signed packet, per
+// eq:overhead_full: |σ_i| (real, measured ML-DSA-87 signature) plus
+// |π_delay,i| and |π_hop,i|, each the proposal's own modeled ≤100KB bound.
+// Both proofs are generated once per hop per Algorithm FCIP (alg:fcip,
+// main.tex:2686-2726) regardless of which signature check later consumes
+// them, so both contribute here.
+double   g_m7_crypto_bytes_sum    = 0.0; // Σ (sig_len + 2*STARK_PROOF_SIZE_MODELED_BYTES)
+uint64_t g_m7_signed_pkts         = 0;   // packets signed (O_crypto denominator)
+double   g_m7_batch_wall_us_sum   = 0.0; // Σ wall-clock µs of batch_verify_mldsa87 calls
+uint64_t g_m7_batch_calls         = 0;   // number of batch verify invocations
+uint64_t g_m7_batch_pkts          = 0;   // Σ batch sizes B (for mean B)
+double   g_m7_consensus_wall_us_sum = 0.0; // Σ wall-clock µs of endorse→commit sequences
+uint64_t g_m7_consensus_count     = 0;   // number of FlowMod consensus rounds
+// eq:o_crypto / main.tex:5123 "Proof generation overhead is modelled as
+// <=10ms per packet". This measures the REAL wall-clock cost of the
+// simulation's own stark_prove_timing()/stark_verify_timing()/
+// stark_verify_hop() calls (a SHA3-512 hash + constraint check, so far
+// smaller than the modeled 10ms bound) — a characterisation metric only,
+// same as g_m7_batch_wall_us_sum/g_m7_consensus_wall_us_sum. Deliberately
+// NOT injected as an artificial Simulator::Schedule delay into the packet
+// forwarding pipeline, since that would change M2/M6/S1/S2 detection
+// outcomes network-wide rather than simply reporting overhead.
+double   g_m7_stark_wall_us_sum   = 0.0; // Σ wall-clock µs of STARK prove/verify calls
+uint64_t g_m7_stark_calls         = 0;   // number of STARK prove/verify invocations
+
 double g_T_ref = 0.0, g_T_ref_last_sync = 0.0;
+
+// M9 — eq:eps_ref / eq:time_consensus instrumentation [Ablation only].
+// T_ref(t) is the coordinate-wise median across N_RSUs simulated RSU clocks.
+// The first TIME_REF_F_BAD RSUs (by index) have their clock offset by a fixed
+// TIME_REF_DELTA_ATTACK seconds, modeling f_bad Byzantine-compromised clocks;
+// the rest read true simulator time. eps_ref = |T_ref(t) - T_ground(t)| is
+// recomputed on every sync tick, where T_ground(t) is the simulator's own
+// clock (always available/authoritative in ns-3). Default f_bad=0 reproduces
+// the original all-honest stub exactly (eps_ref ≡ 0).
+uint32_t TIME_REF_F_BAD          = 0;    // number of compromised RSU clocks (CLI sweep var)
+double   TIME_REF_DELTA_ATTACK   = 0.5;  // fixed attack offset (s) injected into compromised RSUs
+double   g_eps_ref               = 0.0;  // |T_ref - T_ground| at most recent sync tick
+double   g_eps_ref_cumulative    = 0.0;
+uint32_t g_eps_ref_samples       = 0;
+
+// node_clock_offset()/node_local_time() — eq:time_consensus tau_j(t).
+// This node's own (possibly Byzantine-compromised) clock offset from true
+// simulator time. Only RSUs can have a non-zero offset (vehicles/controllers
+// always read true time). Stateless — a pure function of TIME_REF_F_BAD /
+// TIME_REF_DELTA_ATTACK and the RSU's local index, so it cannot drift out of
+// sync with update_T_ref()'s own per-RSU model; both now call this same
+// function (single source of truth, eq:eps_ref M9 report Tier-2 item).
+inline double node_clock_offset(uint32_t node) {
+    if (node < N_Vehicles || node >= N_Vehicles + N_RSUs) return 0.0;
+    uint32_t rsu_local_idx = node - N_Vehicles;
+    return (rsu_local_idx < TIME_REF_F_BAD) ? TIME_REF_DELTA_ATTACK : 0.0;
+}
+
+// This node's own local clock reading — true simulator time plus this
+// node's own (possibly wrong) offset. Per-packet "claimed" timestamps
+// (eq:delay_updated t_send/t_recv) should be recorded via this function,
+// not raw Simulator::Now(), so a compromised RSU's self-reported claim is
+// genuinely wrong rather than always reading the same global clock as
+// everyone else.
+inline double node_local_time(uint32_t node) {
+    return ns3::Simulator::Now().GetSeconds() + node_clock_offset(node);
+}
 
 std::map<uint32_t, std::vector<WitnessLogEntry>> g_witness_log;
 std::map<uint32_t, std::vector<WitnessAlert>>    g_witness_alert_pool;
@@ -294,6 +420,11 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     meta.signed_zone_id  = zone;
     meta.nonce           = fresh_nonce;
     meta.sig_valid = true;
+    // M7 eq:o_crypto — per-packet crypto bytes attached at this hop:
+    // |σ_i| (real, measured sig_len) + |π_delay,i| + |π_hop,i|, both proofs
+    // at the proposal's own modeled ≤100KB bound (main.tex:5124, eq:overhead_full).
+    g_m7_crypto_bytes_sum += (double)meta.sig_len + 2.0 * STARK_PROOF_SIZE_MODELED_BYTES;
+    ++g_m7_signed_pkts;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
@@ -431,10 +562,18 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {
     StarkTimingProof proof;
+    if (!enable_stark_delay) { proof.valid = true; return proof; } // AB4: π_delay removed — vacuously passes
+    // M7 eq:o_crypto / main.tex:5123 "Proof generation overhead is modelled as
+    // <=10ms per packet" — measures the real wall-clock cost of this simulated
+    // proof-generation step (see g_m7_stark_wall_us_sum comment for scope).
+    auto _st0 = std::chrono::high_resolution_clock::now();
     proof.valid = (t_fwd - t_recv) <= STARK_DELTA_MAX;
     // c_i = H_SHA3-512(ρ_i) — commit to blinding randomness only; timestamps are
     // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
     sha3_512_hash(reinterpret_cast<const uint8_t*>(&nonce), sizeof(nonce), proof.commitment);
+    auto _st1 = std::chrono::high_resolution_clock::now();
+    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    ++g_m7_stark_calls;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[PKT-CRYPTO] ── STARK-PROVE ────────────────────────────────────\n"
                   << "[PKT-CRYPTO]   nonce(ρ_i)    = 0x" << _hex32(nonce) << "  (blinding randomness)\n"
@@ -451,7 +590,13 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
 
 inline bool stark_verify_timing(const StarkTimingProof& proof,
                                  double t_recv, double t_fwd) {
-    return proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
+    if (!enable_stark_delay) return true; // AB4: π_delay removed — vacuously passes
+    auto _st0 = std::chrono::high_resolution_clock::now();
+    bool ok = proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
+    auto _st1 = std::chrono::high_resolution_clock::now();
+    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    ++g_m7_stark_calls;
+    return ok;
 }
 
 // Verify that current_hop is the node the sender intended as its next hop
@@ -460,11 +605,16 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
 // change between send and receive. Using the signed_next_hop eliminates
 // false positives from routing churn while still catching misdirected packets.
 inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt_id) {
+    if (!enable_stark_hop) return true; // AB4: π_hop removed — vacuously passes
     if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     auto it = g_packet_crypto.find({signer, pkt_id});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
         return true;  // no signing record — can't verify, assume valid
+    auto _st0 = std::chrono::high_resolution_clock::now();
     bool hop_ok = (current_hop == it->second.signed_next_hop);
+    auto _st1 = std::chrono::high_resolution_clock::now();
+    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    ++g_m7_stark_calls;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[PKT-CRYPTO] ── STARK-HOP ─────────────────────────────────────\n"
                   << "[PKT-CRYPTO]   signer          = " << signer << "\n"
@@ -589,10 +739,16 @@ inline void trust_init_all() {
     g_witness_log.clear(); g_witness_alert_pool.clear();
     g_msg_id_seen.clear(); g_dst_volume_prev.clear(); g_dst_volume_curr.clear();
     g_lstm_pkt_counts.clear(); g_lstm_stark_counts.clear();
+    g_failover_max_ms = 0.0; g_failover_events = 0; g_failover_reassigned = 0;
+    g_m7_crypto_bytes_sum = 0.0; g_m7_signed_pkts = 0;
+    g_m7_batch_wall_us_sum = 0.0; g_m7_batch_calls = 0; g_m7_batch_pkts = 0;
+    g_m7_consensus_wall_us_sum = 0.0; g_m7_consensus_count = 0;
+    g_m7_stark_wall_us_sum = 0.0; g_m7_stark_calls = 0;
     if (g_oqs_sig) { OQS_SIG_free(g_oqs_sig); g_oqs_sig = nullptr; }
 }
 
 inline void trust_update_positive(uint32_t node) {
+    if (!enable_quarantine) return; // AB7-A: detection-only — trust never moves
     if (node >= (uint32_t)total_size) return;
     double old_v = g_trust_score[node];
     double v = old_v + TRUST_DELTA_R;
@@ -606,6 +762,7 @@ inline void trust_update_positive(uint32_t node) {
 }
 
 inline void trust_update_negative(uint32_t node) {
+    if (!enable_quarantine) return; // AB7-A: detection-only — no SC.Quarantine
     if (node >= (uint32_t)total_size) return;
     double old_v = g_trust_score[node];
     double v = old_v - TRUST_DELTA_P;
@@ -631,18 +788,21 @@ inline void trust_update_negative(uint32_t node) {
             << " trust=" << g_trust_score[node]
             << " t=" << ns3::Simulator::Now().GetSeconds());
         // eq:key_rotation_trigger: if revoked node is an RSU, rotate all proving keys
-        if (node >= N_Vehicles && node < N_Vehicles + N_RSUs)
+        // AB11-A (enable_key_rotation=false): revoked RSU's key material stays live
+        if (enable_key_rotation && node >= N_Vehicles && node < N_Vehicles + N_RSUs)
             dkg_rotate_keys(node);
     }
 }
 
 inline void ctrl_trust_update_positive(uint32_t ctrl) {
+    if (!enable_controller_failover) return; // AB9-A: controller trust scoring inert
     if (ctrl >= N_Controllers || g_ctrl_revoked[ctrl]) return;
     double v = g_ctrl_trust_score[ctrl] + TRUST_DELTA_R_CTRL;
     g_ctrl_trust_score[ctrl] = (v < 1.0 ? v : 1.0);
 }
 
 inline void ctrl_trust_update_negative(uint32_t ctrl) {
+    if (!enable_controller_failover) return; // AB9-A: no trust scoring, no revoke/failover
     if (ctrl >= N_Controllers) return;
     double old_v = g_ctrl_trust_score[ctrl];
     double v = old_v - TRUST_DELTA_P_CTRL;
@@ -660,6 +820,24 @@ inline void ctrl_trust_update_negative(uint32_t ctrl) {
     }
 }
 
+// M5 completion handler — fires when the ControllerRevoked broadcast reaches
+// RSU r. Applies the failover target chosen at revocation time (eq:ctrl_failover
+// arg-min over C_trusted(t)\{c_i}) and stamps t_reassign^(k) for eq:l_failover.
+inline void ctrl_complete_rsu_reassign(uint32_t r, uint32_t best,
+                                       uint32_t revoked_ctrl, double t_revoke) {
+    rsu_controller_assignment[r] = (int)best;
+    ++g_failover_reassigned;
+    double lat_ms = (ns3::Simulator::Now().GetSeconds() - t_revoke) * 1000.0;
+    if (lat_ms > g_failover_max_ms) g_failover_max_ms = lat_ms;
+    NS_LOG_WARN("[CTRL-FAILOVER] RSU " << r << " ctrl " << revoked_ctrl
+        << " → " << best << " L=" << lat_ms << "ms");
+    // eq:l_failover target: L_failover ≤ 100 ms (proposal Table, M5)
+    if (lat_ms > 100.0)
+        std::cout << "[CTRL-FAILOVER] WARNING: RSU " << r
+                  << " reassignment latency " << lat_ms
+                  << " ms EXCEEDS 100ms bound\n";
+}
+
 inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
     std::vector<uint32_t> trusted;
     for (uint32_t c = 0; c < N_Controllers; ++c)
@@ -670,40 +848,87 @@ inline void ctrl_reassign_rsus(uint32_t revoked_ctrl) {
         NS_LOG_ERROR("[CTRL] All controllers revoked — no failover possible");
         return;
     }
+    // t_revoke — SC.Revoke has just fired (eq:sc_revoke); the ControllerRevoked
+    // event broadcast starts now.
+    //
+    // g_failover_max_ms is a MONOTONIC running max across the whole simulation
+    // (never reset here) — deliberately NOT reset per-event. An earlier version
+    // reset it to 0.0 on every call, which is race-prone whenever two
+    // revocations overlap in time (realistic under the proposal's "2
+    // compromised controllers" scenario, since the default broadcast
+    // completion delay is only ~10-15ms): a second revocation's reset could
+    // discard an in-flight first revocation's already-recorded latency, and
+    // the first revocation's still-pending completions would then update a
+    // max that was reset for an unrelated event, mixing two events' latencies
+    // together. Reporting the worst L_failover observed by ANY revocation
+    // event so far in the run avoids the race entirely and still answers the
+    // proposal's target-bound question (does L_failover stay <= 100ms across
+    // every event). See docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md.
+    double t_revoke = ns3::Simulator::Now().GetSeconds();
+    ++g_failover_events;
     uint32_t zone_size = N_RSUs / N_Controllers;
-    uint32_t reassigned = 0;
+    uint32_t affected = 0;
     for (uint32_t r = 0; r < N_RSUs; ++r) {
         if ((uint32_t)rsu_controller_assignment[r] != revoked_ctrl) continue;
         uint32_t rsu_zone = r / (zone_size > 0 ? zone_size : 1);
+        // eq:ctrl_failover — target selected from C_trusted(t)\{c_i} at t_revoke
         uint32_t best = trusted[0], min_d = UINT32_MAX;
         for (uint32_t c : trusted) {
             uint32_t d = (rsu_zone > c) ? rsu_zone - c : c - rsu_zone;
             if (d < min_d) { min_d = d; best = c; }
         }
-        rsu_controller_assignment[r] = (int)best;
-        ++reassigned;
-        NS_LOG_WARN("[CTRL-FAILOVER] RSU " << r << " ctrl " << revoked_ctrl
-            << " → " << best);
+        // Reassignment completes when the ControllerRevoked event reaches RSU r
+        // and it re-attaches to its new controller: base broadcast latency plus
+        // a geographic-dispersion increment proportional to the zone distance
+        // min_d to that new controller. Until the event fires, the RSU still
+        // points at the revoked controller — the realistic vulnerability window
+        // whose worst case eq:l_failover's max is designed to capture.
+        double delay_ms = FAILOVER_BCAST_BASE_MS
+                        + FAILOVER_BCAST_PER_ZONE_MS * (double)min_d;
+        ns3::Simulator::Schedule(ns3::Seconds(delay_ms / 1000.0),
+                                 &ctrl_complete_rsu_reassign,
+                                 r, best, revoked_ctrl, t_revoke);
+        ++affected;
     }
     // Unconditional: failover summary
-    std::cout << "[CTRL-FAILOVER] Revoked ctrl=" << revoked_ctrl
-              << " reassigned " << reassigned << " RSUs to trusted controllers"
-              << " (trusted_count=" << trusted.size() << ")\n";
+    std::cout << "[CTRL-FAILOVER] SC.Revoke ctrl=" << revoked_ctrl
+              << " t_revoke=" << t_revoke
+              << " ControllerRevoked broadcast to " << affected
+              << " affected RSUs (trusted_count=" << trusted.size()
+              << "); completions scheduled at " << FAILOVER_BCAST_BASE_MS
+              << "ms + " << FAILOVER_BCAST_PER_ZONE_MS << "ms/zone\n";
 }
 
 // ── Distributed Time Reference — eq:time_consensus ───────────────────────────
 
 inline void update_T_ref() {
+    double t_ground = ns3::Simulator::Now().GetSeconds(); // eq:eps_ref T_ground(t)
     std::vector<double> times;
     times.reserve(N_RSUs);
-    for (uint32_t r = 0; r < N_RSUs; ++r)
-        times.push_back(ns3::Simulator::Now().GetSeconds());
+    for (uint32_t r = 0; r < N_RSUs; ++r) {
+        // eq:time_consensus tau_j(t): each RSU's own local clock reading,
+        // via the same node_clock_offset() every per-packet timestamp uses
+        // (single source of truth — see M9 report Tier-2 item).
+        times.push_back(node_local_time(N_Vehicles + r));
+    }
     std::sort(times.begin(), times.end());
     g_T_ref           = times[times.size() / 2];
-    g_T_ref_last_sync = ns3::Simulator::Now().GetSeconds();
+    g_T_ref_last_sync = t_ground;
+
+    // M9 — eq:eps_ref: deviation of the consensus median from ground truth.
+    g_eps_ref = (g_T_ref > t_ground) ? (g_T_ref - t_ground) : (t_ground - g_T_ref);
+    g_eps_ref_cumulative += g_eps_ref;
+    ++g_eps_ref_samples;
+
+    // sec:time_ref — commit this tick's T_ref(t) to the blockchain (tamper-evident
+    // audit trail), same T_SYNC_INTERVAL cadence as bc_anchor_to_global().
+    bc_commit_tref_to_chain(g_T_ref, g_eps_ref, t_ground);
+
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[T-REF] Distributed time synced T_ref=" << g_T_ref
-                  << " from " << N_RSUs << " RSUs t=" << g_T_ref_last_sync << "\n";
+                  << " from " << N_RSUs << " RSUs (f_bad=" << TIME_REF_F_BAD
+                  << ", delta_attack=" << TIME_REF_DELTA_ATTACK << "s)"
+                  << " eps_ref=" << g_eps_ref << "s t=" << g_T_ref_last_sync << "\n";
 }
 
 inline void update_T_ref_recurring() {
@@ -745,7 +970,17 @@ inline void crypto_batch_verify_tick() {
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[BATCH-TICK] t=" << ns3::Simulator::Now().GetSeconds()
                       << " pending=" << pending.size() << " pkts in 50ms window\n";
+        // M7 eq:t_verify — T_batch(B): real wall-clock time of BatchVerify over B pkts
+        auto _bt0 = std::chrono::high_resolution_clock::now();
         auto result = batch_verify_mldsa87(pending);
+        auto _bt1 = std::chrono::high_resolution_clock::now();
+        double _b_us = std::chrono::duration<double, std::micro>(_bt1 - _bt0).count();
+        g_m7_batch_wall_us_sum += _b_us;
+        ++g_m7_batch_calls;
+        g_m7_batch_pkts += pending.size();
+        // per-op row: node_id column carries B (batch size), pkt_id carries n_verified
+        crypto_log_event("batch_verify", (uint32_t)pending.size(),
+                         result.n_verified, _bt0, result.passed);
         g_batch_passed = result.passed; // feed b_batch into LRAD (eq:batch_challenge)
         if (!result.passed) {
             std::cerr << "[CRYPTO-ERROR] Batch verify tick FAILED:"
@@ -794,6 +1029,7 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
 inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_node,
                                               uint32_t pkt_id, uint32_t dst,
                                               uint32_t dup_dst) {
+    if (!enable_witness_mechanism) return; // AB6-A: no alerts submitted or pooled
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
     OQS_SIG* oqs = get_oqs_ctx();
     if (!oqs) return;
@@ -846,12 +1082,21 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                   << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
+        // M12 — WAP-R: count this threshold-crossing event once per node per run
+        if (!g_witness_threshold_fired[target_node]) {
+            g_witness_threshold_fired[target_node] = true;
+            if (present_passive_hf_attack && passive_hf_malicious_nodes[target_node])
+                ++g_witness_TP_W;
+            else
+                ++g_witness_FP_W;
+        }
     }
 }
 
 // β_w: non-forwarding alert — packet received but not forwarded within T_fwd (eq:nfa_sign)
 inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                                       uint32_t pkt_id, double T_fwd) {
+    if (!enable_witness_mechanism) return; // AB6-A: no alerts submitted or pooled
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
     OQS_SIG* oqs = get_oqs_ctx();
     if (!oqs) return;
@@ -905,6 +1150,14 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
+        // M12 — WAP-R: count this threshold-crossing event once per node per run
+        if (!g_witness_threshold_fired[target_node]) {
+            g_witness_threshold_fired[target_node] = true;
+            if (present_passive_hf_attack && passive_hf_malicious_nodes[target_node])
+                ++g_witness_TP_W;
+            else
+                ++g_witness_FP_W;
+        }
     }
 }
 
@@ -1015,25 +1268,47 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("trust_delta_r_ctrl", "Controller reward Δ_r^ctrl",          TRUST_DELTA_R_CTRL);
     cmd.AddValue("trust_delta_p_ctrl", "Controller penalty Δ_p^ctrl",         TRUST_DELTA_P_CTRL);
     cmd.AddValue("t_sync",             "T_ref sync interval (s)",             T_SYNC_INTERVAL);
+    cmd.AddValue("time_ref_f_bad",
+                 "M9: number of Byzantine-compromised RSU clocks (eq:eps_ref sweep var)",
+                 TIME_REF_F_BAD);
+    cmd.AddValue("time_ref_delta_attack",
+                 "M9: fixed clock offset (s) injected into compromised RSUs",
+                 TIME_REF_DELTA_ATTACK);
     cmd.AddValue("batch_size",         "Packets per batch verify cycle B",    BATCH_SIZE);
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
     cmd.AddValue("vol_rate_thresh",    "Volume rate threshold ε_vol (pkt/s)", VOL_RATE_THRESH);
+    cmd.AddValue("failover_bcast_base_ms",
+                 "M5: ControllerRevoked broadcast base latency (ms)",
+                 FAILOVER_BCAST_BASE_MS);
+    cmd.AddValue("failover_bcast_per_zone_ms",
+                 "M5: added broadcast latency per zone-distance unit (ms)",
+                 FAILOVER_BCAST_PER_ZONE_MS);
     cmd.AddValue("disable_crypto",     "Disable DKG keygen + ML-DSA-87 sign/verify + STARK hop-proof "
                                        "(0=crypto ON [default], 1=crypto OFF). Speeds up runs that don't "
                                        "need crypto-derived metrics (trust score, S1/S2/S5-S8 detection) -- "
                                        "S3/S4 TCAM detection is unaffected either way since it never reads "
                                        "crypto state.", g_disable_crypto);
 
-    // LRAD detection-active CLI overrides (ablation: disable individual
-    // signatures without recompiling — e.g. --attack_number=5 --s5_detection_active=0
-    // measures detection contribution of S5 in isolation).
-    cmd.AddValue("s1_detection_active", "Enable LRAD S1 (Selective Delay CP) detection",  s1_detection_active);
-    cmd.AddValue("s2_detection_active", "Enable LRAD S2 (Selective Delay DP) detection",  s2_detection_active);
-    cmd.AddValue("s5_detection_active", "Enable LRAD S5 (Active HF CP) detection",        s5_detection_active);
-    cmd.AddValue("s6_detection_active", "Enable LRAD S6 (Active HF DP) detection",        s6_detection_active);
-    cmd.AddValue("s7_detection_active", "Enable LRAD S7 (Passive HF CP) detection",       s7_detection_active);
-    cmd.AddValue("s8_detection_active", "Enable LRAD S8 (Passive HF DP) detection",       s8_detection_active);
+    // Per-signature (S1/S2/S5-S8) CLI overrides removed 2026-07-09: main.tex
+    // specifies no such ablation anywhere (the only mode-level ablation for
+    // this part of the architecture is AB1 — enable_lrad_obu/enable_lrad_rsu
+    // below). Signatures now evaluate continuously whenever their owning
+    // engine (OBU or RSU) is on, matching alg:lrad_obu/alg:lrad_rsu's own
+    // OR-across-all-signatures composite and main.tex:4621's "all eight
+    // attack variants operate simultaneously in every experiment."
+
+    // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
+    // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.
+    cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
+    cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
+    cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
+    cmd.AddValue("enable_stark_hop",              "AB4: enable STARK hop-legitimacy proof π_hop",  enable_stark_hop);
+    cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
+    cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);
+    cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
+    cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
+    cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
 }
 
 #endif // CRYPTO_LAYER_H

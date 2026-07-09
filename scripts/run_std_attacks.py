@@ -6,6 +6,13 @@ Runs both attack variants across all 6 attack percentages {0,20,40,60,80,100}
 as concurrent subprocesses so every combination finishes in the time of the
 longest single run instead of serially.
 
+Attack 2 runs TWICE per (percentage, delay): once as the normal MOBIGUARD
+run, and once as a TAP baseline run (--enable_tap=1, MOBIGUARD's own S1-S8
+detectors disabled via --enable_lrad_obu=0 --enable_lrad_rsu=0) — this is
+what actually produces the TAP_Attack2_<pct>.csv files scripts/plot_tap_results.py
+reads. Attack 1 only ever produces the MOBIGUARD file (TAP is not run
+against Attack 1).
+
 Result CSVs written by the simulation:
   results_routing/MOBIGUARD_Attack1_<pct>[_d<X>ms].csv  — Attack 1 (CP), MOBIGUARD S1 detector
   results_routing/MOBIGUARD_Attack2_<pct>[_d<X>ms].csv  — Attack 2 (DP), MOBIGUARD S2 detector
@@ -18,8 +25,9 @@ Usage examples:
   # Run all 12 combinations (both attacks × 6 percentages) in parallel:
   python3 scripts/run_std_attacks.py
 
-  # Sync headers + rebuild first, then run:
+  # Sync headers + rebuild only, then exit (run again without --build to simulate):
   python3 scripts/run_std_attacks.py --build
+  python3 scripts/run_std_attacks.py            # now launch the sweep with the fresh binary
 
   # Run only Attack 1 at 40%:
   python3 scripts/run_std_attacks.py --attack 1 --percentage 40
@@ -162,9 +170,22 @@ def clean_results(attack: int | None, percentage: int | None,
         print(f"── Removed {removed} old result file(s) ──\n")
 
 
+# TAP baseline (Arsalan & Rehman FIT 2018) run overrides — only meaningful
+# for Attack 2 (attack_number=2), the only variant the TAP CSV/plotting
+# pipeline compares against. --enable_lrad_obu/--enable_lrad_rsu=0 disables
+# MOBIGUARD's own S1-S8 signature detectors so the TAP run is a clean
+# TAP-only baseline, not TAP+MOBIGUARD running simultaneously.
+TAP_PARAMS = {
+    "enable_tap":       1,
+    "enable_lrad_obu":  0,
+    "enable_lrad_rsu":  0,
+}
+
+
 def build_waf_command(attack_number: int, attack_percentage: int,
                       sim_time: int, seed: int, sim_run: int,
-                      delay_ms: int | None) -> list[str]:
+                      delay_ms: int | None,
+                      extra_params: dict | None = None) -> list[str]:
     """Construct the full ./waf --run command for one simulation run."""
     params = dict(FIXED_PARAMS)
     params["simTime"]           = sim_time
@@ -174,6 +195,8 @@ def build_waf_command(attack_number: int, attack_percentage: int,
     params["sim_run"]           = sim_run
     if delay_ms is not None:
         params["attack_delay_ms"] = delay_ms
+    if extra_params:
+        params.update(extra_params)
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
     return ["./waf", "--run", f"scratch/routing/routing {param_str}"]
@@ -181,12 +204,13 @@ def build_waf_command(attack_number: int, attack_percentage: int,
 
 def run_one(attack_number: int, attack_percentage: int,
             sim_time: int, seed: int, sim_run: int,
-            delay_ms: int | None, log_path: Path) -> dict:
+            delay_ms: int | None, log_path: Path,
+            extra_params: dict | None = None, label_suffix: str = "") -> dict:
     """Execute a single simulation run."""
     sfx   = delay_suffix(delay_ms)
-    label = f"A{attack_number}_pct{attack_percentage}{sfx}"
+    label = f"A{attack_number}_pct{attack_percentage}{sfx}{label_suffix}"
     cmd   = build_waf_command(attack_number, attack_percentage,
-                               sim_time, seed, sim_run, delay_ms)
+                               sim_time, seed, sim_run, delay_ms, extra_params)
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     start = datetime.now()
@@ -265,7 +289,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--build", action="store_true",
-        help="Sync project headers to scratch and run ./waf build before simulating.",
+        help="Build-only: sync project files to scratch, run ./waf build, then EXIT "
+             "without simulating. Re-run the script without --build to launch the sweep.",
     )
     parser.add_argument(
         "--clean", action="store_true",
@@ -315,10 +340,16 @@ def main() -> None:
     args = parser.parse_args()
 
     # ── Optional sync + build ────────────────────────────────────────────────
+    # --build is build-ONLY: it syncs, compiles, then EXITS. It deliberately does
+    # NOT fall through into the sweep — otherwise `--build` (intended as a compile
+    # check) silently launches a full multi-hour run. To actually simulate, re-run
+    # the script without --build (the freshly built binary is reused).
     if args.build:
         sync_files()
         if not build_simulation():
             sys.exit(1)
+        print("Build complete. Re-run without --build to launch the simulations.")
+        sys.exit(0)
 
     # ── Resolve scope ────────────────────────────────────────────────────────
     scope_attacks = [args.attack] if args.attack else [a["attack_number"] for a in ATTACKS]
@@ -337,19 +368,35 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # ── Build run list ───────────────────────────────────────────────────────
-    runs = [
-        {
-            "attack_number":     a,
-            "attack_percentage": p,
-            "delay_ms":          d,
-            "log": LOGS_DIR / (
-                f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}.log"
-            ),
-        }
-        for a in scope_attacks
-        for p in scope_percs
-        for d in scope_delays
-    ]
+    # Attack 2 gets TWO runs per (percentage, delay): the normal MOBIGUARD
+    # run, plus a TAP-baseline run (--enable_tap=1, MOBIGUARD's own S1-S8
+    # disabled) — check_results()/clean_results() already expect
+    # TAP_Attack2_<pct>.csv to exist; this is what actually produces it.
+    runs = []
+    for a in scope_attacks:
+        for p in scope_percs:
+            for d in scope_delays:
+                runs.append({
+                    "attack_number":     a,
+                    "attack_percentage": p,
+                    "delay_ms":          d,
+                    "extra_params":      None,
+                    "label_suffix":      "",
+                    "log": LOGS_DIR / (
+                        f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}.log"
+                    ),
+                })
+                if a == 2:
+                    runs.append({
+                        "attack_number":     a,
+                        "attack_percentage": p,
+                        "delay_ms":          d,
+                        "extra_params":      TAP_PARAMS,
+                        "label_suffix":      "_TAP",
+                        "log": LOGS_DIR / (
+                            f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}_TAP.log"
+                        ),
+                    })
 
     total = len(runs)
     delay_desc = (
@@ -377,6 +424,8 @@ def main() -> None:
                 args.sim_run,
                 r["delay_ms"],
                 r["log"],
+                r["extra_params"],
+                r["label_suffix"],
             ): r
             for r in runs
         }
