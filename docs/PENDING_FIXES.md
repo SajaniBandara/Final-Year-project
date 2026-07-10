@@ -283,7 +283,13 @@ global index.
 - HF-4 — left as-is: the existing `passive_hf_rsu_to_eavesdropper` map scan
   (routing.cc:121305) already covers per-RSU eavesdroppers, and the Fix 2b counter gates
   on `active_hf_malicious_nodes[prev_sender]`.
-- HF-5 — DP attacker-vehicle second-forwarder path still to confirm at runtime.
+- HF-5 ✅ **VERIFIED 2026-07-10** — ran A6 pct100 seed1: of 50 distinct duplicate-sending
+  nodes, 48 were vehicles (IDs 0-199) and only 2 were RSUs (243, 245). Confirmed via log:
+  `[ATTACK6] ④ Forwarding ORIGINAL packet to legitimate next hop (167) as normal` /
+  `⑤ Sending CONTENT-MODIFIED duplicate ... to unauthorized Node(167)` from vehicle node
+  167. The RSU-centric-looking TX path correctly fires for vehicle-origin forwarders too
+  — `active_hf_malicious_nodes[current_hop]` works identically regardless of whether
+  `current_hop` is a vehicle or RSU sim index. No code change was needed.
 
 **HF-1 — APPLIED THEN REVERTED (SIGSEGV, exit 139).** Setting
 `g_hdup_flow_id = 0xDEAD0000u | flow_id` put the fabrication marker onto the wire via
