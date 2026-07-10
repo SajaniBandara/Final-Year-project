@@ -226,23 +226,18 @@ inline void tcam_snapshot_dump()
     double now = Simulator::Now().GetSeconds();
     int    t   = static_cast<int>(std::round(now));
 
-    // Derive mode tag — maps internal enum values to the paper's attack numbers.
-    // active_attack_variant:  -1 = baseline,  2 = Attack 3 (CP),  3 = Attack 4 (DP)
+    // Derive mode tag — maps internal enum values to the paper's attack numbers
+    // (attack_id = active_attack_variant + 1), matching the scheme
+    // write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Previously
+    // variant 0/1 stayed as "attack0"/"attack1" while variant 2/3 were bumped
+    // to "attack3"/"attack4" — an inconsistent, off-by-one labeling that made
+    // e.g. Attack 2 (variant=1) data land in a file named "tcam_snapshots_attack1*",
+    // indistinguishable from actual Attack 1 output.
     std::string mode;
     if (active_attack_variant == -1) {
         mode = "baseline";
     } else {
-        // Paper numbering: internal variant 2 → "attack3", internal variant 3 → "attack4"
-        static const std::map<int, std::string> variant_to_label = {
-            {0, "attack0"},
-            {1, "attack1"},
-            {2, "attack3"},   // Control-Plane TCAM flooding  → Attack 3
-            {3, "attack4"},   // Data-Plane TCAM exhaustion   → Attack 4
-        };
-        auto it = variant_to_label.find(active_attack_variant);
-        mode = (it != variant_to_label.end())
-               ? it->second
-               : ("attack" + std::to_string(active_attack_variant));
+        mode = "attack" + std::to_string(active_attack_variant + 1);
         // For Attack 4 multi-attacker sweeps append _nN so each run
         // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
         if (active_attack_variant == 3 && num_attackers > 1)
@@ -312,20 +307,12 @@ inline void tcam_snapshot_dump()
 // Writes a final static snapshot with total lifetime counters per entry.
 inline void export_tcam_snapshot_baseline()
 {
-    // Same paper-numbering map as tcam_snapshot_dump():
-    //   internal variant 2 → "attack3" (CP),  3 → "attack4" (DP)
+    // Same paper-numbering scheme as tcam_snapshot_dump(): attack_id = variant+1.
     std::string mode;
     if (active_attack_variant == -1) {
         mode = "baseline";
     } else {
-        static const std::map<int, std::string> variant_to_label = {
-            {0, "attack0"}, {1, "attack1"},
-            {2, "attack3"}, {3, "attack4"},
-        };
-        auto it = variant_to_label.find(active_attack_variant);
-        mode = (it != variant_to_label.end())
-               ? it->second
-               : ("attack" + std::to_string(active_attack_variant));
+        mode = "attack" + std::to_string(active_attack_variant + 1);
         // Mirror the _nN suffix logic from tcam_snapshot_dump().
         if (active_attack_variant == 3 && num_attackers > 1)
             mode += "_n" + std::to_string(num_attackers);
