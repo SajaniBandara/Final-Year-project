@@ -63,6 +63,18 @@ static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 static const std::string BC_RESULTS_DIR =
     "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 
+// Per-run filename suffix ("_Attack{id}_{pct}{delay}"), mirrors the scheme
+// write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without this,
+// every run (and every other process pointed at BC_RESULTS_DIR) writes the
+// same bc_*.csv filenames, so concurrent/sequential runs interleave torn
+// writes into each other's files — this is what was corrupting
+// bc_anchor_log.csv, bc_detection_log.csv, bc_dkg_log.csv and
+// bc_flowmod_log.csv (records fused together with missing commas/newlines).
+inline std::string bc_run_suffix() {
+    int id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+    return "_Attack" + std::to_string(id) + "_" + std::to_string(attack_percentage) + g_delay_suffix;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Flowmod endorsement functions — synchronous BFT path (eq:endorsed_commit).
 // FlowModEndorsement and g_flowmod_endorsements are defined in crypto_layer.h
@@ -195,7 +207,7 @@ static void bc_open_files()
 
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.
-    g_bc_flowmod_csv.open(dir + "bc_flowmod_log.csv", std::ios::trunc);
+    g_bc_flowmod_csv.open(dir + "bc_flowmod_log" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_flowmod_csv.is_open())
         g_bc_flowmod_csv
             << "rsu_id,flow_mod_hash,recv_timestamp_ms,"
@@ -203,7 +215,7 @@ static void bc_open_files()
 
     // bc_trust_updates.csv — one row per S3/S4 anomaly penalty
     // Columns match the chaincode UpdateTrust() signature + reason fields.
-    g_bc_trust_csv.open(dir + "bc_trust_updates.csv", std::ios::trunc);
+    g_bc_trust_csv.open(dir + "bc_trust_updates" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_trust_csv.is_open())
         g_bc_trust_csv
             << "rsu_id,success,timestamp_ms,reason,rule_count,rate_per_s\n";
@@ -367,35 +379,35 @@ inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash
 
 static void bc_open_detection_csv() {
     if (g_bc_detection_open) return;
-    g_bc_detection_csv.open(BC_RESULTS_DIR + "bc_detection_log.csv", std::ios::trunc);
+    g_bc_detection_csv.open(BC_RESULTS_DIR + "bc_detection_log" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_detection_csv.is_open())
         g_bc_detection_csv << "rsu_id,suspect_node,signal_idx,timestamp_ms,rsu_sig\n";
     g_bc_detection_open = true;
 }
 static void bc_open_model_csv() {
     if (g_bc_model_open) return;
-    g_bc_model_csv.open(BC_RESULTS_DIR + "bc_model_log.csv", std::ios::trunc);
+    g_bc_model_csv.open(BC_RESULTS_DIR + "bc_model_log" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_model_csv.is_open())
         g_bc_model_csv << "rsu_id,round,model_hash,timestamp_ms\n";
     g_bc_model_open = true;
 }
 static void bc_open_dkg_csv() {
     if (g_bc_dkg_open) return;
-    g_bc_dkg_csv.open(BC_RESULTS_DIR + "bc_dkg_log.csv", std::ios::trunc);
+    g_bc_dkg_csv.open(BC_RESULTS_DIR + "bc_dkg_log" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_dkg_csv.is_open())
         g_bc_dkg_csv << "rsu_id,round,vk_zkp,n_rsus,commitments,timestamp_ms\n";
     g_bc_dkg_open = true;
 }
 static void bc_open_anchor_csv() {
     if (g_bc_anchor_open) return;
-    g_bc_anchor_csv.open(BC_RESULTS_DIR + "bc_anchor_log.csv", std::ios::trunc);
+    g_bc_anchor_csv.open(BC_RESULTS_DIR + "bc_anchor_log" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_anchor_csv.is_open())
         g_bc_anchor_csv << "rsu_id,seq,anchor_hash,rsu_chain_len,timestamp_ms\n";
     g_bc_anchor_open = true;
 }
 static void bc_open_tref_csv() {
     if (g_bc_tref_open) return;
-    g_bc_tref_csv.open(BC_RESULTS_DIR + "bc_tref_log.csv", std::ios::trunc);
+    g_bc_tref_csv.open(BC_RESULTS_DIR + "bc_tref_log" + bc_run_suffix() + ".csv", std::ios::trunc);
     if (g_bc_tref_csv.is_open())
         g_bc_tref_csv << "rsu_id,seq,t_ref_value,eps_ref,timestamp_ms\n";
     g_bc_tref_open = true;
