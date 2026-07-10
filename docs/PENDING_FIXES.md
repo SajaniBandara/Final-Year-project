@@ -29,8 +29,14 @@ glob. A1/A2 detect genuinely; M8 passes (BRFA-v2 robust, FedAvg collapses).
   `zkp_hop_fail=1` (was 0).
 - Fix 3 (TCAM threshold 0.80→0.054688, `routing.cc`) — ✅ compiled.
 - Fix 2c (stale-header symlink) — ✅ **RESOLVED** (see below).
-- HF-1/HF-2/HF-3 (hidden-forwarding fixes) — ✅ code applied + compiled; behavioural
-  verification (active carries 0xDEAD marker, one copy per packet) in progress.
+- HF-2/HF-3 (hidden-forwarding fixes) — ✅ code applied + compiled + running clean in
+  final verification.
+- HF-1 (0xDEAD fabrication marker) — ⚠️ **APPLIED THEN REVERTED same session** — caused a
+  SIGSEGV (exit 139) on every active-HF packet. See "HF-1 crash" below. Marker-based
+  distinction is NOT in the current build; active vs passive HF is still correctly
+  distinguishable at the receiver via `active_hf_malicious_nodes[prev_sender]` (used by
+  Fix 2b), so no functionality was lost — only the "signature fails on fabricated
+  content" hardening is deferred.
 - Pending: commit → delete old A3–A8 CSVs → re-run A3,A4,A5–A8 (180 sims) → remove
   `EXCLUDE_ATTACKS` (Fix 2) → retrain.
 
@@ -267,19 +273,50 @@ active block. HF-3 — correct the comments. HF-4 — key active detection off
 `active_hf_malicious_nodes[prev_sender]` (as the counter fix already does) rather than a
 global index.
 
-**APPLIED 2026-07-10 (compiled clean):**
-- HF-1 ✅ active block now sets `g_hdup_flow_id = 0xDEAD0000u | flow_id` (routing.cc:120903)
-  — active copies carry the fabrication marker (passive keeps plain flow_id). The
-  receive/FADE/S6 paths already strip it via `& 0xFFFF`. Deeper "signature actually fails
-  on the copy" (re-sign with corrupted content) is left as future hardening; the marker
-  now makes active copies behaviourally distinguishable.
+**APPLIED 2026-07-10:**
 - HF-2 ✅ active block gated on `attempts[...] == 0` (routing.cc:120877) — one copy/packet.
+  Verified: A5 foreground run progressed cleanly past t=4.0 with duplicates firing, no crash.
 - HF-3 ✅ comments corrected (Attacks 5&6/7&8; passive block relabelled A7 CP & A8 DP).
 - HF-4 — left as-is: the existing `passive_hf_rsu_to_eavesdropper` map scan
   (routing.cc:121305) already covers per-RSU eavesdroppers, and the Fix 2b counter gates
-  on `active_hf_malicious_nodes[prev_sender]`; the fragile global index is now backed up
-  by both. Marker (HF-1) available for future hardening.
+  on `active_hf_malicious_nodes[prev_sender]`.
 - HF-5 — DP attacker-vehicle second-forwarder path still to confirm at runtime.
+
+**HF-1 — APPLIED THEN REVERTED (SIGSEGV, exit 139).** Setting
+`g_hdup_flow_id = 0xDEAD0000u | flow_id` put the fabrication marker onto the wire via
+`dup_tag.SetflowId()`. The comments claiming "receive/FADE/S6 paths already strip it via
+`& 0xFFFF`" were WRONG — that masking exists at exactly one FADE-bookkeeping call site
+(routing.cc:120962), not in MacRx's generic receive path. MacRx extracts the tag's
+flow_id **unmasked** at `uint32_t fid = tagmodified_routing.GetflowId();`
+(routing.cc:121209) and uses it directly to index `pd_all_inst[fid]` (routing.cc:121352)
+and `fade_received[fid]` — with the marker set, `fid` ≈ 3.7 billion, an out-of-bounds
+array access. Confirmed by direct reproduction: reverting the one-line change made the
+identical scenario run cleanly past the crash point (t=3.1 → t=4.0+) with no error.
+**Reverted** `g_hdup_flow_id` back to plain `flow_id` (routing.cc, active block). No
+functional loss — active vs passive HF is already correctly distinguished at the
+receiver via `active_hf_malicious_nodes[prev_sender]` (the same lookup Fix 2b uses), so
+HF-1's original goal is met without touching the wire flow_id.
+**If HF-1's deeper goal (signature actually fails on fabricated content) is revisited
+later:** do NOT reuse the flow_id field for the marker. Either add a dedicated boolean
+field to `CustomDataUnicastTag_ModifiedRouting`, or mask `fid` immediately after
+extraction at MacRx (routing.cc:121209) before any indexing — and audit every other
+raw-`fid` array index in that ~150-line receive block first.
+
+**Re-checked 2026-07-10, decided NOT to re-implement (even the safe version) before the
+deadline.** Traced `mldsa87_verify()` (crypto_layer.h:485-491): when the eavesdropper
+calls verify with `next_hop = eavesdropper_id`, the signature was made for the
+*legitimate* next hop, so `next_hop != signed_next_hop` → verify already returns false
+("skip_broadcast") — for BOTH active and passive HF duplicates, identically, with no
+marker needed. This is the same mechanism Fix 2b's `stark_hop_ok`/`zkp_hop_fail` already
+taps, so **hop-legitimacy detection (what feeds the LSTM and S5/S7) is already correct
+for all 4 HF variants without HF-1.**
+The remaining gap is narrower than first framed: main.tex's active/passive split is about
+*content* authenticity (fabricated payload), not hop legitimacy — but `send_hidden_duplicate`
+never calls `mldsa87_sign` on the copy at all (it reuses the original's signature record),
+so simulating "signature fails because content was fabricated" needs payload/signing-level
+changes, not a metadata flag. That's materially riskier than the reverted one-liner and
+only matters for a content-authenticity-specific ablation, not for M1/LSTM results.
+**Decision: leave unimplemented, documented here as future work.**
 
 ---
 

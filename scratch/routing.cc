@@ -120900,13 +120900,21 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // Reuse send_hidden_duplicate infrastructure — same channel, different eavesdropper
 						    g_hdup_rsu       = current_hop;
 						    g_hdup_eaves     = active_eaves;
-						    // HF-1: ACTIVE hidden forward = FABRICATED copy. Tag it with the
-						    // 0xDEAD0000 marker so the copy is distinguishable from the authentic
-						    // original and its ML-DSA-87 signature is treated as invalid at the
-						    // eavesdropper (content modified). Passive HF (A7/A8) keeps the plain
-						    // flow_id — authentic copy, caught by policy not signature. The
-						    // receive/FADE/S6 paths already strip the marker via (fid & 0xFFFF).
-						    g_hdup_flow_id   = 0xDEAD0000u | flow_id;
+						    // HF-1 (reverted 2026-07-10): an earlier attempt tagged this with a
+						    // 0xDEAD0000 marker in g_hdup_flow_id to distinguish the fabricated
+						    // active-HF copy from the authentic passive-HF copy. That marker
+						    // reaches the wire via dup_tag.SetflowId() and MacRx's generic
+						    // receive path extracts it UNMASKED at routing.cc:121209
+						    // (`uint32_t fid = tagmodified_routing.GetflowId();`), which is then
+						    // used to index pd_all_inst[fid]/fade_received[fid] — an out-of-bounds
+						    // access on every active-HF packet -> SIGSEGV (confirmed, exit 139).
+						    // The masking comment upstream only covers one FADE-bookkeeping call
+						    // site, not the generic receive path. Active vs passive is already
+						    // correctly distinguishable at the receiver via
+						    // active_hf_malicious_nodes[prev_sender] (see the receive block at
+						    // ~121284 and the Fix-2b zkp_hop_fail wiring), so no wire-level marker
+						    // is needed. Keep flow_id plain here.
+						    g_hdup_flow_id   = flow_id;
 						    g_hdup_packet_id = packet_id;
 						    g_hdup_channel   = arguments.channel;
 						    g_hdup_p_size    = arguments.p_size;
