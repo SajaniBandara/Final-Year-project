@@ -38,7 +38,10 @@
 //     (a) Inside the active-HF eavesdropper receive block (to log d').
 //     (b) Inside the pd_all_inst delivery block for every normal receive
 //         (to log d).
-//   Both calls strip 0xDEAD0000 so both copies map to the same key.
+//   Both calls mask with 0xFFFFu (harmless no-op post-2026-07-10: the
+//   0xDEAD0000 marker this originally stripped is never set on the wire —
+//   see the "FIXED" comments in s6_detect() below), so both copies map to
+//   the same key regardless.
 //
 // INDEPENDENCE:
 //   S6 has no individual master-enable flag. s6_log_recv() (below) runs
