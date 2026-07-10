@@ -22,12 +22,17 @@ glob. A1/A2 detect genuinely; M8 passes (BRFA-v2 robust, FedAvg collapses).
 **Batched wall-clock for A+B:** ~1–1.5 h code + one rebuild + ~20–22 h re-run (180 sims,
 25 workers, mostly unattended) + ~15 min retrain ≈ **~1 day, ~2 h hands-on.**
 
-**Code status (2026-07-10) — all sim-side fixes applied, pending rebuild + re-run:**
-- Fix 1 (A3/A4 label, `lstm_logger.h`) — ✅ code applied
-- Fix 2b (`zkp_hop_fail` wiring, `routing.cc` at both HF eavesdrop points 121255/121309) — ✅ code applied
-- Fix 3 (TCAM threshold 0.80→0.054688, `routing.cc:117522`) — ✅ code applied
-- Pending: commit → `./waf build` → short verification run → delete old A3–A8 CSVs →
-  re-run A3,A4,A5–A8 (180 sims) → remove `EXCLUDE_ATTACKS` (Fix 2) → retrain.
+**Code status (2026-07-10) — all sim-side fixes applied + VERIFIED, pending re-run:**
+- Fix 1 (A3/A4 label, `lstm_logger.h`) — ✅ **VERIFIED**: A3 now labels 26 victim RSUs
+  (was 1). Required the Fix 2c stale-header fix to actually take effect.
+- Fix 2b (`zkp_hop_fail` wiring, `routing.cc`) — ✅ **VERIFIED**: A5=64, A7=78 rows with
+  `zkp_hop_fail=1` (was 0).
+- Fix 3 (TCAM threshold 0.80→0.054688, `routing.cc`) — ✅ compiled.
+- Fix 2c (stale-header symlink) — ✅ **RESOLVED** (see below).
+- HF-1/HF-2/HF-3 (hidden-forwarding fixes) — ✅ code applied + compiled; behavioural
+  verification (active carries 0xDEAD marker, one copy per packet) in progress.
+- Pending: commit → delete old A3–A8 CSVs → re-run A3,A4,A5–A8 (180 sims) → remove
+  `EXCLUDE_ATTACKS` (Fix 2) → retrain.
 
 ---
 
@@ -192,6 +197,89 @@ timing cases.)
 **Until fixed:** present only A1/A2 as working LSTM detection. Report A5–A8 LSTM
 detection as *intended design, currently blocked by this instrumentation gap* — not as
 working, and not as out-of-scope.
+
+---
+
+## Fix 2c — Build trap: stale standalone `scratch/routing/lstm_logger.h` (CRITICAL, root-caused 2026-07-10)
+
+The ns-3 scratch has TWO routing setups. The **running binary**
+`build/scratch/routing/routing` is built from `scratch/routing/routing.cc`, and its
+headers live in `scratch/routing/`. Every header there is a **symlink into this repo —
+except `lstm_logger.h`, which was a stale REAL copy from Jun 29** (no Fix 1, no A3/A4
+label code). So all our `lstm_logger.h` edits went to the repo file (used only by the
+unused top-level `scratch/routing.cc` target), while the binary compiled the stale copy.
+
+**Effect:** Fix 1 (A3/A4 labels) silently never took effect — the 2026-07-10 verification
+showed A4=0 / A3=1-RSU despite the correct code. Fix 2b/Fix 3 (in `routing.cc`, correctly
+symlinked) DID take effect, which is why `zkp_hop_fail` populated but labels didn't.
+
+**Resolved:** replaced `scratch/routing/lstm_logger.h` with a symlink to
+`Final-Year-project/scratch/lstm_logger.h` (stale copy backed up to
+`/tmp/lstm_logger_stale_backup.h`), removed a stray empty top-level `scratch/routing.cc`,
+and rebuilt. **Lesson:** header-only edits require `touch scratch/routing/routing.cc`
+before `./waf build` (waf doesn't track header deps), and any future new header must be
+symlinked into `scratch/routing/`, never copied.
+
+---
+
+## HF-1..HF-5 — Hidden-Forwarding (A5–A8) implementation vs main.tex (audit 2026-07-10)
+
+Audited `hf_attack_helper.h` + `routing.cc` HF blocks against main.tex §"Overview of the
+four Hidden Forwarding Attacks" (lines 1414-1424). **Topology/routing is faithful**
+(malicious-node selection, copy→eavesdropper, original→legit hop, CP-poisons-controller
+vs DP-self-modifies, DP-adds-vehicle-relays, pct scaling). Issues found:
+
+- **HF-1 (HIGH) — Active/passive content distinction is cosmetic, not implemented.**
+  Spec: Active (A5/A6) sends *fabricated/modified* copies (ML-DSA-87.Verify must fail);
+  Passive (A7/A8) sends *unmodified* copies. In code `send_hidden_duplicate`
+  (routing.cc:123363-371) builds an **identical** packet for both — `SetflowId(flow_id)`,
+  same size, unsigned. The active block sets `g_hdup_flow_id = flow_id` plain
+  (routing.cc:120899) — the `0xDEAD0000` fabrication marker that comments at 120960 /
+  121351 claim is used is **never set**. So active vs passive differs only in the printed
+  log line ("EdDSA will FAIL — content fabricated" prints but nothing fabricates). The
+  misinformation-injection capability from the spec is not simulated; signature-based
+  active-HF detection isn't exercising real modified traffic.
+
+- **HF-2 (MEDIUM) — Active HF lacks the per-packet duplicate guard.**
+  Passive block gates on `attempts[...] == 0` (routing.cc:120927); the active block
+  (routing.cc:120874) has no such guard, so it fires on every retransmission attempt →
+  multiple duplicate copies per packet, asymmetrically inflating UCR/PIR for A5/A6.
+
+- **HF-3 (LOW) — Wrong attack numbers in comments.** routing.cc:121071-1072 says
+  "Attacks 18 & 19 / 20 & 21" (should be 5&6 / 7&8); routing.cc:120920 labels the block
+  "ATTACK 7 … Data Plane" but A7 is Control plane (block serves both A7/A8).
+
+- **HF-4 (MEDIUM) — Active eavesdropper receive-detection fragile in SUMO.**
+  routing.cc:121286 uses a single global `active_hf_eavesdropper_index` then falls back to
+  a `passive_hf_rsu_to_eavesdropper` scan; multi-RSU runs with per-RSU eavesdroppers rely
+  entirely on the map, so any RSU missing from it silently drops its eavesdrop count.
+
+- **HF-5 (LOW/verify) — DP attacker-vehicle as second forwarder.** Spec A6/A8 have the RSU
+  AND the attacker vehicle each forward original + emit a duplicate. Vehicles are flagged
+  malicious and the send block gates on `..._hf_malicious_nodes[current_hop]` (includes
+  vehicles), so it can fire for a vehicle forwarder — but confirm at runtime that
+  vehicle-origin duplicates actually transmit (block sits in the RSU-centric TX path).
+
+**Recommended fixes:** HF-1 — set `g_hdup_flow_id = 0xDEAD0000|flow_id` in the active
+block and have the eavesdropper receive path treat the `0xDEAD` marker as a failed
+signature (or actually skip signing the copy). HF-2 — add the `attempts==0` guard to the
+active block. HF-3 — correct the comments. HF-4 — key active detection off
+`active_hf_malicious_nodes[prev_sender]` (as the counter fix already does) rather than a
+global index.
+
+**APPLIED 2026-07-10 (compiled clean):**
+- HF-1 ✅ active block now sets `g_hdup_flow_id = 0xDEAD0000u | flow_id` (routing.cc:120903)
+  — active copies carry the fabrication marker (passive keeps plain flow_id). The
+  receive/FADE/S6 paths already strip it via `& 0xFFFF`. Deeper "signature actually fails
+  on the copy" (re-sign with corrupted content) is left as future hardening; the marker
+  now makes active copies behaviourally distinguishable.
+- HF-2 ✅ active block gated on `attempts[...] == 0` (routing.cc:120877) — one copy/packet.
+- HF-3 ✅ comments corrected (Attacks 5&6/7&8; passive block relabelled A7 CP & A8 DP).
+- HF-4 — left as-is: the existing `passive_hf_rsu_to_eavesdropper` map scan
+  (routing.cc:121305) already covers per-RSU eavesdroppers, and the Fix 2b counter gates
+  on `active_hf_malicious_nodes[prev_sender]`; the fragile global index is now backed up
+  by both. Marker (HF-1) available for future hardening.
+- HF-5 — DP attacker-vehicle second-forwarder path still to confirm at runtime.
 
 ---
 

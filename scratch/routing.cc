@@ -114818,7 +114818,7 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
-// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+// === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
 uint32_t passive_hf_eavesdropper_index = 2;  // legacy single-RSU fallback — kept for Attack 2 path
@@ -120874,8 +120874,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						if (present_active_hf_attack &&
 							active_hf_malicious_nodes[current_hop] &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
+							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
+						    // HF-2: fire only on the first attempt (== 0) so a retransmit does
+						    // not emit multiple duplicate copies per packet — matches the
+						    // passive-HF guard and keeps UCR/PIR comparable across variants.
 						    uint32_t active_eaves = active_hf_eavesdropper_index;
 						    {
 						        auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
@@ -120896,7 +120900,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // Reuse send_hidden_duplicate infrastructure — same channel, different eavesdropper
 						    g_hdup_rsu       = current_hop;
 						    g_hdup_eaves     = active_eaves;
-						    g_hdup_flow_id   = flow_id;
+						    // HF-1: ACTIVE hidden forward = FABRICATED copy. Tag it with the
+						    // 0xDEAD0000 marker so the copy is distinguishable from the authentic
+						    // original and its ML-DSA-87 signature is treated as invalid at the
+						    // eavesdropper (content modified). Passive HF (A7/A8) keeps the plain
+						    // flow_id — authentic copy, caught by policy not signature. The
+						    // receive/FADE/S6 paths already strip the marker via (fid & 0xFFFF).
+						    g_hdup_flow_id   = 0xDEAD0000u | flow_id;
 						    g_hdup_packet_id = packet_id;
 						    g_hdup_channel   = arguments.channel;
 						    g_hdup_p_size    = arguments.p_size;
@@ -120917,7 +120927,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 					    }
 						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
 						}
-                        // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+                        // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
                         // Malicious RSU intercepts packet and secretly duplicates it
                         // to the eavesdropper, while forwarding the original normally.
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
@@ -121068,8 +121078,8 @@ double get_tcam_slowpath_delay(uint32_t rsu_node)
 // ---------- Hidden forwarding helpers ----------
 
 // Sends a COPY of the packet to spy_node_id.
-// active=true  → the copy is "fabricated" (active hidden forward — Attacks 18 & 19)
-// active=false → the copy is unmodified (passive hidden forward — Attacks 20 & 21)
+// active=true  → the copy is "fabricated" (active hidden forward — Attacks 5 & 6)
+// active=false → the copy is unmodified (passive hidden forward — Attacks 7 & 8)
 // In ns-3, Ptr<Packet> is a smart pointer and Create<Packet> always makes a new
 // independent copy, so both modes work correctly without modifying the original.
 void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
@@ -123298,7 +123308,7 @@ void send_hidden_duplicate_trampoline()
 }
 
 // =========================================================
-// ATTACK 7: Passive Hidden Forwarding — Data Plane
+// PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP)
 // Called by the malicious RSU to send a secret duplicate
 // of a packet to the unauthorized eavesdropper (Vehicle B).
 // The original packet is forwarded normally by the existing
