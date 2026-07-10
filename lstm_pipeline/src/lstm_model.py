@@ -17,6 +17,18 @@ HIDDEN1    = 64
 HIDDEN2    = 32
 
 
+def seed_everything(seed: int = 0) -> None:
+    """Make training reproducible so M1/M8 metrics are stable run-to-run.
+    Without this, unseeded weight init + batch shuffling gave Delta_poison
+    swings of 0.007-0.09 between identical pipeline invocations."""
+    import random as _random
+    _random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 class LSTMAutoencoder(nn.Module):
     def __init__(self, n_features: int = N_FEATURES,
                  hidden1: int = HIDDEN1, hidden2: int = HIDDEN2):

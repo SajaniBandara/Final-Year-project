@@ -117517,9 +117517,9 @@ void write_security_metrics_csv()
 		double active_vehicles = (double)N_Vehicles;
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
-			10.0,
-			15.0,
-			0.80,
+			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
+			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
+			0.054688,          // tcam_util_thresh — calibrated benign p99 (Fix 3, rule_calibrator.py 2026-07-10)
 			active_vehicles
 		);
 	}
@@ -121254,6 +121254,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         fade_eavesdropped_packets.insert({fid, packet_ID});
                         fade_eavesdrop_counter++;
                     }
+                    // Fix 2b: a hidden forward IS a hop-proof violation by the
+                    // malicious RSU. Populate its LSTM hop-fail counter so the
+                    // 1[pi_hop=⊥] feature (eq:lstm_input) fires for that RSU's
+                    // cycle — the intended signal for detecting A7/A8 via the
+                    // federated LSTM. Attributed to prev_sender (the malicious
+                    // forwarder), which is the is_malicious_node-labelled RSU.
+                    g_lstm_stark_counts[prev_sender].second++;
+                    g_lstm_pkt_counts[prev_sender]++;
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -121308,6 +121316,12 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                             fade_eavesdropped_packets.insert({fid, packet_ID});
                             fade_eavesdrop_counter++;
                         }
+                        // Fix 2b: active hidden forward = hop-proof violation by
+                        // the malicious RSU. Populate its LSTM hop-fail counter so
+                        // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal
+                        // for detecting A5/A6 via the federated LSTM.
+                        g_lstm_stark_counts[prev_sender].second++;
+                        g_lstm_pkt_counts[prev_sender]++;
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {

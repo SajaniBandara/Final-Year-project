@@ -108,7 +108,9 @@ def load_benign_data(data_dir: Path) -> pd.DataFrame:
         print(f"  Dropped {dropped} rows with v_bar ≤ 0.1 m/s")
 
     df_traffic["inv_v_bar"] = 1.0 / df_traffic["v_bar"]
-    return df_traffic
+    # df_traffic (rho>0) feeds the S1 OLS; df_all (every benign row, including
+    # zero-traffic cycles) feeds the S3/S4 percentile thresholds.
+    return df_traffic, df_all
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +314,52 @@ def robustness_check(df: pd.DataFrame, delta0: float, alpha_rho: float,
 
 
 # ---------------------------------------------------------------------------
+# Step 5 — S3/S4 TCAM thresholds: benign 99th percentile (FPR ≤ 1% budget)
+# ---------------------------------------------------------------------------
+
+def calibrate_s3_s4(df_all: pd.DataFrame) -> dict:
+    """
+    Calibrate the S3/S4 detection thresholds from benign feature distributions,
+    mirroring the S1 philosophy: pick the benign 99th percentile so at most 1%
+    of benign observations exceed the threshold (FPR ≤ 1% budget per signal;
+    S4 requires BOTH signals to fire, so its joint benign FPR is far lower).
+
+    lambda_pi_thresh : S4 PACKET_IN rate threshold      (from lambda_PI column)
+    tcam_util_thresh : S3/S4 shared utilisation threshold (from U_TCAM column)
+    lambda_fm_thresh : S3 FlowMod rate — NOT in the LSTM CSVs; the hardcoded
+                       initial value is retained and flagged for documentation.
+    """
+    print(f"\n── Step 5: S3/S4 threshold calibration (benign p99) ──")
+    out = {"lambda_fm_thresh": 10.0,
+           "lambda_fm_source": "initial estimate retained (FlowMod rate not logged in LSTM CSVs)"}
+
+    for col, default, key in [("lambda_PI", 15.0, "lambda_pi_thresh"),
+                               ("U_TCAM",    0.80, "tcam_util_thresh")]:
+        vals = df_all[col].astype(float).values
+        vmax = float(np.max(vals))
+        if vmax <= 1e-12:
+            out[key] = default
+            out[f"{key}_source"] = "default retained (benign signal all zero — no distribution to calibrate)"
+            print(f"  {col:<10} benign max=0 → keeping default {default} (flagged)")
+            continue
+        p99  = float(np.percentile(vals, 99))
+        exceed = float(np.mean(vals > p99))
+        out[key] = round(p99, 6)
+        out[f"{key}_source"] = "benign p99"
+        out[f"{key}_benign_exceed"] = round(exceed, 4)
+        print(f"  {col:<10} p99={p99:.6f}  max={vmax:.6f}  "
+              f"benign exceedance at p99 = {exceed*100:.2f}%")
+        # Robustness: ±10/20/30% threshold perturbation → benign exceedance
+        for sign in (+1, -1):
+            for pct in PERTURBATIONS:
+                t = p99 * (1 + sign * pct)
+                ex = float(np.mean(vals > t))
+                print(f"    {col} thresh {'+' if sign>0 else '-'}{int(pct*100)}%"
+                      f" = {t:.6f} → benign exceedance {ex*100:.2f}%")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -334,7 +382,7 @@ def main() -> None:
     print("=" * 60)
 
     # Load data
-    df = load_benign_data(args.data_dir)
+    df, df_all = load_benign_data(args.data_dir)
 
     # Add seed column if not present
     if "seed" not in df.columns:
@@ -352,6 +400,9 @@ def main() -> None:
     # ── Step 4: Robustness
     robustness = robustness_check(df, delta0, alpha_rho, alpha_v, best_beta, best_k)
 
+    # ── Step 5: S3/S4 TCAM thresholds
+    s3s4 = calibrate_s3_s4(df_all)
+
     # ── Save results
     result = {
         "delta0":    round(delta0,    8),
@@ -362,6 +413,7 @@ def main() -> None:
         "ols_r2":    round(r2, 4),
         "robustness_max_delta_fpr": round(
             max(abs(r["delta_fpr"]) for r in robustness), 4),
+        "s3_s4": s3s4,
     }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -376,6 +428,12 @@ def main() -> None:
     print(f"  double s1_alpha_v   = {result['alpha_v']};")
     print(f"  double s1_beta      = {result['beta']};")
     print(f"  double s1_k         = {result['k']};")
+
+    # ── Print routing.cc ComputeTcamDetection update snippet
+    print("\n── Update ComputeTcamDetection() call in routing.cc with these values ──")
+    print(f"  lambda_fm_thresh = {s3s4['lambda_fm_thresh']}   // {s3s4['lambda_fm_source']}")
+    print(f"  lambda_pi_thresh = {s3s4['lambda_pi_thresh']}   // {s3s4.get('lambda_pi_thresh_source','')}")
+    print(f"  tcam_util_thresh = {s3s4['tcam_util_thresh']}   // {s3s4.get('tcam_util_thresh_source','')}")
 
     # ── Write text report
     report_lines = [
@@ -395,7 +453,13 @@ def main() -> None:
         f"Step 4 — Max |ΔFPR|: {result['robustness_max_delta_fpr']}",
         "",
         "Robustness details:",
-    ] + [f"  {r['param']:<22}  ΔFPR={r['delta_fpr']:+.4f}" for r in robustness]
+    ] + [f"  {r['param']:<22}  ΔFPR={r['delta_fpr']:+.4f}" for r in robustness] + [
+        "",
+        "Step 5 — S3/S4 TCAM thresholds (benign p99, FPR ≤ 1% budget per signal):",
+        f"  lambda_fm_thresh = {s3s4['lambda_fm_thresh']}  ({s3s4['lambda_fm_source']})",
+        f"  lambda_pi_thresh = {s3s4['lambda_pi_thresh']}  ({s3s4.get('lambda_pi_thresh_source','')})",
+        f"  tcam_util_thresh = {s3s4['tcam_util_thresh']}  ({s3s4.get('tcam_util_thresh_source','')})",
+    ]
 
     OUTPUT_REPORT.write_text("\n".join(report_lines))
     print(f"\n── Full report → {OUTPUT_REPORT} ──")

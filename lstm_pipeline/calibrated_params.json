@@ -5,5 +5,14 @@
   "beta": 0.7,
   "k": 3.0,
   "ols_r2": 0.0004,
-  "robustness_max_delta_fpr": 0.0766
+  "robustness_max_delta_fpr": 0.0766,
+  "s3_s4": {
+    "lambda_fm_thresh": 10.0,
+    "lambda_fm_source": "initial estimate retained (FlowMod rate not logged in LSTM CSVs)",
+    "lambda_pi_thresh": 15.0,
+    "lambda_pi_thresh_source": "default retained (benign signal all zero \u2014 no distribution to calibrate)",
+    "tcam_util_thresh": 0.054688,
+    "tcam_util_thresh_source": "benign p99",
+    "tcam_util_thresh_benign_exceed": 0.0095
+  }
 }
