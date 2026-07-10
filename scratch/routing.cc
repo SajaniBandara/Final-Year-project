@@ -115034,16 +115034,24 @@ void initialise_stub_attack_state()
         }
 
         case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
-            // Malicious controller floods ALL RSUs with junk FlowMod broadcasts.
-            // First RSU (N_Vehicles) acts as representative malicious-node marker.
-            is_malicious_node[2][N_Vehicles] = true;
-            t_onset[N_Vehicles] = attack_start_time;
+            // Malicious controller floods RSUs it owns with junk FlowMod broadcasts.
+            // Ground-truth labels now come exclusively from actual TCAM-victim
+            // detection (g_tcam_table lookup, lstm_logger.h) — no artificial
+            // single-RSU marker needed; removed 2026-07-10 (was causing a false
+            // positive at every attack_percentage, including 0%, since it fired
+            // unconditionally regardless of whether that RSU was ever attacked).
             {
-                // WHO: number of compromised controllers, derived from the same
-                // attack_percentage sweep used by Attacks 1,2,5-8. Ground-truth/
-                // logging only (controller_compromised[]) -- does NOT change
-                // which/how many RSUs get flooded; that remains cp_attack_pct's
-                // job below, intentionally independent of attack_percentage.
+                // WHO/SCOPE: number of compromised controllers, derived from the
+                // same attack_percentage threshold ladder as Attack 1
+                // (attack_declaration.h:227-237). This now ALSO determines WHICH
+                // RSUs get flooded — cp_attack_tick() (tcam_attack_helper.h)
+                // floods only RSUs whose owning controller is compromised,
+                // mirroring Attack 1's reapply_cp_selective_delay(). At p=0, zero
+                // controllers are compromised -> zero RSUs flooded, matching
+                // main.tex's penetration formula floor(0.01p*264) attacker nodes.
+                // (Previously cp_attack_pct flooded a FIXED 40% of RSUs regardless
+                // of attack_percentage, so p=0 was attacked as hard as p=80 —
+                // confirmed via max U_TCAM=1.0 at every non-100% pct level.)
                 uint32_t num_controllers_compromised;
                 if      (attack_percentage == 0)   num_controllers_compromised = 0;
                 else if (attack_percentage == 100) num_controllers_compromised = 4;
@@ -115060,15 +115068,16 @@ void initialise_stub_attack_state()
 
                 cout << "[ATTACK3] [INIT] attack_percentage=" << attack_percentage
                      << "% -> " << num_controllers_compromised << " of " << N_Controllers
-                     << " controller(s) compromised (ground truth only)." << endl;
+                     << " controller(s) compromised." << endl;
 
-                uint32_t num_targeted_log = static_cast<uint32_t>(
-                    std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
-                if (num_targeted_log < 1) num_targeted_log = 1;
-                if (num_targeted_log > N_RSUs) num_targeted_log = N_RSUs;
+                uint32_t num_targeted_log = 0;
+                for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
+                    if (controller_compromised[rsu_controller_assignment[r]])
+                        num_targeted_log++;
                 cout << "[ATTACK3] [INIT] Slow-flow CP controller attack, "
-                     << num_targeted_log << "/" << N_RSUs << " RSU(s) ("
-                     << cp_attack_pct << "%), rate=" << attack_rate_pps << " pps, "
+                     << num_targeted_log << "/" << N_RSUs
+                     << " RSU(s) owned by compromised controllers, rate="
+                     << attack_rate_pps << " pps, "
                      << "onset t=" << attack_start_time << "s" << endl;
             }
             Simulator::Schedule(Seconds(attack_start_time), &cp_attack_tick);

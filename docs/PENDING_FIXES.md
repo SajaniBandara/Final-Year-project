@@ -37,6 +37,9 @@ glob. A1/A2 detect genuinely; M8 passes (BRFA-v2 robust, FedAvg collapses).
   distinguishable at the receiver via `active_hf_malicious_nodes[prev_sender]` (used by
   Fix 2b), so no functionality was lost — only the "signature fails on fabricated
   content" hardening is deferred.
+- Fix 5 (A3 penetration bug, `cp_attack_tick()`) — ✅ **VERIFIED**: found *after* Fix 1
+  labels were confirmed correct. See Fix 5 below. pct0=0 labels (was 26 RSUs
+  saturated), pct60=256 labels/32 RSUs (correctly scaling), no crash.
 - Pending: commit → delete old A3–A8 CSVs → re-run A3,A4,A5–A8 (180 sims) → remove
   `EXCLUDE_ATTACKS` (Fix 2) → retrain.
 
@@ -339,6 +342,43 @@ Requires the same rebuild as Fix 1 — do them together.
 **Thesis caveat to note:** U_TCAM grows monotonically over a run (rule accumulation,
 never plateaus), so this threshold is calibrated for the current run durations
 (90–150 s). Longer evaluation runs need recalibration on matching-duration benign data.
+
+---
+
+## Fix 5 — A3's `attack_percentage` did nothing (penetration bug, found 2026-07-10)
+
+Separate from Fix 1 (labels). Even with labels correct, `cp_attack_tick()`
+(tcam_attack_helper.h) ignored `attack_percentage` entirely and always flooded a fixed
+`ceil(64 * cp_attack_pct/100) = 26` RSUs (cp_attack_pct default 40%). Confirmed
+empirically on the original data: **A3_pct0 through pct80 all showed max U_TCAM=1.0** —
+identical attack severity at every percentage, including the "0% attack" baseline.
+
+This violates main.tex's own penetration formula (line ~5046): *"At attack percentage p,
+⌊0.01p × 264⌋ attacker nodes are allocated ... control-plane variants (Attacks 1, 3, 5, 7)
+assign attackers among RSUs"* — at p=0 this must yield 0 attacker nodes.
+
+**Fix:** `cp_attack_tick()` now floods only RSUs whose owning controller is compromised
+(`controller_compromised[rsu_controller_assignment[r]]`), mirroring Attack 1's
+`reapply_cp_selective_delay()` exactly. `controller_compromised[]` was already being
+computed correctly from `attack_percentage` (same threshold ladder as A1: <33%→1,
+33-66%→2, ≥66%→3, 100%→4 controllers) — it just wasn't being read by the flooding logic.
+Also removed the legacy unconditional `is_malicious_node[2][N_Vehicles] = true` marker
+(routing.cc), which would have caused a false-positive label at every percentage
+including 0% now that Fix 1's TCAM-based labeling is the real ground truth.
+
+**Verified 2026-07-10:** pct0 → 0/64 RSUs targeted, 0 labels, max U_TCAM=0.016 (was
+26/64, 1.0). pct60 → 32/64 RSUs targeted, 256 labels across 32 RSUs (was identical to
+pct0's 26/64). No crash.
+
+**Note:** this is NOT the "Attack Intensity" dimension from Experiment 1
+(main.tex ~4643-4694) — that's a separate, deliberately descoped 3-level severity axis
+that the LSTM's own data-collection spec (main.tex "Federated LSTM anomaly detector"
+section) does not require (confirmed: spec explicitly calls for exactly 6×8×5=240 runs,
+percentage-only, no intensity sweep). This fix is about **penetration** (breadth — how
+many nodes attack), which main.tex's own formula requires and which IS in LSTM scope.
+
+**A4 does not have this bug** — verified `num_attackers = floor(0.01*attack_percentage*N_Vehicles)`
+already correctly scales (A4_pct0 max U_TCAM=0.05 vs pct20+ all saturated).
 
 ---
 
