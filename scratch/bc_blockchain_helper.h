@@ -208,17 +208,21 @@ static void bc_open_files()
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.
     g_bc_flowmod_csv.open(dir + "bc_flowmod_log" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_flowmod_csv.is_open())
+    if (g_bc_flowmod_csv.is_open()) {
         g_bc_flowmod_csv
             << "rsu_id,flow_mod_hash,recv_timestamp_ms,"
                "is_malicious,src_ip,dst_ip,src_port,dst_port\n";
+        g_bc_flowmod_csv.flush(); // header must hit disk even if zero rows are ever written
+    }
 
     // bc_trust_updates.csv — one row per S3/S4 anomaly penalty
     // Columns match the chaincode UpdateTrust() signature + reason fields.
     g_bc_trust_csv.open(dir + "bc_trust_updates" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_trust_csv.is_open())
+    if (g_bc_trust_csv.is_open()) {
         g_bc_trust_csv
             << "rsu_id,success,timestamp_ms,reason,rule_count,rate_per_s\n";
+        g_bc_trust_csv.flush(); // header must hit disk even if no S3/S4 penalty ever fires
+    }
 
     g_bc_files_open = true;
 }
@@ -380,36 +384,46 @@ inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash
 static void bc_open_detection_csv() {
     if (g_bc_detection_open) return;
     g_bc_detection_csv.open(BC_RESULTS_DIR + "bc_detection_log" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_detection_csv.is_open())
+    if (g_bc_detection_csv.is_open()) {
         g_bc_detection_csv << "rsu_id,suspect_node,signal_idx,timestamp_ms,rsu_sig\n";
+        g_bc_detection_csv.flush(); // header must hit disk even if zero rows are ever written
+    }
     g_bc_detection_open = true;
 }
 static void bc_open_model_csv() {
     if (g_bc_model_open) return;
     g_bc_model_csv.open(BC_RESULTS_DIR + "bc_model_log" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_model_csv.is_open())
+    if (g_bc_model_csv.is_open()) {
         g_bc_model_csv << "rsu_id,round,model_hash,timestamp_ms\n";
+        g_bc_model_csv.flush();
+    }
     g_bc_model_open = true;
 }
 static void bc_open_dkg_csv() {
     if (g_bc_dkg_open) return;
     g_bc_dkg_csv.open(BC_RESULTS_DIR + "bc_dkg_log" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_dkg_csv.is_open())
+    if (g_bc_dkg_csv.is_open()) {
         g_bc_dkg_csv << "rsu_id,round,vk_zkp,n_rsus,commitments,timestamp_ms\n";
+        g_bc_dkg_csv.flush();
+    }
     g_bc_dkg_open = true;
 }
 static void bc_open_anchor_csv() {
     if (g_bc_anchor_open) return;
     g_bc_anchor_csv.open(BC_RESULTS_DIR + "bc_anchor_log" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_anchor_csv.is_open())
+    if (g_bc_anchor_csv.is_open()) {
         g_bc_anchor_csv << "rsu_id,seq,anchor_hash,rsu_chain_len,timestamp_ms\n";
+        g_bc_anchor_csv.flush(); // header must hit disk even if zero rows are ever written
+    }
     g_bc_anchor_open = true;
 }
 static void bc_open_tref_csv() {
     if (g_bc_tref_open) return;
     g_bc_tref_csv.open(BC_RESULTS_DIR + "bc_tref_log" + bc_run_suffix() + ".csv", std::ios::trunc);
-    if (g_bc_tref_csv.is_open())
+    if (g_bc_tref_csv.is_open()) {
         g_bc_tref_csv << "rsu_id,seq,t_ref_value,eps_ref,timestamp_ms\n";
+        g_bc_tref_csv.flush();
+    }
     g_bc_tref_open = true;
 }
 
@@ -601,9 +615,14 @@ inline void bc_anchor_to_global() {
 
     bc_open_anchor_csv();
     if (g_bc_anchor_csv.is_open()) {
-        g_bc_anchor_csv << N_Vehicles << "," << seq << ","
-                        << ah_hex.str() << ","
-                        << g_rsu_commit_hashes.size() << "," << ts_ms << "\n";
+        // Build the row in one string and issue a single stream write, so a
+        // reader copying this file mid-run (e.g. before the sim finishes)
+        // has the smallest possible window to observe a half-written row.
+        std::string row = std::to_string(N_Vehicles) + "," + std::to_string(seq) + "," +
+                           ah_hex.str() + "," +
+                           std::to_string(g_rsu_commit_hashes.size()) + "," +
+                           std::to_string(ts_ms) + "\n";
+        g_bc_anchor_csv << row;
         g_bc_anchor_csv.flush();
     }
 
