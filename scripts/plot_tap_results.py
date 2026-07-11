@@ -56,8 +56,6 @@ CSV column order (columns are 0-indexed):
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import csv
 import os
 import scipy.stats as stats
 
@@ -129,10 +127,10 @@ def mean_and_ci(values):
     n = len(values)
     if n == 0:
         return 0.0, 0.0
-    m   = np.mean(values)
-    s   = np.std(values, ddof=1)       # sample std (ddof=1 matches MATLAB std)
+    m = np.mean(values)
     if n == 1:
         return m, 0.0
+    s   = np.std(values, ddof=1)       # sample std (ddof=1 matches MATLAB std)
     t   = stats.t.ppf(1 - ALPHA / 2, df=n - 1)
     ci  = t * (s / np.sqrt(n))
     return m, ci
@@ -190,7 +188,7 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 
     # ── TAP line — red solid with circle markers (matches supervisor's p1 style)
     p1 = ax.errorbar(x, tap_means, yerr=tap_cis,
-                     fmt='-o',
+                     fmt='o',
                      color='red',
                      markerfacecolor='red',
                      markersize=9,
@@ -201,7 +199,7 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 
     # ── MOBIGUARD line — blue dashed with square markers
     p2 = ax.errorbar(x, mob_means, yerr=mob_cis,
-                     fmt='-s',
+                     fmt='s',
                      color='blue',
                      markerfacecolor='blue',
                      markersize=9,
