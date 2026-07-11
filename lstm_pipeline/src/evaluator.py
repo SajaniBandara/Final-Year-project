@@ -46,7 +46,10 @@ ATTACK_NAMES = {
 # ── LSTM-based prediction ─────────────────────────────────────────────────────
 
 def load_global_model() -> tuple:
-    ckpt = torch.load(MODEL_DIR / "global.pt", map_location=DEVICE)
+    # weights_only=False: PyTorch >=2.6 safe loader rejects numpy scalars in
+    # our own checkpoints.
+    ckpt = torch.load(MODEL_DIR / "global.pt", map_location=DEVICE,
+                      weights_only=False)
     model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
     model.load_state_dict(ckpt["weights"])
     model.eval()

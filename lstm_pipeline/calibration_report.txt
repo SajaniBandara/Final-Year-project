@@ -32,3 +32,8 @@ Robustness details:
   alpha_v -10%            ΔFPR=-0.0001
   alpha_v -20%            ΔFPR=-0.0001
   alpha_v -30%            ΔFPR=+0.0039
+
+Step 5 — S3/S4 TCAM thresholds (benign p99, FPR ≤ 1% budget per signal):
+  lambda_fm_thresh = 10.0  (initial estimate retained (FlowMod rate not logged in LSTM CSVs))
+  lambda_pi_thresh = 15.0  (default retained (benign signal all zero — no distribution to calibrate))
+  tcam_util_thresh = 0.054688  (benign p99)

@@ -154,6 +154,24 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         active_attack_variant < NUM_ATTACK_VARIANTS)
     {
         label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
+        // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
+        // variant 2) or attacker vehicles (A4, variant 3), never the RSU
+        // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
+        // positives and A3 only the single representative RSU. Label the
+        // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
+        // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
+        // is declared in tcam_detection.h, included just before this header.
+        if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
+        {
+            for (const auto& entry : g_tcam_table)
+            {
+                if (entry.node_id == rsu_sim_idx && entry.is_malicious)
+                {
+                    label = 1;
+                    break;
+                }
+            }
+        }
     }
 
     // ── File path: lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv

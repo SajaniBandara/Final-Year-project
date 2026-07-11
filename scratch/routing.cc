@@ -114818,7 +114818,7 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
-// === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+// === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
 uint32_t passive_hf_eavesdropper_index = 2;  // legacy single-RSU fallback — kept for Attack 2 path
@@ -115034,16 +115034,24 @@ void initialise_stub_attack_state()
         }
 
         case (2): // Attack 3 — Slow-flow TCAM exhaustion, Control Plane (Change 6)
-            // Malicious controller floods ALL RSUs with junk FlowMod broadcasts.
-            // First RSU (N_Vehicles) acts as representative malicious-node marker.
-            is_malicious_node[2][N_Vehicles] = true;
-            t_onset[N_Vehicles] = attack_start_time;
+            // Malicious controller floods RSUs it owns with junk FlowMod broadcasts.
+            // Ground-truth labels now come exclusively from actual TCAM-victim
+            // detection (g_tcam_table lookup, lstm_logger.h) — no artificial
+            // single-RSU marker needed; removed 2026-07-10 (was causing a false
+            // positive at every attack_percentage, including 0%, since it fired
+            // unconditionally regardless of whether that RSU was ever attacked).
             {
-                // WHO: number of compromised controllers, derived from the same
-                // attack_percentage sweep used by Attacks 1,2,5-8. Ground-truth/
-                // logging only (controller_compromised[]) -- does NOT change
-                // which/how many RSUs get flooded; that remains cp_attack_pct's
-                // job below, intentionally independent of attack_percentage.
+                // WHO/SCOPE: number of compromised controllers, derived from the
+                // same attack_percentage threshold ladder as Attack 1
+                // (attack_declaration.h:227-237). This now ALSO determines WHICH
+                // RSUs get flooded — cp_attack_tick() (tcam_attack_helper.h)
+                // floods only RSUs whose owning controller is compromised,
+                // mirroring Attack 1's reapply_cp_selective_delay(). At p=0, zero
+                // controllers are compromised -> zero RSUs flooded, matching
+                // main.tex's penetration formula floor(0.01p*264) attacker nodes.
+                // (Previously cp_attack_pct flooded a FIXED 40% of RSUs regardless
+                // of attack_percentage, so p=0 was attacked as hard as p=80 —
+                // confirmed via max U_TCAM=1.0 at every non-100% pct level.)
                 uint32_t num_controllers_compromised;
                 if      (attack_percentage == 0)   num_controllers_compromised = 0;
                 else if (attack_percentage == 100) num_controllers_compromised = 4;
@@ -115060,15 +115068,16 @@ void initialise_stub_attack_state()
 
                 cout << "[ATTACK3] [INIT] attack_percentage=" << attack_percentage
                      << "% -> " << num_controllers_compromised << " of " << N_Controllers
-                     << " controller(s) compromised (ground truth only)." << endl;
+                     << " controller(s) compromised." << endl;
 
-                uint32_t num_targeted_log = static_cast<uint32_t>(
-                    std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
-                if (num_targeted_log < 1) num_targeted_log = 1;
-                if (num_targeted_log > N_RSUs) num_targeted_log = N_RSUs;
+                uint32_t num_targeted_log = 0;
+                for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
+                    if (controller_compromised[rsu_controller_assignment[r]])
+                        num_targeted_log++;
                 cout << "[ATTACK3] [INIT] Slow-flow CP controller attack, "
-                     << num_targeted_log << "/" << N_RSUs << " RSU(s) ("
-                     << cp_attack_pct << "%), rate=" << attack_rate_pps << " pps, "
+                     << num_targeted_log << "/" << N_RSUs
+                     << " RSU(s) owned by compromised controllers, rate="
+                     << attack_rate_pps << " pps, "
                      << "onset t=" << attack_start_time << "s" << endl;
             }
             Simulator::Schedule(Seconds(attack_start_time), &cp_attack_tick);
@@ -117517,9 +117526,9 @@ void write_security_metrics_csv()
 		double active_vehicles = (double)N_Vehicles;
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
-			10.0,
-			15.0,
-			0.80,
+			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
+			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
+			0.054688,          // tcam_util_thresh — calibrated benign p99 (Fix 3, rule_calibrator.py 2026-07-10)
 			active_vehicles
 		);
 	}
@@ -120874,8 +120883,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						if (present_active_hf_attack &&
 							active_hf_malicious_nodes[current_hop] &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
+							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
+						    // HF-2: fire only on the first attempt (== 0) so a retransmit does
+						    // not emit multiple duplicate copies per packet — matches the
+						    // passive-HF guard and keeps UCR/PIR comparable across variants.
 						    uint32_t active_eaves = active_hf_eavesdropper_index;
 						    {
 						        auto _it = passive_hf_rsu_to_eavesdropper.find(current_hop);
@@ -120896,6 +120909,20 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // Reuse send_hidden_duplicate infrastructure — same channel, different eavesdropper
 						    g_hdup_rsu       = current_hop;
 						    g_hdup_eaves     = active_eaves;
+						    // HF-1 (reverted 2026-07-10): an earlier attempt tagged this with a
+						    // 0xDEAD0000 marker in g_hdup_flow_id to distinguish the fabricated
+						    // active-HF copy from the authentic passive-HF copy. That marker
+						    // reaches the wire via dup_tag.SetflowId() and MacRx's generic
+						    // receive path extracts it UNMASKED at routing.cc:121209
+						    // (`uint32_t fid = tagmodified_routing.GetflowId();`), which is then
+						    // used to index pd_all_inst[fid]/fade_received[fid] — an out-of-bounds
+						    // access on every active-HF packet -> SIGSEGV (confirmed, exit 139).
+						    // The masking comment upstream only covers one FADE-bookkeeping call
+						    // site, not the generic receive path. Active vs passive is already
+						    // correctly distinguishable at the receiver via
+						    // active_hf_malicious_nodes[prev_sender] (see the receive block at
+						    // ~121284 and the Fix-2b zkp_hop_fail wiring), so no wire-level marker
+						    // is needed. Keep flow_id plain here.
 						    g_hdup_flow_id   = flow_id;
 						    g_hdup_packet_id = packet_id;
 						    g_hdup_channel   = arguments.channel;
@@ -120917,7 +120944,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 					    }
 						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
 						}
-                        // === ATTACK 7: Passive Hidden Forwarding — Data Plane ===
+                        // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
                         // Malicious RSU intercepts packet and secretly duplicates it
                         // to the eavesdropper, while forwarding the original normally.
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
@@ -121068,8 +121095,8 @@ double get_tcam_slowpath_delay(uint32_t rsu_node)
 // ---------- Hidden forwarding helpers ----------
 
 // Sends a COPY of the packet to spy_node_id.
-// active=true  → the copy is "fabricated" (active hidden forward — Attacks 18 & 19)
-// active=false → the copy is unmodified (passive hidden forward — Attacks 20 & 21)
+// active=true  → the copy is "fabricated" (active hidden forward — Attacks 5 & 6)
+// active=false → the copy is unmodified (passive hidden forward — Attacks 7 & 8)
 // In ns-3, Ptr<Packet> is a smart pointer and Create<Packet> always makes a new
 // independent copy, so both modes work correctly without modifying the original.
 void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
@@ -121254,6 +121281,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         fade_eavesdropped_packets.insert({fid, packet_ID});
                         fade_eavesdrop_counter++;
                     }
+                    // Fix 2b: a hidden forward IS a hop-proof violation by the
+                    // malicious RSU. Populate its LSTM hop-fail counter so the
+                    // 1[pi_hop=⊥] feature (eq:lstm_input) fires for that RSU's
+                    // cycle — the intended signal for detecting A7/A8 via the
+                    // federated LSTM. Attributed to prev_sender (the malicious
+                    // forwarder), which is the is_malicious_node-labelled RSU.
+                    g_lstm_stark_counts[prev_sender].second++;
+                    g_lstm_pkt_counts[prev_sender]++;
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -121308,6 +121343,12 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                             fade_eavesdropped_packets.insert({fid, packet_ID});
                             fade_eavesdrop_counter++;
                         }
+                        // Fix 2b: active hidden forward = hop-proof violation by
+                        // the malicious RSU. Populate its LSTM hop-fail counter so
+                        // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal
+                        // for detecting A5/A6 via the federated LSTM.
+                        g_lstm_stark_counts[prev_sender].second++;
+                        g_lstm_pkt_counts[prev_sender]++;
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {
@@ -123284,7 +123325,7 @@ void send_hidden_duplicate_trampoline()
 }
 
 // =========================================================
-// ATTACK 7: Passive Hidden Forwarding — Data Plane
+// PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP)
 // Called by the malicious RSU to send a secret duplicate
 // of a packet to the unauthorized eavesdropper (Vehicle B).
 // The original packet is forwarded normally by the existing
