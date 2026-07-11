@@ -141459,12 +141459,20 @@ int main(int argc, char *argv[])
 
     // Attack 4 (DP TCAM): by default, num_attackers is derived from the same
     // attack_percentage sweep (0/20/40/60/80/100) used by Attacks 1,2,5-8,
-    // scaled over the vehicle pool (N_Vehicles denominator).
+    // scaled over the vehicle pool (N_Vehicles denominator). num_attackers
+    // itself is only ever read inside case (3) below (Attack 4's own setup),
+    // so this computation is inert for every other attack — but the print
+    // used to fire unconditionally here, tagging every single run's log
+    // (Attack 1, 2, 5-8, even baseline) with a misleading "[ATTACK4]" line
+    // that had nothing to do with the attack actually running. Gated to
+    // match reality; case (3) below already prints its own, more detailed
+    // "[ATTACK4] [INIT] ..." line when Attack 4 is the one actually active.
     num_attackers = (int)std::floor(0.01 * attack_percentage * N_Vehicles);
     if (attack_percentage > 0 && num_attackers < 1) num_attackers = 1;
     if (num_attackers > (int)N_Vehicles)            num_attackers = (int)N_Vehicles;
-    cout << "[ATTACK4] attack_percentage=" << attack_percentage << "% -> num_attackers="
-         << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
+    if (attack_number_cli == 4)
+        cout << "[ATTACK4] attack_percentage=" << attack_percentage << "% -> num_attackers="
+             << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
 
     // --dp_attack_pct is a manual override for standalone testing OUTSIDE the
     // attack_percentage sweep. No-op unless explicitly passed with a value > 0
@@ -141476,8 +141484,9 @@ int main(int argc, char *argv[])
         num_attackers = (int)std::ceil(N_Vehicles * (dp_attack_pct / 100.0));
         if (num_attackers < 1)               num_attackers = 1;
         if (num_attackers > (int)N_Vehicles) num_attackers = (int)N_Vehicles;
-        cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% override -> num_attackers="
-             << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
+        if (attack_number_cli == 4)
+            cout << "[ATTACK4] dp_attack_pct=" << dp_attack_pct << "% override -> num_attackers="
+                 << num_attackers << " (of " << N_Vehicles << " vehicles)" << endl;
     }
 
     if (attack_number_cli != -1)
