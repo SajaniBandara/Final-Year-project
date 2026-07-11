@@ -68,16 +68,29 @@ static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 static const std::string BC_RESULTS_DIR =
     "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
 
-// Per-run filename suffix ("_Attack{id}_{pct}{delay}"), mirrors the scheme
-// write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without this,
-// every run (and every other process pointed at BC_RESULTS_DIR) writes the
-// same bc_*.csv filenames, so concurrent/sequential runs interleave torn
+// Per-run filename suffix ("_Attack{id}_{pct}{delay}[_TAP]"), mirrors the
+// scheme write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without
+// this, every run (and every other process pointed at BC_RESULTS_DIR) writes
+// the same bc_*.csv filenames, so concurrent/sequential runs interleave torn
 // writes into each other's files — this is what was corrupting
 // bc_anchor_log.csv, bc_detection_log.csv, bc_dkg_log.csv and
 // bc_flowmod_log.csv (records fused together with missing commas/newlines).
+//
+// The attack/pct/delay suffix alone is NOT enough: run_std_attacks.py always
+// launches the plain MOBIGUARD run and the TAP baseline run for a given Attack
+// 2 percentage as two CONCURRENT processes (--enable_tap=1 for the latter),
+// and both compute the exact same id/pct/delay, so both opened (and
+// std::ios::trunc'd) the identical path at once — confirmed live: the TAP
+// run for a percentage crashing before start left that one percentage's
+// bc_anchor_log with zero corruption (single writer), while every percentage
+// where both processes ran had fused/lost rows. The "_TAP" tag below (same
+// convention as the A2_pct<P>..._TAP.log run logs) gives the two processes
+// disjoint paths so bc_write_row()'s per-stream fail()/retry logic is no
+// longer defeated by a second process truncating the same file underneath it.
 inline std::string bc_run_suffix() {
     int id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
-    return "_Attack" + std::to_string(id) + "_" + std::to_string(attack_percentage) + g_delay_suffix;
+    return "_Attack" + std::to_string(id) + "_" + std::to_string(attack_percentage) + g_delay_suffix
+           + (enable_tap ? "_TAP" : "");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
