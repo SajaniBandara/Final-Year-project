@@ -68,6 +68,7 @@ NS3_DIR     = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
 SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs"
+BINARY_PATH = NS3_DIR / "build" / "scratch" / "routing" / "routing"
 
 # ---------------------------------------------------------------------------
 # Simulation parameters — mirrors run_attack2_sweep.sh conventions
@@ -186,7 +187,7 @@ def build_waf_command(attack_number: int, attack_percentage: int,
                       sim_time: int, seed: int, sim_run: int,
                       delay_ms: int | None,
                       extra_params: dict | None = None) -> list[str]:
-    """Construct the full ./waf --run command for one simulation run."""
+    """Construct the full ./waf --run-no-build command for one simulation run."""
     params = dict(FIXED_PARAMS)
     params["simTime"]           = sim_time
     params["attack_number"]     = attack_number
@@ -199,7 +200,16 @@ def build_waf_command(attack_number: int, attack_percentage: int,
         params.update(extra_params)
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
-    return ["./waf", "--run", f"scratch/routing/routing {param_str}"]
+    # --run-no-build (not --run): every sweep launches many of these at once
+    # (up to --workers concurrently), and plain --run makes each invocation do
+    # its own implicit build check first. Those concurrent implicit builds
+    # raced on the shared build/compile_commands.json (clang_compilation_database
+    # post-build hook), crashing whichever run lost the race before it ever
+    # started simulating — confirmed live: an Attack-2 TAP run's log showed a
+    # JSONDecodeError in that hook, seconds after launch, with zero simulation
+    # output. --build already compiles the binary and exits before any sweep
+    # runs, so re-checking the build here is redundant as well as unsafe.
+    return ["./waf", "--run-no-build", f"scratch/routing/routing {param_str}"]
 
 
 def run_one(attack_number: int, attack_percentage: int,
@@ -350,6 +360,15 @@ def main() -> None:
             sys.exit(1)
         print("Build complete. Re-run without --build to launch the simulations.")
         sys.exit(0)
+
+    # Runs use --run-no-build (see build_waf_command) so concurrent sweep
+    # processes don't race on waf's implicit build check. That means there is
+    # no fallback that builds the binary for you — check it exists now, with
+    # one clear message, instead of launching a dozen runs that would each
+    # fail separately with a raw waf "program not found" error.
+    if not BINARY_PATH.exists():
+        print(f"ERROR: {BINARY_PATH} not found. Run with --build first.")
+        sys.exit(1)
 
     # ── Resolve scope ────────────────────────────────────────────────────────
     scope_attacks = [args.attack] if args.attack else [a["attack_number"] for a in ATTACKS]
