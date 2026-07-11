@@ -66,7 +66,7 @@ static int           g_tref_seq          = 0;
 static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 
 static const std::string BC_RESULTS_DIR =
-    "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
+    "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 
 // Per-run filename suffix ("_Attack{id}_{pct}{delay}[_TAP]"), mirrors the
 // scheme write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without
@@ -268,7 +268,7 @@ static void bc_open_files()
     if (g_bc_files_open) return;
 
     const std::string dir =
-        "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.
