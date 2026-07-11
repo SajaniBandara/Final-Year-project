@@ -114695,7 +114695,19 @@ double   g_ucr_cumulative  = 0.0;
 // FN_W: true passive-HF malicious nodes whose pool never reached
 //       threshold — a snapshot recomputed every cycle (not cumulative)
 //       in calculate_witness_wapr_metric() below.
-std::map<uint32_t, bool> g_witness_threshold_fired;
+//
+// FIXED 2026-07-11 — split from a single shared flag used by BOTH the
+// duplication-alert (DA, eq:dup_alert_cond) and non-forwarding-alert (NFA,
+// eq:nfwd_detect) witness mechanisms. main.tex's M12/WAP-R is defined only
+// over the DA mechanism ("Eqs. dup_alert_cond, bft_penalty... specifically
+// against Variants 7 and 8") — NFA is a different alert type entirely, for
+// delay-equivalent non-delivery tied to Selective Time Delay (Variants 1-4),
+// not Hidden Forwarding. Sharing one flag meant an NFA threshold-crossing
+// (e.g. from an unrelated delayed packet) could pre-set a node's flag,
+// silently skipping a later, genuine DA threshold-crossing for that same
+// node and undercounting TP_W. g_witness_da_threshold_fired is DA-only and
+// is what calculate_witness_wapr_metric()'s FN_W computation now reads.
+std::map<uint32_t, bool> g_witness_da_threshold_fired;
 uint32_t g_witness_TP_W         = 0;
 uint32_t g_witness_FP_W         = 0;
 uint32_t g_witness_FN_W         = 0;
@@ -117393,17 +117405,20 @@ void calculate_ucr_metric()
 // P_W = TP_W / (TP_W + FP_W)   (eq:wap)
 // R_W = TP_W / (TP_W + FN_W)   (eq:war)
 // TP_W/FP_W are cumulative counters incremented once per node the first
-// time its witness alert pool crosses the 2f+1 threshold (see
-// crypto_layer.h witness_submit_duplication_alert/witness_submit_nfa_alert).
+// time its DUPLICATION-alert pool crosses the 2f+1 threshold (see
+// crypto_layer.h witness_submit_duplication_alert() — NOT witness_submit_
+// nfa_alert(), a different mechanism unrelated to M12; fixed 2026-07-11,
+// see g_witness_da_threshold_fired declaration above for the full reasoning).
 // FN_W is a snapshot (not cumulative): true passive-HF malicious nodes
-// whose pool has not yet crossed threshold, recomputed every cycle.
+// whose duplication-alert pool has not yet crossed threshold, recomputed
+// every cycle.
 // ============================================================
 void calculate_witness_wapr_metric()
 {
     uint32_t fn_w = 0;
     if (present_passive_hf_attack) {
         for (int n = 0; n < total_size; n++) {
-            if (passive_hf_malicious_nodes[n] && !g_witness_threshold_fired[(uint32_t)n])
+            if (passive_hf_malicious_nodes[n] && !g_witness_da_threshold_fired[(uint32_t)n])
                 fn_w++;
         }
     }
@@ -118205,6 +118220,28 @@ void transmit_solution()
 void transmit_delta_values()
 {
 	// §7.4 — FlowMod pre-installation audit: log → endorse → commit (eq:rsu_endorsement)
+	//
+	// REVERTED 2026-07-11 — a same-day attempt to loop this over both flow
+	// instances (0 and 1, since g_flowmod_endorsements only ever tracked
+	// flow 0 despite 2*flows=2 symmetric flows existing) broke S5 entirely:
+	// flowmod_endorse() is completely attack-agnostic — it has every RSU
+	// unconditionally sign+endorse whatever fid it's given, without any
+	// awareness of whether that flow's FlowMod is the attacker's injected
+	// one. Extending the loop to fid=1 made ALL 64 RSUs "legitimately"
+	// endorse the ATTACK's own flow every cycle, so bc_query_flowmod(1)
+	// flipped from always-false to always-true, which made S5's conjunction
+	// 1 (s5_detection.h: `if (bc_query_flowmod(base_flow_id)) return
+	// false;`) early-return on every packet — confirmed empirically: S5
+	// produced zero [S5] log lines at all (was correctly firing 47 times
+	// before this attempt).
+	// The underlying issue (bc_query_flowmod(1) is vacuous, not a genuine
+	// "was this FlowMod endorsement-bypassed" check) is real and UNFIXED —
+	// see docs/PENDING_FIXES.md. A correct fix needs the endorsement
+	// mechanism itself to become attack-aware (e.g. skip/reject endorsement
+	// for a flow_id known to be attacker-injected), not just wider fid
+	// coverage of an attack-agnostic quorum process. Reverted to the
+	// original fid=0-only behaviour, which — while not a real check for any
+	// other flow — does not actively break detection.
 	{
 		uint32_t fid = 0;
 		// M7 eq:t_consensus — T_consensus = t_commit − t_FlowMod_recv. The whole

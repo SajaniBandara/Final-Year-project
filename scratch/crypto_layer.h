@@ -1082,13 +1082,32 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                   << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
-        // M12 — WAP-R: count this threshold-crossing event once per node per run
-        if (!g_witness_threshold_fired[target_node]) {
-            g_witness_threshold_fired[target_node] = true;
-            if (present_passive_hf_attack && passive_hf_malicious_nodes[target_node])
-                ++g_witness_TP_W;
-            else
-                ++g_witness_FP_W;
+        // M12 — WAP-R: count this threshold-crossing event once per node per run.
+        //
+        // FIXED 2026-07-11 — main.tex's M12 definition (§"Witness Alert
+        // Precision and Recall") is scoped "specifically against Variants 7
+        // and 8" (passive HF) — it is NOT meant to score threshold-crossing
+        // events from any other scenario. This function (the duplication
+        // alert, eq:dup_alert_cond) also fires correctly during ACTIVE HF
+        // (Variants 5/6, gated on present_active_hf_attack||present_passive_hf_attack
+        // at its only call site in routing.cc), and previously classified
+        // every one of those GENUINE active-HF detections as a WAP-R false
+        // positive (the `else` branch), since `present_passive_hf_attack` is
+        // false during an active-only run. Empirically confirmed: A5/A6 runs
+        // reported TP_W=0, FP_W=30-33, P_W=0.000% — completely misleading,
+        // since those 30+ events were correct detections of a real attacker,
+        // not false accusations. Now only counted when the run is genuinely
+        // passive-HF-flagged; active-HF and non-HF threshold events are
+        // correctly excluded from WAP-R's tally entirely (M12 is simply not
+        // applicable there, not "0% precision").
+        if (!g_witness_da_threshold_fired[target_node]) {
+            g_witness_da_threshold_fired[target_node] = true;
+            if (present_passive_hf_attack) {
+                if (passive_hf_malicious_nodes[target_node])
+                    ++g_witness_TP_W;
+                else
+                    ++g_witness_FP_W;
+            }
         }
     }
 }
@@ -1150,14 +1169,18 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
         trust_update_negative(target_node);
-        // M12 — WAP-R: count this threshold-crossing event once per node per run
-        if (!g_witness_threshold_fired[target_node]) {
-            g_witness_threshold_fired[target_node] = true;
-            if (present_passive_hf_attack && passive_hf_malicious_nodes[target_node])
-                ++g_witness_TP_W;
-            else
-                ++g_witness_FP_W;
-        }
+        // M12 (WAP-R) intentionally NOT counted here (fixed 2026-07-11).
+        // main.tex scopes M12 to the duplication-alert mechanism only
+        // (eq:dup_alert_cond, "specifically against Variants 7 and 8") — this
+        // is the non-forwarding alert (eq:nfwd_detect), a different mechanism
+        // tied to delay-equivalent non-delivery for Selective Time Delay
+        // (Variants 1-4), not Hidden Forwarding. It previously shared
+        // g_witness_threshold_fired with the duplication-alert path, so an
+        // NFA crossing here could pre-set a node's flag and silently skip a
+        // later, genuine duplication-alert crossing for that same node,
+        // undercounting M12's TP_W. trust_update_negative() above still
+        // fires correctly regardless — only the M12-specific bookkeeping is
+        // removed from this function.
     }
 }
 
