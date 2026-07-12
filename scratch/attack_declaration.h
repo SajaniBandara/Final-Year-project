@@ -32,7 +32,6 @@
 // =========================================================================
 
 #include <iostream>
-#include <vector>
 #include "ns3/simulator.h"
 
 using namespace ns3;
@@ -45,7 +44,6 @@ using namespace std;
 // definition should be added in this header.
 extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
-extern void ShuffleNodeIndices(std::vector<uint32_t>& indices);
 extern void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next_hop, double delay);
 extern void record_attack_onset(int v, int n);
 
@@ -83,55 +81,61 @@ inline void declare_attack_states()
     present_selective_delay_cp_attack    = false;
     present_selective_delay_attack_nodes = false;
 
-    // S1/S2/S3/S4/S5-S8 signature detectors are NOT gated per attack_number.
-    // main.tex's only mode-level ablation for this part of the architecture
-    // is AB1 (enable_lrad_obu / enable_lrad_rsu, main.tex:4141-4170), which
-    // gates the entire OBU/RSU detection stage; within that stage, all
-    // applicable signatures are evaluated continuously (alg:lrad_obu's
-    // D_OBU = flag_S1 v flag_S2p v flag_S3 v flag_S4 and alg:lrad_rsu's
-    // D_RSU = flag_S2f v flag_S5 v ... v flag_S8 are both ORs across every
-    // signature, with no "only check the one matching the current attack"
-    // clause) — matching main.tex:4621's "all eight attack variants operate
-    // simultaneously in every experiment." Each sX_detect() function already
-    // gates on its own attack-specific ground truth internally (e.g.
-    // s5_detect() checks active_hf_malicious_nodes[prev_sender]), so leaving
-    // every signature always-on is safe: a detector with no matching
-    // attacker present in this run simply never fires. Removed the previous
-    // per-attack_number reset-and-arm-one-signature logic 2026-07-09.
+    // GATE-1 fix (LRAD plan): reset all MOBIGUARD detection-active flags so
+    // exactly one is enabled per run. Without this, all flags stay false and
+    // s1_detect_packet()/s2_detect_packet()/s5_detect()…s8_detect() return
+    // immediately on every call, making MOBIGUARD S1/S2/S5–S8 completely
+    // unreachable regardless of what LRAD calls. S3/S4 are not gated by a
+    // detection_active boolean — they use lrad_tcam_snapshot() directly.
+    s1_detection_active = false;
+    s2_detection_active = false;
+    s5_detection_active = false;
+    s6_detection_active = false;
+    s7_detection_active = false;
+    s8_detection_active = false;
+
     switch (attack_number)
     {
         case (1): // Selective Time Delay — Control Plane (Attack 1)
             present_selective_delay_cp_attack = true;
             active_attack_variant = 0;
+            s1_detection_active = true;
             break;
 
         case (2): // Selective Time Delay — Data Plane (Attack 2)
             present_selective_delay_attack_nodes = true;
             active_attack_variant = 1;
+            s2_detection_active = true;
             break;
 
         case (3): // TCAM Exhaustion — Control Plane (Attack 3)
             active_attack_variant = 2;
+            // S3 detection uses lrad_tcam_snapshot() — no detection_active gate.
             break;
 
         case (4): // TCAM Exhaustion — Data Plane (Attack 4)
             active_attack_variant = 3;
+            // S4 detection uses lrad_tcam_snapshot() — no detection_active gate.
             break;
 
         case (5): // Active Hidden Forwarding — Control Plane (Attack 5)
             active_attack_variant = 4;
+            s5_detection_active = true;
             break;
 
         case (6): // Active Hidden Forwarding — Data Plane (Attack 6)
             active_attack_variant = 5;
+            s6_detection_active = true;
             break;
 
         case (7): // Passive Hidden Forwarding — Control Plane (Attack 7)
             active_attack_variant = 6;
+            s7_detection_active = true;
             break;
 
         case (8): // Passive Hidden Forwarding — Data Plane (Attack 8)
             active_attack_variant = 7;
+            s8_detection_active = true;
             break;
 
         default:
@@ -149,14 +153,7 @@ inline void declare_attack_states()
 
 // declare_attackers():
 // Per-run "who is malicious" derivation for both attacks, driven entirely
-// by attack_percentage. Attack 2: deterministic count floor(0.01*p*var)
-// (main.tex simulation_table: attacker allocation = floor(0.01*p*264) nodes),
-// with only WHICH nodes are attackers randomized per seed via a seeded
-// Fisher-Yates shuffle (ShuffleNodeIndices) — NOT the count itself. An
-// earlier version drew an independent Bernoulli(p) coin per node, which
-// gives the right count only in expectation (binomial variance of ~+-8
-// nodes at p=40%), confounding attack_percentage sweeps across the "5 fixed
-// pseudorandom seeds" the proposal specifies per configuration.
+// by attack_percentage. Attack 2: independent stochastic draw per node.
 // Attack 1: deterministic threshold ladder over N_Controllers, always
 // leaving at least one controller honest.
 inline void declare_attackers()
@@ -172,36 +169,20 @@ inline void declare_attackers()
 
     for (uint32_t i = 0; i < (uint32_t)var; i++)
     {
-        selective_delay_malicious_nodes[i] = false;
-        is_malicious_node[1][i]            = false;
-    }
-
-    if (present_selective_delay_attack_nodes == true)
-    {
-        uint32_t n_candidates = (uint32_t)var;
-        // +1e-9 epsilon guards the truncating cast against floating-point
-        // rounding landing infinitesimally below an exact integer boundary
-        // (e.g. 0.01*100.0*264.0 should equal exactly 264.0, but is not
-        // guaranteed to under all compilers/optimization levels/FMA
-        // behavior) — without it, a boundary case could silently truncate
-        // to one fewer attacker than main.tex's floor(0.01p*264) specifies,
-        // at exactly the sweep points {0,20,40,60,80,100} main.tex tests
-        // (main.tex:5041, code review finding, 2026-07-08).
-        uint32_t n_atk = (uint32_t)(0.01 * attack_percentage * (double)n_candidates + 1e-9);
-        if (n_atk > n_candidates) n_atk = n_candidates; // guard p=100 rounding
-
-        std::vector<uint32_t> candidates(n_candidates);
-        for (uint32_t i = 0; i < n_candidates; i++) candidates[i] = i;
-        if (n_atk > 0) ShuffleNodeIndices(candidates);
-
-        for (uint32_t k = 0; k < n_atk; k++)
+        bool attacking_state = GetBooleanWithProbability(attack_percentage, i);
+        if (present_selective_delay_attack_nodes == true)
         {
-            uint32_t idx = candidates[k];
-            selective_delay_malicious_nodes[idx] = true;
-
+            selective_delay_malicious_nodes[i] = attacking_state;
+            
             // Sync ground-truth for TAP Detection (Attack 2 is variant index 1)
-            is_malicious_node[1][idx] = true;
-            t_onset[idx] = attack_start_time;
+            is_malicious_node[1][i] = attacking_state;
+            if (attacking_state) {
+                t_onset[i] = attack_start_time;
+            }
+        }
+        else
+        {
+            selective_delay_malicious_nodes[i] = false;
         }
     }
 
@@ -226,12 +207,8 @@ inline void declare_attackers()
         // Below 100%, always leave at least one controller honest.
         uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers
                                                                  : N_Controllers - 1;
-        // main.tex simulation_table: "<33%:1; 33-66%:2; >=66%:3; 100%:4" — three
-        // bands only. p==0 (no attack) is the sole zero-compromise case; an
-        // earlier "<10% -> step 0" band left attack_percentage in [1,10) with
-        // zero controllers compromised, contradicting the table's "<33% -> 1".
         uint32_t step;
-        if (attack_percentage == 0)       step = 0;
+        if (attack_percentage < 10)       step = 0;
         else if (attack_percentage < 33)  step = 1;
         else if (attack_percentage < 66)  step = 2;
         else                              step = 3;

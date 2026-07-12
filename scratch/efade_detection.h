@@ -28,17 +28,10 @@
 //
 //  Component 4 – Anomaly identification:
 //      For each node on the flow path (excluding the source), the detector
-//      compares the COUNT of packets received (p_in) against the COUNT of
-//      packets forwarded (p_out) during the epoch — mirroring Li et al.'s
-//      Algorithm 2, which compares raw packet counts reported by R1/R2
-//      rules (p1 vs p_i), not individual packet identities (real FADE's R1/R2
-//      rules count matched packets; they cannot see packet IDs). If
-//      p_out > p_in, the node is duplicating traffic and is flagged as a
-//      "duplication" anomaly, with that node recorded as the localisation.
-//      (An earlier version tracked exact packet IDs and destination sets,
-//      which is strictly more precise than what real FADE can observe and
-//      understated the flow-statistics-accuracy limitation main.tex's B3
-//      comparison is meant to expose — see docs/PENDING_FIXES.md Fix 7.)
+//      compares packets received (fade_node_in) against packets forwarded
+//      (fade_node_out). If the outbound count exceeds the inbound count,
+//      the node is duplicating traffic and is flagged as a "duplication"
+//      anomaly, with that node recorded as the localisation.
 //
 // ── Globals defined in routing.cc, used here ─────────────────────────────────
 //   extern int      active_attack_variant;
@@ -100,15 +93,10 @@ std::map<uint32_t, FadeFlowConfig>      fade_flow_config;
 std::map<uint32_t, FadeDetectionResult> fade_results;
 std::ofstream fade_csv;
 
-// received_count[flow_id][node] = number of packet-receive events at node this epoch
-// (count-based, mirrors R1/R2's packet counters in Li et al. — real FADE rules
-// count matches, they cannot record individual packet identities).
-std::map<uint32_t, std::map<uint32_t, uint32_t>> fade_received_count;
-// forwarded_count[flow_id][node] = number of packet-forward events (send
-// events) at node this epoch; a node that sends the same packet to two
-// destinations increments this twice, so forwarded_count > received_count
-// signals duplication exactly as p_i != p1 does in the paper's Algorithm 2.
-std::map<uint32_t, std::map<uint32_t, uint32_t>> fade_forwarded_count;
+// received[flow_id][node] = set of distinct packet_ids that arrived at node
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> fade_received;
+// forwarded[flow_id][node][packet_id] = set of distinct next-hop destinations
+std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded;
 uint32_t pp_tp_global = 0;
 uint32_t pp_tn_global = 0;
 uint32_t pp_fp_global = 0;
@@ -289,12 +277,12 @@ extern uint32_t origination_counter[2*flows];
 inline bool fade_is_flow_active(uint32_t flow_id)
 {
     if (destination_counter[flow_id] > 0) return true;
-    auto it = fade_received_count.find(flow_id);
-    if (it != fade_received_count.end())
+    auto it = fade_received.find(flow_id);
+    if (it != fade_received.end())
     {
         for (auto &node_entry : it->second)
         {
-            if (node_entry.second > 0) return true;
+            if (!node_entry.second.empty()) return true;
         }
     }
     return false;
@@ -464,8 +452,12 @@ inline void fade_detect_anomaly()
         std::cout << "[eFADE DEBUG] detect flow " << flow_id << " path_len=" << cfg.path_len;
         for (uint32_t i = 0; i < cfg.path_len; i++) {
             uint32_t n = cfg.path_nodes[i];
-            std::cout << "  node" << n << "(recv=" << fade_received_count[flow_id][n]
-                       << ",fwd=" << fade_forwarded_count[flow_id][n] << ")";
+            std::cout << "  node" << n << "(recv=" << fade_received[flow_id][n].size();
+            uint32_t multi = 0;
+            for (auto const &kv : fade_forwarded[flow_id][n]) {
+                if (kv.second.size() >= 2) multi++;
+            }
+            std::cout << ",multi_dest_pkts=" << multi << ")";
         }
         std::cout << " [attacked=" << fade_is_flow_attacked(flow_id) << "]" << std::endl;
 
@@ -477,14 +469,25 @@ inline void fade_detect_anomaly()
             // EXCLUDE the source node from the check
             if (node != cfg.source)
             {
-                // Count-based conservation check (Algorithm 2, Li et al.):
-                // p_in = packets received at this node this epoch (~ p1 at
-                // the reference rule); p_out = packets forwarded (~ p_i at
-                // this node's R2 rule). p_out > p_in means this node sent
-                // out more copies than it took in — duplication.
-                uint32_t p_in  = fade_received_count[flow_id][node];
-                uint32_t p_out = fade_forwarded_count[flow_id][node];
-                bool duplication_detected = (p_out > p_in);
+                bool duplication_detected = false;
+
+                for (auto const &pkt_entry : fade_forwarded[flow_id][node])
+                {
+                    uint32_t pid = pkt_entry.first;
+                    auto const &dest_set = pkt_entry.second;
+
+                    // Condition (a): forwarded packet_id not in received-set
+                    bool not_received = (fade_received[flow_id][node].find(pid) == fade_received[flow_id][node].end());
+
+                    // Condition (b): forwarded same packet_id to >= 2 destinations
+                    bool multi_dest = (dest_set.size() >= 2);
+
+                    if (not_received || multi_dest)
+                    {
+                        duplication_detected = true;
+                        break;
+                    }
+                }
 
                 if (duplication_detected)
                 {
@@ -512,16 +515,10 @@ inline void fade_detect_anomaly()
     int32_t epoch_mal_node = -1;
     fade_find_active_attack_flow_and_node(epoch_atk_fid, epoch_mal_node);
 
-    // Node-epoch TP/FP/TN/FN accumulation across all configured flows.
-    // For each node on each flow path (excluding source) that saw any
-    // traffic this epoch, classify the node's count-conservation verdict
-    // (p_out > p_in) as TP/FP/TN/FN against ground truth. This mirrors
-    // Algorithm 2's own decision granularity — one verdict per node per
-    // detection round, not per packet identity (see the count-based
-    // rewrite note at the top of this file / PENDING_FIXES.md Fix 7).
-    // In practice this rarely changes sample count vs the old per-packet
-    // version: flows send at 1 Hz into 1 s epochs, so almost every epoch
-    // has at most one packet in flight per node anyway.
+    // Per-packet TP/FP/TN/FN accumulation across all configured flows.
+    // For each node on each flow path (excluding source), classify each
+    // forwarded packet as TP/FP/TN/FN based on whether the node is
+    // malicious and whether it sent to multiple destinations.
     for (auto const &flow_entry : fade_flow_config)
     {
         uint32_t fid2 = flow_entry.first;
@@ -533,26 +530,25 @@ inline void fade_detect_anomaly()
             if (node == cfg2.source) continue;
             bool node_malicious = active_hf_malicious_nodes[node] || passive_hf_malicious_nodes[node];
 
-            auto it_fid = fade_forwarded_count.find(fid2);
-            if (it_fid == fade_forwarded_count.end()) continue;
+            auto it_fid = fade_forwarded.find(fid2);
+            if (it_fid == fade_forwarded.end()) continue;
             auto it_node = it_fid->second.find(node);
             if (it_node == it_fid->second.end()) continue;
 
-            uint32_t p_out = it_node->second;
-            uint32_t p_in  = fade_received_count[fid2][node];
-            if (p_out == 0 && p_in == 0) continue; // no traffic at this node this epoch
-
-            bool dup = (p_out > p_in);
-            if ( node_malicious &&  dup) pp_tp_global++;
-            if (!node_malicious &&  dup) pp_fp_global++;
-            if (!node_malicious && !dup) pp_tn_global++;
-            if ( node_malicious && !dup) pp_fn_global++;
+            for (auto const &p_entry : it_node->second)
+            {
+                bool dup = (p_entry.second.size() >= 2);
+                if ( node_malicious &&  dup) pp_tp_global++;
+                if (!node_malicious &&  dup) pp_fp_global++;
+                if (!node_malicious && !dup) pp_tn_global++;
+                if ( node_malicious && !dup) pp_fn_global++;
+            }
         }
     }
 
     // Clear the maps at the end of the epoch.
-    fade_received_count.clear();
-    fade_forwarded_count.clear();
+    fade_received.clear();
+    fade_forwarded.clear();
 
     Simulator::Schedule(Seconds(FADE_EPOCH_SEC), &fade_detect_anomaly);
 }

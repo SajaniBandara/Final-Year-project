@@ -47,51 +47,18 @@ static std::map<uint32_t, int> g_model_round;
 
 static std::ofstream g_bc_detection_csv;
 static bool          g_bc_detection_open = false;
-static std::string   g_bc_detection_path;
 static std::ofstream g_bc_model_csv;
 static bool          g_bc_model_open     = false;
-static std::string   g_bc_model_path;
 static std::ofstream g_bc_dkg_csv;
 static bool          g_bc_dkg_open       = false;
-static std::string   g_bc_dkg_path;
 static std::ofstream g_bc_anchor_csv;
 static bool          g_bc_anchor_open    = false;
-static std::string   g_bc_anchor_path;
-static std::ofstream g_bc_tref_csv;
-static bool          g_bc_tref_open      = false;
-static std::string   g_bc_tref_path;
 static int           g_dkg_round         = 0;
 static int           g_anchor_seq        = 0;
-static int           g_tref_seq          = 0;
 static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 
 static const std::string BC_RESULTS_DIR =
     "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
-
-// Per-run filename suffix ("_Attack{id}_{pct}{delay}[_TAP]"), mirrors the
-// scheme write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without
-// this, every run (and every other process pointed at BC_RESULTS_DIR) writes
-// the same bc_*.csv filenames, so concurrent/sequential runs interleave torn
-// writes into each other's files — this is what was corrupting
-// bc_anchor_log.csv, bc_detection_log.csv, bc_dkg_log.csv and
-// bc_flowmod_log.csv (records fused together with missing commas/newlines).
-//
-// The attack/pct/delay suffix alone is NOT enough: run_std_attacks.py always
-// launches the plain MOBIGUARD run and the TAP baseline run for a given Attack
-// 2 percentage as two CONCURRENT processes (--enable_tap=1 for the latter),
-// and both compute the exact same id/pct/delay, so both opened (and
-// std::ios::trunc'd) the identical path at once — confirmed live: the TAP
-// run for a percentage crashing before start left that one percentage's
-// bc_anchor_log with zero corruption (single writer), while every percentage
-// where both processes ran had fused/lost rows. The "_TAP" tag below (same
-// convention as the A2_pct<P>..._TAP.log run logs) gives the two processes
-// disjoint paths so bc_write_row()'s per-stream fail()/retry logic is no
-// longer defeated by a second process truncating the same file underneath it.
-inline std::string bc_run_suffix() {
-    int id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
-    return "_Attack" + std::to_string(id) + "_" + std::to_string(attack_percentage) + g_delay_suffix
-           + (enable_tap ? "_TAP" : "");
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flowmod endorsement functions — synchronous BFT path (eq:endorsed_commit).
@@ -110,11 +77,7 @@ inline bool bc_log_flowmod(const FlowModEndorsement& /*e*/, uint32_t /*rsu_idx*/
 inline bool bc_commit_flowmod(FlowModEndorsement& e) {
     // f = floor((N_RSUs-1)/3) Byzantine faults tolerated; require f+1 endorsers (eq:endorsed_commit)
     uint32_t f_plus_1 = (N_RSUs > 0) ? ((N_RSUs - 1) / 3) + 1 : 1;
-    // AB8-A (enable_endorsement_requirement=false): controller commits unilaterally —
-    // quorum check skipped, every FlowMod commits, so bc_query_flowmod() always finds
-    // a committed entry and f_unauth (S3/S5 blockchain conjunct) can never fire.
-    if (enable_endorsement_requirement &&
-        (uint32_t)e.endorsing_rsus.size() < f_plus_1) {
+    if ((uint32_t)e.endorsing_rsus.size() < f_plus_1) {
         std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
                   << e.endorsing_rsus.size() << " < required f+1=" << f_plus_1
                   << " → S1 detection signal\n";
@@ -173,9 +136,7 @@ static const double BC_S4_UTIL_THRESH   = 0.80; // 80% utilisation triggers pena
 // ─────────────────────────────────────────────────────────────────────────────
 
 static std::ofstream g_bc_flowmod_csv;
-static std::string   g_bc_flowmod_path;
 static std::ofstream g_bc_trust_csv;
-static std::string   g_bc_trust_path;
 static bool          g_bc_files_open = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,51 +178,6 @@ static std::string bc_ip_str(uint32_t ip)
     return oss.str();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// bc_write_row() — write one already-newline-terminated CSV row and verify
-// it actually landed.
-//
-// Every bc_*.csv writer in this file used to only check ofstream::is_open()
-// before writing, never the stream's state afterward. is_open() stays true
-// even after a stream has hit an I/O error and set failbit, and std::ofstream
-// does not throw on failure by default — so a single transient write error
-// at any point silently kills every later write to that stream for the rest
-// of the run, while the unconditional [BC-*] stdout confirmation lines keep
-// printing normally (they don't check whether the CSV write succeeded).
-//
-// This was confirmed on a live run by comparing stdout commit counts against
-// on-disk row counts: bc_anchor_log lost 60-75% of its rows, bc_flowmod_log
-// lost ~20-25%, bc_tref_log lost a smaller but consistent fraction — every
-// single one of the 6 attack_percentage runs, not a one-off. The write calls
-// themselves were correct (single-threaded, fresh buffers, flush per row);
-// the bug was that nothing ever noticed or reacted when a write failed.
-//
-// Fix: check the stream after every write; if it failed, clear the error,
-// reopen the same path in append mode, retry once, and print a
-// [BC-WRITE-ERROR] line so any future recurrence is visible in the log
-// instead of silently vanishing again.
-// ─────────────────────────────────────────────────────────────────────────────
-inline void bc_write_row(std::ofstream& fs, const std::string& path, const std::string& row)
-{
-    fs << row;
-    fs.flush();
-    if (fs.fail()) {
-        std::cerr << "[BC-WRITE-ERROR] write failed for " << path
-                   << " — reopening in append mode and retrying\n";
-        fs.clear();
-        fs.close();
-        fs.open(path, std::ios::app);
-        if (fs.is_open()) {
-            fs << row;
-            fs.flush();
-            if (fs.fail())
-                std::cerr << "[BC-WRITE-ERROR] retry failed for " << path << " — row lost\n";
-        } else {
-            std::cerr << "[BC-WRITE-ERROR] reopen failed for " << path << " — row lost\n";
-        }
-    }
-}
-
 // Open both CSVs with headers (called lazily on first use).
 static void bc_open_files()
 {
@@ -272,20 +188,18 @@ static void bc_open_files()
 
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.
-    g_bc_flowmod_path = dir + "bc_flowmod_log" + bc_run_suffix() + ".csv";
-    g_bc_flowmod_csv.open(g_bc_flowmod_path, std::ios::trunc);
+    g_bc_flowmod_csv.open(dir + "bc_flowmod_log.csv", std::ios::trunc);
     if (g_bc_flowmod_csv.is_open())
-        bc_write_row(g_bc_flowmod_csv, g_bc_flowmod_path,
-                     "rsu_id,flow_mod_hash,recv_timestamp_ms,"
-                     "is_malicious,src_ip,dst_ip,src_port,dst_port\n");
+        g_bc_flowmod_csv
+            << "rsu_id,flow_mod_hash,recv_timestamp_ms,"
+               "is_malicious,src_ip,dst_ip,src_port,dst_port\n";
 
     // bc_trust_updates.csv — one row per S3/S4 anomaly penalty
     // Columns match the chaincode UpdateTrust() signature + reason fields.
-    g_bc_trust_path = dir + "bc_trust_updates" + bc_run_suffix() + ".csv";
-    g_bc_trust_csv.open(g_bc_trust_path, std::ios::trunc);
+    g_bc_trust_csv.open(dir + "bc_trust_updates.csv", std::ios::trunc);
     if (g_bc_trust_csv.is_open())
-        bc_write_row(g_bc_trust_csv, g_bc_trust_path,
-                     "rsu_id,success,timestamp_ms,reason,rule_count,rate_per_s\n");
+        g_bc_trust_csv
+            << "rsu_id,success,timestamp_ms,reason,rule_count,rate_per_s\n";
 
     g_bc_files_open = true;
 }
@@ -312,12 +226,16 @@ inline void bc_log_flowmod(uint32_t node_id,
 
     // ── Write CSV row ────────────────────────────────────────────────────────
     if (g_bc_flowmod_csv.is_open()) {
-        std::string row = std::to_string(node_id) + "," + hash + "," +
-                           std::to_string(static_cast<long long>(now_ms)) + "," +
-                           std::to_string(is_malicious ? 1 : 0) + "," +
-                           bc_ip_str(src_ip) + "," + bc_ip_str(dst_ip) + "," +
-                           std::to_string(src_port) + "," + std::to_string(dst_port) + "\n";
-        bc_write_row(g_bc_flowmod_csv, g_bc_flowmod_path, row); // real-time: bridge sees row immediately
+        g_bc_flowmod_csv
+            << node_id          << ","
+            << hash             << ","
+            << static_cast<long long>(now_ms) << ","
+            << (is_malicious ? 1 : 0) << ","
+            << bc_ip_str(src_ip) << ","
+            << bc_ip_str(dst_ip) << ","
+            << src_port          << ","
+            << dst_port          << "\n";
+        g_bc_flowmod_csv.flush(); // real-time: bridge sees row immediately
     }
 
     // ── NS-3 stdout confirmation line ────────────────────────────────────────
@@ -346,13 +264,14 @@ inline void bc_log_flowmod(uint32_t node_id,
         if (rate > BC_S3_RATE_THRESH && !g_bc_s3_fired[node_id]) {
             // S3 threshold crossed — emit one trust penalty for this burst.
             if (g_bc_trust_csv.is_open()) {
-                std::ostringstream rate_oss;
-                rate_oss << std::fixed << std::setprecision(2) << rate;
-                std::string row = std::to_string(node_id) + ",0," + // success=false → penalty
-                                   std::to_string(static_cast<long long>(now_ms)) + ",S3," +
-                                   std::to_string(g_tcam_rule_count[node_id]) + "," +
-                                   rate_oss.str() + "\n";
-                bc_write_row(g_bc_trust_csv, g_bc_trust_path, row);
+                g_bc_trust_csv
+                    << node_id  << ","
+                    << 0        << ","   // success=false → penalty
+                    << static_cast<long long>(now_ms) << ","
+                    << "S3"     << ","
+                    << g_tcam_rule_count[node_id] << ","
+                    << std::fixed << std::setprecision(2) << rate << "\n";
+                g_bc_trust_csv.flush();
             }
             std::cout << "[BC-S3] rsu=" << node_id
                       << " rate=" << std::fixed << std::setprecision(1)
@@ -401,10 +320,14 @@ inline void bc_check_s4()
         if (count > thresh) {
             // Write one penalty row per second while above threshold.
             if (g_bc_trust_csv.is_open()) {
-                std::string row = std::to_string(rsu_idx) + ",0," + // success=false → penalty
-                                   std::to_string(static_cast<long long>(now_ms)) + ",S4," +
-                                   std::to_string(count) + ",0\n"; // rate=0 (N/A for S4)
-                bc_write_row(g_bc_trust_csv, g_bc_trust_path, row);
+                g_bc_trust_csv
+                    << rsu_idx << ","
+                    << 0       << ","   // success=false → penalty
+                    << static_cast<long long>(now_ms) << ","
+                    << "S4"    << ","
+                    << count   << ","
+                    << 0       << "\n"; // rate=0 (N/A for S4)
+                g_bc_trust_csv.flush();
             }
 
             // Print [BC-S4] only first time to avoid flooding stdout.
@@ -437,46 +360,31 @@ inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash
 
 static void bc_open_detection_csv() {
     if (g_bc_detection_open) return;
-    g_bc_detection_path = BC_RESULTS_DIR + "bc_detection_log" + bc_run_suffix() + ".csv";
-    g_bc_detection_csv.open(g_bc_detection_path, std::ios::trunc);
+    g_bc_detection_csv.open(BC_RESULTS_DIR + "bc_detection_log.csv", std::ios::trunc);
     if (g_bc_detection_csv.is_open())
-        bc_write_row(g_bc_detection_csv, g_bc_detection_path,
-                     "rsu_id,suspect_node,signal_idx,timestamp_ms,rsu_sig\n");
+        g_bc_detection_csv << "rsu_id,suspect_node,signal_idx,timestamp_ms,rsu_sig\n";
     g_bc_detection_open = true;
 }
 static void bc_open_model_csv() {
     if (g_bc_model_open) return;
-    g_bc_model_path = BC_RESULTS_DIR + "bc_model_log" + bc_run_suffix() + ".csv";
-    g_bc_model_csv.open(g_bc_model_path, std::ios::trunc);
+    g_bc_model_csv.open(BC_RESULTS_DIR + "bc_model_log.csv", std::ios::trunc);
     if (g_bc_model_csv.is_open())
-        bc_write_row(g_bc_model_csv, g_bc_model_path, "rsu_id,round,model_hash,timestamp_ms\n");
+        g_bc_model_csv << "rsu_id,round,model_hash,timestamp_ms\n";
     g_bc_model_open = true;
 }
 static void bc_open_dkg_csv() {
     if (g_bc_dkg_open) return;
-    g_bc_dkg_path = BC_RESULTS_DIR + "bc_dkg_log" + bc_run_suffix() + ".csv";
-    g_bc_dkg_csv.open(g_bc_dkg_path, std::ios::trunc);
+    g_bc_dkg_csv.open(BC_RESULTS_DIR + "bc_dkg_log.csv", std::ios::trunc);
     if (g_bc_dkg_csv.is_open())
-        bc_write_row(g_bc_dkg_csv, g_bc_dkg_path,
-                     "rsu_id,round,vk_zkp,n_rsus,commitments,timestamp_ms\n");
+        g_bc_dkg_csv << "rsu_id,round,vk_zkp,n_rsus,commitments,timestamp_ms\n";
     g_bc_dkg_open = true;
 }
 static void bc_open_anchor_csv() {
     if (g_bc_anchor_open) return;
-    g_bc_anchor_path = BC_RESULTS_DIR + "bc_anchor_log" + bc_run_suffix() + ".csv";
-    g_bc_anchor_csv.open(g_bc_anchor_path, std::ios::trunc);
+    g_bc_anchor_csv.open(BC_RESULTS_DIR + "bc_anchor_log.csv", std::ios::trunc);
     if (g_bc_anchor_csv.is_open())
-        bc_write_row(g_bc_anchor_csv, g_bc_anchor_path,
-                     "rsu_id,seq,anchor_hash,rsu_chain_len,timestamp_ms\n");
+        g_bc_anchor_csv << "rsu_id,seq,anchor_hash,rsu_chain_len,timestamp_ms\n";
     g_bc_anchor_open = true;
-}
-static void bc_open_tref_csv() {
-    if (g_bc_tref_open) return;
-    g_bc_tref_path = BC_RESULTS_DIR + "bc_tref_log" + bc_run_suffix() + ".csv";
-    g_bc_tref_csv.open(g_bc_tref_path, std::ios::trunc);
-    if (g_bc_tref_csv.is_open())
-        bc_write_row(g_bc_tref_csv, g_bc_tref_path, "rsu_id,seq,t_ref_value,eps_ref,timestamp_ms\n");
-    g_bc_tref_open = true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -517,10 +425,10 @@ inline void bc_write_detection_event(uint32_t rsu_idx, uint32_t suspect_node,
     bc_open_detection_csv();
     long long ts_ms = (long long)(ts * 1000.0);
     if (g_bc_detection_csv.is_open()) {
-        std::string row = std::to_string(rsu_idx) + "," + std::to_string(suspect_node) + "," +
-                           std::to_string(signal_idx) + "," + std::to_string(ts_ms) + "," +
-                           sig_hex.str() + "\n";
-        bc_write_row(g_bc_detection_csv, g_bc_detection_path, row);
+        g_bc_detection_csv << rsu_idx << "," << suspect_node << ","
+                           << signal_idx << "," << ts_ms << ","
+                           << sig_hex.str() << "\n";
+        g_bc_detection_csv.flush();
     }
 
     // Append to RSU-chain shadow for Merkle root
@@ -555,9 +463,9 @@ inline void bc_commit_model_hash(uint32_t rsu_idx, const uint8_t* model_hash_64)
 
     bc_open_model_csv();
     if (g_bc_model_csv.is_open()) {
-        std::string row = std::to_string(rsu_node_id) + "," + std::to_string(round) + "," +
-                           hash_hex.str() + "," + std::to_string(ts_ms) + "\n";
-        bc_write_row(g_bc_model_csv, g_bc_model_path, row);
+        g_bc_model_csv << rsu_node_id << "," << round << ","
+                       << hash_hex.str() << "," << ts_ms << "\n";
+        g_bc_model_csv.flush();
     }
 
     // Append to RSU-chain shadow
@@ -592,10 +500,10 @@ inline void bc_commit_dkg(const uint8_t* vk_zkp, const uint8_t com[][SHA3_512_BY
 
     bc_open_dkg_csv();
     if (g_bc_dkg_csv.is_open()) {
-        std::string row = std::to_string(reporting_rsu) + "," + std::to_string(round) + "," +
-                           vk_hex.str() + "," + std::to_string(n_rsus) + "," +
-                           com_hex.str() + "," + std::to_string(ts_ms) + "\n";
-        bc_write_row(g_bc_dkg_csv, g_bc_dkg_path, row);
+        g_bc_dkg_csv << reporting_rsu << "," << round << ","
+                     << vk_hex.str() << "," << n_rsus << ","
+                     << com_hex.str() << "," << ts_ms << "\n";
+        g_bc_dkg_csv.flush();
     }
 
     ++g_bc_global_commit_count;
@@ -667,11 +575,10 @@ inline void bc_anchor_to_global() {
 
     bc_open_anchor_csv();
     if (g_bc_anchor_csv.is_open()) {
-        std::string row = std::to_string(N_Vehicles) + "," + std::to_string(seq) + "," +
-                           ah_hex.str() + "," +
-                           std::to_string(g_rsu_commit_hashes.size()) + "," +
-                           std::to_string(ts_ms) + "\n";
-        bc_write_row(g_bc_anchor_csv, g_bc_anchor_path, row);
+        g_bc_anchor_csv << N_Vehicles << "," << seq << ","
+                        << ah_hex.str() << ","
+                        << g_rsu_commit_hashes.size() << "," << ts_ms << "\n";
+        g_bc_anchor_csv.flush();
     }
 
     if (CRYPTO_DEBUG_LOG)
@@ -685,36 +592,6 @@ inline void bc_anchor_to_global() {
 inline void bc_anchor_recurring() {
     bc_anchor_to_global();
     Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// bc_commit_tref_to_chain() — sec:time_ref (CommitTRef on Fabric)
-// Commits this tick's T_ref(t) = median_j tau_j(t) to the blockchain, per
-// main.tex: "T_ref(t) is committed to the blockchain by RSU consensus at
-// regular intervals to provide a tamper-evident audit trail for all
-// detection decisions." Called directly from update_T_ref() (crypto_layer.h)
-// on every T_SYNC_INTERVAL tick — same cadence as bc_anchor_to_global(), no
-// separate recurring schedule needed since it always reads a freshly
-// computed T_ref/eps_ref rather than risking a stale value from an
-// independently-phased timer.
-// ─────────────────────────────────────────────────────────────────────────────
-inline void bc_commit_tref_to_chain(double t_ref_value, double eps_ref, double ts) {
-    int seq = ++g_tref_seq;
-    long long ts_ms = (long long)(ts * 1000.0);
-
-    bc_open_tref_csv();
-    if (g_bc_tref_csv.is_open()) {
-        std::string row = std::to_string(N_Vehicles) + "," + std::to_string(seq) + "," +
-                           std::to_string(t_ref_value) + "," + std::to_string(eps_ref) + "," +
-                           std::to_string(ts_ms) + "\n";
-        bc_write_row(g_bc_tref_csv, g_bc_tref_path, row);
-    }
-
-    if (CRYPTO_DEBUG_LOG)
-        std::cout << "[BC-TREF] T_ref committed (Fabric seq=" << seq << ")"
-                  << " T_ref=" << t_ref_value
-                  << " eps_ref=" << eps_ref
-                  << " t=" << ts << "\n";
 }
 
 #endif // BC_BLOCKCHAIN_HELPER_H
