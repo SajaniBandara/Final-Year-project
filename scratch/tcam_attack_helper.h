@@ -226,23 +226,18 @@ inline void tcam_snapshot_dump()
     double now = Simulator::Now().GetSeconds();
     int    t   = static_cast<int>(std::round(now));
 
-    // Derive mode tag — maps internal enum values to the paper's attack numbers.
-    // active_attack_variant:  -1 = baseline,  2 = Attack 3 (CP),  3 = Attack 4 (DP)
+    // Derive mode tag — maps internal enum values to the paper's attack numbers
+    // (attack_id = active_attack_variant + 1), matching the scheme
+    // write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Previously
+    // variant 0/1 stayed as "attack0"/"attack1" while variant 2/3 were bumped
+    // to "attack3"/"attack4" — an inconsistent, off-by-one labeling that made
+    // e.g. Attack 2 (variant=1) data land in a file named "tcam_snapshots_attack1*",
+    // indistinguishable from actual Attack 1 output.
     std::string mode;
     if (active_attack_variant == -1) {
         mode = "baseline";
     } else {
-        // Paper numbering: internal variant 2 → "attack3", internal variant 3 → "attack4"
-        static const std::map<int, std::string> variant_to_label = {
-            {0, "attack0"},
-            {1, "attack1"},
-            {2, "attack3"},   // Control-Plane TCAM flooding  → Attack 3
-            {3, "attack4"},   // Data-Plane TCAM exhaustion   → Attack 4
-        };
-        auto it = variant_to_label.find(active_attack_variant);
-        mode = (it != variant_to_label.end())
-               ? it->second
-               : ("attack" + std::to_string(active_attack_variant));
+        mode = "attack" + std::to_string(active_attack_variant + 1);
         // For Attack 4 multi-attacker sweeps append _nN so each run
         // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
         if (active_attack_variant == 3 && num_attackers > 1)
@@ -312,20 +307,12 @@ inline void tcam_snapshot_dump()
 // Writes a final static snapshot with total lifetime counters per entry.
 inline void export_tcam_snapshot_baseline()
 {
-    // Same paper-numbering map as tcam_snapshot_dump():
-    //   internal variant 2 → "attack3" (CP),  3 → "attack4" (DP)
+    // Same paper-numbering scheme as tcam_snapshot_dump(): attack_id = variant+1.
     std::string mode;
     if (active_attack_variant == -1) {
         mode = "baseline";
     } else {
-        static const std::map<int, std::string> variant_to_label = {
-            {0, "attack0"}, {1, "attack1"},
-            {2, "attack3"}, {3, "attack4"},
-        };
-        auto it = variant_to_label.find(active_attack_variant);
-        mode = (it != variant_to_label.end())
-               ? it->second
-               : ("attack" + std::to_string(active_attack_variant));
+        mode = "attack" + std::to_string(active_attack_variant + 1);
         // Mirror the _nN suffix logic from tcam_snapshot_dump().
         if (active_attack_variant == 3 && num_attackers > 1)
             mode += "_n" + std::to_string(num_attackers);
@@ -472,24 +459,31 @@ inline void dp_attack_tick()
 
 // ── Change 6: self-rescheduling CP (controller) attacker tick ─────────────
 // Fires every (1/attack_rate_pps) seconds while active_attack_variant==2.
-// Each call installs one new malicious rule on a configurable fraction of
-// RSUs (cp_attack_pct %, default 100%), simulating a compromised controller
-// broadcasting a junk FlowMod to part or all of the network.
-// RSUs are selected by index (0..num_targeted-1) for determinism.
+// Each call installs one new malicious rule on every RSU whose OWNING
+// CONTROLLER is compromised (controller_compromised[], set by the Attack 3
+// init block in routing.cc from the same attack_percentage threshold ladder
+// Attack 1 uses), simulating a compromised controller broadcasting a junk
+// FlowMod to the RSUs it controls. Mirrors Attack 1's
+// reapply_cp_selective_delay() (attack_declaration.h) exactly, so A3's
+// penetration scaling is structurally consistent with A1's.
+//
+// Fixed 2026-07-10: previously flooded a FIXED cp_attack_pct% (default 40%)
+// of RSUs by index, completely ignoring attack_percentage — so
+// attack_percentage=0 flooded the same ~26 RSUs as attack_percentage=80,
+// violating main.tex's penetration formula (p=0 -> 0 attacker nodes).
+// cp_attack_pct is left declared/CLI-overridable for manual experimentation
+// but is no longer read by the default attack_percentage-driven sweep path.
 inline void cp_attack_tick()
 {
     if (active_attack_variant != 2) return;
     double now = Simulator::Now().GetSeconds();
     if (now >= simTime) return;
 
-    // Compute how many RSUs to target this tick based on cp_attack_pct.
-    uint32_t num_targeted = static_cast<uint32_t>(
-        std::ceil(N_RSUs * (cp_attack_pct / 100.0)));
-    if (num_targeted < 1)       num_targeted = 1;
-    if (num_targeted > N_RSUs)  num_targeted = N_RSUs;
-
-    for (uint32_t r = 0; r < num_targeted; r++)
+    for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
     {
+        uint32_t owning_controller = rsu_controller_assignment[r];
+        if (!controller_compromised[owning_controller]) continue;
+
         uint32_t rsu_idx  = N_Vehicles + r;        // sim node index of RSU r
         uint32_t fake_fid = g_cp_attack_fid_counter++;
         tcam_install_malicious(rsu_idx, rsu_idx, fake_fid); // attacker == victim RSU, same as before

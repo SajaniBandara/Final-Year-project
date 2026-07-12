@@ -20,8 +20,10 @@
 //   before the global declarations.
 //
 // INDEPENDENCE:
-//   S1 uses its own s1_detection_active flag (declared in routing.cc),
-//   independent of s2_detection_active. Disabling S2 does not affect S1.
+//   S1 has no individual master-enable flag — gated solely by
+//   enable_lrad_obu (AB1, lrad.h), matching main.tex's only mode-level
+//   ablation for this part of the architecture. No per-signature toggle is
+//   specified anywhere in main.tex; removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -125,28 +127,21 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4)
     if (!is_safety_crit) return false;
 
-    // Training-mode: accumulate real delays BEFORE the detection-active gate so
-    // obs_delay is populated even when s1_detection_active=false (uncalibrated).
-    // Without this, the gate fires first and the accumulator is never seeded.
-    if (training && packet_delay_s > 0.0)
-    {
-        s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
-        s1_rsu_obs_count[rsu_idx] += 1;
-    }
-
-    if (!s1_detection_active) return false;
-
     double delta_bar = s1_delta_bar[rsu_idx];
     double sigma     = std::sqrt(s1_sigma2[rsu_idx]);
     double threshold = delta_bar + s1_k * sigma;
 
-    // Accumulate observed hop-delay for δ_r(t) (Eq. 3.12/3.13) only when
-    // the delay appears benign (within the current threshold). This prevents
-    // attack-delayed packets from pulling the EWMA baseline upward.
-    // During cold-start (delta_bar == 0) all positive delays are accumulated
-    // unconditionally to seed the baseline.
-    bool cold_start = (delta_bar == 0.0);
-    if (!training && packet_delay_s > 0.0 && (cold_start || packet_delay_s <= threshold))
+    // Accumulate observed hop-delay for δ_r(t) (Eq. 3.12/3.13) UNCONDITIONALLY,
+    // regardless of training mode — eq:ewma_variance's own formula,
+    // σ_r²(t) = β·σ_r²(t-1) + (1-β)·(δ_r(t)-δ̄_r(t))², uses the actual observed
+    // δ_r(t) with no "only if compliant" clause. Excluding violating packets
+    // here (as an earlier version did for non-training mode) created a
+    // self-reinforcing feedback loop: once σ shrinks even slightly, more
+    // packets get excluded from ever updating it, shrinking σ further with no
+    // floor, making S1 progressively more trigger-happy over the course of a
+    // run even under 0% attack (confirmed: FP climbed continuously across all
+    // 38 cycles of a benign-only run rather than plateauing after warmup).
+    if (packet_delay_s > 0.0)
     {
         s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
         s1_rsu_obs_count[rsu_idx] += 1;
@@ -206,12 +201,26 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 // =========================================================================
 inline void s1_init_state(uint32_t n_rsus)
 {
-    s1_delta_bar.assign(n_rsus, 0.0);
+    // Seed delta_bar from eq:mobility_baseline's own intercept (delta_0),
+    // NOT 0.0. delta_bar_r(t) = delta_0 + alpha_rho*rho(t) + alpha_v*v_bar(t)^-1
+    // is a closed-form formula computable at any t, including t=0 -- it is
+    // not a "starts empty, learns over time" accumulator. delta_0 alone is
+    // an accurate seed here since alpha_rho/alpha_v are calibrated near-zero
+    // (R^2=0.0004, see the calibration note above -- "baseline effectively
+    // collapses to delta_0"). Leaving this at 0.0 previously made the very
+    // first packets face threshold=delta_bar+k*sigma=0, so any nonzero delay
+    // trivially "violated" it -- a confirmed false-positive source (280 of
+    // 719 S1 triggers in one 0%-attack run showed baseline=0.000ms). sigma2
+    // legitimately starts at 0.0: eq:ewma_variance is a recursive update
+    // that needs a seed, and "no prior variance information" is the
+    // standard EWMA bootstrap convention, unlike delta_bar which has no
+    // such recursion to justify starting from zero.
+    s1_delta_bar.assign(n_rsus, s1_delta0);
     s1_sigma2.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
-    if (s1_detection_active)
-        cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs." << endl;
+    cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs "
+         << "(delta_bar seeded to delta_0=" << s1_delta0 * 1000.0 << "ms)." << endl;
 }
 
 // =========================================================================
@@ -221,12 +230,13 @@ inline void s1_init_state(uint32_t n_rsus)
 // =========================================================================
 inline void s1_reset_state()
 {
-    std::fill(s1_delta_bar.begin(),     s1_delta_bar.end(),     0.0);
+    // See s1_init_state() for why delta_bar is seeded to s1_delta0, not 0.0.
+    std::fill(s1_delta_bar.begin(),     s1_delta_bar.end(),     s1_delta0);
     std::fill(s1_sigma2.begin(),        s1_sigma2.end(),        0.0);
     std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
     std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
-    if (s1_detection_active)
-        cout << "[S1] All S1 per-RSU baseline/variance state reset." << endl;
+    cout << "[S1] All S1 per-RSU baseline/variance state reset "
+         << "(delta_bar seeded to delta_0=" << s1_delta0 * 1000.0 << "ms)." << endl;
 }
 
 #endif // S1_DETECTION_H
