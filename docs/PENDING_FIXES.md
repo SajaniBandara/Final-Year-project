@@ -703,6 +703,112 @@ build" and just executes rather than racing to relink.
 
 ---
 
+## Fix 9 — FADE ran unisolated alongside full MOBIGUARD stack, unlike TAP (found 2026-07-12)
+
+### Problem
+
+`run_std_attacks.py` runs Attack 2 TWICE per (percentage, delay): once
+normally (writes `MOBIGUARD_Attack2_<pct>.csv`) and once isolated via
+`TAP_PARAMS = {enable_tap: 1, enable_lrad_obu: 0, enable_lrad_rsu: 0}`
+(writes `TAP_Attack2_<pct>.csv`) — `enable_lrad_obu/rsu=0` disables
+MOBIGUARD's entire S1-S8 stack (see `lrad.h`'s early-return gates), giving
+TAP a clean, uncontaminated baseline measurement.
+
+`run_hf_attacks.py` never did this for FADE: one single run per
+(attack, pct) produced both `MOBIGUARD_Attack<N>_<pct>.csv` and
+`FADE_Attack<N>_<pct>.csv`, with MOBIGUARD's full S1-S8 stack active
+throughout. This didn't corrupt FADE's own numbers (its
+`fade_received_count`/`fade_forwarded_count` state is fully independent —
+confirmed correct in Fix 6). But it left MOBIGUARD's own comparison-partner
+numbers exposed to a separate, pre-existing bug: `record_detection_event(v,
+n)` — called by S1, S2, and S5-S8 — always writes into
+`is_detected_node[active_attack_variant][n]`, using the CLI-selected
+variant as the bucket key regardless of which signature actually fired.
+S1/S2 (Selective Time Delay, Variants 1-4) run unconditionally on every
+packet no matter which `--attack_number` is selected, so during an
+HF-only run (`--attack_number` 5-8), S1/S2's own always-on false triggers
+get misattributed into whichever HF variant is under test. Verified
+directly: a benign (`attack_percentage=0`) Attack 6 run showed `[SECURITY]
+Variant 5 | FPR=43.657% TP=0 FP=117 TN=151` — traced to 33 `[S1]` + 84
+`[S2]` firings and **zero** `[S6]` firings (S6 is the actual Attack-6
+detector, and it correctly found nothing, since there was no attacker).
+This meant MOBIGUARD's reported MCC in every FADE-comparison plot was
+dominated by unrelated S1/S2 noise, not genuine Hidden-Forwarding
+detection quality.
+
+Note: this same `record_detection_event` bucketing bug likely also affects
+TAP's own `MOBIGUARD_Attack2_<pct>.csv` (e.g. S5-S8 noise could
+misattribute into variant 1's bucket) — it's a pre-existing, codebase-wide
+issue, not something introduced by or specific to FADE. **Not fixed here**
+— fixing it properly means changing every `record_detection_event()` call
+site (S1, S2, S5-S8, `crypto_layer.h`'s trust-quarantine path) to record
+against the firing signature's own designated variant instead of
+`active_attack_variant`, which is a larger, more invasive change than
+today's isolation fix and wasn't requested.
+
+### Fix
+
+Mirrored TAP's exact mechanism instead of introducing a new flag:
+
+**`routing.cc`** — `fade_detection_active`'s assignment (in `main()`) now
+requires isolation:
+```cpp
+fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7)
+                       && !enable_lrad_obu && !enable_lrad_rsu;
+```
+`write_security_metrics_csv()`'s guard extended to match:
+```cpp
+if (enable_tap || (!enable_lrad_obu && !enable_lrad_rsu)) return;
+```
+Both defaults (`enable_lrad_obu`/`enable_lrad_rsu`) are `true`
+(`crypto_layer.h`), so a normal run is unaffected — FADE only activates,
+and MOBIGUARD's CSV writer only fires, when explicitly isolated. Safe for
+AB1's own ablation (`enable_lrad_obu`/`enable_lrad_rsu`, main.tex
+§4141-4170): AB1-A and AB1-B each disable only *one* of the two flags,
+never both simultaneously, so this condition never fires during AB1's own
+data collection — only the (previously unused) "both off" combination
+triggers it.
+
+**`scripts/run_hf_attacks.py`** — restructured to mirror
+`run_std_attacks.py`'s Attack-2 pattern exactly: each (attack, pct) now
+gets two runs — the normal run (unchanged, all S1-S8 on, FADE inactive)
+and a new isolated run using `FADE_PARAMS = {enable_lrad_obu: 0,
+enable_lrad_rsu: 0}` (mirrors `TAP_PARAMS` without the `enable_tap` part,
+since FADE has no CLI opt-in flag of its own). Also picked up
+`run_std_attacks.py`'s two safety conventions while restructuring:
+`--run-no-build` instead of `--run` (avoids the concurrent-waf-build race
+from Fix 8's investigation) and `--build` now exits immediately after
+building instead of falling through into the sweep.
+
+### Verification
+
+Smoke-tested (Attack 8, `attack_percentage=60`, `seed=1`, `simTime=15`,
+`--clean`): both runs completed successfully.
+- Normal run (`A8_pct60_seed1.log`): `MOBIGUARD_Attack8_60.csv` got 13
+  rows as expected; `[eFADE DEBUG] detect flow` / `[FADE METRICS]` never
+  appear (only the unconditional `fade_configure_flow()` retry-path
+  messages do, which run regardless of `fade_detection_active` — expected,
+  harmless). S1 (16×) and S2 (39×) still fire and still misattribute into
+  variant 7's bucket — confirms the isolation fix does *not* touch the
+  separate `record_detection_event` bug, exactly as intended (that bug is
+  explicitly out of scope here, see above).
+- Isolated run (`A8_pct60_seed1_FADE.log`): zero mentions of
+  `MOBIGUARD_Attack` anywhere in the log (confirms
+  `write_security_metrics_csv()`'s new guard works); real FADE output
+  produced — `[FADE METRICS] variant=7 atk%=60 PDR=66.410% PIR=11.111%
+  DR=0.67 FPR=0.00 MCC=0.80 (TP=4 FP=0 TN=41 FN=2)`; S1/S2/S5-S8 all
+  correctly silent (only an unrelated S1 *initialization* log line
+  matched, not a detection firing). The isolated run's own in-memory
+  `[SECURITY] Variant 7` figures are nonzero (TP=12, FP=4) but never
+  reach any CSV — traced entirely to `[TRUST-QUARANTINE]` (16 events),
+  `crypto_layer.h`'s trust-decay mechanism, which is gated by
+  `enable_quarantine` (a different layer than the S1-S8/AB1 signature
+  stack) and is therefore unaffected by this isolation, by design — it
+  doesn't touch either output file so it doesn't matter for this fix's
+  purpose.
+
+---
+
 ## Fix 4 — Evaluation-phase items (for the M2–M12 simulation runs)
 
 1. **M9 / M11 first build+run verification** — code-complete per
