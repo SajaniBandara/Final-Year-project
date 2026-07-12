@@ -117638,7 +117638,18 @@ void write_security_metrics_csv()
 // are always 0 (kept for positional compatibility).
 //   cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms,
 //   cur_MCC, avg_MCC, cur_DR%, avg_DR%, cur_FPR%, avg_FPR%,
-//   cur_mit_ms, avg_mit_ms, TP, FP, TN, FN, cur_PIR%, avg_PIR%
+//   cur_mit_ms, avg_mit_ms, TP, FP, TN, FN, cur_PIR%, avg_PIR%,
+//   cur_TVR%, avg_TVR%, cur_UCR%, avg_UCR%
+// TVR (M2) and UCR (M3) are GROUND-TRUTH attack-impact measurements, not
+// detection-capability outputs: calculate_tvr_metric()/calculate_ucr_metric()
+// (routing.cc) compute them from raw simulation facts (g_tvr_violated/
+// g_tvr_crit_total timestamp comparisons; fade_eavesdrop_counter — the same
+// counter this file's own eavesdrop-receive path increments) with no
+// dependency on MOBIGUARD's own detection/quarantine engine. Sharing the
+// same global values here is intentional and mirrors tap_detection.h's
+// write_tap_csv(), whose own comment states this is done "for a fair
+// apples-to-apples comparison" — every detector observes the same attack
+// impact regardless of whether it personally catches it.
 // ============================================================
 void fade_write_per_cycle_csv(std::string dir)
 {
@@ -117887,7 +117898,7 @@ void calculate_performance_evaluation_metrics()
 	char* home_env = getenv("HOME");
 	if (home_env != nullptr)
 	{
-		results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+		results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 	}
 
 	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
@@ -120827,10 +120838,10 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             return;
                         }
 
-                        // eFADE: record outbound destination for this hop on the first forwarding attempt
+                        // eFADE: count this as one forward event for this hop on the first forwarding attempt
                         if (pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0)
                         {
-                            fade_forwarded[flow_id][current_hop][packet_id].insert(hop);
+                            fade_forwarded_count[flow_id][current_hop]++;
                         }
 
 						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
@@ -120970,15 +120981,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // scheduled copy (matches the passive-HF block bookkeeping).
 						    g_hdup_intentional = true;
 						    g_total_copies_scheduled++;
-						    // eFADE: record duplicate destination immediately at scheduling
-						    // to ensure it falls within the same measurement epoch as the incoming packet.
-						    { uint32_t fade_fid = g_hdup_flow_id & 0xFFFFu; fade_forwarded[fade_fid][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves); }
-					    // eFADE: seed legitimate hop so dest_set = {eavesdropper, legit_hop} = size 2
-					    {
-					        auto _leg = passive_hf_rsu_to_legitimate_hop.find(current_hop);
-					        if (_leg != passive_hf_rsu_to_legitimate_hop.end())
-					            fade_forwarded[flow_id][current_hop][packet_id].insert(_leg->second);
-					    }
+						    // eFADE: count the hidden duplicate as an extra forward event at
+						    // scheduling time so it lands in the same epoch as the legitimate
+						    // forward already counted above (~line 120833). Together that's
+						    // forwarded_count=2 vs received_count=1 at this node this epoch —
+						    // exactly the p_out>p_in duplication signal (count-based, mirrors
+						    // Algorithm 2). No separate "seed legitimate hop" step needed
+						    // anymore — that only existed to force a 2-element destination
+						    // SET under the old ID-based tracking; see PENDING_FIXES.md Fix 7.
+						    fade_forwarded_count[flow_id][current_hop]++;
 						    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
 						}
                         // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
@@ -121019,18 +121030,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // MacRx can distinguish it from ambient Wi-Fi overhear.
                             g_hdup_intentional    = true;
                             g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
-                            // eFADE: record duplicate under the ORIGINAL flow_id so FADE's
-                            // multi-dest check fires correctly. Active attacks set
-                            // g_hdup_flow_id = 0xDEAD0000|flow_id — stripping the marker
-                            // ensures the entry lands in the same map key FADE monitors.
-                            uint32_t fade_fid = g_hdup_flow_id & 0xFFFFu;
-                            fade_forwarded[fade_fid][g_hdup_rsu][g_hdup_packet_id].insert(g_hdup_eaves);
-                            // eFADE: seed legitimate hop so dest_set = {eavesdropper, legit_hop} = size 2
-                            {
-                                auto _leg = passive_hf_rsu_to_legitimate_hop.find(current_hop);
-                                if (_leg != passive_hf_rsu_to_legitimate_hop.end())
-                                    fade_forwarded[flow_id][current_hop][packet_id].insert(_leg->second);
-                            }
+                            // eFADE: count the hidden duplicate as an extra forward event
+                            // (see the active-HF block above for the full explanation —
+                            // count-based tracking no longer needs the marker-stripping or
+                            // "seed legitimate hop" steps this replaced).
+                            fade_forwarded_count[flow_id][current_hop]++;
                             Simulator::Schedule(Seconds(0.001),
                                                 send_hidden_duplicate_trampoline);
                         }
@@ -121407,8 +121411,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			{
 				pd_all_inst[fid].pd_inst[current_hop].delivery[channel][packet_ID] = true;
 
-				// eFADE: record inbound packet receipt at this node
-				fade_received[fid][current_hop].insert(packet_ID);
+				// eFADE: count this as one inbound receive event at this node
+				fade_received_count[fid][current_hop]++;
 
 				// S6: log this delivery for cross-destination duplication detection.
 				// Uses (fid & 0xFFFFu) as key so the legitimate copy (clean fid) and
@@ -123550,8 +123554,9 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
 
     cout << "[ARCH 3 OVERRIDE] Node " << source << " sending on Channel " << arguments.channel << " to exact MAC " << dest_address << endl;
 
-    // eFADE: record outbound destination at the source
-    fade_forwarded[flow_id][source][packet_ID].insert(final_next_hop);
+    // eFADE: count the source's own origination send (source is excluded
+    // from the anomaly-detection loop, so this only affects debug output).
+    fade_forwarded_count[flow_id][source]++;
 
     // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline.
     // Guard: skip if already stamped pre-delay by the vehicle attack path so
@@ -143826,6 +143831,20 @@ if (architecture == 3 && N_Vehicles > 0)
 // =====================================================
 // FADE CSV INITIALIZATION
 // =====================================================
+// fade_detection_active was declared `false` (routing.cc ~114832) with no CLI
+// wiring and no other assignment anywhere in the codebase, so
+// fade_detect_anomaly()'s early-return (efade_detection.h:437) fired every
+// epoch and the fade_save_metrics() call below (gated on this flag) never
+// ran on ANY simulation run — the entire B3/eFADE baseline was silently
+// dead code despite fade_received/fade_forwarded being populated correctly
+// by the TX/RX paths. scripts/run_hf_attacks.py's check_results() has always
+// expected FADE_Attack<N>_<pct>.csv to exist for every HF run without
+// passing any special flag, so auto-enable here (unlike enable_tap, which
+// stays an explicit CLI opt-in because TAP needs --enable_lrad_obu/rsu=0 for
+// a clean isolated baseline). Scope matches fade_is_flow_attacked() and
+// main.tex's B3 definition ("FADE ... Variants 5-8"): active_attack_variant
+// 4-7 == attack_number 5-8, the four Hidden Forwarding variants.
+fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7);
 std::system("mkdir -p results_routing");
 fade_csv.open("results_routing/fade_results" + g_sim_tag + ".csv");
 fade_csv << "FlowID,"

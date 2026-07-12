@@ -388,6 +388,321 @@ already correctly scales (A4_pct0 max U_TCAM=0.05 vs pct20+ all saturated).
 
 ---
 
+## Fix 6 — B3/eFADE baseline never ran on any simulation (CRITICAL, found 2026-07-11)
+
+### Problem
+
+`scratch/efade_detection.h` implements the eFADE baseline (Li et al., IEEE
+TPDS 32(11) 2021 — Zhang2021FADE in main.tex) reasonably faithfully: it
+monitors every node on each flow's path, treats a `FADE_EPOCH_SEC = 1.0`
+measurement window as the paper's R1 hard-timeout, and flags "duplication"
+when a node forwards the same `packet_id` to ≥2 destinations (matching this
+project's actual Hidden Forwarding threat model, where the original packet
+always reaches its legitimate destination unmodified — see main.tex
+§1415-1424 — so the paper's "hijacking"/"interception" path-divergence cases
+never occur here; duplication-only detection is the correct scope, not a
+gap).
+
+However, `fade_detection_active` (routing.cc:114832) was declared `bool
+fade_detection_active = false;` and — unlike the structurally identical
+`enable_tap` flag one line above it — was **never wired to a CLI flag and
+never assigned `true` anywhere else in the codebase.** Effect:
+
+- `fade_detect_anomaly()` (efade_detection.h:437) early-returns every
+  1-second epoch before running any of its detection/classification logic
+  (lines 444-547), so `pp_tp_global/fp/tn/fn` and `fade_results[]` never
+  update, and no `[eFADE ALERT]` lines are ever printed.
+- The final-metrics write is gated `if (fade_detection_active) { ...
+  fade_save_metrics(); }` (routing.cc:143869) — never executes, so
+  `fade_metrics*.csv` is **never created** on any run, ever.
+- `fade_write_per_cycle_csv()` (routing.cc:117645) also early-returns, so
+  `FADE_Attack<N>_<pct>.csv` and `routing_fade_per_cycle.csv` are never
+  written either.
+- Only the header row of `fade_results*.csv` gets written (that file-open
+  block at routing.cc:143821 is NOT gated on the flag), which is why the
+  breakage wasn't obvious from file *existence* alone — the file was there,
+  just permanently empty of data rows.
+
+This was silent: `fade_received`/`fade_forwarded` (the raw TX/RX packet
+observations) were populated correctly by the send/receive paths regardless
+of the flag, so the plumbing looked complete on inspection — only the
+detection/output stage was dead. `scripts/run_hf_attacks.py`'s own docstring
+and `check_results()` have always expected `FADE_Attack<N>_<pct>.csv` to
+exist for every Hidden Forwarding run (attacks 5-8) without passing any
+special CLI flag — confirming the intended design was "runs automatically
+for HF attacks," not "opt-in like TAP."
+
+### Fix
+
+Added, right before the FADE CSV/scheduling block in `main()`
+(routing.cc, immediately preceding the `fade_csv.open(...)` call, after
+`declare_attack_states()` has resolved `active_attack_variant` for both the
+CLI-driven and `routing_test` hardcoded-topology paths):
+
+```cpp
+fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7);
+```
+
+Scope (`active_attack_variant` 4-7 = attack_number 5-8) matches
+`fade_is_flow_attacked()`'s existing gating and main.tex's own B3 definition
+("FADE ... covering packet duplication and path deviation (Variants 5-8)",
+main.tex:3460-3465). Unlike `enable_tap`, this is **not** exposed as a CLI
+opt-in flag: TAP needs explicit `--enable_tap=1` + `--enable_lrad_obu/rsu=0`
+because it shares timestamp state with MOBIGUARD's own S1/S2 and needs
+isolation for a clean baseline comparison; eFADE uses fully independent
+`fade_received`/`fade_forwarded` maps with no such interference, so
+auto-enabling for the relevant attack variants (mirroring how S1/S2/S5-S8
+self-gate on `active_attack_variant` rather than needing per-signature CLI
+flags — see the comment at routing.cc:114824-114830) is both correct and
+consistent with the rest of the file's conventions.
+
+### Verification
+
+Rebuilt (`./waf build`, succeeded). The already-running 180-sim A3-A8
+background re-collection was not disrupted (Linux keeps a running process's
+old binary mapped after the file is atomically replaced); attacks 5-8 in
+that same collection job — still hours away in the job queue at the time of
+the fix — will pick up the fix automatically. A dedicated short A8 (variant
+7, passive HF, `attack_percentage=60`, `simTime=10`) verification run
+confirmed `[FADE METRICS]` now prints and `fade_metrics_V7_pct60.csv` is
+written (`TP=0 FP=0 TN=31 FN=0`, PDR=68.75%) — this is the first time that
+line/file has ever appeared on any run. TP/FN were both 0 in this specific
+run because `attack_start_time` defaults to 10.0s and `simTime` was also
+10s, so the attack fired right as the simulation ended, leaving no
+post-attack window for a duplicate to be observed — not a bug in the fix
+itself. See Fix 7 below for the follow-up run with a longer post-attack
+window.
+
+### Note — not fixed (deliberately out of scope for this pass)
+
+No dedicated FADE baseline run harness (`scripts/run_hf_attacks.py`
+already assumes FADE runs automatically per this fix, so no new script is
+needed) — but there is currently no `run_fade_sweep.py`-style script that
+runs FADE *without* MOBIGUARD's S1-S8 active simultaneously, the way
+`run_std_attacks.py`'s `TAP_PARAMS` does for TAP. Since eFADE's detection
+state is independent of MOBIGUARD's (see above), running them concurrently
+does not corrupt eFADE's own numbers, so this is a methodology-presentation
+question (do the thesis tables want an "eFADE-only" isolated run vs.
+"eFADE running alongside MOBIGUARD"?) rather than a code bug — flagged here
+for the user to decide, not fixed unilaterally.
+
+---
+
+## Fix 7 — eFADE duplication check was ID-based, not count-based per Algorithm 2 (found 2026-07-11)
+
+### Problem
+
+Even with Fix 6's `fade_detection_active` gate corrected, the detection
+logic itself in `efade_detection.h` diverged from the paper's actual
+mechanism. The pre-existing code tracked, per flow and per node, the
+*set of individual packet IDs* received and forwarded:
+
+```cpp
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> fade_received;
+std::map<uint32_t, std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>>> fade_forwarded;
+```
+
+and flagged a node as duplicating if a specific `packet_id` was forwarded
+but never received (`not_received`), or forwarded to ≥2 distinct
+downstream hops (`multi_dest`). This is exact-identity matching — strictly
+more precise than the mechanism described in Li et al.'s Algorithm 2
+("Anomaly Identification"), which never inspects packet identity at all:
+FADE's R1/R2 measurement rules only ever report raw packet **counts**
+(`p1` at the reference rule vs `p_i` at each downstream rule), and
+Algorithm 2's flow-conservation check is a pure count comparison
+(`p_i > p1` ⇒ duplication/hijacking-style divergence). Using ID-based
+tracking meant this codebase's B3 baseline was silently *stronger* than
+the real FADE mechanism it's supposed to represent, undermining the
+apples-to-apples comparison main.tex's benchmarking chapter (Experiment
+1, §6) relies on, and obscuring the exact flow-statistics-accuracy
+limitation of FADE that main.tex's own Mechanism 4 discussion (§1520-1560)
+uses as motivation for MOBIGUARD's short observation windows.
+
+### Fix
+
+Rewrote the tracking to raw per-epoch counters, matching Algorithm 2's
+`p1`/`p_i` count comparison directly:
+
+```cpp
+std::map<uint32_t, std::map<uint32_t, uint32_t>> fade_received_count;
+std::map<uint32_t, std::map<uint32_t, uint32_t>> fade_forwarded_count;
+```
+
+`fade_detect_anomaly()` (efade_detection.h:438) now computes, per flow
+per node per 1s epoch:
+
+```cpp
+uint32_t p_in  = fade_received_count[flow_id][node];
+uint32_t p_out = fade_forwarded_count[flow_id][node];
+bool duplication_detected = (p_out > p_in);
+```
+
+replacing the old per-packet-ID loop. All 7 call sites that previously
+inserted into the ID `std::set`s (`routing.cc`: normal relay forward,
+active-HF forward, passive-HF forward, receive, source origination) were
+converted to simple `++` increments on the count maps. The active-HF and
+passive-HF forward blocks also had a "seed legitimate hop" workaround
+removed (it used to pre-insert the legitimate next-hop's ID into
+`fade_forwarded[...]` via `passive_hf_rsu_to_legitimate_hop` so the
+ID-based set-matching logic wouldn't misfire on the always-correct
+original copy) — this is now unnecessary and would double-count under
+count-based tracking, since a legitimate single forward is already
+correctly represented by one `fade_forwarded_count[...]++`.
+
+`fade_is_flow_active()` was updated to check `fade_received_count[flow_id]`
+entries `> 0` instead of `!set.empty()`. The TP/FP/TN/FN accumulation loop
+(`pp_tp_global` etc., efade_detection.h:525-551) was changed from
+per-packet-ID granularity to per-node-per-epoch granularity — one verdict
+per (flow, node, epoch) via the same `p_out > p_in` comparison, classified
+against `active_hf_malicious_nodes`/`passive_hf_malicious_nodes` ground
+truth. This mirrors Algorithm 2's own decision granularity (one
+duplication verdict per measurement round per node, not per packet) and
+in practice yields nearly identical sample counts to the old per-packet
+version, since flows send at 1 Hz into 1s epochs (at most one packet in
+flight per node per epoch in the common case).
+
+### Verification
+
+Rebuilt (`./waf build`, succeeded, no compile errors). A dedicated
+longer-window verification run (A8, variant 7 passive HF,
+`attack_percentage=60`, `sim_seed=99`, `simTime=25`, giving a 15s
+post-attack observation window past the default `attack_start_time=10.0s`
+that cut Fix 6's first verification run short) confirmed the
+`[eFADE DEBUG]` per-epoch trace now reports raw counts per node (e.g.
+`node137(recv=2,fwd=3)`) instead of packet-ID sets, and that
+`duplication_detected = (p_out > p_in)` evaluates correctly against those
+counts. First real detection fired at `t=11.000s`:
+
+```
+[eFADE ALERT] Flow 0 DUPLICATION anomaly detected at node 245 at t=11.000s
+```
+
+with `node245(recv=3,fwd=4)` (fwd > recv) correctly matching ground truth
+(`[attacked=1]`, node 245 is the passive-HF malicious relay for this
+flow). Final `[FADE METRICS]` line for the run:
+
+```
+[FADE METRICS] variant=7 atk%=60 PDR=58.333% PIR=3.015% DR=0.87 FPR=0.00 MCC=0.91 (TP=13 FP=0 TN=39 FN=2)
+```
+
+MCC=0.91, zero false positives, only 2 false negatives out of 15
+attack-node-epochs — a substantial improvement over the pre-Fix-7
+ID-based logic, which (on this same scenario, prior to the rewrite) never
+fired at all once `fade_detection_active` was correctly gated (Fix 6's
+first verification run showed TP=0 even with detection active, because
+that run's `simTime` cut off before any post-attack epoch — see above;
+the count-based logic itself had never been exercised against a real
+duplicate before this run).
+
+### Note — not fixed (deliberately out of scope for this pass)
+
+Real FADE's R1/R2 rules also have asymmetric install/expire timing (R1
+installed first with a longer timeout, R2 rules installed progressively
+as flows are discovered) and a DFT-based *minimal* rule-covering set
+(Algorithm 1) to keep flow-table usage bounded at scale. This codebase's
+`fade_configure_flow()` instead instruments every node on every flow's
+path uniformly each epoch — appropriate for this project's scale (tens of
+flows, not iFADE's target of massive datacenter-scale flow counts) and
+consistent with how the rest of this file already scopes itself to plain
+FADE rather than iFADE (see the file's existing header comment). Not
+changed, since main.tex's B3 definition only requires FADE-equivalent
+duplication detection accuracy, not FADE's own flow-table scalability
+mechanism.
+
+---
+
+## Fix 8 — `results_dir` silently drops `ns3_g13` path segment → FADE per-cycle CSVs never written (CRITICAL, found 2026-07-12)
+
+### Problem
+
+`calculate_performance_evaluation_metrics()` (routing.cc:117897-117902)
+resolves the results output directory as:
+
+```cpp
+std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+char* home_env = getenv("HOME");
+if (home_env != nullptr)
+{
+    results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+}
+```
+
+`$HOME` for this user is `/home/sdvn_hidden_attacks` (not
+`/home/sdvn_hidden_attacks/ns3_g13`), and `getenv("HOME")` is always
+non-null in every actual run environment, so the dynamic branch always
+executes and always produces
+`/home/sdvn_hidden_attacks/ns-allinone-3.35/ns-3.35/results_routing/` —
+missing the `ns3_g13` path segment present in the hardcoded fallback one
+line above it. This path resolves (via an unrelated pre-existing symlink,
+`~/ns-allinone-3.35 → ~/ns3-workspace/ns-allinone-3.35`) into a completely
+different, unrelated workspace tree that doesn't even have a
+`ns-3.35/results_routing/` directory. `fade_write_per_cycle_csv(dir)` is
+the only caller of this `results_dir` value
+(`Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv,
+results_dir);`), so **every** `FADE_Attack<N>_<pct>.csv` and
+`routing_fade_per_cycle.csv` write target a nonexistent directory.
+`std::ofstream::open()` on a path whose parent directory doesn't exist
+fails silently (no exception, `fout.close()` on an unopened stream is a
+harmless no-op) — worse, the confirmation print in section 2
+(`"FADE per-cycle row written to " << filename`) is unconditional and
+does not check `fout.is_open()`, so the log actively claims success on
+every failed write.
+
+This was discovered *after* Fix 6/Fix 7 were verified, while building a
+dedicated FADE-vs-MOBIGUARD comparison sweep for reporting: despite
+several full HF attack runs completing successfully post-fix (confirmed
+via 25-50MB stdout logs with correct `[FADE METRICS]` final lines and
+correctly-populated `fade_metrics_V<v>_pct<p>_s<seed>.csv` — the *other*
+FADE output file, written by `fade_save_metrics()`, which uses a
+different, correct path construction and was therefore unaffected), zero
+`FADE_Attack<N>_<pct>.csv` files existed anywhere. This is a distinct bug
+from Fix 6 (detection never running) and Fix 7 (wrong detection
+granularity) — detection was running correctly and being tallied
+correctly in-memory; only the *per-cycle CSV persistence* was silently
+broken, and only for FADE's per-cycle file (not `fade_metrics_*.csv`,
+not `MOBIGUARD_Attack<N>_<pct>.csv` — MOBIGUARD's own per-cycle writer
+uses its own hardcoded absolute path literal, not this `results_dir`
+variable, so it was never affected).
+
+### Fix
+
+```cpp
+results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+```
+
+Now matches the hardcoded fallback exactly. Rebuilt (`./waf build`,
+succeeded).
+
+### Verification
+
+A dedicated smoke-test run (Attack 7, `attack_percentage=60`, `seed=1`,
+`simTime=12`, invoking the built binary directly rather than through
+`./waf --run` — see the note below on why) confirmed `FADE_Attack7_60.csv`
+and `routing_fade_per_cycle.csv` are now created and populated with the
+expected per-cycle rows in
+`~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/`.
+
+### Note — unrelated process hygiene issue hit while diagnosing this
+
+The dedicated FADE-vs-MOBIGUARD sweep launched via
+`scripts/run_hf_attacks.py --workers 4 ...` (without `--build`) hit a
+second, unrelated problem: `./waf --run` performs its own incremental
+build/link check on every invocation, and waf has no locking against
+concurrent invocations targeting the same binary. With 4 workers
+launching near-simultaneously against a binary that needed relinking
+(fresh off Fix 7's edits), two of the first four jobs failed —
+`A5_pct60`: linker error "undefined reference to `main`" (link
+started before another process's compile finished); `A5_pct100`:
+`OSError: [Errno 26] Text file busy` (tried to exec the binary while
+another worker was still linking it). This is not a code bug — it's a
+process-orchestration hazard specific to launching multiple concurrent
+`./waf --run` invocations against an out-of-date binary. Mitigation used
+for the corrected re-run: `./waf build` once, serially, before launching
+any parallel jobs, so every subsequent `./waf --run` sees "nothing to
+build" and just executes rather than racing to relink.
+
+---
+
 ## Fix 4 — Evaluation-phase items (for the M2–M12 simulation runs)
 
 1. **M9 / M11 first build+run verification** — code-complete per
