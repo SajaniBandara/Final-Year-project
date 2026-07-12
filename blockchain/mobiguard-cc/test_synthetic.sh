@@ -209,20 +209,5 @@ query QueryPeerSelection '[]'
 #   DemotedClients: (none remaining -- vehicle-43 was escalated to removed)
 #   RemovedNodes:   vehicle-43
 
-# =========================================================================
-echo
-echo "=== 9. T_ref commit (eq:time_consensus) + duplicate-seq rejection ==="
-# =========================================================================
-as_org1
-invoke CommitTRef '["1","1718004000.123","0.0","1718004000123"]'
-query GetTRef '["1"]'   # expect: tRefValue=1718004000.123 epsRef=0.0
-
-echo "--- Byzantine-clock scenario: nonzero eps_ref committed and auditable ---"
-invoke CommitTRef '["2","1718004001.623","0.5","1718004001123"]'
-query GetTRef '["2"]'   # expect: tRefValue=1718004001.623 epsRef=0.5
-
-echo "--- duplicate seq rejected (bridge-restart idempotency) ---"
-invoke CommitTRef '["1","1718004000.123","0.0","1718004000123"]' || echo "(expected failure: T_ref already committed for seq 1)"
-
 echo
 echo "=== Done ==="

@@ -1,60 +1,40 @@
 """
 fed_aggregator.py — MOBIGUARD federated LSTM training loop + BRFA-v2 aggregation
-(eq:fed_robust, alg:brfa_v2, eq:lstm_threshold, eq:delta_poison)
+(eq:fed_robust, alg:brfa_v2, eq:lstm_threshold)
 
-This module has two entry points:
+This runs the actual federated training. For each of up to R_max global
+rounds:
+  - Every RSU trains E local epochs starting from the CURRENT global
+    weights (not from scratch), using the (lr, batch, epochs) selected for
+    it by local_trainer.py's grid search, and commits a SHA3-512 hash of
+    its updated local weights.
+  - The server aggregates via BRFA-v2 (Algorithm alg:brfa_v2):
+      Step 1: Trust gate    — drop RSUs whose trust score T_r < T_min;
+                               abort the round if fewer than 2f+1 remain
+      Step 2: Hash verify   — recompute SHA3-512(W_local^(k)) and compare
+                               against the hash committed this round
+      Step 3: Krum filter   — coordinate-wise median + distance-based
+                               outlier rejection over RSUs that passed 1-2
+      Step 4: Weighted aggregation — n_k-weighted FedAvg over accepted models
+  - The GLOBAL model's validation loss (mean benign reconstruction error
+    across all RSUs, weighted by RSU sample count) is recorded.
 
-1. `main()` / CLI (`python3 fed_aggregator.py`) — the live, primary training
-   path used by pipeline.py step 3. For each of up to R_max global rounds:
-     - Every RSU trains E local epochs starting from the CURRENT global
-       weights (not from scratch), using the (lr, batch, epochs) selected for
-       it by local_trainer.py's grid search, and commits a SHA3-512 hash of
-       its updated local weights.
-     - The server aggregates via BRFA-v2 (Algorithm alg:brfa_v2):
-         Step 1: Trust gate    — drop RSUs whose trust score T_r < T_min;
-                                  abort the round if fewer than 2f+1 remain
-         Step 2: Hash verify   — recompute SHA3-512(W_local^(k)) and compare
-                                  against the hash committed this round
-         Step 3: Krum filter   — coordinate-wise median + distance-based
-                                  outlier rejection over RSUs that passed 1-2
-         Step 4: Weighted aggregation — n_k-weighted FedAvg over accepted models
-     - The GLOBAL model's validation loss (mean benign reconstruction error
-       across all RSUs, weighted by RSU sample count) is recorded.
+Global aggregation rounds R (spec §4.2): the global model is checkpointed
+at R in {50, 100, 150}; the smallest R whose GLOBAL loss has converged
+(within CONVERGE_TOL of the loss at R_max) is selected as the final model —
+this is what "R selected by monitoring global loss convergence" means.
 
-   Global aggregation rounds R (spec §4.2): the global model is checkpointed
-   at R in {50, 100, 150}; the smallest R whose GLOBAL loss has converged
-   (within CONVERGE_TOL of the loss at R_max) is selected as the final model —
-   this is what "R selected by monitoring global loss convergence" means.
-
-   After R is selected, per-RSU detection thresholds theta^(k) (eq:lstm_threshold)
-   are calibrated against the FINAL global model on each RSU's own benign
-   validation windows, and checked for >=95% precision jointly with <=1% FPR.
-   Each RSU's own LOCAL model at the selected round R is also saved as a
-   standalone checkpoint (rsu_{k}.pt) — see `main()`'s post-loop block for why:
-   entry point 2 below needs it and nothing else in this design produces it.
-
-2. `run_aggregation()` — a standalone, importable BRFA-v2/naive-FedAvg
-   aggregation pass over ALREADY-TRAINED local models loaded from disk
-   (rsu_{k}.pt, produced by `main()` above). Used by poison_sweep.py (M8
-   eq:delta_poison: Delta_poison(rho_mal) sweep, BRFA-v2 vs naive FedAvg) to
-   corrupt a rho_mal fraction of clean local models and re-aggregate
-   in-memory without disturbing `main()`'s live training artifacts. This is
-   a separate, self-contained BRFA-v2 implementation (trust_gate_sweep /
-   hash_verify_all / krum_filter / weighted_fedavg) rather than a call into
-   `main()`'s per-round loop, since poison_sweep.py needs many independent
-   one-shot aggregation calls over a fixed set of clean models, not a live
-   multi-round training run.
+After R is selected, per-RSU detection thresholds theta^(k) (eq:lstm_threshold)
+are calibrated against the FINAL global model on each RSU's own benign
+validation windows, and checked for >=95% precision jointly with <=1% FPR.
 
 Outputs
   lstm_pipeline/models/global.pt          final global model weights
   lstm_pipeline/models/rsu_{k}_global.pt  global weights + per-RSU theta
-  lstm_pipeline/models/rsu_{k}.pt         RSU k's own local model at selected R
-                                          (input to run_aggregation()/M8 sweep)
-  lstm_pipeline/local_results.json        per-RSU n_train (input to load_local_models())
   lstm_pipeline/fed_summary.json          round log + per-RSU calibration summary
 """
 
-import json, argparse, hashlib
+import json, argparse
 import numpy as np
 import torch
 import torch.nn as nn
@@ -63,7 +43,7 @@ from pathlib import Path
 from scipy.stats import norm as scipy_norm
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
-from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash, seed_everything
+from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash
 
 REPO        = Path(__file__).resolve().parents[2]
 PRE         = REPO / "lstm_pipeline" / "preprocessed"
@@ -97,10 +77,8 @@ def load_rsu_data() -> dict:
 
     data = {}
     for rsu_id in rsu_ids:
-        # Pure-benign A0 runs only (meta col 1 = attack_v). See local_trainer.py:
-        # y==0 leaked attack-run label-0 windows into benign training.
-        mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (meta_tr[:, 1] == 0)
-        mask_va_benign = (meta_va[:, 0] == rsu_id) & (meta_va[:, 1] == 0)  # pure-benign A0 for θ calibration
+        mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (y_tr == 0)
+        mask_va_benign = (meta_va[:, 0] == rsu_id) & (y_va == 0)
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]
@@ -152,34 +130,6 @@ def load_trust_scores(rsu_ids: list) -> dict:
     else:
         print(f"  [WARN] {TRUST_PATH} not found — treating all RSUs as fully trusted (T=1.0)")
     return scores
-
-
-def load_local_models(model_dir: Path) -> dict:
-    """
-    Loads standalone per-RSU local model checkpoints (rsu_{k}.pt) produced by
-    `main()`'s post-training-loop block below. Used by run_aggregation() /
-    poison_sweep.py (M8), which need a fixed set of "clean" local models to
-    corrupt and re-aggregate — NOT by `main()` itself, which trains its own
-    local models fresh each round.
-    Returns {rsu_id: {"state_dict": ..., "theta": ..., "n_train": ...}}
-    """
-    models = {}
-    local_results_path = REPO / "lstm_pipeline" / "local_results.json"
-    with open(local_results_path) as fh:
-        local_results = json.load(fh)
-
-    for path in sorted(model_dir.glob("rsu_[0-9]*.pt")):
-        if path.stem.endswith("_global"):
-            continue   # rsu_{k}_global.pt are global-weight copies, not local models
-        rsu_id = int(path.stem.split("_")[1])
-        # weights_only=False: PyTorch >=2.6 defaults to the safe loader, which
-        # rejects the numpy scalars (theta/mu/sigma) in our own checkpoints.
-        ckpt   = torch.load(path, map_location="cpu", weights_only=False)
-        n      = local_results.get(str(rsu_id), {}).get("n_train", 1)
-        models[rsu_id] = {"state_dict": ckpt["weights"],
-                          "theta":      ckpt["theta"],
-                          "n_train":    n}
-    return models
 
 
 # ── Local training (one federated round) ─────────────────────────────────────
@@ -249,7 +199,7 @@ def global_validation_loss(global_sd: dict, rsu_data: dict, rsu_ids: list) -> fl
     return float(np.average(losses, weights=weights)) if losses else float("nan")
 
 
-# ── BRFA-v2 (Algorithm alg:brfa_v2) — live training-loop path ────────────────
+# ── BRFA-v2 (Algorithm alg:brfa_v2) ───────────────────────────────────────────
 
 def trust_gate(rsu_ids: list, trust_scores: dict, t_min: float, f: int) -> list:
     """Step 1: exclude RSUs with T_r < T_min; abort if fewer than 2f+1 remain."""
@@ -288,39 +238,17 @@ def unflatten_weights(flat: np.ndarray, reference: dict) -> dict:
 
 
 def krum_filter(flat_weights: list, n_samples: list, gamma_factor: float = 2.0):
-    """
-    Step 3 (alg:brfa_v2, eq:fed_robust): filter models whose distance to
-    coordinate-wise median exceeds gamma = median(d) + gamma_factor * std(d).
-    Returns boolean mask of accepted models. Shared by both `main()`'s live
-    training loop and run_aggregation()'s poisoning-sweep path.
-
-    With fewer than 2 candidates, "distance to the median" is trivially 0
-    for the sole candidate, making gamma = 0 and the strict "<" comparison
-    reject it outright — Krum's geometric-outlier test is undefined with a
-    single point (there is nothing to compare it against). Auto-accept in
-    that case rather than let a lone honest RSU's own model be spuriously
-    rejected by its own filter.
-    """
-    if len(flat_weights) < 2:
-        print(f"  BRFA-v2: {len(flat_weights)} eligible RSU(s) after trust/hash gate — "
-              f"Krum distance filter is undefined with <2 candidates, auto-accepting.")
-        mask = np.ones(len(flat_weights), dtype=bool)
-        return mask, (flat_weights[0] if flat_weights else None)
-
-    W = np.stack(flat_weights)                   # (K, D)
-    W_tilde = np.median(W, axis=0)               # coordinate-wise median
+    """eq:fed_robust: filter models whose distance to coordinate-wise median
+    exceeds γ = median(d) + gamma_factor * std(d). Returns boolean mask."""
+    W = np.stack(flat_weights)
+    W_tilde = np.median(W, axis=0)
     dists = np.array([np.linalg.norm(w - W_tilde) for w in flat_weights])
     gamma = np.median(dists) + gamma_factor * dists.std()
     mask  = dists < gamma
-    print(f"  BRFA-v2: {mask.sum()}/{len(mask)} RSUs accepted "
-          f"(γ={gamma:.4f}, dists min={dists.min():.4f} max={dists.max():.4f})")
     return mask, W_tilde
 
 
 def weighted_fedavg(flat_weights: list, n_samples: list, mask: np.ndarray) -> np.ndarray:
-    """Step 4 (alg:brfa_v2): omega_k-weighted mean over accepted models.
-    `mask` already folds together trust-gate AND hash-verify AND Krum
-    (or is all-True for --mode fedavg) — omega_k = n_k for accepted k."""
     accepted_w = [flat_weights[i] for i in range(len(mask)) if mask[i]]
     accepted_n = [n_samples[i]    for i in range(len(mask)) if mask[i]]
     total = sum(accepted_n)
@@ -332,200 +260,9 @@ def bc_commit_global_hash(weights_hash: str):
     pass   # blockchain_sim.h handles the real commit in the C++ simulation layer
 
 
-# ── BRFA-v2 — standalone poisoning-sweep path (M8, eq:delta_poison) ──────────
-# poison_sweep.py imports run_aggregation() directly; these helpers are kept
-# separate from the live-training-loop versions above (trust_gate/hash_verify)
-# because they operate on a fixed set of already-flattened, possibly-poisoned
-# weight arrays rather than a live per-round `round_models` dict, and use
-# different signatures (no `f`/committed-hash-at-submission-time bookkeeping).
-
-def _hash_flat_weights(flat_weights: np.ndarray) -> str:
-    """SHA3-512 of an already-flattened weight vector — same algorithm as
-    lstm_model.compute_weights_hash (eq:bc_model_verify), specialised for the
-    flat np.ndarray representation apply_poisoning()/run_aggregation() use."""
-    return hashlib.sha3_512(np.ascontiguousarray(flat_weights).tobytes()).hexdigest()
-
-
-def apply_poisoning(flat_list: list[np.ndarray], rsu_ids: list[int],
-                    poison_fraction: float, poison_mode: str,
-                    seed: int = 0) -> tuple[list[np.ndarray], set[int]]:
-    """
-    Corrupts the first round(poison_fraction * K) RSUs (by sorted rsu_id,
-    deterministic) to simulate Byzantine gradient submissions for
-    Delta_poison(rho_mal) evaluation (eq:delta_poison). Returns the
-    (possibly modified) weight list and the set of poisoned RSU ids.
-
-    poison_mode:
-      sign_flip — W_poisoned = -W        (classic strong Byzantine attack)
-      scale     — W_poisoned = 50 * W    (large-magnitude outlier)
-      random    — W_poisoned ~ N(0, 1)   (submits an unrelated random model)
-    """
-    k = len(rsu_ids)
-    n_poison = round(poison_fraction * k)
-    if n_poison <= 0:
-        return flat_list, set()
-
-    poisoned_ids = set(sorted(rsu_ids)[:n_poison])
-    rng = np.random.RandomState(seed)
-    out = []
-    for rid, w in zip(rsu_ids, flat_list):
-        if rid not in poisoned_ids:
-            out.append(w)
-            continue
-        if poison_mode == "sign_flip":
-            out.append(-w)
-        elif poison_mode == "scale":
-            out.append(50.0 * w)
-        elif poison_mode == "random":
-            out.append(rng.normal(0, 1, size=w.shape).astype(w.dtype))
-        else:
-            raise ValueError(f"Unknown poison_mode: {poison_mode}")
-    return out, poisoned_ids
-
-
-def trust_gate_sweep(rsu_ids: list[int], trust_scores: dict | None,
-                     trust_min: float) -> set[int]:
-    """Step 1 (alg:brfa_v2) for the poisoning-sweep path: K_e = {k : T_r_k >= T_min}.
-    Missing entries default to 1.0 (crypto_layer.h TRUST_INIT), so this is a
-    no-op unless a live per-RSU trust CSV/JSON is supplied."""
-    if trust_scores is None:
-        return set(rsu_ids)
-    return {rid for rid in rsu_ids if trust_scores.get(str(rid), 1.0) >= trust_min}
-
-
-def hash_verify_all(flat_list: list[np.ndarray], rsu_ids: list[int]) -> dict[int, bool]:
-    """Step 2 (alg:brfa_v2) for the poisoning-sweep path: recompute-and-compare
-    integrity check. Always True here by construction — this simulation
-    computes each RSU's commit hash from the same in-memory weights used at
-    aggregation time, i.e. it verifies read integrity between "commit" and
-    "use", not the honesty of the weights themselves. A malicious RSU that
-    self-consistently poisons its own model and correctly hashes its own
-    (poisoned) output will always pass Step 2 — by design, per alg:brfa_v2's
-    own structure, since Step 2 defends against transit tampering/
-    impersonation, while Step 3 (Krum) is the layer that catches
-    statistical-outlier poisoning. Kept as a real (non-decorative) call site
-    rather than silently skipped."""
-    verified = {}
-    for rid, w in zip(rsu_ids, flat_list):
-        committed_hash = _hash_flat_weights(w)   # "commit" at submission time
-        recomputed_hash = _hash_flat_weights(w)   # "verify" at aggregation time
-        verified[rid] = (committed_hash == recomputed_hash)
-    return verified
-
-
-def bc_commit_model_hash(rsu_id: int, weights_hash: str):
-    """Stub — eq:bc_model_verify: SC.CommitModelHash(H(W_local^(k)))."""
-    pass   # blockchain_sim.h handles real commit in C++ simulation layer
-
-
-def run_aggregation(gamma_factor: float = 2.0,
-                    poison_fraction: float = 0.0,
-                    poison_mode: str = "sign_flip",
-                    mode: str = "brfa",
-                    trust_scores_path: str | None = None,
-                    trust_min: float = 0.50,
-                    out_suffix: str = "",
-                    seed: int = 0) -> dict:
-    """
-    Standalone BRFA-v2 / naive-FedAvg aggregation over already-trained local
-    models (rsu_{k}.pt, produced by `main()`'s post-loop block). Reusable
-    both by a direct CLI-style call and by poison_sweep.py (M8 eq:delta_poison
-    sweep, many in-process calls with out_suffix="" so nothing is written to
-    disk mid-sweep — only the returned in-memory state_dict/theta are used
-    for MCC evaluation).
-
-    Returns a summary dict including "global_state_dict" and "global_theta"
-    for in-memory evaluation, plus the same bookkeeping fields previously
-    written to fed_summary.json.
-    """
-    models = load_local_models(MODEL_DIR)
-    if not models:
-        raise RuntimeError(f"No RSU models found in {MODEL_DIR}. Run fed_aggregator.py's "
-                           f"main training loop first (produces rsu_{{k}}.pt).")
-
-    rsu_ids   = sorted(models.keys())
-    flat_list = [flatten_weights(models[r]["state_dict"]) for r in rsu_ids]
-    n_list    = [models[r]["n_train"] for r in rsu_ids]
-
-    # M8 (eq:delta_poison): corrupt a rho_mal fraction of submissions.
-    flat_list, poisoned_ids = apply_poisoning(
-        flat_list, rsu_ids, poison_fraction, poison_mode, seed=seed)
-    if poisoned_ids:
-        print(f"  M8: poisoned {len(poisoned_ids)}/{len(rsu_ids)} RSUs "
-              f"({poison_mode}) -> ids={sorted(poisoned_ids)}")
-
-    if mode == "fedavg":
-        # AB5-A baseline: naive weighted average, no trust/hash/Krum filtering.
-        eligible = set(rsu_ids)
-        hash_ok  = {r: True for r in rsu_ids}
-        krum_mask = np.ones(len(rsu_ids), dtype=bool)
-    elif mode == "brfa":
-        trust_scores = None
-        if trust_scores_path:
-            with open(trust_scores_path) as fh:
-                trust_scores = json.load(fh)
-        eligible = trust_gate_sweep(rsu_ids, trust_scores, trust_min)        # Step 1
-        f_bft = (len(rsu_ids) - 1) // 3
-        if len(eligible) < 2 * f_bft + 1:
-            raise RuntimeError(
-                f"BRFA-v2 abort: |K_e|={len(eligible)} < 2f+1={2*f_bft+1} "
-                f"after trust gate (eligible RSUs={sorted(eligible)})")
-        hash_ok  = hash_verify_all(flat_list, rsu_ids)                   # Step 2
-        krum_in  = [flat_list[i] for i, r in enumerate(rsu_ids) if r in eligible]
-        n_in     = [n_list[i]    for i, r in enumerate(rsu_ids) if r in eligible]
-        krum_sub_mask, _ = krum_filter(krum_in, n_in, gamma_factor)      # Step 3
-        krum_mask = np.zeros(len(rsu_ids), dtype=bool)
-        j = 0
-        for i, r in enumerate(rsu_ids):
-            if r in eligible:
-                krum_mask[i] = krum_sub_mask[j]
-                j += 1
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    # omega_k = n_k * trust_gate * hash_ok * krum_mask (Step 4)
-    final_mask = np.array([
-        (rsu_ids[i] in eligible) and hash_ok[rsu_ids[i]] and krum_mask[i]
-        for i in range(len(rsu_ids))
-    ])
-
-    global_flat = weighted_fedavg(flat_list, n_list, final_mask)
-    reference   = models[rsu_ids[0]]["state_dict"]
-    global_sd   = unflatten_weights(global_flat, reference)
-
-    # Aggregate thresholds: weighted mean of accepted RSU thresholds (eq:lstm_threshold)
-    accepted_rsu_ids = [rsu_ids[i] for i in range(len(rsu_ids)) if final_mask[i]]
-    thresholds = {r: models[r]["theta"] for r in accepted_rsu_ids}
-    global_theta = float(np.mean(list(thresholds.values()))) if thresholds else 0.0
-
-    if out_suffix is not None:
-        global_model = LSTMAutoencoder(n_features=N_FEATURES)
-        global_model.load_state_dict(global_sd)
-        torch.save({"weights": global_sd}, MODEL_DIR / f"global{out_suffix}.pt")
-        for rsu_id in rsu_ids:
-            bc_commit_model_hash(rsu_id, _hash_flat_weights(global_flat))
-            torch.save({"weights": global_sd,
-                        "theta":   thresholds.get(rsu_id, global_theta)},
-                       MODEL_DIR / f"rsu_{rsu_id}_global{out_suffix}.pt")
-
-    return {
-        "mode":             mode,
-        "poison_fraction":  poison_fraction,
-        "poison_mode":      poison_mode if poisoned_ids else None,
-        "poisoned_rsus":    sorted(poisoned_ids),
-        "accepted_rsus":    accepted_rsu_ids,
-        "rejected_rsus":    [r for r in rsu_ids if r not in accepted_rsu_ids],
-        "global_theta":     global_theta,
-        "global_state_dict": global_sd,
-        "n_accepted":       int(final_mask.sum()),
-        "n_total":          len(rsu_ids),
-    }
-
-
-# ── Main federated training loop ──────────────────────────────────────────────
+# ── Main federated loop ───────────────────────────────────────────────────────
 
 def main(args):
-    seed_everything(0)   # reproducible M1/M8 metrics
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading preprocessed data from {PRE} …")
@@ -546,7 +283,6 @@ def main(args):
     global_sd = {k: v.clone() for k, v in global_model.state_dict().items()}
 
     round_log, round_losses, checkpoints, checkpoint_meta = [], {}, {}, {}
-    round_models_at_grid = {}   # rnd -> {rsu_id: {"state_dict", "n_train"}}, for M8's rsu_{k}.pt
 
     for rnd in range(1, r_max + 1):
         round_models = {}
@@ -591,11 +327,6 @@ def main(args):
                 "krum_rejected":  [verified[i] for i in range(len(verified)) if not mask[i]],
                 "accepted_rsus":  accepted_rsu_ids,
             }
-            round_models_at_grid[rnd] = {
-                r: {"state_dict": {k: v.clone() for k, v in m["state_dict"].items()},
-                    "n_train": m["n_train"]}
-                for r, m in round_models.items()
-            }
             print(f"  Round {rnd:3d}/{r_max}  global_loss={g_loss:.6f}  "
                   f"eligible={len(eligible)} verified={len(verified)} accepted={int(mask.sum())}")
         elif rnd % 25 == 0:
@@ -639,27 +370,6 @@ def main(args):
                    MODEL_DIR / f"rsu_{rsu_id}_global.pt")
 
     global_theta = float(np.mean([v["theta"] for v in per_rsu.values()]))
-
-    # Save each RSU's own LOCAL model at the selected round R as a standalone
-    # checkpoint (rsu_{k}.pt) + local_results.json (n_train) — the artifact
-    # run_aggregation()/poison_sweep.py (M8 eq:delta_poison) loads and
-    # poisons. Nothing else in this training loop produces a per-RSU
-    # "clean, standalone" model, since local models are retrained fresh from
-    # the evolving global weights every round rather than kept as
-    # independent checkpoints.
-    local_results = {}
-    for rsu_id in rsu_ids:
-        rsu_local_sd = round_models_at_grid[selected_R][rsu_id]["state_dict"]
-        rsu_local_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
-        rsu_local_model.load_state_dict(rsu_local_sd)
-        theta_local, _, _ = compute_theta(rsu_local_model, rsu_data[rsu_id]["X_va_benign"])
-        torch.save({"weights": {k: v.cpu() for k, v in rsu_local_sd.items()}, "theta": theta_local},
-                   MODEL_DIR / f"rsu_{rsu_id}.pt")
-        local_results[str(rsu_id)] = {"n_train": round_models_at_grid[selected_R][rsu_id]["n_train"]}
-    with open(REPO / "lstm_pipeline" / "local_results.json", "w") as fh:
-        json.dump(local_results, fh, indent=2)
-    print(f"Saved {len(rsu_ids)} standalone local model checkpoints (rsu_{{k}}.pt @ R={selected_R}) "
-          f"for run_aggregation()/poison_sweep.py")
 
     fed_summary = {
         "n_total": n_total, "f": f, "t_min": args.t_min,

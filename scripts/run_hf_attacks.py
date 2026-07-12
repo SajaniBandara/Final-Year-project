@@ -11,35 +11,19 @@ Attack mapping:
   attack_number=7  →  active_attack_variant=6  →  Attack 7 (HF CP variant)
   attack_number=8  →  active_attack_variant=7  →  Attack 8 (HF DP variant)
 
-Attack 5-8 each get TWO runs per percentage, mirroring run_std_attacks.py's
-TAP pattern: once as the normal MOBIGUARD run (full S1-S8 stack active,
-FADE inactive), and once as an isolated FADE-baseline run (--enable_lrad_obu=0
---enable_lrad_rsu=0, MOBIGUARD's entire S1-S8 stack disabled). The isolation
-matters because record_detection_event(v, n) — called by S1, S2, and S5-S8 —
-uses the CLI-selected active_attack_variant as its bucket key regardless of
-which signature actually fired; S1/S2 (Selective Time Delay, unrelated to
-Hidden Forwarding) run unconditionally on every packet no matter which
---attack_number is selected, so without isolation their own always-on false
-triggers get misattributed into whichever HF variant this run is testing,
-corrupting MOBIGUARD's own reported MCC/FPR for that variant. Isolating
-FADE's run the same way TAP already is removes that contamination from the
-comparison. See routing.cc's fade_detection_active assignment and
-write_security_metrics_csv()'s guard (both updated 2026-07-12).
-
 Result CSVs written by the simulation:
-  results_routing/MOBIGUARD_Attack<N>_<pct>.csv  — MOBIGUARD detector (normal run only)
-  results_routing/FADE_Attack<N>_<pct>.csv        — eFADE detector (isolated run only)
+  results_routing/MOBIGUARD_Attack<N>_<pct>.csv  — MOBIGUARD detector
+  results_routing/FADE_Attack<N>_<pct>.csv        — eFADE detector (primary for HF)
 
 Per-run files in the NS-3 working directory (tagged, no collision):
   fade_results_V<v>_pct<p>.csv   — per-flow FADE detection detail
   fade_metrics_V<v>_pct<p>.csv   — per-run FADE summary row
 
 Per-run logs (stdout + stderr):
-  logs/A<N>_pct<P>_seed<S>.log        — normal MOBIGUARD run
-  logs/A<N>_pct<P>_seed<S>_FADE.log   — isolated FADE baseline run
+  logs/A<N>_pct<P>_seed<S>.log
 
 Usage examples:
-  # Run all 48 combinations (4 attacks × 6 percentages × 2 modes) in parallel:
+  # Run all 24 combinations (4 attacks × 6 percentages) in parallel:
   python3 scripts/run_hf_attacks.py
 
   # Sync headers + rebuild first, then run:
@@ -72,7 +56,6 @@ NS3_DIR     = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
 SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs"
-BINARY_PATH = NS3_DIR / "build" / "scratch" / "routing" / "routing"
 
 # ---------------------------------------------------------------------------
 # Simulation parameters
@@ -95,18 +78,6 @@ FIXED_PARAMS = {
     "maxspeed":          150,
     "use_sumo_mobility": 1,
     "architecture":      3,
-}
-
-# FADE baseline isolation overrides — disables MOBIGUARD's entire S1-S8
-# stack (see lrad.h; AB1's own ablation never sets both flags to 0
-# simultaneously, so this doesn't collide with AB1 data collection).
-# Mirrors run_std_attacks.py's TAP_PARAMS exactly. fade_detection_active
-# (routing.cc) requires both flags 0 to auto-enable, so this is also what
-# makes FADE actually produce output — the normal run below no longer
-# does.
-FADE_PARAMS = {
-    "enable_lrad_obu": 0,
-    "enable_lrad_rsu": 0,
 }
 
 # ---------------------------------------------------------------------------
@@ -173,33 +144,25 @@ def clean_results(attack: int | None, percentage: int | None) -> None:
 
 
 def build_waf_command(attack_number: int, attack_percentage: int,
-                      sim_time: int, seed: int, sim_run: int,
-                      extra_params: dict | None = None) -> list[str]:
+                      sim_time: int, seed: int, sim_run: int) -> list[str]:
     params = dict(FIXED_PARAMS)
     params["simTime"]           = sim_time
     params["attack_number"]     = attack_number
     params["attack_percentage"] = attack_percentage
     params["sim_seed"]          = seed
     params["sim_run"]           = sim_run
-    if extra_params:
-        params.update(extra_params)
 
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
     # routing.cc lives in scratch/routing/, so waf registers the program as
     # 'scratch/routing/routing' (not 'scratch/routing').
-    # --run-no-build: concurrent workers must not each do their own implicit
-    # build check (races on the shared build dir — see run_std_attacks.py's
-    # identical comment for the JSONDecodeError this caused live). Build
-    # once via --build before running the sweep.
-    return ["./waf", "--run-no-build", f"scratch/routing/routing {param_str}"]
+    return ["./waf", "--run", f"scratch/routing/routing {param_str}"]
 
 
 def run_one(attack_number: int, attack_percentage: int,
             sim_time: int, seed: int, sim_run: int,
-            log_path: Path, extra_params: dict | None = None,
-            label_suffix: str = "") -> dict:
-    label = f"A{attack_number}_pct{attack_percentage}{label_suffix}"
-    cmd   = build_waf_command(attack_number, attack_percentage, sim_time, seed, sim_run, extra_params)
+            log_path: Path) -> dict:
+    label = f"A{attack_number}_pct{attack_percentage}"
+    cmd   = build_waf_command(attack_number, attack_percentage, sim_time, seed, sim_run)
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     start = datetime.now()
@@ -264,8 +227,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--build", action="store_true",
-        help="Build-only: sync project headers to scratch, run ./waf build, then EXIT "
-             "without simulating. Re-run without --build to launch the sweep.",
+        help="Sync project headers to scratch and run ./waf build before simulating.",
     )
     parser.add_argument(
         "--clean", action="store_true",
@@ -298,21 +260,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # --build is build-ONLY: sync, compile, then EXIT. It deliberately does
-    # NOT fall through into the sweep (see run_std_attacks.py's identical
-    # convention) — otherwise `--build` silently launches a full multi-hour
-    # run, and concurrent sweep workers would each redo their own implicit
-    # build check via plain `--run`, racing on the shared build dir.
     if args.build:
         sync_files()
         if not build_simulation():
             sys.exit(1)
-        print("Build complete. Re-run without --build to launch the simulations.")
-        sys.exit(0)
-
-    if not BINARY_PATH.exists():
-        print(f"ERROR: {BINARY_PATH} not found. Run with --build first.")
-        sys.exit(1)
 
     scope_attacks = [args.attack] if args.attack else [a["attack_number"] for a in ATTACKS]
     scope_percs   = [args.percentage] if args.percentage is not None else ATTACK_PERCENTAGES
@@ -322,27 +273,15 @@ def main() -> None:
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Two runs per (attack, pct): the normal MOBIGUARD run (full S1-S8,
-    # writes MOBIGUARD_Attack<N>_<pct>.csv) and the isolated FADE-baseline
-    # run (S1-S8 off via FADE_PARAMS, writes FADE_Attack<N>_<pct>.csv). See
-    # module docstring for why isolation is needed.
-    runs = []
-    for a in scope_attacks:
-        for p in scope_percs:
-            runs.append({
-                "attack_number":     a,
-                "attack_percentage": p,
-                "extra_params":      None,
-                "label_suffix":      "",
-                "log": LOGS_DIR / f"A{a}_pct{p}_seed{args.seed}.log",
-            })
-            runs.append({
-                "attack_number":     a,
-                "attack_percentage": p,
-                "extra_params":      FADE_PARAMS,
-                "label_suffix":      "_FADE",
-                "log": LOGS_DIR / f"A{a}_pct{p}_seed{args.seed}_FADE.log",
-            })
+    runs = [
+        {
+            "attack_number":     a,
+            "attack_percentage": p,
+            "log": LOGS_DIR / f"A{a}_pct{p}_seed{args.seed}.log",
+        }
+        for a in scope_attacks
+        for p in scope_percs
+    ]
 
     total = len(runs)
     print(
@@ -365,8 +304,6 @@ def main() -> None:
                 args.seed,
                 args.sim_run,
                 r["log"],
-                r["extra_params"],
-                r["label_suffix"],
             ): r
             for r in runs
         }
