@@ -117461,7 +117461,17 @@ void write_security_metrics_csv()
 	// baseline reporting its own values in its own run (§Benchmarking), so each
 	// run must produce exactly one framework's file. A normal MOBIGUARD run has
 	// enable_tap=false and is unaffected.
-	if (enable_tap) return;
+	//
+	// Extended 2026-07-12 for FADE's own isolated baseline run (mirrors TAP's
+	// mechanism exactly, see the fade_detection_active assignment in main()):
+	// when both enable_lrad_obu and enable_lrad_rsu are 0, MOBIGUARD's ENTIRE
+	// S1-S8 stack is disabled regardless of enable_tap, so this run cannot be
+	// reporting a meaningful MOBIGUARD data point either — skip it so it
+	// doesn't pollute MOBIGUARD_Attack*_*.csv the same way a TAP run would.
+	// Safe for AB1 (enable_lrad_obu/rsu ablation): AB1-A/B each disable only
+	// one of the two flags, never both, so this never fires during AB1's own
+	// data collection.
+	if (enable_tap || (!enable_lrad_obu && !enable_lrad_rsu)) return;
 
 	fstream fout;
 	string filename;
@@ -143840,11 +143850,29 @@ if (architecture == 3 && N_Vehicles > 0)
 // by the TX/RX paths. scripts/run_hf_attacks.py's check_results() has always
 // expected FADE_Attack<N>_<pct>.csv to exist for every HF run without
 // passing any special flag, so auto-enable here (unlike enable_tap, which
-// stays an explicit CLI opt-in because TAP needs --enable_lrad_obu/rsu=0 for
-// a clean isolated baseline). Scope matches fade_is_flow_attacked() and
+// stays an explicit CLI opt-in). Scope matches fade_is_flow_attacked() and
 // main.tex's B3 definition ("FADE ... Variants 5-8"): active_attack_variant
 // 4-7 == attack_number 5-8, the four Hidden Forwarding variants.
-fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7);
+//
+// ISOLATION (added 2026-07-12, mirrors TAP's --enable_lrad_obu/rsu=0
+// convention): FADE's own state (fade_received_count/fade_forwarded_count)
+// is independent of MOBIGUARD's S1-S8 stack, so running them simultaneously
+// never corrupts FADE's OWN numbers. But record_detection_event(v, n) is
+// called by every one of S1/S2/S5-S8 using the CLI-selected
+// active_attack_variant as the bucket key, not the firing signature's own
+// variant — so when FADE runs alongside a full MOBIGUARD stack, S1/S2's
+// own (attack-1-4-specific, always-on) false triggers get misattributed
+// into whichever HF variant this run happens to be testing, corrupting
+// MOBIGUARD's *own* reported MCC/FPR for that variant. Requiring
+// !enable_lrad_obu && !enable_lrad_rsu here means FADE's own baseline
+// figures (FADE_Attack<N>_<pct>.csv / fade_metrics_*.csv) are only ever
+// produced by a dedicated isolated run (both flags 0, mirroring
+// TAP_PARAMS) — never by the normal run that also produces
+// MOBIGUARD_Attack<N>_<pct>.csv. AB1's own ablation (enable_lrad_obu/rsu)
+// never sets both flags to 0 simultaneously (AB1-A/B each disable only one
+// side), so this doesn't collide with that ablation's data collection.
+fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7)
+                       && !enable_lrad_obu && !enable_lrad_rsu;
 std::system("mkdir -p results_routing");
 fade_csv.open("results_routing/fade_results" + g_sim_tag + ".csv");
 fade_csv << "FlowID,"

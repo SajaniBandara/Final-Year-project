@@ -61,6 +61,16 @@ ATTACK_LABELS = {
     8: "Attack 8 (Hidden Forwarding, Passive, Data Plane)",
 }
 
+# Short single-line form for the combined figure's rotated row labels —
+# full ATTACK_LABELS strings are too long to rotate 90° in a packed 4-row
+# grid without overlapping the neighboring row's label.
+ATTACK_LABELS_SHORT = {
+    5: "Attack 5 (Active, CP)",
+    6: "Attack 6 (Active, DP)",
+    7: "Attack 7 (Passive, CP)",
+    8: "Attack 8 (Passive, DP)",
+}
+
 # Percentages excluded per attack due to known data contamination: the
 # 2026-07-11/12 dedicated sweep (run_hf_attacks.py) collided with the
 # concurrently-running 180-sim LSTM training collection job
@@ -68,11 +78,17 @@ ATTACK_LABELS = {
 # processes append to the SAME MOBIGUARD_Attack<N>_<pct>.csv (no seed/run-ID
 # in the filename or row schema), so rows from the two runs (different
 # simTime, different seeds) are interleaved beyond reconstruction. See
-# the chat discussion / PENDING_FIXES.md for detail. Do not just delete
-# this dict when re-running — update it to reflect whatever is actually
-# still contaminated at the time.
+# the chat discussion / PENDING_FIXES.md for detail.
+#
+# THIS IS A MOVING TARGET: the training job keeps progressing through
+# attacks 5->6->7->8, contaminating each (attack, pct) combo's shared CSV
+# the moment it reaches that combo. Re-check row counts
+# (`grep -vc "^#" MOBIGUARD_Attack<N>_<pct>.csv` — anything noticeably
+# above ~38 for a single 40s run is suspect) before trusting this dict;
+# it reflects a snapshot taken 2026-07-12 ~11:00.
 EXCLUDED_PERCENTAGES = {
-    5: [0, 20, 40],
+    5: [0, 20, 40, 60, 80, 100],
+    6: [0, 20],
 }
 
 # MOBIGUARD_Attack<N>_<pct>.csv column layout (write_security_metrics_csv, routing.cc)
@@ -169,42 +185,44 @@ def load_fade_summary_mcc(attack_number, seeds=(1,)):
 
 
 def plot_metric(ax, fade_data, mob_data, fade_col, mob_col, ylabel, title,
-                 ylim=None, yticks=None):
-    x = np.array(ATTACK_PERCENTAGES)
+                 pcts, excluded_pcts, ylim=None, yticks=None):
+    x = np.array(pcts)
 
     fade_means, fade_cis = [], []
     mob_means, mob_cis = [], []
 
-    for pct in ATTACK_PERCENTAGES:
+    for pct in pcts:
         fm, fc = mean_and_ci(extract_column(fade_data[pct], fade_col))
         fade_means.append(fm); fade_cis.append(fc)
 
         mm, mc = mean_and_ci(extract_column(mob_data[pct], mob_col))
         mob_means.append(mm); mob_cis.append(mc)
 
-    return _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, title, ylim, yticks)
+    return _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, title,
+                             excluded_pcts, ylim, yticks)
 
 
 def plot_mcc_metric(ax, attack_number, mob_data, mob_col, ylabel, title,
-                     ylim=None, yticks=None):
-    x = np.array(ATTACK_PERCENTAGES)
+                     pcts, excluded_pcts, ylim=None, yticks=None):
+    x = np.array(pcts)
     fade_mcc = load_fade_summary_mcc(attack_number)
 
     fade_means, fade_cis = [], []
     mob_means, mob_cis = [], []
 
-    for pct in ATTACK_PERCENTAGES:
+    for pct in pcts:
         fm, fc = mean_and_ci(np.array(fade_mcc[pct]))
         fade_means.append(fm); fade_cis.append(fc)
 
         mm, mc = mean_and_ci(extract_column(mob_data[pct], mob_col))
         mob_means.append(mm); mob_cis.append(mc)
 
-    return _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, title, ylim, yticks)
+    return _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, title,
+                             excluded_pcts, ylim, yticks)
 
 
 def _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, title,
-                      ylim=None, yticks=None):
+                      excluded_pcts=None, ylim=None, yticks=None):
     fade_means = np.array(fade_means); fade_cis = np.array(fade_cis)
     mob_means  = np.array(mob_means);  mob_cis  = np.array(mob_cis)
 
@@ -217,6 +235,14 @@ def _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, ti
                       fmt='s', color='blue', markerfacecolor='blue',
                       markersize=9, linewidth=2, capsize=18, linestyle='--',
                       label='MOBIGUARD (Proposed)')
+
+    if excluded_pcts:
+        for pct in excluded_pcts:
+            ax.axvspan(pct - 8, pct + 8, color='grey', alpha=0.15, zorder=0)
+        ax.text(0.02, 0.02,
+                f"grey = {', '.join(str(p) + '%' for p in excluded_pcts)} excluded\n(contaminated CSV, see report)",
+                transform=ax.transAxes, fontsize=10, color='dimgrey',
+                verticalalignment='bottom', style='italic')
 
     ax.grid(True, linestyle='-', alpha=0.2, linewidth=1.0)
     ax.set_axisbelow(True)
@@ -233,36 +259,78 @@ def _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, ti
     return p1, p2
 
 
-def plot_attack(attack_number):
-    print(f"\n=== Attack {attack_number} ===")
+METRICS = [
+    (FADE_COL_PDR_AVG, MOB_COL_PDR_AVG, "Packet Delivery Ratio (%)",  "(a) PDR [supplementary]", [-5, 115], [0, 20, 40, 60, 80, 100]),
+    (FADE_COL_UCR_AVG, MOB_COL_UCR_AVG, "Unauthorized Copy Rate (%)", "(c) UCR [M3]",            [-5, 115], [0, 20, 40, 60, 80, 100]),
+    (FADE_COL_MIT_CUR, MOB_COL_MIT_CUR, "Mitigation Latency (ms)",    "(d) Mitigation [M4]",     None, None),
+    (FADE_COL_LAT_AVG, MOB_COL_LAT_AVG, "End-to-End Latency (ms)",    "(e) Latency [M6]",        None, None),
+]
+
+
+def _blank_row(axes_row, message):
+    """Render empty panels with a centered explanatory message (all pcts excluded)."""
+    titles = ["(b) MCC [M1]", "(a) PDR [supplementary]", "(c) UCR [M3]", "(d) Mitigation [M4]", "(e) Latency [M6]"]
+    for ax, title in zip(axes_row, titles):
+        ax.set_xticks([0, 20, 40, 60, 80, 100])
+        ax.set_xlim([-5, 105])
+        ax.set_xlabel("Attack Percentage (%)", fontsize=22)
+        ax.set_title(title, fontsize=20, pad=10)
+        ax.grid(True, linestyle='-', alpha=0.2, linewidth=1.0)
+    axes_row[2].text(0.5, 0.5, message, transform=axes_row[2].transAxes,
+                      ha='center', va='center', fontsize=16, color='firebrick',
+                      style='italic', wrap=True)
+
+
+def plot_attack_row(axes_row, attack_number, row_label=None):
+    """Draw one attack's 5-panel comparison across the given row of axes."""
     fade_data = load_method_data("FADE", attack_number)
     mob_data  = load_method_data("MOBIGUARD", attack_number)
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    excluded = EXCLUDED_PERCENTAGES.get(attack_number, [])
+    pcts = [p for p in ATTACK_PERCENTAGES if p not in excluded]
 
     for pct in ATTACK_PERCENTAGES:
-        print(f"  {pct}%: FADE={len(fade_data[pct])} rows, MOBIGUARD={len(mob_data[pct])} rows")
+        tag = "  [EXCLUDED — contaminated]" if pct in excluded else ""
+        print(f"  {pct}%: FADE={len(fade_data[pct])} rows, MOBIGUARD={len(mob_data[pct])} rows{tag}")
 
+    if not pcts:
+        _blank_row(axes_row, "All percentages excluded —\nCSV contaminated by concurrent\ntraining job. Needs clean re-run.")
+        return None, None
+
+    p1, p2 = plot_mcc_metric(
+        axes_row[0], attack_number, mob_data, MOB_COL_MCC_CUR,
+        "Matthews Correlation Coefficient", "(b) MCC [M1]",
+        pcts, excluded,
+        ylim=[-1.1, 1.1], yticks=[-1.0, -0.5, 0.0, 0.5, 1.0]
+    )
+    for ax, (fcol, mcol, ylabel, title, ylim, yticks) in zip(axes_row[1:], METRICS):
+        plot_metric(ax, fade_data, mob_data, fcol, mcol, ylabel, title, pcts, excluded, ylim, yticks)
+
+    if row_label:
+        axes_row[0].annotate(
+            row_label, xy=(0, 0.5), xytext=(-axes_row[0].yaxis.labelpad - 55, 0),
+            xycoords=axes_row[0].yaxis.label, textcoords='offset points',
+            fontsize=18, fontweight='bold', ha='right', va='center', rotation=90
+        )
+    return p1, p2
+
+
+def plot_attack(attack_number):
+    print(f"\n=== Attack {attack_number} ===")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    excluded = EXCLUDED_PERCENTAGES.get(attack_number, [])
     label = ATTACK_LABELS.get(attack_number, f"Attack {attack_number}")
+    title_suffix = ""
+    if excluded:
+        title_suffix = f"  [{', '.join(str(p)+'%' for p in excluded)} excluded — contaminated CSV]"
 
-    metrics = [
-        (FADE_COL_PDR_AVG, MOB_COL_PDR_AVG, "Packet Delivery Ratio (%)",        "(a) PDR [supplementary]", [-5, 115], [0, 20, 40, 60, 80, 100]),
-        (FADE_COL_UCR_AVG, MOB_COL_UCR_AVG, "Unauthorized Copy Rate (%)",       "(c) UCR [M3]",            [-5, 115], [0, 20, 40, 60, 80, 100]),
-        (FADE_COL_MIT_CUR, MOB_COL_MIT_CUR, "Mitigation Latency (ms)",          "(d) Mitigation [M4]",     None, None),
-        (FADE_COL_LAT_AVG, MOB_COL_LAT_AVG, "End-to-End Latency (ms)",          "(e) Latency [M6]",        None, None),
-    ]
-
-    fig, axes = plt.subplots(1, len(metrics) + 1, figsize=(7 * (len(metrics) + 1), 7))
-    fig.suptitle(f"Complete Performance Evaluation — {label}\n"
+    fig, axes = plt.subplots(1, len(METRICS) + 1, figsize=(7 * (len(METRICS) + 1), 7))
+    fig.suptitle(f"Complete Performance Evaluation — {label}{title_suffix}\n"
                  "FADE (Zhang et al. IEEE TPDS 2021) vs MOBIGUARD (Proposed)",
                  fontsize=22, fontweight='bold', y=1.02)
 
-    first_p1, first_p2 = plot_mcc_metric(
-        axes[0], attack_number, mob_data, MOB_COL_MCC_CUR,
-        "Matthews Correlation Coefficient", "(b) MCC [M1]",
-        ylim=[-1.1, 1.1], yticks=[-1.0, -0.5, 0.0, 0.5, 1.0]
-    )
-    for ax, (fcol, mcol, ylabel, title, ylim, yticks) in zip(axes[1:], metrics):
-        plot_metric(ax, fade_data, mob_data, fcol, mcol, ylabel, title, ylim, yticks)
+    first_p1, first_p2 = plot_attack_row(axes, attack_number)
 
     fig.legend(
         [first_p1, first_p2],
@@ -278,15 +346,80 @@ def plot_attack(attack_number):
     plt.close(fig)
 
 
+def plot_combined(attack_numbers):
+    print(f"\n=== Combined figure: attacks {attack_numbers} ===")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    n_rows = len(attack_numbers)
+    n_cols = len(METRICS) + 1
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 6.5 * n_rows))
+    if n_rows == 1:
+        axes = axes[np.newaxis, :]
+
+    fig.suptitle("Complete Performance Evaluation — Hidden Forwarding Attacks 5-8\n"
+                 "FADE (Zhang et al. IEEE TPDS 2021) vs MOBIGUARD (Proposed)",
+                 fontsize=24, fontweight='bold', y=1.01)
+
+    first_p1, first_p2 = None, None
+    row_labels = []
+    for row, attack_number in enumerate(attack_numbers):
+        print(f"\n--- row {row}: Attack {attack_number} ---")
+        label = ATTACK_LABELS_SHORT.get(attack_number, f"Attack {attack_number}")
+        excluded = EXCLUDED_PERCENTAGES.get(attack_number, [])
+        row_labels.append(label + (" *" if excluded else ""))
+        p1, p2 = plot_attack_row(axes[row], attack_number)
+        if first_p1 is None:
+            first_p1, first_p2 = p1, p2
+        # Only the bottom row keeps x-axis label; only first column of each row keeps y-axis label (already set)
+        if row != n_rows - 1:
+            for ax in axes[row]:
+                ax.set_xlabel("")
+
+    plt.tight_layout(rect=[0.045, 0, 1, 1])
+    fig.subplots_adjust(hspace=0.45)
+
+    # Row labels placed via fig.text at each row's actual vertical center
+    # (post-layout ax positions), avoiding the overlap that per-axis
+    # annotate() produced when rows are packed tightly by tight_layout.
+    # Kept short + single-line (see ATTACK_LABELS_SHORT) since a rotated
+    # multi-line label is tall enough to bleed into the neighboring row
+    # in a packed 4-row grid.
+    for row, text in enumerate(row_labels):
+        pos = axes[row][0].get_position()
+        y_center = (pos.y0 + pos.y1) / 2
+        fig.text(0.012, y_center, text, rotation=90, fontsize=15, fontweight='bold',
+                  ha='center', va='center')
+    if any(EXCLUDED_PERCENTAGES.get(a) for a in attack_numbers):
+        fig.text(0.012, 0.005, "* some % excluded (contaminated CSV)",
+                  fontsize=10, style='italic', color='dimgrey', ha='left', va='bottom')
+
+    fig.legend(
+        [first_p1, first_p2],
+        ['FADE (Zhang et al. 2021)', 'MOBIGUARD (Proposed)'],
+        loc='upper right', ncol=2, fontsize=20,
+        bbox_to_anchor=(0.98, 1.01), markerscale=1.5
+    )
+
+    out_path = os.path.join(OUTPUT_DIR, "Figure_Combined_Attacks5-8_AllMetrics.png")
+    fig.savefig(out_path, dpi=150, bbox_inches='tight')
+    print(f"\n  Saved: {out_path}")
+    plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Plot FADE vs MOBIGUARD comparison for HF attack variants.")
     parser.add_argument("--attack", type=int, action="append", choices=[5, 6, 7, 8],
                          help="Attack number(s) to plot (repeatable). Default: all of 5,6,7,8.")
+    parser.add_argument("--combined", action="store_true",
+                         help="Produce one figure with all attacks stacked as rows, instead of one PNG per attack.")
     args = parser.parse_args()
     attacks = args.attack if args.attack else [5, 6, 7, 8]
 
-    for a in attacks:
-        plot_attack(a)
+    if args.combined:
+        plot_combined(attacks)
+    else:
+        for a in attacks:
+            plot_attack(a)
 
     print("\nDone.")
 
