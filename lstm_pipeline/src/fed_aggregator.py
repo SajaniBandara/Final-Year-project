@@ -63,7 +63,7 @@ from pathlib import Path
 from scipy.stats import norm as scipy_norm
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
-from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash
+from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash, seed_everything
 
 REPO        = Path(__file__).resolve().parents[2]
 PRE         = REPO / "lstm_pipeline" / "preprocessed"
@@ -97,8 +97,10 @@ def load_rsu_data() -> dict:
 
     data = {}
     for rsu_id in rsu_ids:
-        mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (y_tr == 0)
-        mask_va_benign = (meta_va[:, 0] == rsu_id) & (y_va == 0)
+        # Pure-benign A0 runs only (meta col 1 = attack_v). See local_trainer.py:
+        # y==0 leaked attack-run label-0 windows into benign training.
+        mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (meta_tr[:, 1] == 0)
+        mask_va_benign = (meta_va[:, 0] == rsu_id) & (meta_va[:, 1] == 0)  # pure-benign A0 for θ calibration
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]
@@ -167,8 +169,12 @@ def load_local_models(model_dir: Path) -> dict:
         local_results = json.load(fh)
 
     for path in sorted(model_dir.glob("rsu_[0-9]*.pt")):
+        if path.stem.endswith("_global"):
+            continue   # rsu_{k}_global.pt are global-weight copies, not local models
         rsu_id = int(path.stem.split("_")[1])
-        ckpt   = torch.load(path, map_location="cpu")
+        # weights_only=False: PyTorch >=2.6 defaults to the safe loader, which
+        # rejects the numpy scalars (theta/mu/sigma) in our own checkpoints.
+        ckpt   = torch.load(path, map_location="cpu", weights_only=False)
         n      = local_results.get(str(rsu_id), {}).get("n_train", 1)
         models[rsu_id] = {"state_dict": ckpt["weights"],
                           "theta":      ckpt["theta"],
@@ -519,6 +525,7 @@ def run_aggregation(gamma_factor: float = 2.0,
 # ── Main federated training loop ──────────────────────────────────────────────
 
 def main(args):
+    seed_everything(0)   # reproducible M1/M8 metrics
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading preprocessed data from {PRE} …")

@@ -16,16 +16,16 @@
 //   flag_S8 ← [b_batch] ∧ [b_hop=0]
 //
 // Simulation proxy for each conjunction:
-//   (1) b_batch=1 (BatchVerify passes): recv_flow_id carries NO 0xDEAD0000
-//       marker, confirming the aggregate ML-DSA-87 signature chain over the
-//       primary delivery path is intact — the packet was not content-modified.
-//   (2) ML-DSA-87.Verify = 1: same as (1) — the passive copy is byte-for-byte
-//       identical to the original; the sender's individual signature is valid
-//       over the copy received at d'.
-//   (3) b_hop(u) = 0: passive_hf_malicious_nodes[prev_sender] == true confirms
-//       the sending RSU self-modified its own delta_at_nodes_inst after the
-//       legitimate controller FlowMod arrived (DP). In deployed MOBIGUARD this
-//       is STARK.Verify(π_hop(u)) = 0 because the unauthorized destination d'
+//   (1) BatchVerify=1: read directly from g_batch_passed, a genuine system-wide
+//       signal (not per-packet) set by the 50ms batch_verify_mldsa87() tick.
+//   (2) ML-DSA-87.Verify = 1 (content unmodified): ground truth via
+//       passive_hf_malicious_nodes[prev_sender] (conjunction 2 above, restated)
+//       — not a real per-packet crypto check; g_packet_crypto's shared
+//       per-(signer,packet_id) record cannot express a receiver-specific
+//       verify outcome (see the "FIXED 2026-07-10" comments at the call site).
+//   (3) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
+//       prev_sender, packet_id) call. In deployed MOBIGUARD this is
+//       STARK.Verify(π_hop(u)) = 0 because the unauthorized destination d'
 //       is absent from the authorized next-hop policy P(s,d).
 //
 // DISTINCTION FROM S7:
@@ -71,11 +71,11 @@ using namespace std;
 //   1. active_attack_variant == 7         (DP passive HF — Attack 8)
 //   2. prev_sender is a flagged passive malicious RSU
 //      (passive_hf_malicious_nodes[prev_sender] == true)
-//   3. recv_flow_id carries NO 0xDEAD0000 marker
-//      (b_batch=1 ∧ ML-DSA-87.Verify=1 — content unmodified, batch passes)
+//   3. g_batch_passed (BatchVerify=1) ∧ ground truth via (2) (ML-DSA-87.Verify=1)
+//   4. fresh stark_verify_hop() — b_hop(u)=0 for the eavesdropper's own hop
 //
 // Parameters:
-//   recv_flow_id  — flow ID from packet tag (should have NO 0xDEAD0000 marker)
+//   recv_flow_id  — flow ID from packet tag (retained for logging)
 //   prev_sender   — node that sent this packet (the malicious RSU, u)
 //   current_hop   — eavesdropper node receiving the passive duplicate (d')
 //   packet_id     — packet ID (for logging)
@@ -94,25 +94,44 @@ inline bool s8_detect(uint32_t recv_flow_id,
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!passive_hf_malicious_nodes[prev_sender]) return false;
 
-    // Conjunctions 1/2: b_batch=1 ∧ ML-DSA-87.Verify=1 — content unmodified.
-    // Primary: sig_valid from g_packet_crypto set by mldsa87_verify() in MacRx.
-    // Fallback: absence of 0xDEAD0000 marker if crypto record not populated.
-    auto it_s8 = g_packet_crypto.find({prev_sender, packet_id});
-    bool b_batch;
-    if (it_s8 != g_packet_crypto.end() && it_s8->second.sig_len > 0)
-        b_batch = it_s8->second.sig_valid;
-    else
-        b_batch = ((recv_flow_id & 0xDEAD0000u) == 0);
+    // Conjunction 1: BatchVerify(σ, {pk_i}, {m_i}, r) = 1 — primary-path delivery
+    // correct across all hops. g_batch_passed is a genuine system-wide signal
+    // (not per-packet, not receiver-specific — set by the 50ms
+    // batch_verify_mldsa87() tick), so it is read directly and is unaffected by
+    // the per-packet shared-record issue described below.
+    //
+    // FIXED 2026-07-10 — this conjunction was previously MISSING entirely: the
+    // old code folded "BatchVerify=1" and "ML-DSA-87.Verify=1" into a single
+    // b_batch variable sourced only from g_packet_crypto's sig_valid, so S8
+    // never actually checked g_batch_passed despite Eq. sig_s8 requiring it as
+    // an independent conjunction (matching S6's ¬b_batch term, which DID
+    // reference g_batch_passed — S8 was inconsistent with its sibling signature).
+    bool batch_verify_ok = g_batch_passed;
+
+    // Conjunction 2: ML-DSA-87.Verify(σ_c, pk_s, m_c) = 1 — content unmodified.
+    //
+    // FIXED 2026-07-10 — g_packet_crypto's sig_valid is a SINGLE record shared
+    // across every receiver of (prev_sender, packet_id): mldsa87_sign() sets
+    // sig_valid=true immediately at signing, and an eavesdropper's own verify
+    // attempt always hits the broadcast-skip early-return (next_hop !=
+    // signed_next_hop) BEFORE it could ever write sig_valid=false — so this
+    // check happened to usually read true (matching what S8 needs), but for the
+    // wrong reason: residual state from the legitimate recipient's own
+    // successful verify, not a genuine per-copy determination. See the matching
+    // comment in s5_detection.h (conjunction 3) for the full trace. Ground truth
+    // via passive_hf_malicious_nodes[prev_sender] (conjunction 2 above, already
+    // confirmed) is the only mechanism that actually encodes "this specific
+    // duplicate is unmodified" — deterministic, not timing-dependent.
+    bool mldsa_verify_ok = passive_hf_malicious_nodes[prev_sender];
+
+    bool b_batch = batch_verify_ok && mldsa_verify_ok;
     if (!b_batch) return false;
 
-    // Conjunction 3: b_hop(u) = 0 — STARK hop proof fails.
-    // Primary: stark_hop_ok from g_packet_crypto set by stark_update_meta().
-    // Fallback: passive_hf_malicious_nodes ground truth.
-    bool b_hop_fails;
-    if (it_s8 != g_packet_crypto.end() && it_s8->second.sig_len > 0)
-        b_hop_fails = !it_s8->second.stark_hop_ok;
-    else
-        b_hop_fails = true; // passive_hf_malicious_nodes confirmed above
+    // Conjunction 3: b_hop(u) = 0 — a FRESH, receiver-specific call to the pure
+    // function stark_verify_hop() — see s5_detection.h for why the shared
+    // stark_hop_ok field on g_packet_crypto is unreliable here (only ever
+    // written by the legitimate recipient's context, never the eavesdropper's).
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
 
     cout << "[S8] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender
