@@ -55,10 +55,10 @@ static bool             g_lstm_logger_ready = false;
 inline std::string lstm_make_base_dir()
 {
     std::string dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = std::getenv("HOME");
     if (home)
-        dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/results_routing/";
     if (!dir.empty() && dir.back() != '/')
         dir += '/';
     return dir;
@@ -105,7 +105,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
 // Features logged (eq:lstm_input):
 //   δ_t          = obs_delay
 //   λ_PI,t       = Δ(g_slowpath_hit_count[rsu_sim_idx]) since last cycle
-//   U_TCAM,t     = g_tcam_rule_count[rsu_sim_idx] / TCAM_HW_SIZE (clamped 0–1)
+//   U_TCAM,t     = g_tcam_rule_count[rsu_sim_idx] / TCAM_CAPACITY (clamped 0–1)
 //   𝟙[π_delay=⊥] = 1 if g_lstm_stark_counts[rsu_sim_idx].first  > 0 this cycle
 //   𝟙[π_hop=⊥]   = 1 if g_lstm_stark_counts[rsu_sim_idx].second > 0 this cycle
 //   ρ_t          = rho_t
@@ -124,7 +124,6 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     if (r >= g_lstm_prev_slowpath.size()) return;
 
     const uint32_t rsu_sim_idx = (uint32_t)N_Vehicles + r;
-    const int      tcam_hw     = 256; // TCAM_HW_SIZE — same constant as routing.cc
 
     // ── Feature 2: λ_PI — Δ PACKET_IN slow-path hits since last cycle
     int cur_slow  = g_slowpath_hit_count[rsu_sim_idx];
@@ -133,7 +132,9 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     g_lstm_prev_slowpath[r] = cur_slow;
 
     // ── Feature 3: U_TCAM — current rule utilisation (0.0 – 1.0)
-    double U_TCAM = (double)g_tcam_rule_count[rsu_sim_idx] / (double)tcam_hw;
+    // Uses the single shared TCAM_CAPACITY constant (routing.cc) — was a
+    // locally-hardcoded `tcam_hw=256` shadow constant before 2026-07-13.
+    double U_TCAM = (double)g_tcam_rule_count[rsu_sim_idx] / (double)TCAM_CAPACITY;
     if (U_TCAM > 1.0) U_TCAM = 1.0;
 
     // ── Features 4 & 5: ZKP failure indicators (binary {0, 1})

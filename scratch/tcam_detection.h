@@ -17,7 +17,7 @@ extern int                    g_slowpath_hit_count[300];
 
 struct TcamDetectionState {
     uint32_t rsu_node_id;
-    double   tcam_util;       // g_tcam_rule_count[rsu_node_id] / TCAM_HW_SIZE
+    double   tcam_util;       // g_tcam_rule_count[rsu_node_id] / TCAM_CAPACITY
     double   lambda_fm;       // FlowMod install rate (rules/s this cycle)
     double   lambda_pi;       // PACKET_IN rate (slow-path hits/s this cycle)
     int      malicious_count; // is_malicious entries in g_tcam_table for this RSU
@@ -70,7 +70,7 @@ inline TcamCycleMetrics ComputeTcamDetection(
         const uint32_t node_id = N_Vehicles + r;
 
         // 1. TCAM utilisation, clamped to [0, 1]
-        double tcam_util = g_tcam_rule_count[node_id] / (double)TCAM_HW_SIZE;
+        double tcam_util = g_tcam_rule_count[node_id] / (double)TCAM_CAPACITY;
         tcam_util = (tcam_util < 0.0 ? 0.0 : (tcam_util > 1.0 ? 1.0 : tcam_util));
 
         // 2. FlowMod install rate (rules installed this cycle / 1 s)

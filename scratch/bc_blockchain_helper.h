@@ -66,7 +66,7 @@ static int           g_tref_seq          = 0;
 static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 
 static const std::string BC_RESULTS_DIR =
-    "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
 
 // Per-run filename suffix ("_Attack{id}_{pct}{delay}[_TAP]"), mirrors the
 // scheme write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without
@@ -163,9 +163,11 @@ extern double   simTime;
 static const int    BC_S3_RATE_THRESH   = 10;   // FlowMods per second
 
 // S4: data-plane TCAM exhaustion threshold.
-// routing.cc defines TCAM_CAPACITY = 1000; 80% = 800 rules (sim_params.go S4UtcamThresh=80).
+// routing.cc defines TCAM_CAPACITY = 256 (single canonical constant, reconciled
+// 2026-07-13 — was a separate, disagreeing TCAM_CAPACITY=1000 defined lower in
+// routing.cc); 80% = 204 rules (sim_params.go S4UtcamThresh=80, unchanged).
 // We read the actual capacity from the extern defined in routing.cc.
-extern int TCAM_CAPACITY;                        // defined in routing.cc (line ~120984)
+extern int TCAM_CAPACITY;                        // defined in routing.cc (line ~117453)
 static const double BC_S4_UTIL_THRESH   = 0.80; // 80% utilisation triggers penalty
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,7 +270,7 @@ static void bc_open_files()
     if (g_bc_files_open) return;
 
     const std::string dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
 
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.

@@ -1,6 +1,8 @@
 #ifndef TCAM_ATTACK_HELPER_H
 #define TCAM_ATTACK_HELPER_H
 
+#include <algorithm>   // std::remove_if — tcam_evict_expired()
+
 // MobiGuard blockchain event writer — S3/S4 anomaly detection + CSV output.
 // Included here so every TCAM install/snapshot automatically logs blockchain events.
 #include "bc_blockchain_helper.h"
@@ -12,9 +14,21 @@ extern uint32_t N_RSUs;
 extern uint32_t N_Vehicles;
 extern int      num_attackers;
 extern double   attack_rate_pps;
-extern double   cp_attack_pct;         // % of RSUs targeted per CP tick (0-100)
+extern double   cp_attack_intensity;   // % of RSUs targeted per CP tick (0-100)
+                                        // NOTE: NOT the "attack percentage" used in the
+                                        // report/thesis -- that is attack_percentage
+                                        // (routing.cc), which drives num_controllers_compromised.
+extern int      TCAM_CAPACITY;         // single canonical TCAM size (routing.cc, =256)
 
-
+// ---------- TCAM resource-model constants (2026-07-13) ----------
+// Named, configurable (not inlined) per-rule timeout values. A rule is
+// evicted when EITHER timer expires: idle_timeout counts from the last
+// packet seen on the flow (last_seen_time); hard_timeout counts from
+// install_time regardless of ongoing traffic. Applies to legit and
+// malicious entries alike -- tcam_evict_expired() does not look at
+// is_malicious.
+double TCAM_IDLE_TIMEOUT_S = 10.0;
+double TCAM_HARD_TIMEOUT_S = 30.0;
 
 // ---------- Change 8: TCAM snapshot exporter — 5-tuple stamped at install ----------
 
@@ -40,6 +54,11 @@ std::set<std::pair<uint32_t,uint32_t>> g_tcam_installed; // (flow_id, node_id) d
 // tcam_install_malicious().  Declared here so routing.cc can forward-declare
 // it with `extern` before check_delivery_and_retransmit is defined.
 int g_tcam_rule_count[300] = {0}; // indexed by node_id, sized >= total_size
+
+// Per-node cumulative TABLE_FULL rejection count -- an install attempt that
+// found g_tcam_rule_count[node_id] >= TCAM_CAPACITY and was refused. Mirrors
+// g_tcam_rule_count's indexing/lifetime.
+int g_tcam_reject_count[300] = {0};
 
 // Returns the first non-loopback IPv4 address of a node given its sim index (0-based).
 // NodeList IDs in this simulation are offset by 2 (management + controller nodes occupy 0,1).
@@ -168,6 +187,21 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     uint32_t actual_fid = get_actual_flow_id(original_fid);
     auto key = std::make_pair(actual_fid, node_id);
     if (g_tcam_installed.count(key)) return;
+
+    // TABLE_FULL: hard cap at TCAM_CAPACITY. Reject the install -- the rule
+    // is NOT created and NOT added to g_tcam_installed, so the next packet
+    // for this flow retries the install (reactive re-install once capacity
+    // frees up via eviction, see tcam_evict_expired()).
+    if (g_tcam_rule_count[node_id] >= TCAM_CAPACITY) {
+        g_tcam_reject_count[node_id]++;
+        std::cout << "[TCAM REJECT] TABLE_FULL node=" << node_id
+                  << " flow=" << actual_fid
+                  << " count=" << g_tcam_rule_count[node_id]
+                  << "/" << TCAM_CAPACITY
+                  << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+        return;
+    }
+
     g_tcam_installed.insert(key);
 
     bool first_ever = (g_tcam_table.empty());  // schedule timer only once
@@ -216,13 +250,47 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
         Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
 }
 
+// ── Rule eviction (2026-07-13) ──────────────────────────────────────────────
+// Evicts any TcamEntry whose idle_timeout or hard_timeout has expired, for
+// both legit and malicious entries alike. Frees the (flow_id, node_id) dedup
+// key too, so a legit flow whose next packet arrives after eviction goes
+// through tcam_hit() -> tcam_install() again as a genuine fresh install
+// (reactive re-install), rather than being silently blocked by a stale
+// dedup entry.
+inline void tcam_evict_expired()
+{
+    double now = Simulator::Now().GetSeconds();
+    auto is_expired = [now](const TcamEntry& e) {
+        bool idle_expired = (now - e.last_seen_time) >= TCAM_IDLE_TIMEOUT_S;
+        bool hard_expired = (now - e.install_time)   >= TCAM_HARD_TIMEOUT_S;
+        return idle_expired || hard_expired;
+    };
+
+    auto new_end = std::remove_if(g_tcam_table.begin(), g_tcam_table.end(),
+        [&](const TcamEntry& e) {
+            if (!is_expired(e)) return false;
+            g_tcam_rule_count[e.node_id]--;
+            g_tcam_installed.erase(std::make_pair(e.flow_id, e.node_id));
+            std::cout << "[TCAM EVICT] node=" << e.node_id
+                      << " flow=" << e.flow_id
+                      << " age=" << (now - e.install_time)
+                      << "s idle=" << (now - e.last_seen_time)
+                      << "s t=" << now << "s" << std::endl;
+            return true;
+        });
+    g_tcam_table.erase(new_end, g_tcam_table.end());
+}
+
 // ── Per-second snapshot exporter (Change 8) ────────────────────────────────
 // Fires at t=first_install+1s then every 1s until simTime.
 // Writes two CSVs into results_routing/:
 //   tcam_snapshots_<mode>.csv  — one row per (node, flow) per second
-//   tcam_occupancy_<mode>.csv  — one row per node per second (rule count)
+//   tcam_occupancy_<mode>.csv  — one row per node per second (rule count,
+//                                 cumulative TABLE_FULL rejections)
 inline void tcam_snapshot_dump()
 {
+    tcam_evict_expired();
+
     double now = Simulator::Now().GetSeconds();
     int    t   = static_cast<int>(std::round(now));
 
@@ -242,10 +310,20 @@ inline void tcam_snapshot_dump()
         // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
         if (active_attack_variant == 3 && num_attackers > 1)
             mode += "_n" + std::to_string(num_attackers);
+        // For Attack 3 CP-percentage sweeps append _pctN so each run
+        // produces a distinct file: attack3_pct20.csv, attack3_pct40.csv, …
+        // (Attack 3 has no analogous num_attackers axis, so every run is
+        // suffixed — unlike Attack 4, there is no single-run "bare" case.)
+        // NOTE: this _pctN suffix is derived from cp_attack_intensity, which is
+        // NOT the report's attack_percentage — see the extern declaration above
+        // and the "Fixed 2026-07-10" comment on cp_attack_tick() below. Do not
+        // read the "_pctN" in a filename as the report's attack percentage.
+        if (active_attack_variant == 2)
+            mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     }
 
     const std::string base_dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string snap_path = base_dir + "tcam_snapshots_" + mode + ".csv";
     std::string occ_path  = base_dir + "tcam_occupancy_"  + mode + ".csv";
 
@@ -257,7 +335,7 @@ inline void tcam_snapshot_dump()
 
     std::ofstream occ_f(occ_path, std::ios::app);
     if (occ_f.is_open() && occ_f.tellp() == 0)
-        occ_f << "t,rsu_id,total_rule_count\n";
+        occ_f << "t,rsu_id,total_rule_count,cum_rejections\n";
 
     // Walk every installed entry; build per-node rule count as we go.
     std::map<uint32_t,int> rule_count;
@@ -290,7 +368,8 @@ inline void tcam_snapshot_dump()
     if (occ_f.is_open())
     {
         for (const auto& kv : rule_count)
-            occ_f << t << ',' << kv.first << ',' << kv.second << '\n';
+            occ_f << t << ',' << kv.first << ',' << kv.second
+                   << ',' << g_tcam_reject_count[kv.first] << '\n';
     }
     snap_f.close();
     occ_f.close();
@@ -313,12 +392,16 @@ inline void export_tcam_snapshot_baseline()
         mode = "baseline";
     } else {
         mode = "attack" + std::to_string(active_attack_variant + 1);
-        // Mirror the _nN suffix logic from tcam_snapshot_dump().
+        // Mirror the _nN / _pctN suffix logic from tcam_snapshot_dump().
+        // NOTE: _pctN comes from cp_attack_intensity, NOT the report's
+        // attack_percentage (see extern declaration near top of file).
         if (active_attack_variant == 3 && num_attackers > 1)
             mode += "_n" + std::to_string(num_attackers);
+        if (active_attack_variant == 2)
+            mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     }
     std::string path =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
     std::ofstream fout(path, std::ios::trunc);
     fout << "flow_id,node_id,src_ip,dst_ip,src_port,dst_port,proto,install_time,packets,bytes\n";
     for (const auto& e : g_tcam_table)
@@ -362,6 +445,19 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     // target_rsu_node_id = the RSU whose TCAM this malicious FlowMod actually lands on.
     // For Attack 3 (CP), attacker and victim RSU are the same node, so that call
     // site passes the same value for both -- no behavior change there.
+
+    // TABLE_FULL: same hard cap as tcam_install(). Once the victim RSU's
+    // table is saturated, further malicious FlowMods are refused too --
+    // exhaustion is a one-time event per rule slot, not unbounded growth.
+    if (g_tcam_rule_count[target_rsu_node_id] >= TCAM_CAPACITY) {
+        g_tcam_reject_count[target_rsu_node_id]++;
+        std::cout << "[TCAM REJECT] TABLE_FULL node=" << target_rsu_node_id
+                  << " fake_fid=" << fake_fid
+                  << " count=" << g_tcam_rule_count[target_rsu_node_id]
+                  << "/" << TCAM_CAPACITY
+                  << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+        return;
+    }
     //
     // Build a synthetic 5-tuple unique to this fake_fid.
     // src IP = attacker node's real IP; dst IP sampled from the same server
@@ -467,12 +563,23 @@ inline void dp_attack_tick()
 // reapply_cp_selective_delay() (attack_declaration.h) exactly, so A3's
 // penetration scaling is structurally consistent with A1's.
 //
-// Fixed 2026-07-10: previously flooded a FIXED cp_attack_pct% (default 40%)
+// Fixed 2026-07-10: previously flooded a FIXED cp_attack_intensity% (default 40%)
 // of RSUs by index, completely ignoring attack_percentage — so
 // attack_percentage=0 flooded the same ~26 RSUs as attack_percentage=80,
 // violating main.tex's penetration formula (p=0 -> 0 attacker nodes).
-// cp_attack_pct is left declared/CLI-overridable for manual experimentation
+// cp_attack_intensity is left declared/CLI-overridable for manual experimentation
 // but is no longer read by the default attack_percentage-driven sweep path.
+//
+// NOTE (flag): cp_attack_intensity is NOT the attack percentage referenced in
+// the report/thesis — that is attack_percentage (routing.cc), which drives
+// num_controllers_compromised above. cp_attack_intensity is unrelated legacy
+// input only used for the "_pctN" output-filename suffix (tcam_snapshot_dump(),
+// export_tcam_snapshot_baseline()). UNRESOLVED: the pct20/40/60/80/100 sweep
+// data on disk shows malicious-RSU counts scaling exactly with cp_attack_intensity
+// (13/26/39/52/64), which this function's logic below does not explain, since it
+// reads only controller_compromised[] (derived from attack_percentage, which
+// defaulted to 0 in that sweep). Verify which variable actually drove those runs
+// before citing the pct-sweep results in the report.
 inline void cp_attack_tick()
 {
     if (active_attack_variant != 2) return;
