@@ -45,6 +45,15 @@ struct TcamEntry {
     uint64_t packet_count;   // packets forwarded through this entry
     uint64_t byte_count;     // bytes  forwarded through this entry
     bool     is_malicious;   // true when injected by attacker (Change 5–7)
+    bool     counts_capacity;// true = genuine data-plane TCAM rule that occupies a
+                             // slot in g_tcam_rule_count (installed via tcam_install /
+                             // tcam_install_malicious, sim-index node space, capped at
+                             // TCAM_CAPACITY, read by the S3/S4 detector). false = a
+                             // passive Ipv4Tx-hook observation from tcam_hit_ip (RSU IP
+                             // L3 Tx stream: control-plane + background IP traffic, in
+                             // NodeList index space) that is NOT a data-plane FlowMod
+                             // rule and must not touch g_tcam_rule_count. See the
+                             // 2026-07-14 note in tcam_hit_ip() / tcam_evict_expired().
 };
 
 std::vector<TcamEntry> g_tcam_table;
@@ -59,6 +68,21 @@ int g_tcam_rule_count[300] = {0}; // indexed by node_id, sized >= total_size
 // found g_tcam_rule_count[node_id] >= TCAM_CAPACITY and was refused. Mirrors
 // g_tcam_rule_count's indexing/lifetime.
 int g_tcam_reject_count[300] = {0};
+
+// ── True install-rate instrumentation (2026-07-15, MEASUREMENT ONLY) ─────────
+// Per-node counters accumulated within each 1-s snapshot window, then flushed
+// to lambda_l_true.csv and reset by tcam_snapshot_dump(). They separate the
+// three lifecycle events so the TRUE new-install rate (lambda_l, the FlowMod
+// rate the S3 detector keys on) is not conflated with timeout-refresh churn:
+//   g_lambda_new       = fresh installs   (a (flow,node) key never evicted before)
+//   g_lambda_evict     = timeout evictions (counts_capacity data-plane rules only)
+//   g_lambda_reinstall = re-installs after a prior eviction of the SAME key (churn)
+// A key is classed as "reinstall" iff it has been evicted at least once before
+// (tracked in g_tcam_ever_evicted). Nothing here alters install/evict behaviour.
+uint32_t g_lambda_new[300]       = {0};
+uint32_t g_lambda_evict[300]     = {0};
+uint32_t g_lambda_reinstall[300] = {0};
+std::set<std::pair<uint32_t,uint32_t>> g_tcam_ever_evicted; // (flow_id,node_id) evicted >=1x
 
 // Returns the first non-loopback IPv4 address of a node given its sim index (0-based).
 // NodeList IDs in this simulation are offset by 2 (management + controller nodes occupy 0,1).
@@ -92,11 +116,43 @@ inline void tcam_install(uint32_t node_id, uint32_t fid);
 inline void tcam_snapshot_dump();
 
 // Helper to generate a unique flow ID because the simulator reuses fid=0/1.
+// ── k-NN flow generator gen-fid registry (2026-07-14) ──────────────────────
+// The benign data path is bound to fid in [0, 2*flows) by fixed-size arrays
+// (delta_at_nodes_inst[2*flows], pd_all_inst[2*flows], ...). The concurrency
+// generator (tcam_flow_generator.h) needs many DISTINCT flow identities WITHOUT
+// growing those arrays, so it uses gen-fids in the reserved range
+// [TCAM_GEN_FID_BASE, 1000000). A gen-fid does NOT index delta_at_nodes_inst;
+// its (src_node, dst_node) is registered here and resolved by both
+// get_actual_flow_id() and tcam_install(). Generated flows still install via the
+// SAME counted/capped path (tcam_install sets counts_capacity=true, increments
+// g_tcam_rule_count, respects TABLE_FULL, is evicted by tcam_evict_expired) --
+// exactly like the 2 native flows. Only the identity source differs.
+static const uint32_t TCAM_GEN_FID_BASE = 500000; // gen range [500000, 999999]; malicious is >=1000000
+std::map<uint32_t, std::pair<uint32_t,uint32_t>> g_gen_flow_endpoints; // gen_fid -> (src_node, dst_node)
+
+// True + fills src/dst if `fid` is a registered generated flow.
+inline static bool gen_flow_lookup(uint32_t fid, uint32_t& src_node, uint32_t& dst_node) {
+    if (fid < TCAM_GEN_FID_BASE || fid >= 1000000) return false;
+    auto it = g_gen_flow_endpoints.find(fid);
+    if (it == g_gen_flow_endpoints.end()) return false;
+    src_node = it->second.first;
+    dst_node = it->second.second;
+    return true;
+}
+
 inline static uint32_t get_actual_flow_id(uint32_t fid) {
     if (fid >= 1000000) return fid; // malicious fake_fid
-    
-    uint32_t src_node = (delta_at_nodes_inst + fid)->source_f;
-    uint32_t dst_node = (delta_at_nodes_inst + fid)->destination_f;
+
+    uint32_t src_node, dst_node;
+    if (gen_flow_lookup(fid, src_node, dst_node)) {
+        // Generated flow: resolve (src,dst) from the gen registry, then share the
+        // SAME (src,dst)->sequential-id map as native benign flows so a persistent
+        // neighbor pair keeps its identity across cycles (re-selection => same
+        // actual_fid => tcam_hit refreshes the existing entry instead of duplicating).
+    } else {
+        src_node = (delta_at_nodes_inst + fid)->source_f;
+        dst_node = (delta_at_nodes_inst + fid)->destination_f;
+    }
     auto key = std::make_pair(src_node, dst_node);
     
     static std::map<std::pair<uint32_t, uint32_t>, uint32_t> g_benign_flow_map;
@@ -151,6 +207,23 @@ inline void tcam_hit_ip(uint32_t node_id, uint32_t src_ip, uint32_t dst_ip, uint
     e.packet_count   = 1;
     e.byte_count     = pkt_bytes;
     e.is_malicious   = false;
+    // [ip-hook exclusion, 2026-07-14] These entries come from the network-wide
+    // Ipv4Tx hook (routing.cc Ipv4Tx -> tcam_hit_ip) on the RSU IPv4 L3 Tx
+    // stream: control-plane (delta/solution distribution to the 10.1.1.x
+    // controller subnet, telemetry uplink) plus background IP-routed packets.
+    // They are NOT data-plane FlowMod rules and are keyed in NodeList index
+    // space (RSU = 204..267), which is DIFFERENT from the sim-index space
+    // (RSU = 200..263) used by g_tcam_rule_count, tcam_install(), and the
+    // S3/S4 detector. Counting them here would (a) collide two index spaces in
+    // one array and (b) misattribute control-plane traffic as TCAM exhaustion.
+    // So they do NOT increment g_tcam_rule_count and are NOT subject to the
+    // TABLE_FULL cap. Boundedness: each (5-tuple, node) is deduped by the linear
+    // scan above, and every entry is removed by tcam_evict_expired() once idle
+    // >= TCAM_IDLE_TIMEOUT_S or age >= TCAM_HARD_TIMEOUT_S, so the count of live
+    // ip-hook entries is bounded by the distinct RSU 5-tuples seen within one
+    // hard-timeout window (empirically <=1 concurrent per node under benign
+    // load; attacks route through tcam_install_malicious(), not this path).
+    e.counts_capacity = false;
     g_tcam_table.push_back(e);
 
     if (first_ever)
@@ -206,8 +279,13 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
 
     bool first_ever = (g_tcam_table.empty());  // schedule timer only once
 
-    uint32_t src_node = (delta_at_nodes_inst + original_fid)->source_f;
-    uint32_t dst_node = (delta_at_nodes_inst + original_fid)->destination_f;
+    // Generated flows resolve (src,dst) from the gen registry (they do not index
+    // delta_at_nodes_inst); native flows read delta_at_nodes_inst[original_fid].
+    uint32_t src_node, dst_node;
+    if (!gen_flow_lookup(original_fid, src_node, dst_node)) {
+        src_node = (delta_at_nodes_inst + original_fid)->source_f;
+        dst_node = (delta_at_nodes_inst + original_fid)->destination_f;
+    }
 
     uint32_t src_ip = get_node_ipv4(src_node);
     uint32_t dst_ip = get_node_ipv4(dst_node);
@@ -229,8 +307,13 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     e.packet_count   = 0;
     e.byte_count     = 0;
     e.is_malicious   = false;
+    e.counts_capacity = true;   // genuine data-plane rule: occupies a TCAM slot
     g_tcam_table.push_back(e);
     g_tcam_rule_count[node_id]++;
+
+    // TRUE lambda_l instrument (measurement only): a fresh key vs a churn refresh.
+    if (g_tcam_ever_evicted.count(key)) g_lambda_reinstall[node_id]++;
+    else                                g_lambda_new[node_id]++;
 
     Ipv4Address sip, dip;
     sip.Set(src_ip);
@@ -269,8 +352,18 @@ inline void tcam_evict_expired()
     auto new_end = std::remove_if(g_tcam_table.begin(), g_tcam_table.end(),
         [&](const TcamEntry& e) {
             if (!is_expired(e)) return false;
-            g_tcam_rule_count[e.node_id]--;
-            g_tcam_installed.erase(std::make_pair(e.flow_id, e.node_id));
+            // Only genuine data-plane rules touch g_tcam_rule_count / g_tcam_installed.
+            // Passive ip-hook entries (counts_capacity=false, from tcam_hit_ip) never
+            // incremented the counter, so decrementing here would drive it NEGATIVE and
+            // corrupt the S3/S4 detector's occupancy reading -- see tcam_hit_ip().
+            if (e.counts_capacity) {
+                g_tcam_rule_count[e.node_id]--;
+                g_tcam_installed.erase(std::make_pair(e.flow_id, e.node_id));
+                // TRUE lambda_l instrument (measurement only): record the eviction
+                // and mark the key so its next install is classed as a reinstall.
+                g_lambda_evict[e.node_id]++;
+                g_tcam_ever_evicted.insert(std::make_pair(e.flow_id, e.node_id));
+            }
             std::cout << "[TCAM EVICT] node=" << e.node_id
                       << " flow=" << e.flow_id
                       << " age=" << (now - e.install_time)
@@ -335,7 +428,7 @@ inline void tcam_snapshot_dump()
 
     std::ofstream occ_f(occ_path, std::ios::app);
     if (occ_f.is_open() && occ_f.tellp() == 0)
-        occ_f << "t,rsu_id,total_rule_count,cum_rejections\n";
+        occ_f << "t,rsu_id,total_rule_count,cum_rejections,counted_rule_count\n";
 
     // Walk every installed entry; build per-node rule count as we go.
     std::map<uint32_t,int> rule_count;
@@ -367,12 +460,43 @@ inline void tcam_snapshot_dump()
     }
     if (occ_f.is_open())
     {
+        // total_rule_count (kv.second) = RAW g_tcam_table entries at this node
+        // (includes passive ip-hook observations). counted_rule_count =
+        // g_tcam_rule_count = authoritative data-plane rule count the S3/S4
+        // detector reads (excludes ip-hook entries). The two differ only by the
+        // ip-hook delta and let occupancy accounting be reconciled explicitly.
         for (const auto& kv : rule_count)
             occ_f << t << ',' << kv.first << ',' << kv.second
-                   << ',' << g_tcam_reject_count[kv.first] << '\n';
+                   << ',' << g_tcam_reject_count[kv.first]
+                   << ',' << g_tcam_rule_count[kv.first] << '\n';
     }
     snap_f.close();
     occ_f.close();
+
+    // ── TRUE lambda_l flush (measurement only) ──────────────────────────────
+    // One row per (t, rsu) for the whole RSU sim-index range so zero-install
+    // cycles are captured (needed for an unbiased rate-vs-density correlation),
+    // plus any vehicle-relay node that saw activity this window. Counters are
+    // accumulated over the 1-s window since the last snapshot => rates per second.
+    {
+        static bool lambda_first = true;
+        const std::string lam_path = base_dir + "lambda_l_true.csv";
+        std::ofstream lam_f(lam_path, lambda_first ? std::ios::trunc : std::ios::app);
+        if (lambda_first && lam_f.is_open())
+            lam_f << "t,rsu_id,new_installs,evictions,reinstalls\n";
+        lambda_first = false;
+        if (lam_f.is_open()) {
+            std::set<uint32_t> nodes;
+            for (uint32_t r = 0; r < N_RSUs; ++r) nodes.insert(N_Vehicles + r); // all RSUs incl. zeros
+            for (uint32_t i = 0; i < 300; ++i)                                  // + any active vehicle hop
+                if (g_lambda_new[i] || g_lambda_evict[i] || g_lambda_reinstall[i]) nodes.insert(i);
+            for (uint32_t nid : nodes)
+                lam_f << t << ',' << nid << ',' << g_lambda_new[nid]
+                       << ',' << g_lambda_evict[nid] << ',' << g_lambda_reinstall[nid] << '\n';
+        }
+        lam_f.close();
+        for (uint32_t i = 0; i < 300; ++i) { g_lambda_new[i]=0; g_lambda_evict[i]=0; g_lambda_reinstall[i]=0; }
+    }
 
     // MobiGuard: check S4 (TCAM exhaustion) for all RSUs once per second.
     // Writes penalty rows to bc_trust_updates.csv when rule count > 80% capacity.
@@ -491,6 +615,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     e.packet_count   = 1;    // counts as one "packet miss" that triggered install
     e.byte_count     = 750;  // nominal packet size consistent with benign traffic
     e.is_malicious   = true;
+    e.counts_capacity = true;   // genuine data-plane rule (attacker-injected)
     g_tcam_table.push_back(e);
     g_tcam_rule_count[target_rsu_node_id]++;
     // NOTE: intentionally NOT inserted into g_tcam_installed so repeated calls

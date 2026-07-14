@@ -117885,6 +117885,18 @@ void calculate_performance_evaluation_metrics()
 	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
 	// zone when linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, which matches the
 	// d_max_dsrc = 270 m coverage radius used by the routing engine.
+
+	// [density-logging] LOGGING ONLY (2026-07-14): one-time truncate-open of
+	// rsu_density.csv so repeated runs do not pool; header written once. Rows
+	// appended inside the loop below. Does NOT touch rho_t/v_bar_t computation.
+	static std::ofstream g_rsu_density_csv(
+		"/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/rsu_density.csv",
+		std::ios::trunc);
+	static bool g_rsu_density_hdr_done = [](){
+		g_rsu_density_csv << "t,rsu_id,rho_count,v_bar\n"; return true; }();
+	(void)g_rsu_density_hdr_done;
+	int _density_t = static_cast<int>(std::round(Simulator::Now().GetSeconds()));
+
 	for (uint32_t _r = 0; _r < N_RSUs; _r++)
 	{
 		uint32_t rsu_sim_idx = N_Vehicles + _r;
@@ -117904,6 +117916,13 @@ void calculate_performance_evaluation_metrics()
 		double rho_t   = (double)rho_count;
 		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
 
+		// [density-logging] LOGGING ONLY: one row per (cycle, rsu). rsu_id is the
+		// sim node index (N_Vehicles+_r), matching the tcam_occupancy_*.csv rsu_id
+		// convention. No effect on rho_t/v_bar_t or any detection/flow logic.
+		if (g_rsu_density_csv.is_open())
+			g_rsu_density_csv << _density_t << ',' << rsu_sim_idx << ','
+			                  << rho_count << ',' << v_bar_t << '\n';
+
 		// δ_r(t): use mean of observed hop-delays since the last update tick
 		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
 		double obs_delay = (s1_rsu_obs_count[_r] > 0)
@@ -117916,6 +117935,8 @@ void calculate_performance_evaluation_metrics()
 		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
+	// [density-logging] flush this cycle's rows so data survives any exit path.
+	if (g_rsu_density_csv.is_open()) g_rsu_density_csv.flush();
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
@@ -121105,6 +121126,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
 #include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
+#include "tcam_flow_generator.h" // k-NN concurrency flow generator (needs tcam_hit,
+                                 // lookup_vehicle_associated_rsu_local_idx, s1_detect_packet)
 
 int simulated_tcam_counter[200] = {0};
 // TCAM_CAPACITY consolidated to the single definition at line ~117445
@@ -143487,7 +143510,11 @@ if (architecture == 3 && N_Vehicles > 0)
 					  Simulator::Schedule(Seconds(t+0.036000),transmit_delta_values);
 					  
 					  Simulator::Schedule(Seconds(t+0.099500),initialize_flow_counters);
-					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows); 
+					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows);
+					  // k-NN concurrency flow generator: one tick per cycle, just after
+					  // initiate_all_flows and after this cycle's linklifetimeMatrix_dsrc
+					  // refresh (t+0.0345). Reuses the counted/capped tcam_hit path.
+					  Simulator::Schedule(Seconds(t+0.101000),tcam_flow_generator_tick);
 					  Simulator::Schedule(Seconds(t+data_transmission_period-0.002),calculate_performance_evaluation_metrics);
  		          		  
 				   	  
