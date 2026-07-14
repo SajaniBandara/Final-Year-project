@@ -32,12 +32,6 @@ MAX_CYCLE  = 87
 # delta_t spike above the benign p99 (attack actually firing this window),
 # not merely because it came from an attacker RSU's run. See make_windows().
 SPIKE_QUANTILE = 0.99
-# A3/A4 ground-truth labels are wrong in the current data (attacker is a
-# controller/vehicles, never the RSU, so victim RSUs are unlabeled — see
-# memory: a3-a4-label-fix-pending). Their TCAM-saturated windows would enter
-# benign training as label-0 and poison the autoencoder. Exclude until the
-# lstm_logger.h label fix is applied and A3/A4 are re-collected.
-EXCLUDE_ATTACKS = {3, 4}
 
 BASE = Path(os.environ.get("HOME", "/home/sdvn_hidden_attacks")) / \
        "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
@@ -51,7 +45,6 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
     files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
-    skipped = 0
     for path in files:
         p = Path(path)
         parts = p.stem.split("_")
@@ -59,18 +52,12 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         pct      = int(parts[1][3:])
         seed     = int(parts[2][4:])
         rsu_id   = int(p.parent.name[4:])
-        if attack_v in EXCLUDE_ATTACKS:
-            skipped += 1
-            continue
         df = pd.read_csv(path)
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
-    if skipped:
-        print(f"  Excluded {skipped} files for attacks {sorted(EXCLUDE_ATTACKS)} "
-              f"(label fix pending)")
     return pd.concat(dfs, ignore_index=True)
 
 
