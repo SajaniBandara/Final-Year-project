@@ -189,14 +189,26 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // on the sending RSU under the compromised controller — recording
         // current_hop would produce a FP (benign receiver) and FN (malicious
         // sender missed), corrupting TP/FP/TN/FN counts.
-        if (active_attack_variant >= 0 &&
-            sender_node_id < (uint32_t)total_size &&
-            !is_detected_node[active_attack_variant][sender_node_id])
+        //
+        // Bucket is S1's OWN designated variant (0 = Attack 1, Selective Delay
+        // CP), NOT active_attack_variant. main.tex Attack Signature
+        // Identification (line ~1722): "We derive one primary signature per
+        // variant" — S1 is permanently Attack 1's signature regardless of
+        // which attack_number the CLI selected for this run. S1 has no
+        // variant gate (evaluates every safety-critical packet unconditionally,
+        // matching tcam_detection.h's S3/S4 precedent), so using
+        // active_attack_variant here misattributed every S1 firing into
+        // whichever OTHER attack's confusion matrix was being measured —
+        // confirmed 2026-07-14: S1 contributed 22 of 221 detection events
+        // recorded into Attack 6's own bucket during an A6-only run.
+        const int S1_HOME_VARIANT = 0;   // Attack 1, per main.tex Signature S1
+        if (sender_node_id < (uint32_t)total_size &&
+            !is_detected_node[S1_HOME_VARIANT][sender_node_id])
         {
-            record_detection_event(active_attack_variant, sender_node_id);
+            record_detection_event(S1_HOME_VARIANT, sender_node_id);
             cout << "[S1] record_detection_event fired for sender node "
                  << sender_node_id << " (detected at RSU " << current_hop
-                 << ") variant=" << active_attack_variant
+                 << ") variant=" << S1_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

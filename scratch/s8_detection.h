@@ -155,12 +155,15 @@ inline bool s8_detect(uint32_t recv_flow_id,
              << " pkt=" << packet_id
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
+        // Bucket hardcoded to S8's own variant (7 = Attack 8) — see
+        // s6_detection.h for why this is safe/no-op given the existing gate.
+        const int S8_HOME_VARIANT = 7;   // Attack 8, per main.tex Signature S8
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[active_attack_variant][prev_sender])
+            !is_detected_node[S8_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(S8_HOME_VARIANT, prev_sender);
             cout << "[S8] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << active_attack_variant
+                 << prev_sender << " variant=" << S8_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

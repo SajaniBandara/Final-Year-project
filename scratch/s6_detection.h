@@ -190,12 +190,19 @@ inline bool s6_detect(uint32_t recv_flow_id,
              << " sender_rsu u=" << prev_sender
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
+        // Bucket hardcoded to S6's own variant (5 = Attack 6), matching the
+        // S1/S2/S5 fix — semantically identical to the previous
+        // active_attack_variant here (the != 5 gate above guarantees they're
+        // equal whenever this line is reached), but no longer relies on the
+        // gate as an implicit invariant. See s5_detection.h for why S5 (no
+        // gate) needed the hardcode to actually change behaviour, unlike S6.
+        const int S6_HOME_VARIANT = 5;   // Attack 6, per main.tex Signature S6
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[active_attack_variant][prev_sender])
+            !is_detected_node[S6_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(S6_HOME_VARIANT, prev_sender);
             cout << "[S6] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << active_attack_variant
+                 << prev_sender << " variant=" << S6_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

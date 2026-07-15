@@ -42,6 +42,7 @@ Usage:
 """
 
 import argparse
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -71,25 +72,16 @@ ATTACK_LABELS_SHORT = {
     8: "Attack 8 (Passive, DP)",
 }
 
-# Percentages excluded per attack due to known data contamination: the
-# 2026-07-11/12 dedicated sweep (run_hf_attacks.py) collided with the
-# concurrently-running 180-sim LSTM training collection job
-# (run_training_attacks.py) on these exact (attack, pct) combos — both
-# processes append to the SAME MOBIGUARD_Attack<N>_<pct>.csv (no seed/run-ID
-# in the filename or row schema), so rows from the two runs (different
-# simTime, different seeds) are interleaved beyond reconstruction. See
-# the chat discussion / PENDING_FIXES.md for detail.
-#
-# THIS IS A MOVING TARGET: the training job keeps progressing through
-# attacks 5->6->7->8, contaminating each (attack, pct) combo's shared CSV
-# the moment it reaches that combo. Re-check row counts
-# (`grep -vc "^#" MOBIGUARD_Attack<N>_<pct>.csv` — anything noticeably
-# above ~38 for a single 40s run is suspect) before trusting this dict;
-# it reflects a snapshot taken 2026-07-12 ~11:00.
-EXCLUDED_PERCENTAGES = {
-    5: [0, 20, 40, 60, 80, 100],
-    6: [0, 20],
-}
+# Percentages excluded per attack due to known data contamination.
+# RESOLVED 2026-07-14: MOBIGUARD_Attack<N>_<pct>.csv is now collected by
+# run_rule_based_sweep.py, which runs each (attack, pct) pair's seeds
+# SEQUENTIALLY and renames the result to embed the seed
+# (MOBIGUARD_Attack<N>_<pct>[_d<D>ms]_seed<S>.csv) immediately after each
+# run — the interleaving bug this dict used to work around (two concurrent
+# processes appending to the same seed-less filename) can no longer happen.
+# Kept as an empty dict (rather than deleted) so a future contamination
+# find has an obvious place to re-populate it.
+EXCLUDED_PERCENTAGES = {}
 
 # MOBIGUARD_Attack<N>_<pct>.csv column layout (write_security_metrics_csv, routing.cc)
 MOB_COL_PDR_AVG = 2
@@ -141,11 +133,31 @@ def mean_and_ci(values):
     return m, t * (s / np.sqrt(n))
 
 
-def load_method_data(prefix, attack_number):
+def load_method_data(prefix, attack_number, seeds=None):
+    """
+    seeds=None: single unsuffixed file per pct (FADE_Attack<N>_<pct>.csv —
+    the isolated FADE sweep, run_hf_attacks.py, only ever collects seed=1).
+
+    seeds=(1,2,3): MOBIGUARD_Attack<N>_<pct>[_d<D>ms]_seed<S>.csv — each
+    seed's rows are concatenated, so mean_and_ci naturally averages over
+    all 3 seeds' cycles combined (run_rule_based_sweep.py, 2026-07-14; see
+    EXCLUDED_PERCENTAGES comment above for why the old single shared
+    filename could not do this safely). MOBIGUARD therefore gets a deeper
+    sample than FADE's single seed — an honest reflection of what was
+    actually collected for each method, not an attempt to force parity.
+    """
     data = {}
     for pct in ATTACK_PERCENTAGES:
-        filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}.csv")
-        data[pct] = read_csv(filepath)
+        rows = []
+        if seeds:
+            for seed in seeds:
+                for filepath in glob.glob(os.path.join(
+                        RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}*_seed{seed}.csv")):
+                    rows.extend(read_csv(filepath))
+        else:
+            filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}.csv")
+            rows = read_csv(filepath)
+        data[pct] = rows
     return data
 
 
@@ -284,7 +296,7 @@ def _blank_row(axes_row, message):
 def plot_attack_row(axes_row, attack_number, row_label=None):
     """Draw one attack's 5-panel comparison across the given row of axes."""
     fade_data = load_method_data("FADE", attack_number)
-    mob_data  = load_method_data("MOBIGUARD", attack_number)
+    mob_data  = load_method_data("MOBIGUARD", attack_number, seeds=(1, 2, 3))
 
     excluded = EXCLUDED_PERCENTAGES.get(attack_number, [])
     pcts = [p for p in ATTACK_PERCENTAGES if p not in excluded]
