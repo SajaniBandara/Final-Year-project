@@ -120857,6 +120857,18 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
 						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
 
+						// TEMP DIAGNOSTIC — 2026-07-16, see matching note at the
+						// check_and_transmit() call site (~line 124091). Remove once root-caused.
+						if (present_selective_delay_cp_attack) {
+							cout << "[ATTACK1-DEBUG-RETX] t=" << Simulator::Now().GetSeconds()
+							     << " flow_id=" << flow_id << " current_hop=" << current_hop
+							     << (current_hop < N_Vehicles ? " (vehicle)" : " (RSU)")
+							     << " dest_for_lookup=" << dest_for_lookup
+							     << " injected=" << injected * 1000.0 << "ms"
+							     << " is_safety_critical=" << is_safety_critical_flow[flow_id]
+							     << endl;
+						}
+
 						double total_tx_delay = calculate_unified_selective_delay(
 							present_selective_delay_attack_nodes,
 							selective_delay_malicious_nodes[current_hop],
@@ -124089,6 +124101,21 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						
 						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
 						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
+
+						// TEMP DIAGNOSTIC — 2026-07-16, tracing why Attack 1's poisoned
+						// injected_delay never reaches schedule_unified_selective_delay_attack()
+						// (its own "obeying poisoned flowMod" line had zero occurrences in a
+						// full 38s/pct20 run). Remove once root-caused. Gated on
+						// present_selective_delay_cp_attack so it's silent outside Attack 1 runs.
+						if (present_selective_delay_cp_attack) {
+							cout << "[ATTACK1-DEBUG] t=" << Simulator::Now().GetSeconds()
+							     << " fid=" << fid << " source=" << source
+							     << (source < N_Vehicles ? " (vehicle)" : " (RSU)")
+							     << " dest_for_lookup=" << dest_for_lookup
+							     << " injected_cp=" << injected_cp * 1000.0 << "ms"
+							     << " is_safety_critical=" << is_safety_critical_flow[fid]
+							     << endl;
+						}
 
 						// Stamp BEFORE any attack delay so S2/S2-partial see the pre-delay time.
 						// Mirrors the RSU path at line 120457; without this, the vehicle path
