@@ -117321,6 +117321,47 @@ void ufcr_attempt_unauthorized_flowmod()
                       << " committed=" << committed
                       << " blocked_total=" << g_ufcr_blocked
                       << "/" << g_ufcr_unauth_total << std::endl;
+
+        // ── Controller trust update (eq:ctrl_trust_update → eq:sc_revoke, M5) ──
+        // main.tex §"Controller Trust Scoring": controller trust is decremented
+        // by RSU-submitted conflict evidence — "when a received FlowMod is
+        // absent from the blockchain-committed endorsed policy" — with the
+        // blockchain as "the sole controller behavior monitor". A blocked
+        // unauthorized FlowMod (committed == false) IS exactly that evidence:
+        // it failed to collect f+1 honest endorsements (eq:endorsed_commit),
+        // i.e. conflict evidence ≥ f+1 → penalty branch. A clean commit is
+        // conflict evidence < f+1 → reward branch.
+        //
+        // Attribution: in this simulation the compromised controllers
+        // (controller_compromised[], set in declare_attackers per the attack
+        // threat model) are the origin of the unauthorized FlowMods, so the
+        // penalty is applied to them and the reward to the honest controllers —
+        // the faithful mapping of "the blockchain attributes the caught
+        // unauthorized FlowMod to its sending controller".
+        //
+        // Only accrues once the attack is active (t ≥ attack_start_time) so a
+        // controller is not revoked before it begins misbehaving.
+        //
+        // NOTE (provisional calibration): Δp^ctrl/Δr^ctrl/T_min^ctrl
+        // (TRUST_DELTA_P_CTRL=0.10, TRUST_DELTA_R_CTRL=0.05, TRUST_T_MIN_CTRL=0.50)
+        // are placeholder values, NOT the calibrated finals. main.tex §"Multi-
+        // Controller Trust Management" marks them [tbd] and requires an
+        // independent sweep (T_min^ctrl ∈ {0.3,0.5,0.7} for lowest false-
+        // revocation rate; Δp^ctrl>Δr^ctrl for minimum time-to-revocation). The
+        // constraint Δp^ctrl>Δr^ctrl is already satisfied; the sweep itself is
+        // a separate, still-pending calibration step.
+        if (enable_controller_failover &&
+            Simulator::Now().GetSeconds() >= attack_start_time)
+        {
+            for (uint32_t c = 0; c < (uint32_t)N_Controllers; c++)
+            {
+                if (g_ctrl_revoked[c]) continue; // already revoked — no re-fire
+                if (controller_compromised[c] && !committed)
+                    ctrl_trust_update_negative(c);   // conflict evidence ≥ f+1
+                else if (!controller_compromised[c])
+                    ctrl_trust_update_positive(c);   // clean behaviour, < f+1
+            }
+        }
     }
     if (Simulator::Now().GetSeconds() < simTime)
         Simulator::Schedule(Seconds(1.0), &ufcr_attempt_unauthorized_flowmod);
@@ -118284,19 +118325,19 @@ void transmit_delta_values()
 		// per-op row: node_id carries endorser count, pkt_id carries fid
 		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
 		                 _ct0, _committed);
-		// eq:ctrl_trust_update — reward branch (conflict evidence < f+1, i.e.
-		// the FlowMod collected f+1 honest endorsements and committed cleanly)
-		// vs. penalty branch (conflict evidence >= f+1, commit failed). Both
-		// branches read the same _committed outcome from the same per-cycle
-		// endorsement round, so the reward fires at the identical cadence the
-		// penalty already used — closing the gap where ctrl_trust_update_positive()
-		// was defined but never called (see docs/METHODOLOGY_CHAPTER_DEVIATIONS.md).
-		if (N_RSUs > 0) {
-			if (_committed)
-				ctrl_trust_update_positive(rsu_controller_assignment[N_Vehicles]);
-			else
-				ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
-		}
+		// NOTE: the eq:ctrl_trust_update reward/penalty is NO LONGER applied
+		// here. This honest per-cycle endorsement of fid=0 always commits, so it
+		// only ever exercised the reward branch, and it did so against
+		// rsu_controller_assignment[N_Vehicles] — a node-id (200) used as an
+		// RSU-local index (valid range 0..N_RSUs-1), which is never populated
+		// and therefore resolved to the zero-initialised entry (controller 0)
+		// regardless of which controller was actually compromised. That
+		// unconditional reward on a fixed controller directly fought the
+		// conflict-evidence penalty and is the reason SC.Revoke never fired.
+		// Controller trust (both branches of eq:ctrl_trust_update) is now driven
+		// solely by the UFCR conflict-evidence path in
+		// ufcr_attempt_unauthorized_flowmod(), which is where main.tex locates
+		// it ("the blockchain [is] the sole controller behavior monitor").
 	}
 
 	//read_csv();
