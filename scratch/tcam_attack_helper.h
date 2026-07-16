@@ -48,6 +48,7 @@ struct TcamEntry {
     bool     presence_managed = false; // true = generator flow evicted ONLY by neighbour
                              // departure (tcam_evict_gen_entry), NOT by idle/hard timeout.
                              // tcam_evict_expired() skips these. Set in tcam_install() when
+                             // the install fid is a gen-fid (gen_flow_lookup true).
     bool     counts_capacity;// true = genuine data-plane TCAM rule that occupies a
                              // slot in g_tcam_rule_count (installed via tcam_install /
                              // tcam_install_malicious, sim-index node space, capped at
