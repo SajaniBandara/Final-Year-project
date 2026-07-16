@@ -4,6 +4,8 @@ logs/
 
 # Simulation Output Files
 routing.xml
+results_routing/
+results_routing_previous/
 
 # SUMO Intermediate Physics Files
 fcd*.xml
