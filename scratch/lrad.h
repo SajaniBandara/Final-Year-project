@@ -401,10 +401,12 @@ inline void escalate_to_rsu(
 // Evaluates S1, S2-partial, S3, S4 at the OBU (vehicle) and writes D_OBU.
 // If D_OBU=1, triggers escalation to the associated RSU.
 //
-// prev_sender: the node that forwarded this packet to `vehicle`; used as
-//   sender_node_id in s1_detect_packet() so record_detection_event() targets
-//   the forwarding RSU (the potential attacker), NOT the receiving vehicle.
-//   Passing vehicle here would corrupt TP/FP/FN counts.
+// prev_sender: the node that forwarded this packet to `vehicle`. Used for
+//   S2-partial's HMAC lookup below (that tag was stamped by prev_sender).
+//   NOT used for S1's ground-truth attribution (see note at the S1 call
+//   below) — main.tex's alg:lrad_obu takes no "previous sender" parameter
+//   at all; it evaluates the baseline for RSU r and escalates to that same
+//   r, with no separate sender concept.
 // =========================================================================
 
 inline LRADOBUFlags lrad_obu(
@@ -427,7 +429,17 @@ inline LRADOBUFlags lrad_obu(
     if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
         flags.flag_S1 = s1_detect_packet(
             assoc_rsu_local_idx, delta_p, is_high_priority,
-            prev_sender,            // sender_node_id → fed into record_detection_event
+            // sender_node_id → fed into record_detection_event. Must be the
+            // associated RSU (matching alg:lrad_obu's ESCALATE(p,v,r,...)
+            // and the ground-truth model, which marks RSUs malicious via
+            // controller compromise — never vehicles). prev_sender is the
+            // immediate previous hop, which in multi-hop VANET routing is
+            // very often another vehicle; since ground truth never marks
+            // vehicles malicious, that misattribution was a guaranteed
+            // false positive whenever it happened — confirmed empirically:
+            // 265 of 276 S1 firings targeted vehicle-range IDs in a 0%-
+            // attack (zero ground-truth-malicious) baseline run.
+            N_Vehicles + assoc_rsu_local_idx,
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
     }
