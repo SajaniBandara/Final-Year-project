@@ -58,7 +58,7 @@ inline std::string lstm_make_base_dir()
         "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = std::getenv("HOME");
     if (home)
-        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+        dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     if (!dir.empty() && dir.back() != '/')
         dir += '/';
     return dir;
