@@ -117450,7 +117450,14 @@ void calculate_witness_wapr_metric()
 // disagreeing by ~4x on the same physical resource — reconciled 2026-07-13.
 // Non-const global (matches the `extern int TCAM_CAPACITY;` forward
 // declaration already in bc_blockchain_helper.h).
-int TCAM_CAPACITY = 256;
+// 2026-07-15: 256 -> 100. With the k=2 generator, busy zones reach 36-54 rules =
+// only 14-21% of 256 (too thin for the mobility-camouflage premise); at 100 that
+// is 36-54%, a properly loaded table. All util/threshold fractions derive from
+// this constant, so they auto-rescale. Must precede threshold calibration.
+int TCAM_CAPACITY = 2000;  // MEASUREMENT-ONLY (2026-07-15): generous/effectively uncapped
+                           // to measure TRUE uncapped demand under the new all-neighbor +
+                           // presence-eviction generator. NOT the final value — the real
+                           // capacity is chosen AFTER this run from the measured benign peak.
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
                                      // g_slowpath_hit_count extern'd inside header;
@@ -117561,13 +117568,26 @@ void write_security_metrics_csv()
 
 	TcamCycleMetrics tcam_metrics{};
 	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1) {
-		double active_vehicles = (double)N_Vehicles;
+		// Fix 2: REAL per-RSU zone density ρ_r(t) — same computation as the density
+		// loop below (linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, d_max_dsrc=270 m),
+		// hoisted here because the detector call precedes that loop in this function.
+		std::vector<double> rho_per_rsu(N_RSUs, 0.0);
+		for (uint32_t _r = 0; _r < N_RSUs; _r++) {
+			uint32_t rsu_sim_idx = N_Vehicles + _r;
+			uint32_t rc = 0;
+			for (uint32_t _v = 0; _v < (uint32_t)N_Vehicles; _v++)
+				if (_v < linklifetimeMatrix_dsrc.size() &&
+				    rsu_sim_idx < linklifetimeMatrix_dsrc[_v].size() &&
+				    linklifetimeMatrix_dsrc[_v][rsu_sim_idx] > 0.0)
+					rc++;
+			rho_per_rsu[_r] = (double)rc;
+		}
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
 			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
 			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
 			0.054688,          // tcam_util_thresh — calibrated benign p99 (Fix 3, rule_calibrator.py 2026-07-10)
-			active_vehicles
+			rho_per_rsu
 		);
 	}
 
@@ -143511,10 +143531,13 @@ if (architecture == 3 && N_Vehicles > 0)
 					  
 					  Simulator::Schedule(Seconds(t+0.099500),initialize_flow_counters);
 					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows);
-					  // k-NN concurrency flow generator: one tick per cycle, just after
-					  // initiate_all_flows and after this cycle's linklifetimeMatrix_dsrc
-					  // refresh (t+0.0345). Reuses the counted/capped tcam_hit path.
-					  Simulator::Schedule(Seconds(t+0.101000),tcam_flow_generator_tick);
+					  // All-neighbour, presence-driven concurrency generator (2026-07-15).
+					  // Kicked ONCE; the tick then self-reschedules every 100 ms
+					  // (TCAM_GEN_PERIOD_S) for the whole run. Reuses the counted/capped
+					  // tcam_hit path; presence-driven eviction, no timeout for these flows.
+					  { static bool _gen_chain_started = false;
+					    if (!_gen_chain_started) { _gen_chain_started = true;
+					      Simulator::Schedule(Seconds(t+0.101000),tcam_flow_generator_tick); } }
 					  Simulator::Schedule(Seconds(t+data_transmission_period-0.002),calculate_performance_evaluation_metrics);
  		          		  
 				   	  

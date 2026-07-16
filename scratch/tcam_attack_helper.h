@@ -18,7 +18,7 @@ extern double   cp_attack_intensity;   // % of RSUs targeted per CP tick (0-100)
                                         // NOTE: NOT the "attack percentage" used in the
                                         // report/thesis -- that is attack_percentage
                                         // (routing.cc), which drives num_controllers_compromised.
-extern int      TCAM_CAPACITY;         // single canonical TCAM size (routing.cc, =256)
+extern int      TCAM_CAPACITY;         // single canonical TCAM size (routing.cc, =100)
 
 // ---------- TCAM resource-model constants (2026-07-13) ----------
 // Named, configurable (not inlined) per-rule timeout values. A rule is
@@ -45,6 +45,9 @@ struct TcamEntry {
     uint64_t packet_count;   // packets forwarded through this entry
     uint64_t byte_count;     // bytes  forwarded through this entry
     bool     is_malicious;   // true when injected by attacker (Change 5–7)
+    bool     presence_managed = false; // true = generator flow evicted ONLY by neighbour
+                             // departure (tcam_evict_gen_entry), NOT by idle/hard timeout.
+                             // tcam_evict_expired() skips these. Set in tcam_install() when
     bool     counts_capacity;// true = genuine data-plane TCAM rule that occupies a
                              // slot in g_tcam_rule_count (installed via tcam_install /
                              // tcam_install_malicious, sim-index node space, capped at
@@ -83,6 +86,13 @@ uint32_t g_lambda_new[300]       = {0};
 uint32_t g_lambda_evict[300]     = {0};
 uint32_t g_lambda_reinstall[300] = {0};
 std::set<std::pair<uint32_t,uint32_t>> g_tcam_ever_evicted; // (flow_id,node_id) evicted >=1x
+
+// Monotone cumulative install counters (NEVER reset — the per-cycle arrays above
+// are zeroed each snapshot). The S3 windowed rate estimator reads these to form a
+// sliding-window install count (new + reinstall) without depending on snapshot
+// phase. lambda_obs for S3 = (new_cum + reinstall_cum) delta over the window.
+uint64_t g_lambda_new_cum[300]       = {0};
+uint64_t g_lambda_reinstall_cum[300] = {0};
 
 // Returns the first non-loopback IPv4 address of a node given its sim index (0-based).
 // NodeList IDs in this simulation are offset by 2 (management + controller nodes occupy 0,1).
@@ -282,7 +292,8 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     // Generated flows resolve (src,dst) from the gen registry (they do not index
     // delta_at_nodes_inst); native flows read delta_at_nodes_inst[original_fid].
     uint32_t src_node, dst_node;
-    if (!gen_flow_lookup(original_fid, src_node, dst_node)) {
+    const bool is_gen_flow = gen_flow_lookup(original_fid, src_node, dst_node);
+    if (!is_gen_flow) {
         src_node = (delta_at_nodes_inst + original_fid)->source_f;
         dst_node = (delta_at_nodes_inst + original_fid)->destination_f;
     }
@@ -308,12 +319,13 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     e.byte_count     = 0;
     e.is_malicious   = false;
     e.counts_capacity = true;   // genuine data-plane rule: occupies a TCAM slot
+    e.presence_managed = is_gen_flow; // generator flows evicted by departure only, no timeout
     g_tcam_table.push_back(e);
     g_tcam_rule_count[node_id]++;
 
     // TRUE lambda_l instrument (measurement only): a fresh key vs a churn refresh.
-    if (g_tcam_ever_evicted.count(key)) g_lambda_reinstall[node_id]++;
-    else                                g_lambda_new[node_id]++;
+    if (g_tcam_ever_evicted.count(key)) { g_lambda_reinstall[node_id]++; g_lambda_reinstall_cum[node_id]++; }
+    else                                { g_lambda_new[node_id]++;       g_lambda_new_cum[node_id]++; }
 
     Ipv4Address sip, dip;
     sip.Set(src_ip);
@@ -344,6 +356,7 @@ inline void tcam_evict_expired()
 {
     double now = Simulator::Now().GetSeconds();
     auto is_expired = [now](const TcamEntry& e) {
+        if (e.presence_managed) return false; // generator flows: presence-driven eviction only
         bool idle_expired = (now - e.last_seen_time) >= TCAM_IDLE_TIMEOUT_S;
         bool hard_expired = (now - e.install_time)   >= TCAM_HARD_TIMEOUT_S;
         return idle_expired || hard_expired;
@@ -369,6 +382,31 @@ inline void tcam_evict_expired()
                       << " age=" << (now - e.install_time)
                       << "s idle=" << (now - e.last_seen_time)
                       << "s t=" << now << "s" << std::endl;
+            return true;
+        });
+    g_tcam_table.erase(new_end, g_tcam_table.end());
+}
+
+// ── Presence-driven eviction of a single generator entry (2026-07-15) ────────
+// Immediately removes the counted entry (actual_fid, node_id) installed by the
+// all-neighbour generator when a DSRC neighbour leaves range. Mirrors the
+// counted-path bookkeeping of tcam_evict_expired() exactly (decrement counter,
+// free dedup key, feed the λ_l evict instrument) so the leak invariant and
+// occupancy accounting stay correct. Only touches presence_managed entries.
+inline void tcam_evict_gen_entry(uint32_t actual_fid, uint32_t node_id)
+{
+    double now = Simulator::Now().GetSeconds();
+    auto new_end = std::remove_if(g_tcam_table.begin(), g_tcam_table.end(),
+        [&](const TcamEntry& e) {
+            if (!(e.presence_managed && e.flow_id == actual_fid && e.node_id == node_id))
+                return false;
+            if (e.counts_capacity) {
+                g_tcam_rule_count[e.node_id]--;
+                g_tcam_installed.erase(std::make_pair(e.flow_id, e.node_id));
+                g_lambda_evict[e.node_id]++;
+                g_tcam_ever_evicted.insert(std::make_pair(e.flow_id, e.node_id));
+            }
+            (void)now;
             return true;
         });
     g_tcam_table.erase(new_end, g_tcam_table.end());
