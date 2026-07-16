@@ -55,7 +55,7 @@ static bool             g_lstm_logger_ready = false;
 inline std::string lstm_make_base_dir()
 {
     std::string dir =
-        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = std::getenv("HOME");
     if (home)
         dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/results_routing/";
