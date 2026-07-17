@@ -30,8 +30,8 @@ RESULTS_DIR = NS3_DIR / "results_routing"
 ATTACKS      = list(range(1, 9))          # 1–8
 PERCENTAGES  = [0, 20, 40, 60, 80, 100]  # 6 percentages → 8×6×5 = 240 total
 SEEDS        = [1, 2, 3, 4, 5]
-SIM_TIME     = 90    # matches A1/A2's existing 90s data (88 cycles) for consistency
-MAX_WORKERS  = 25
+SIM_TIME     = 60
+MAX_WORKERS  = 25    # 25 attack + 5 benign = 30 on 32 threads; safe headroom
 
 
 def build_env():
