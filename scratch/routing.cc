@@ -94573,7 +94573,7 @@ void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next
 {
 	update_route(source, destination, next_hop);   // install the routing decision first (benign part)
 	routing_tables[source].rows[destination].injected_delay = delay; // then poison the rule
-	cout << attack_tag() << " [ATTACK1] Malicious controller installed poisoned flowMod: "
+	cout << attack_tag() << " Malicious controller installed poisoned flowMod: "
 	     << "node=" << source << " dest=" << destination
 	     << " next_hop=" << next_hop
 	     << " injected_delay=" << delay * 1000.0 << "ms"
@@ -115058,7 +115058,7 @@ void initialise_stub_attack_state()
             // injecting the malicious delay.
             Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
-            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, fixed delay="
+            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, fixed delay="
                  << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
             if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;

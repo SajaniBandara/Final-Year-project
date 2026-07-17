@@ -324,11 +324,13 @@ inline void reapply_cp_selective_delay()
 
         // Log the install once per RSU: this task re-fires every 1s and would
         // otherwise emit an identical line per compromised RSU per second.
+        // (The rule's match — Priority(p)=HIGH — is documented in this function's
+        // header and applied at the forwarding sites via is_safety_critical_flow[];
+        // it is not restated here, since only real state should be logged.)
         if (first_install)
             cout << attack_tag() << " Malicious controller " << owning_controller
                  << " installed poisoned flowMod on RSU node " << rsu_node_id
-                 << " (rsu index " << r << "): match=Priority(p)=HIGH,"
-                 << " action=delay " << variable_delay * 1000.0 << "ms"
+                 << " (rsu index " << r << "): delay=" << variable_delay * 1000.0 << "ms"
                  << ", at t=" << now << "s" << endl;
 
         // NOTE: record_attack_onset(0, rsu_node_id) is intentionally NOT called
