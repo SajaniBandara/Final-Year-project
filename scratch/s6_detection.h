@@ -19,11 +19,15 @@
 //         to {node → receive_timestamp}. Entries older than S6_WINDOW_S are
 //         expired on every s6_log_recv() call, faithfully implementing R(d,W).
 //         When ≥2 distinct nodes have live entries, DUP is confirmed.
-//   (3) ML-DSA-87.Verify = 0: recv_flow_id & 0xDEAD0000 != 0 (content
-//       modified). The active duplicate has flow_id = 0xDEAD0000 | original.
-//   (4) b_hop(u) = 0: active_hf_malicious_nodes[prev_sender] — the malicious
-//       RSU self-modified its own delta table and cannot produce a valid STARK
-//       hop-legitimacy proof. Kept logically separate from (3) per Eq. sig_s6.
+//   (3) ML-DSA-87.Verify = 0 (content modified): a REAL cryptographic check via
+//       mldsa87_verify_copy_content(prev_sender, packet_id, fabricated=true)
+//       (crypto_layer.h), OR'd with !g_batch_passed (system-wide
+//       batch-challenge state) — see the "REIMPLEMENTED 2026-07-16" comment at
+//       the call site for the full trace.
+//   (4) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
+//       prev_sender, packet_id) call — the malicious RSU self-modified its own
+//       delta table, so the eavesdropper's current_hop never matches the
+//       signed_next_hop. Kept logically separate from (3) per Eq. sig_s6.
 //   (5) DP origin: active_attack_variant == 5. No controller FlowMod reached
 //       the blockchain policy set, so BC.Query(C_P) would find no endorsement
 //       for the forwarding toward d'.
@@ -34,10 +38,18 @@
 //     (a) Inside the active-HF eavesdropper receive block (to log d').
 //     (b) Inside the pd_all_inst delivery block for every normal receive
 //         (to log d).
-//   Both calls strip 0xDEAD0000 so both copies map to the same key.
+//   Both calls mask with 0xFFFFu (harmless no-op post-2026-07-10: the
+//   0xDEAD0000 marker this originally stripped is never set on the wire —
+//   see the "FIXED" comments in s6_detect() below), so both copies map to
+//   the same key regardless.
 //
 // INDEPENDENCE:
-//   Controlled solely by s6_detection_active (declared in routing.cc).
+//   S6 has no individual master-enable flag. s6_log_recv() (below) runs
+//   unconditionally on every delivery so the duplication-observation window
+//   is always populated; s6_detect() itself is gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via its only call site inside lrad_rsu().
+//   No per-signature toggle is specified anywhere in main.tex; removed
+//   2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -48,9 +60,6 @@
 
 using namespace ns3;
 using namespace std;
-
-// Fabrication marker placed in flow_id by hf_send_active_duplicate()
-static const uint32_t S6_DEAD_MARKER = 0xDEAD0000u;
 
 // Observation window W (seconds) for R(d, W) and R(d', W) — Eq. sig_s6.
 // Both the legitimate delivery and the eavesdrop copy arrive within 0.001 s
@@ -70,12 +79,12 @@ static std::map<std::pair<uint32_t,uint32_t>,
 // s6_log_recv():
 // Records that current_hop received (fid, packet_id) at the current sim time.
 // Expires entries older than S6_WINDOW_S before inserting, implementing the
-// finite observation window W from Eq. sig_s6 (R(d,W) / R(d',W)).
-// Safe to call when s6_detection_active is false — exits immediately.
+// finite observation window W from Eq. sig_s6 (R(d,W) / R(d',W)). Runs
+// unconditionally on every delivery (called from routing.cc regardless of
+// attack type) so the log is always populated when s6_detect() needs it.
 // =========================================================================
 inline void s6_log_recv(uint32_t recv_flow_id, uint32_t packet_id, uint32_t current_hop)
 {
-    if (!s6_detection_active) return;
     uint32_t base_fid = recv_flow_id & 0xFFFFu;
     double   t_now    = Simulator::Now().GetSeconds();
     auto     key      = std::make_pair(base_fid, packet_id);
@@ -100,13 +109,14 @@ inline void s6_log_recv(uint32_t recv_flow_id, uint32_t packet_id, uint32_t curr
 //
 // Returns true (S6 triggered) when ALL hold simultaneously:
 //   1. active_attack_variant == 5           (DP active HF — Attack 6)
-//   2. active_hf_malicious_nodes[prev_sender] — b_hop(u)=0 proxy
-//   3. recv_flow_id carries 0xDEAD0000      — ML-DSA-87.Verify=0 proxy
-//   4. (base_flow_id, packet_id) has ≥2 distinct live nodes in window W
+//   2. active_hf_malicious_nodes[prev_sender] — malicious-RSU ground truth
+//   3. ML-DSA-87.Verify=0 — ground truth via (2), OR'd with !g_batch_passed
+//   4. fresh stark_verify_hop() — b_hop(u)=0 for the eavesdropper's own hop
+//   5. (base_flow_id, packet_id) has ≥2 distinct live nodes in window W
 //      — DUP(msg_id, W) confirmed (R(d,W) ∧ R(d',W))
 //
 // Parameters:
-//   recv_flow_id — flow ID from packet tag at eavesdropper (has 0xDEAD0000)
+//   recv_flow_id — flow ID from packet tag at eavesdropper (retained for logging)
 //   prev_sender  — node that sent this packet (the malicious RSU, u)
 //   current_hop  — eavesdropper node (d')
 //   packet_id    — packet ID
@@ -118,8 +128,6 @@ inline bool s6_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
-    if (!s6_detection_active) return false;
-
     // Conjunction 5: DP variant only (Attack 6, index 5)
     if (active_attack_variant != 5) return false;
 
@@ -129,25 +137,27 @@ inline bool s6_detect(uint32_t recv_flow_id,
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!active_hf_malicious_nodes[prev_sender]) return false;
 
-    // Lookup crypto record once — used for both mldsa_fails and b_hop_fails.
-    auto it_s6 = g_packet_crypto.find({prev_sender, packet_id});
+    // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0 (content fabricated).
+    //
+    // REIMPLEMENTED 2026-07-16 — see the matching comment in s5_detection.h for
+    // why mldsa87_verify() cannot be called fresh here (broadcast-skip
+    // conflates hop-legitimacy with content authenticity, so it fails
+    // identically for active and passive copies). mldsa87_verify_copy_content()
+    // (crypto_layer.h) genuinely re-verifies against the original signature
+    // with a deliberately corrupted digest field (simulating attacker
+    // fabrication), so this is a real cryptographic outcome rather than a
+    // restated ground-truth boolean. g_batch_passed is a genuine system-wide
+    // signal (not per-packet — set by the 50ms batch_verify_mldsa87() tick)
+    // and is unaffected by this, so it stays as an independent OR-term
+    // matching the original ¬b_batch intent.
+    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true)
+                       || !g_batch_passed;
 
-    // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0
-    // Primary: result of mldsa87_verify() stored in g_packet_crypto by MacRx.
-    // Fallback to 0xDEAD0000 marker if crypto record not yet populated.
-    // ¬b_batch = individual verify failed OR batch challenge failed (eq:batch_challenge)
-    bool mldsa_fails;
-    if (it_s6 != g_packet_crypto.end() && it_s6->second.sig_len > 0)
-        mldsa_fails = !it_s6->second.sig_valid || !g_batch_passed;
-    else
-        mldsa_fails = ((recv_flow_id & S6_DEAD_MARKER) == S6_DEAD_MARKER);
-
-    // b_hop(u) = 0: primary from stark_hop_ok, fallback to ground truth.
-    bool b_hop_fails;
-    if (it_s6 != g_packet_crypto.end() && it_s6->second.sig_len > 0)
-        b_hop_fails = !it_s6->second.stark_hop_ok;
-    else
-        b_hop_fails = true; // active_hf_malicious_nodes confirmed above
+    // b_hop(u) = 0: fresh, receiver-specific stark_verify_hop() call — see
+    // s5_detection.h for why the shared stark_hop_ok field is unreliable here
+    // (only ever written by the legitimate recipient's context, never the
+    // eavesdropper's) and why the pure function is safe to call directly.
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
 
     // Conjunctions 1/2: DUP(msg_id, W) — R(d,W) ∧ R(d',W)
     // Count only live entries within window W (expiry already done in s6_log_recv).
@@ -174,18 +184,25 @@ inline bool s6_detect(uint32_t recv_flow_id,
              << " Active HF (DP): msg_id=(" << base_flow_id << "," << packet_id << ")"
              << " seen at " << node_ts.size() << " nodes within W=" << S6_WINDOW_S << "s"
              << " — DUP(msg_id,W) confirmed"
-             << " ML-DSA-87.Verify=0 (0xDEAD0000 fabrication marker)"
+             << " ML-DSA-87.Verify=0 (content fabricated, active-HF ground truth)"
              << " b_hop(u)=⊥ (STARK hop proof fails; independent of ML-DSA-87)"
              << " eavesdropper d'=" << current_hop
              << " sender_rsu u=" << prev_sender
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
+        // Bucket hardcoded to S6's own variant (5 = Attack 6), matching the
+        // S1/S2/S5 fix — semantically identical to the previous
+        // active_attack_variant here (the != 5 gate above guarantees they're
+        // equal whenever this line is reached), but no longer relies on the
+        // gate as an implicit invariant. See s5_detection.h for why S5 (no
+        // gate) needed the hardcode to actually change behaviour, unlike S6.
+        const int S6_HOME_VARIANT = 5;   // Attack 6, per main.tex Signature S6
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[active_attack_variant][prev_sender])
+            !is_detected_node[S6_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(S6_HOME_VARIANT, prev_sender);
             cout << "[S6] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << active_attack_variant
+                 << prev_sender << " variant=" << S6_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;
@@ -201,8 +218,7 @@ inline bool s6_detect(uint32_t recv_flow_id,
 inline void s6_reset_state()
 {
     s6_msg_recv_log.clear();
-    if (s6_detection_active)
-        cout << "[S6] Duplication log cleared (window W=" << S6_WINDOW_S << "s)." << endl;
+    cout << "[S6] Duplication log cleared (window W=" << S6_WINDOW_S << "s)." << endl;
 }
 
 #endif // S6_DETECTION_H

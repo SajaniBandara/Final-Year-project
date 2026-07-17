@@ -105,7 +105,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
 // Features logged (eq:lstm_input):
 //   δ_t          = obs_delay
 //   λ_PI,t       = Δ(g_slowpath_hit_count[rsu_sim_idx]) since last cycle
-//   U_TCAM,t     = g_tcam_rule_count[rsu_sim_idx] / TCAM_HW_SIZE (clamped 0–1)
+//   U_TCAM,t     = g_tcam_rule_count[rsu_sim_idx] / TCAM_CAPACITY (clamped 0–1)
 //   𝟙[π_delay=⊥] = 1 if g_lstm_stark_counts[rsu_sim_idx].first  > 0 this cycle
 //   𝟙[π_hop=⊥]   = 1 if g_lstm_stark_counts[rsu_sim_idx].second > 0 this cycle
 //   ρ_t          = rho_t
@@ -124,7 +124,6 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     if (r >= g_lstm_prev_slowpath.size()) return;
 
     const uint32_t rsu_sim_idx = (uint32_t)N_Vehicles + r;
-    const int      tcam_hw     = 256; // TCAM_HW_SIZE — same constant as routing.cc
 
     // ── Feature 2: λ_PI — Δ PACKET_IN slow-path hits since last cycle
     int cur_slow  = g_slowpath_hit_count[rsu_sim_idx];
@@ -133,7 +132,9 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     g_lstm_prev_slowpath[r] = cur_slow;
 
     // ── Feature 3: U_TCAM — current rule utilisation (0.0 – 1.0)
-    double U_TCAM = (double)g_tcam_rule_count[rsu_sim_idx] / (double)tcam_hw;
+    // Uses the single shared TCAM_CAPACITY constant (routing.cc) — was a
+    // locally-hardcoded `tcam_hw=256` shadow constant before 2026-07-13.
+    double U_TCAM = (double)g_tcam_rule_count[rsu_sim_idx] / (double)TCAM_CAPACITY;
     if (U_TCAM > 1.0) U_TCAM = 1.0;
 
     // ── Features 4 & 5: ZKP failure indicators (binary {0, 1})
@@ -154,6 +155,24 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         active_attack_variant < NUM_ATTACK_VARIANTS)
     {
         label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
+        // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
+        // variant 2) or attacker vehicles (A4, variant 3), never the RSU
+        // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
+        // positives and A3 only the single representative RSU. Label the
+        // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
+        // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
+        // is declared in tcam_detection.h, included just before this header.
+        if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
+        {
+            for (const auto& entry : g_tcam_table)
+            {
+                if (entry.node_id == rsu_sim_idx && entry.is_malicious)
+                {
+                    label = 1;
+                    break;
+                }
+            }
+        }
     }
 
     // ── File path: lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv

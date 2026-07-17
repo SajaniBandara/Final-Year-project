@@ -46,7 +46,10 @@ ATTACK_NAMES = {
 # ── LSTM-based prediction ─────────────────────────────────────────────────────
 
 def load_global_model() -> tuple:
-    ckpt = torch.load(MODEL_DIR / "global.pt", map_location=DEVICE)
+    # weights_only=False: PyTorch >=2.6 safe loader rejects numpy scalars in
+    # our own checkpoints.
+    ckpt = torch.load(MODEL_DIR / "global.pt", map_location=DEVICE,
+                      weights_only=False)
     model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
     model.load_state_dict(ckpt["weights"])
     model.eval()
@@ -84,26 +87,48 @@ def compute_clf_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
 
 
 def load_sim_csv(attack_v: int, pct: int) -> pd.DataFrame | None:
-    """Load MOBIGUARD result CSV for a given attack variant and percentage."""
-    pattern = RESULTS / f"MOBIGUARD_V{attack_v}_pct{pct}_*.csv"
-    files   = sorted(RESULTS.glob(f"MOBIGUARD_V{attack_v}_pct{pct}_*.csv"))
+    """
+    Load MOBIGUARD result CSV(s) for a given attack variant and percentage.
+
+    write_security_metrics_csv() (routing.cc) names files
+    MOBIGUARD_Attack<N>_<pct>[_d<D>ms][_seed<S>].csv — never
+    "MOBIGUARD_V<v>_pct<p>_*" (that pattern never matched anything, so this
+    sim_metrics block was silently empty on every prior run). N here is the
+    attack NUMBER (1-8), same as attack_v — ATTACK_NAMES below maps them
+    1:1. glob picks up every delay/seed suffix variant.
+
+    The file's own header is 4 lines, each prefixed with "#" (see
+    write_security_metrics_csv()'s header write), so there is no valid
+    single-line CSV header for pandas to parse — comment="#" strips all 4
+    lines and pandas then silently promotes the first DATA row to column
+    names instead. Read with header=None and pull columns by fixed
+    position instead (see extract_sim_metrics()).
+    """
+    files = sorted(RESULTS.glob(f"MOBIGUARD_Attack{attack_v}_{pct}*.csv"))
     if not files:
         return None
-    dfs = [pd.read_csv(f, comment="#") for f in files]
+    dfs = [pd.read_csv(f, comment="#", header=None) for f in files]
     return pd.concat(dfs, ignore_index=True)
+
+
+# Fixed column positions in write_security_metrics_csv()'s row layout
+# (routing.cc) — matches scripts/plot_fade_results.py's MOB_COL_* map.
+# All 5 sit before the variant-conditional TCAM block (only present for
+# A3/A4/benign, appended after avg_UCR), so these positions are stable
+# across every attack variant.
+SIM_COL_MAP = {
+    "M4_L_mit_ms": 12,   # avg_mit_ms
+    "M5_PDR":       2,   # avg_PDR
+    "M6_L_e2e_ms":  4,   # avg_lat_ms
+    "M7_TVR_pct":  18,   # avg_TVR
+    "M8_UCR_pct":  20,   # avg_UCR
+}
 
 
 def extract_sim_metrics(df: pd.DataFrame) -> dict:
     out = {}
-    col_map = {
-        "M4_L_mit_ms": "avg_mit",
-        "M5_PDR":       "avg_PDR",
-        "M6_L_e2e_ms":  "avg_lat",
-        "M7_TVR_pct":   "avg_TVR%",
-        "M8_UCR_pct":   "avg_UCR%",
-    }
-    for metric, col in col_map.items():
-        if col in df.columns:
+    for metric, col in SIM_COL_MAP.items():
+        if col < df.shape[1]:
             out[metric] = round(float(df[col].mean()), 4)
         else:
             out[metric] = None

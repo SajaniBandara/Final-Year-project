@@ -24,14 +24,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
-from scipy.stats import norm as scipy_norm
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
-from lstm_model import LSTMAutoencoder, N_FEATURES
+from lstm_model import LSTMAutoencoder, N_FEATURES, seed_everything
 
 REPO       = Path(__file__).resolve().parents[2]
 PRE        = REPO / "lstm_pipeline" / "preprocessed"
-Z_ALPHA    = scipy_norm.ppf(1 - 0.01)   # z_{0.99} ≈ 2.326 for 1% FPR
 TARGET_FPR       = 0.01
 TARGET_PRECISION = 0.95
 # Grid search spaces (spec §4.2)
@@ -71,15 +69,25 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
     return total_loss / max(len(X_train) * local_epochs, 1)
 
 
+Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
+
+
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """eq:lstm_threshold: theta = mu_A + z_alpha * sigma_A from benign val reconstruction errors."""
+    """Hybrid threshold: theta(k) = max(Gaussian, non-parametric P99) per
+    RSU — see fed_aggregator.py's compute_theta() for the full rationale
+    (P99 alone underestimates the tail on small per-RSU samples and gave a
+    WORSE empirical FPR than the original Gaussian formula). Kept
+    consistent here so grid search selects hparams under the SAME
+    thresholding rule that will actually be deployed."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
-    mu_a  = float(errs.mean())
-    sig_a = float(errs.std())
-    theta = mu_a + Z_ALPHA * sig_a
+    mu_a        = float(errs.mean())
+    sig_a       = float(errs.std())
+    theta_gauss = mu_a + Z_ALPHA * sig_a
+    theta_pctl  = float(np.percentile(errs, 99))
+    theta = max(theta_gauss, theta_pctl)
     return theta, mu_a, sig_a
 
 
@@ -139,6 +147,7 @@ def grid_search_hparams(rsu_id: int, X_train: np.ndarray, X_val_benign: np.ndarr
 
 
 def main(args):
+    seed_everything(0)   # reproducible M1/M8 metrics
     print(f"Loading preprocessed data from {PRE} …")
     X_tr, y_tr, meta_tr = load_split("train")
     X_va, y_va, meta_va = load_split("val")
@@ -148,8 +157,12 @@ def main(args):
 
     summary = {}
     for rsu_id in rsu_ids:
-        mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (y_tr == 0)
-        mask_va_benign = (meta_va[:, 0] == rsu_id) & (y_va == 0)
+        # Train the autoencoder ONLY on pure-benign A0 runs (meta col 1 = attack_v).
+        # Using y==0 leaked label-0 windows from attack runs into training — for
+        # selective-delay attacks those "benign-labeled" cycles still contain delay
+        # spikes, inflating benign reconstruction error (std 71, θ≈49) and crushing DR.
+        mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (meta_tr[:, 1] == 0)
+        mask_va_benign = (meta_va[:, 0] == rsu_id) & (meta_va[:, 1] == 0)  # pure-benign A0 for θ calibration
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]

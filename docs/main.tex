@@ -5446,6 +5446,131 @@ with an average latency of 2.43\,ms. Variant~7 achieves an MCC of
 attack where no observable network degradation occurs, with an 
 average mitigation latency of 50\,ms.
 
+\subsection{Federated LSTM Validation Results}
+\label{sec:lstm_validation}
+
+The federated LSTM detector (Section~\ref{sec:fed_lstm}) was trained and
+evaluated on the full $6\times8\times5=240$ run-instance dataset (1,399,040
+feature rows across 64 RSUs and all 9 variants, benign included), following
+the 70/15/15 seed-partitioned split, 10\,s/5\,s windowing, and hyperparameter
+grid search specified above. Detection quality is reported on the held-out
+test split (seed 5, never used in training or validation).
+
+\begin{table}[H]
+\centering
+\caption{Federated LSTM Detection Quality (M1--M3) per Attack Variant, Held-Out Test Split}
+\label{tab:lstm_detection}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{4.2cm}|p{1.6cm}|p{1.6cm}|p{1.6cm}|}
+\hline
+\textbf{Attack} & \textbf{M1 MCC} & \textbf{M2 DR (\%)} & \textbf{M3 FPR (\%)} \\
+\hline
+A1 CP-Selective Delay & 0.720 & 83.26 & 5.11 \\
+\hline
+A2 DP-Selective Delay & 0.893 & 92.87 & 2.84 \\
+\hline
+A3 CP-TCAM & 0.259 & 90.85 & 52.95 \\
+\hline
+A4 DP-TCAM & 0.434 & 9HF-
+7.74 & 44.51 \\
+\hline
+A5 Active HF Attack (Control plane) & 0.544 & 70.10 & 6.22 \\
+\hline
+A6 Active HF Attack (Data Plane) & 0.505 & 63.99 & 6.65 \\
+\hline
+A7 Passive HF Attack (Control plane) & 0.513 & 68.09 & 6.03 \\
+\hline
+A8 Passive HF Attack (Data plane) & 0.487 & 64.71 & 6.08 \\
+\hline
+
+\textbf{Overall (A1--A8)} & \textbf{0.526} & \textbf{84.52} & \textbf{15.84} \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_LSTM_DetectionQuality.eps}
+    \caption{Federated LSTM detection quality (M1 MCC, M2 DR, M3 FPR) per attack variant.}
+    \label{fig:lstm_detection}
+\end{figure}
+
+As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_detection},
+detection quality separates into two regimes: Selective Time Delay and
+Hidden Forwarding attacks (A1, A2, A5--A8) combine moderate-to-high MCC
+(0.49--0.89) with a low false-positive rate (3--7\%), while the TCAM
+exhaustion attacks (A3, A4) achieve very high detection rates (91--98\%) at
+a higher false-positive cost (45--53\%) -- a consequence of the ground-truth
+labelling any RSU holding even one malicious TCAM entry as attack-positive
+for its entire observation window, since installed entries persist. A
+consistent pattern holds within both attack families: the data-plane variant
+outperforms its control-plane sibling on MCC (A2: 0.893 vs.\ A1: 0.720; A4:
+0.434 vs.\ A3: 0.259), likely because data-plane attacks act more directly
+on observed traffic, leaving a cleaner per-RSU signal, whereas control-plane
+attacks act indirectly through a compromised controller or flow rules,
+potentially diluting the signal across additional intermediate steps.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Figure_LSTM_Convergence.eps}
+    \caption{Federated training convergence (BRFA-v2): global validation loss vs.\ aggregation round.}
+    \label{fig:lstm_convergence}
+\end{figure}
+
+Figure~\ref{fig:lstm_convergence} shows the global validation loss
+(sample-weighted mean benign reconstruction error across all 64 RSUs)
+converging over the $R\in\{50,100,150\}$ round grid. The steep loss
+reduction in the first $\sim$20 rounds is consistent with the global model
+moving away from its random initialisation toward the shared benign-traffic
+manifold, with the long tail to round 150 plausibly reflecting fine-tuning
+around per-RSU variation in local mobility and traffic conditions. $R=150$
+was selected as the smallest round within the convergence tolerance of the
+final loss.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Figure_LSTM_M8_Poisoning.eps}
+    \caption{M8 federated model poisoning resistance: BRFA-v2 vs.\ naive FedAvg.}
+    \label{fig:lstm_poisoning}
+\end{figure}
+
+Figure~\ref{fig:lstm_poisoning} evaluates M8 ($\Delta_{poison}$,
+Eq.~\ref{eq:delta_poison}) as the malicious RSU fraction $\rho_{mal}$
+increases toward the PBFT bound $f<n/3$. At $\rho_{mal}=0.3$, BRFA-v2 holds
+$\Delta_{poison}=0.023$ versus naive FedAvg's $0.081$ -- a $3.5\times$
+improvement. Naive FedAvg shows a sharp degradation between $\rho_{mal}=0.1$
+and $0.2$ (0.014 $\to$ 0.069, a $5\times$ jump) that BRFA-v2 does not
+exhibit: FedAvg averages every submitted update unconditionally, so once
+enough poisoned gradients are present they begin to dominate the mean,
+producing a tipping point. BRFA-v2's Krum step instead rejects updates that
+are statistically distant from the coordinate-wise median \emph{before}
+aggregation, so poisoned updates are excluded rather than diluting the
+average, giving the smoother, near-linear degradation observed.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{Figure_LSTM_MobilityStratifiedMCC.eps}
+    \caption{Mobility-stratified MCC (Eq.~\ref{eq:mcc_mobility}) per attack variant, across vehicle density ($\rho$) and speed ($\bar{v}$) bins. Low-$\rho$/low-$\bar{v}$ and low-$\rho$/high-$\bar{v}$ cells are unpopulated in the evaluated trace (see text) and marked n/a.}
+    \label{fig:lstm_mobility}
+\end{figure}
+
+Figure~\ref{fig:lstm_mobility} validates the mobility-adjusted threshold
+(Eq.~\ref{eq:mobility_baseline}): MCC holds or improves at higher density
+and speed for most attacks (e.g.\ A1: 0.65 $\to$ 0.82), with A5 and A6 as
+the two exceptions that degrade under denser, faster traffic. A plausible
+explanation is that for A1, denser and faster traffic increases the volume
+of legitimate high-priority packets the mobility-adjusted baseline is
+estimated from, sharpening the delay-anomaly signal the selective-delay
+attack has to hide within, while A5 and A6 (active hidden forwarding)
+degrade under the same conditions because denser traffic may give a hidden
+duplicate more legitimate concurrent forwarding activity to blend into,
+diluting the count-based duplication signal these signatures rely on. The
+low-density bins are unpopulated in the evaluated SUMO trace low density
+and low speed do not co-occur in this mobility model, and the
+low-density/high-speed stratum contains no attack-positive test windows 
+reflecting the evaluated scenario rather than a detection failure.
+
 
 \chapter{Timeline and Resource Required}
 

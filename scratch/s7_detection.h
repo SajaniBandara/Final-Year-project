@@ -24,13 +24,15 @@
 //       means the controller injected a FlowMod to d' that is NOT in the
 //       blockchain-committed policy set C_P. No separate query needed; the
 //       attack flag passive_hf_malicious_nodes[prev_sender] covers this.
-//   (3) ML-DSA-87.Verify = 1: recv_flow_id has NO 0xDEAD0000 marker (passive
-//       copy — content unmodified). If the marker is present, this is an active
-//       copy and S7 should not fire.
-//   (4) b_hop(u) = 0: passive_hf_malicious_nodes[prev_sender] == true confirms
-//       the forwarding RSU is malicious. In deployed MOBIGUARD this is
-//       STARK.Verify(π_hop(u)) = 0 since the unauthorized d' is absent from
-//       the authorized next-hop set P(s,d).
+//   (3) ML-DSA-87.Verify = 1 (content unmodified — passive copy): a REAL
+//       cryptographic check via mldsa87_verify_copy_content(prev_sender,
+//       packet_id, fabricated=false) (crypto_layer.h) — reconstructs the exact
+//       digest the honest sender signed and genuinely re-runs OQS_SIG_verify()
+//       against the original signature (see the "REIMPLEMENTED 2026-07-16"
+//       comment at the call site for the full trace).
+//   (4) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
+//       prev_sender, packet_id) call. STARK.Verify(π_hop(u)) = 0 since the
+//       unauthorized d' is absent from the authorized next-hop set P(s,d).
 //
 // PRIMARY vs CORROBORATING:
 //   Per the proposal (§1798–1804), the primary detection mechanism for S7 is
@@ -46,7 +48,10 @@
 //   Do NOT include before the global declarations.
 //
 // INDEPENDENCE:
-//   Controlled solely by s7_detection_active (declared in routing.cc).
+//   S7 has no individual master-enable flag — gated solely by
+//   enable_lrad_rsu (AB1, lrad.h) via s7_detect()'s only call path (inside
+//   lrad_rsu(), invoked from every one of its call sites). No per-signature
+//   toggle is specified anywhere in main.tex; removed 2026-07-09.
 // =========================================================================
 
 #include <iostream>
@@ -83,13 +88,13 @@ static std::map<uint32_t, double>   s7_window_start;
 //   1. active_attack_variant == 6         (CP passive HF — Attack 7)
 //   2. prev_sender is a flagged passive malicious RSU
 //      (passive_hf_malicious_nodes[prev_sender] == true)
-//   3. recv_flow_id carries NO 0xDEAD0000 marker
-//      (ML-DSA-87.Verify = 1, content unmodified — passive copy)
+//   3. ML-DSA-87.Verify = 1 — ground truth via (2)
 //   4. Packet arrival rate at current_hop > S7_EPSILON_VOL in window W
 //      (d/dt Vol(d',t) > ε_vol)
+//   5. fresh stark_verify_hop() — b_hop(u)=0 for the eavesdropper's own hop
 //
 // Parameters:
-//   recv_flow_id  — flow ID from packet tag (should have NO 0xDEAD0000 marker)
+//   recv_flow_id  — flow ID from packet tag (retained for logging)
 //   prev_sender   — node that sent this packet (the malicious RSU, u)
 //   current_hop   — eavesdropper node receiving the passive duplicate (d')
 //   packet_id     — packet ID (for logging)
@@ -101,8 +106,6 @@ inline bool s7_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
-    if (!s7_detection_active) return false;
-
     // Conjunction 1: CP passive variant only (Attack 7, index 6)
     if (active_attack_variant != 6) return false;
 
@@ -111,14 +114,18 @@ inline bool s7_detect(uint32_t recv_flow_id,
     if (!passive_hf_malicious_nodes[prev_sender]) return false;
 
     // Conjunction 3: ML-DSA-87.Verify = 1 — content unmodified (passive copy).
-    // Primary: sig_valid from g_packet_crypto set by mldsa87_verify() in MacRx.
-    // Fallback: absence of 0xDEAD0000 marker if crypto record not populated.
-    auto it_s7 = g_packet_crypto.find({prev_sender, packet_id});
-    bool sig_ok;
-    if (it_s7 != g_packet_crypto.end() && it_s7->second.sig_len > 0)
-        sig_ok = it_s7->second.sig_valid;
-    else
-        sig_ok = ((recv_flow_id & 0xDEAD0000u) == 0);
+    //
+    // REIMPLEMENTED 2026-07-16 — see the matching comment in s5_detection.h for
+    // why mldsa87_verify() cannot be called fresh here (its broadcast-skip
+    // branch conflates hop-legitimacy with content authenticity, so it fails
+    // identically for active and passive copies at an unauthorized
+    // destination). mldsa87_verify_copy_content() (crypto_layer.h) checks
+    // content authenticity only: with fabricated=false it reconstructs the
+    // EXACT digest the honest sender signed and genuinely re-runs
+    // OQS_SIG_verify() against the original signature — a real cryptographic
+    // pass (the passive copy's content is bit-identical to the original),
+    // not a restated ground-truth boolean.
+    bool sig_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
     if (!sig_ok) return false;
 
     // Conjunction 4: d/dt Vol(d',t) > ε_vol — sliding window volume rate.
@@ -146,12 +153,13 @@ inline bool s7_detect(uint32_t recv_flow_id,
     // Rate estimate: count / elapsed (guard against first-packet divide-by-zero)
     double rate = (elapsed > 0.1) ? ((double)s7_vol_count[current_hop] / elapsed) : 0.0;
 
-    // b_hop(u) = 0: primary from stark_hop_ok, fallback to ground truth.
-    bool b_hop_fails;
-    if (it_s7 != g_packet_crypto.end() && it_s7->second.sig_len > 0)
-        b_hop_fails = !it_s7->second.stark_hop_ok;
-    else
-        b_hop_fails = true; // passive_hf_malicious_nodes confirmed above
+    // b_hop(u) = 0: a FRESH, receiver-specific call to the pure function
+    // stark_verify_hop() — see s5_detection.h for why the shared stark_hop_ok
+    // field on g_packet_crypto is unreliable here (only ever written by the
+    // legitimate recipient's context via stark_update_meta(), never the
+    // eavesdropper's) and why calling the pure comparison function directly,
+    // with THIS eavesdropper's own current_hop, is safe and correct.
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
 
     cout << "[S7] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender
@@ -178,12 +186,15 @@ inline bool s7_detect(uint32_t recv_flow_id,
              << " flow=" << base_flow_id
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
+        // Bucket hardcoded to S7's own variant (6 = Attack 7) — see
+        // s6_detection.h for why this is safe/no-op given the existing gate.
+        const int S7_HOME_VARIANT = 6;   // Attack 7, per main.tex Signature S7
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[active_attack_variant][prev_sender])
+            !is_detected_node[S7_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(S7_HOME_VARIANT, prev_sender);
             cout << "[S7] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << active_attack_variant
+                 << prev_sender << " variant=" << S7_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;
@@ -205,8 +216,7 @@ inline void s7_reset_state()
 {
     s7_vol_count.clear();
     s7_window_start.clear();
-    if (s7_detection_active)
-        cout << "[S7] Per-node volume state cleared." << endl;
+    cout << "[S7] Per-node volume state cleared." << endl;
 }
 
 #endif // S7_DETECTION_H
