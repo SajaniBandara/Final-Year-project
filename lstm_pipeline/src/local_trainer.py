@@ -69,20 +69,25 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
     return total_loss / max(len(X_train) * local_epochs, 1)
 
 
+Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
+
+
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """Non-parametric threshold: theta(k) = 99th percentile of the RSU's own
-    benign validation reconstruction errors. Supersedes eq:lstm_threshold's
-    parametric theta = mu_A + z_alpha * sigma_A — see fed_aggregator.py's
-    compute_theta() for the rationale (heavier-than-Gaussian benign error
-    tail). Kept consistent here so grid search selects hparams under the
-    SAME thresholding rule that will actually be deployed."""
+    """Hybrid threshold: theta(k) = max(Gaussian, non-parametric P99) per
+    RSU — see fed_aggregator.py's compute_theta() for the full rationale
+    (P99 alone underestimates the tail on small per-RSU samples and gave a
+    WORSE empirical FPR than the original Gaussian formula). Kept
+    consistent here so grid search selects hparams under the SAME
+    thresholding rule that will actually be deployed."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
-    mu_a  = float(errs.mean())
-    sig_a = float(errs.std())
-    theta = float(np.percentile(errs, 99))
+    mu_a        = float(errs.mean())
+    sig_a       = float(errs.std())
+    theta_gauss = mu_a + Z_ALPHA * sig_a
+    theta_pctl  = float(np.percentile(errs, 99))
+    theta = max(theta_gauss, theta_pctl)
     return theta, mu_a, sig_a
 
 

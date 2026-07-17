@@ -25,12 +25,13 @@
 //       unauthorized FlowMod.
 //   (2) prev_sender is the flagged active malicious RSU:
 //       active_hf_malicious_nodes[prev_sender] == true.
-//   (3) ML-DSA-87 failure (content fabricated): ground truth via
-//       active_hf_malicious_nodes[prev_sender] (conjunction 2, restated). Not
-//       a real crypto check — the simulation never constructs different signed
-//       content for the copy, and g_packet_crypto's shared per-(signer,pkt_id)
-//       record cannot express a receiver-specific verify outcome (see the
-//       "FIXED 2026-07-10" comment at the call site for the full trace).
+//   (3) ML-DSA-87 failure (content fabricated): a REAL cryptographic check via
+//       mldsa87_verify_copy_content(prev_sender, packet_id, fabricated=true)
+//       (crypto_layer.h) — re-derives the signed digest with a deliberately
+//       corrupted field and genuinely re-runs OQS_SIG_verify() against the
+//       original signature, independent of hop identity (see the
+//       "REIMPLEMENTED 2026-07-16" comment at the call site for the full
+//       trace of why mldsa87_verify() itself cannot be reused here).
 //   (4) b_hop(u) = 0: a FRESH, receiver-specific call to the pure function
 //       stark_verify_hop(current_hop, prev_sender, packet_id) — directly
 //       compares the eavesdropper's own current_hop against the record's
@@ -98,34 +99,27 @@ inline bool s5_detect(uint32_t recv_flow_id,
 
     // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0 (content fabricated).
     //
-    // FIXED 2026-07-10 — the previous g_packet_crypto-based check was broken:
-    // g_packet_crypto is keyed ONLY by (signer, packet_id), a SINGLE record
-    // shared across every receiver of that packet (legitimate recipient AND
-    // eavesdropper alike). mldsa87_sign() sets sig_valid=true immediately upon
-    // signing (crypto_layer.h), and mldsa87_verify()'s broadcast-skip branch
-    // (next_hop != signed_next_hop) early-returns BEFORE ever writing
-    // sig_valid=false — so an eavesdropper's own verify attempt can NEVER
-    // invalidate the shared record; it just reads whatever the legitimate
-    // recipient's own (successful) verify already left there. Empirically
-    // confirmed: mldsa_fails read 0 (wrong) in 95/95 evaluations across a full
-    // A5 run — S5 never triggered once. The 0xDEAD0000-marker fallback is also
-    // dead code: the marker is never set on the wire (see PENDING_FIXES.md
-    // "HF-1" — an attempt to set it caused a SIGSEGV and was reverted).
+    // REIMPLEMENTED 2026-07-16 — mldsa87_verify() cannot be called fresh here:
+    // for ANY eavesdropper (next_hop != signed_next_hop) it deterministically
+    // hits its broadcast-skip early-return regardless of active vs passive
+    // content, since that function conflates hop-legitimacy with content
+    // authenticity. The 0xDEAD0000-marker approach (see PENDING_FIXES.md
+    // "HF-1") tried to fix this by tagging the fabricated copy's flow_id on
+    // the wire, but that field is used to index pd_all_inst[]/fade_received[]
+    // at the receiver, and the SIGSEGV came from indexing with the corrupted
+    // value — the fabrication marker itself was never the problem.
     //
-    // mldsa87_verify() cannot be called fresh here either: for ANY eavesdropper
-    // (next_hop != signed_next_hop) it deterministically hits the same
-    // broadcast-skip early-return regardless of active vs passive, so it
-    // cannot distinguish "content fabricated" from "content unmodified" — the
-    // simulation never constructs different signed content for the copy in
-    // the first place (send_hidden_duplicate() reuses the original digest).
-    // Ground truth is the only mechanism that actually encodes this
-    // distinction: conjunction 2 above already confirms prev_sender is a
-    // flagged ACTIVE HF attacker, which by construction means this specific
-    // duplicate's content IS fabricated. Restating that here (rather than
-    // re-deriving it from unreliable shared crypto state) is exactly the
-    // "kept as an independent, logically separable conjunction" intent
-    // described for Eq. sig_s5.
-    bool mldsa_fails = active_hf_malicious_nodes[prev_sender];
+    // mldsa87_verify_copy_content() (crypto_layer.h) checks content
+    // authenticity ONLY, independent of hop identity: it re-derives the
+    // signed digest using a deliberately corrupted nonce field (simulating
+    // the attacker altering the message before forwarding the copy) and runs
+    // a REAL OQS_SIG_verify() against the original signature — a genuine
+    // cryptographic failure, not a restated ground-truth boolean. Conjunction
+    // 2 above already confirms prev_sender is a flagged ACTIVE HF attacker, so
+    // fabricated=true is passed here (this specific duplicate IS the
+    // attacker-fabricated copy); the crypto call still does real work and
+    // would genuinely fail even if invoked blind.
+    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true);
 
     // Conjunction 4: b_hop(u) = 0 (STARK hop-legitimacy proof fails).
     //

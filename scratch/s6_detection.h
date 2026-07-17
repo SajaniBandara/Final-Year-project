@@ -19,11 +19,11 @@
 //         to {node → receive_timestamp}. Entries older than S6_WINDOW_S are
 //         expired on every s6_log_recv() call, faithfully implementing R(d,W).
 //         When ≥2 distinct nodes have live entries, DUP is confirmed.
-//   (3) ML-DSA-87.Verify = 0 (content modified): ground truth via
-//       active_hf_malicious_nodes[prev_sender] (conjunction 2, restated), OR'd
-//       with !g_batch_passed (system-wide batch-challenge state). Not a real
-//       per-packet crypto check — see the "FIXED 2026-07-10" comment at the
-//       call site for why g_packet_crypto cannot express this distinction.
+//   (3) ML-DSA-87.Verify = 0 (content modified): a REAL cryptographic check via
+//       mldsa87_verify_copy_content(prev_sender, packet_id, fabricated=true)
+//       (crypto_layer.h), OR'd with !g_batch_passed (system-wide
+//       batch-challenge state) — see the "REIMPLEMENTED 2026-07-16" comment at
+//       the call site for the full trace.
 //   (4) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
 //       prev_sender, packet_id) call — the malicious RSU self-modified its own
 //       delta table, so the eavesdropper's current_hop never matches the
@@ -139,19 +139,19 @@ inline bool s6_detect(uint32_t recv_flow_id,
 
     // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0 (content fabricated).
     //
-    // FIXED 2026-07-10 — see the matching comment in s5_detection.h for the full
-    // trace. g_packet_crypto's shared per-(signer,packet_id) record cannot
-    // express a receiver-specific verify outcome (mldsa87_sign() sets
-    // sig_valid=true at signing; an eavesdropper's own verify attempt always
-    // hits the broadcast-skip early-return and can never invalidate it). Ground
-    // truth via active_hf_malicious_nodes[prev_sender] (conjunction 2, already
-    // confirmed above) is the only mechanism that actually encodes "this copy's
-    // content is fabricated" — the simulation never constructs different signed
-    // content for the copy in the first place. g_batch_passed is a genuine
-    // system-wide signal (not per-packet, not receiver-specific — set by the
-    // 50ms batch_verify_mldsa87() tick) and is unaffected by this issue, so it
-    // is kept as an independent OR-term matching the original ¬b_batch intent.
-    bool mldsa_fails = active_hf_malicious_nodes[prev_sender] || !g_batch_passed;
+    // REIMPLEMENTED 2026-07-16 — see the matching comment in s5_detection.h for
+    // why mldsa87_verify() cannot be called fresh here (broadcast-skip
+    // conflates hop-legitimacy with content authenticity, so it fails
+    // identically for active and passive copies). mldsa87_verify_copy_content()
+    // (crypto_layer.h) genuinely re-verifies against the original signature
+    // with a deliberately corrupted digest field (simulating attacker
+    // fabrication), so this is a real cryptographic outcome rather than a
+    // restated ground-truth boolean. g_batch_passed is a genuine system-wide
+    // signal (not per-packet — set by the 50ms batch_verify_mldsa87() tick)
+    // and is unaffected by this, so it stays as an independent OR-term
+    // matching the original ¬b_batch intent.
+    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true)
+                       || !g_batch_passed;
 
     // b_hop(u) = 0: fresh, receiver-specific stark_verify_hop() call — see
     // s5_detection.h for why the shared stark_hop_ok field is unreliable here
