@@ -6,6 +6,7 @@ logs/
 routing.xml
 results_routing/
 results_routing_previous/
+results_routing_1/
 
 # SUMO Intermediate Physics Files
 fcd*.xml
