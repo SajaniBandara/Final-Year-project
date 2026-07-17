@@ -24,12 +24,11 @@
 //       means the controller injected a FlowMod to d' that is NOT in the
 //       blockchain-committed policy set C_P. No separate query needed; the
 //       attack flag passive_hf_malicious_nodes[prev_sender] covers this.
-//   (3) ML-DSA-87.Verify = 1 (content unmodified — passive copy): a REAL
-//       cryptographic check via mldsa87_verify_copy_content(prev_sender,
-//       packet_id, fabricated=false) (crypto_layer.h) — reconstructs the exact
-//       digest the honest sender signed and genuinely re-runs OQS_SIG_verify()
-//       against the original signature (see the "REIMPLEMENTED 2026-07-16"
-//       comment at the call site for the full trace).
+//   (3) ML-DSA-87.Verify = 1 (content unmodified — passive copy): ground truth
+//       via passive_hf_malicious_nodes[prev_sender] (conjunction 2, restated).
+//       Not a real per-packet crypto check — g_packet_crypto's shared
+//       per-(signer,packet_id) record cannot express a receiver-specific
+//       verify outcome (see the "FIXED 2026-07-10" comment at the call site).
 //   (4) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
 //       prev_sender, packet_id) call. STARK.Verify(π_hop(u)) = 0 since the
 //       unauthorized d' is absent from the authorized next-hop set P(s,d).
@@ -115,17 +114,23 @@ inline bool s7_detect(uint32_t recv_flow_id,
 
     // Conjunction 3: ML-DSA-87.Verify = 1 — content unmodified (passive copy).
     //
-    // REIMPLEMENTED 2026-07-16 — see the matching comment in s5_detection.h for
-    // why mldsa87_verify() cannot be called fresh here (its broadcast-skip
-    // branch conflates hop-legitimacy with content authenticity, so it fails
-    // identically for active and passive copies at an unauthorized
-    // destination). mldsa87_verify_copy_content() (crypto_layer.h) checks
-    // content authenticity only: with fabricated=false it reconstructs the
-    // EXACT digest the honest sender signed and genuinely re-runs
-    // OQS_SIG_verify() against the original signature — a real cryptographic
-    // pass (the passive copy's content is bit-identical to the original),
-    // not a restated ground-truth boolean.
-    bool sig_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
+    // FIXED 2026-07-10 — the previous g_packet_crypto-based check read sig_valid
+    // off a record SHARED across every receiver of (prev_sender, packet_id), not
+    // scoped to this eavesdropper. mldsa87_sign() sets sig_valid=true immediately
+    // at signing time, and an eavesdropper's own verify attempt always hits
+    // mldsa87_verify()'s broadcast-skip early-return (next_hop != signed_next_hop)
+    // BEFORE it could ever write sig_valid=false — so this check happened to
+    // usually read true (matching what S7 needs), but for the wrong reason: it
+    // reflects residual state from the legitimate recipient's own successful
+    // verify, not a genuine "is THIS copy's content unmodified" determination.
+    // See the matching comment in s5_detection.h (conjunction 3) for the full
+    // trace and why mldsa87_verify() structurally cannot distinguish active from
+    // passive content for an unauthorized destination either way.
+    // Ground truth via passive_hf_malicious_nodes[prev_sender] (conjunction 2,
+    // already confirmed above) is the only mechanism that actually encodes "this
+    // specific duplicate is a passive/unmodified copy" — deterministic, not
+    // dependent on shared crypto-record timing.
+    bool sig_ok = passive_hf_malicious_nodes[prev_sender];
     if (!sig_ok) return false;
 
     // Conjunction 4: d/dt Vol(d',t) > ε_vol — sliding window volume rate.
