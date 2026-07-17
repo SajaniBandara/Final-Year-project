@@ -125,6 +125,28 @@ def file_nonempty(path):
         1 for ln in open(path) if ln.strip() and not ln.startswith("#")) > 0
 
 
+def banner(title):
+    print("=" * 78)
+    print(title)
+    print("=" * 78)
+
+
+def recompute_mcc(row):
+    """MCC from the confusion-matrix columns (eq:mcc) -> compare to reported cur_MCC."""
+    import math
+    tp, fp, tn, fn = (row.get("TP"), row.get("FP"), row.get("TN"), row.get("FN"))
+    if None in (tp, fp, tn, fn):
+        return "WARN", "confusion-matrix columns absent"
+    denom = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    got = (tp * tn - fp * fn) / denom if denom > 0 else 0.0
+    reported = row.get("cur_MCC")
+    if reported is None:
+        return "WARN", f"recomputed MCC={got:.4f} (no cur_MCC column to compare)"
+    ok = abs(got - reported) < 1e-3
+    return ("PASS" if ok else "FAIL",
+            f"exp(recomputed from TP/FP/TN/FN)={got:.4f} got(cur_MCC)={reported:.4f}")
+
+
 # --------------------------------------------------------------------------- #
 # Verification groups
 # --------------------------------------------------------------------------- #
@@ -149,6 +171,8 @@ def build_groups(rd, mg, tap, attack, delay):
                rng(top and top.get("avg_UCR"), 0.0, 100.0, "avg_UCR")))
     g1.append(("FV05", "eq:l_e2e", "avg end-to-end latency is positive",
                gt(top and top.get("avg_lat_ms"), 0.0, "avg_lat_ms")))
+    g1.append(("FV06", "eq:mcc", "cur_MCC equals MCC recomputed from TP/FP/TN/FN",
+               recompute_mcc(top) if top else ("WARN", "no data")))
     groups.append(("GROUP 1 - METRIC VALIDITY", "eq:mcc, eq:tvr, eq:ucr, eq:l_e2e", g1))
 
     # -- GROUP 2: attack impact --------------------------------------------- #
@@ -277,10 +301,13 @@ def main():
 
     groups = build_groups(rd, mg, tap, args.attack, args.delay)
     n_pass = n_fail = n_warn = 0
+    fv_counter = 0
 
     for title, eqs, checks in groups:
-        print(f"\n{title}\n    /{eqs}/")
-        for fv, eq, desc, (status, msg) in checks:
+        banner(f"{title}\n    /{eqs}/")
+        for _fv, eq, desc, (status, msg) in checks:
+            fv_counter += 1
+            fv = f"FV{fv_counter:02d}"
             if status == "PASS":
                 n_pass += 1; col = GREEN
             elif status == "WARN":

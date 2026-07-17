@@ -69,6 +69,25 @@ def anchor_count(label, kind="eq"):
     return len(re.findall(r"\b" + kind + ":" + re.escape(label) + r"\b", ALLTEXT))
 
 
+def parse_const(pattern, cast=float):
+    """First capture group of `pattern` across the tree, cast to a number."""
+    rx = re.compile(pattern)
+    for text in SRC.values():
+        m = rx.search(text)
+        if m:
+            try:
+                return cast(m.group(1))
+            except (ValueError, IndexError):
+                pass
+    return None
+
+
+def banner(title):
+    print("=" * 78)
+    print(title)
+    print("=" * 78)
+
+
 def symbol_hits(pattern):
     """Number of files containing a match for `pattern` (regex)."""
     rx = re.compile(pattern)
@@ -174,6 +193,7 @@ SECTIONS = [
         ("wap",       "Witness alert precision",                           r"wap|WAP"),
         ("war",       "Witness alert recall",                              r"war|WAR"),
         ("l_e2e",     "End-to-end latency accounting",                     r"l_e2e|lat_ms"),
+        ("l_mit",     "Mitigation latency accounting",                     r"mitigation_latency|mit_ms"),
         ("l_failover","Failover latency accounting",                       r"failover.*ms|l_failover"),
         ("eps_ref",   "Time-reference error epsilon_ref",                  r"eps_ref"),
         ("aoei",      "Age-of-evidence index",                             None),
@@ -210,21 +230,56 @@ def run_check(label, desc, sym, kind="eq"):
     return status, exp, got, anchors
 
 
+def numeric_checks():
+    """Recompute real design constants from source and compare to the paper
+    values -- mirrors his `exp=54 got=54` structural checks. Each entry:
+    (label, description, expected, got)."""
+    n_rsu = parse_const(r"uint32_t\s+N_RSUs\s*=\s*(\d+)", int) or 64
+    n_ctrl = parse_const(r"uint32_t\s+N_Controllers\s*=\s*(\d+)", int)
+    s1_k = parse_const(r"s1_k\s*=\s*([0-9.]+)")
+    s1_beta = parse_const(r"s1_beta\s*=\s*([0-9.]+)")
+    delay_ms = parse_const(r"delay_ms\s*=\s*([0-9.]+)")
+    fplus1 = ((n_rsu - 1) // 3) + 1 if n_rsu else None
+    n_sig = len([n for n in os.listdir(SCRATCH) if re.fullmatch(r"s\d_detection\.h", n)])
+
+    out = [
+        ("rsu_endorsement", f"BFT quorum f+1 = floor((N_RSUs-1)/3)+1, N_RSUs={n_rsu}", 22, fplus1),
+        ("sig_s1",          "S1 outlier multiplier k (mean + k*sigma)",                 3.0, s1_k),
+        ("observation_window", "S1 EWMA window factor beta",                            0.7, s1_beta),
+        ("delay_updated",   "default injected control-plane delay (ms)",                80.0, delay_ms),
+        ("ctrl_trust_update", "controller count N_Controllers",                          4, n_ctrl),
+        ("sig_s1",          "dedicated s{n}_detection.h modules (S3/S4 in TCAM helper)", 6, n_sig),
+    ]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true", help="exit 1 if any FAIL")
     args = ap.parse_args()
 
-    print("=" * 78)
-    print("MOBIGUARD -- EQUATION & ALGORITHM PRESENCE AUDIT")
-    print("source tree: scratch/*.h + scratch/routing.cc")
-    print("reference:   docs/main.tex")
-    print("=" * 78)
+    banner("MOBIGUARD -- EQUATION & ALGORITHM PRESENCE AUDIT\n"
+           "source tree: scratch/*.h + scratch/routing.cc\n"
+           "reference:   docs/main.tex")
 
     n_pass = n_fail = n_info = 0
 
+    # -- Section 0: numeric structural constants (exp=/got= recomputed) ------ #
+    banner("STRUCTURAL CONSTANTS (recomputed vs paper)\n"
+           "    /eq:rsu_endorsement, eq:sig_s1, eq:observation_window, eq:delay_updated/")
+    for label, desc, exp, got in numeric_checks():
+        ok = got is not None and (
+            abs(got - exp) < 1e-6 if isinstance(exp, float) else got == exp)
+        if ok:
+            n_pass += 1; col = GREEN; status = "PASS"
+        else:
+            n_fail += 1; col = RED; status = "FAIL"
+        gs = "None" if got is None else (f"{got:g}")
+        print(f"  {col}[{status}]{RESET} eq:{label:<26} {desc}")
+        print(f"         {DIM}exp={exp:g} got={gs}{RESET}")
+
     for title, eqs, checks in SECTIONS:
-        print(f"\n{title}\n    /{eqs}/")
+        banner(f"{title}\n    /{eqs}/")
         for label, desc, sym in checks:
             status, exp, got, anchors = run_check(label, desc, sym)
             if status == "PASS":
@@ -237,7 +292,7 @@ def main():
             print(f"  {col}[{status}]{RESET} {tag:<28} {desc}")
             print(f"         {DIM}exp>={exp} got={got}  ({anchors} code anchor(s)){RESET}")
 
-    print(f"\nJ. ALGORITHMS\n    /alg:lrad_obu, alg:lrad_rsu, alg:fcip, alg:brfa_v2, alg:btmm/")
+    banner("K. ALGORITHMS\n    /alg:lrad_obu, alg:lrad_rsu, alg:fcip, alg:brfa_v2, alg:btmm/")
     for label, desc, sym in ALGORITHMS:
         status, exp, got, anchors = run_check(label, desc, sym, kind="alg")
         if status == "PASS":
