@@ -117531,10 +117531,18 @@ void calculate_witness_wapr_metric()
 // only 14-21% of 256 (too thin for the mobility-camouflage premise); at 100 that
 // is 36-54%, a properly loaded table. All util/threshold fractions derive from
 // this constant, so they auto-rescale. Must precede threshold calibration.
-int TCAM_CAPACITY = 2000;  // MEASUREMENT-ONLY (2026-07-15): generous/effectively uncapped
-                           // to measure TRUE uncapped demand under the new all-neighbor +
-                           // presence-eviction generator. NOT the final value — the real
-                           // capacity is chosen AFTER this run from the measured benign peak.
+int TCAM_CAPACITY = 1500;  // 2026-07-17: production capacity. Floor of the cited
+                           // 1,500-8,000 rules/switch range (PASCOAL2020107223,
+                           // main.tex:576) -- do NOT go lower or the citation breaks.
+                           // Benign traffic peaks at ~367 concurrent rules (=24.5%
+                           // util) under the all-neighbour generator + 9-22s residence
+                           // timeouts, leaving comfortable headroom while ensuring the
+                           // slow attack reaches full-table exhaustion WITHIN an 80s
+                           // sim (attacker refresh accumulates ~rate/s; at 20 pps the
+                           // busiest RSU hits 1500 around t~70, giving a clear
+                           // rejection + slow-path + S4 exhaustion window). At 1700 the
+                           // attack only reached capacity in the final ~2s; 1500
+                           // captures the full stealthy-climb -> exhaustion lifecycle.
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
                                      // g_slowpath_hit_count extern'd inside header;
