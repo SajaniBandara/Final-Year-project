@@ -24,14 +24,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
-from scipy.stats import norm as scipy_norm
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
 from lstm_model import LSTMAutoencoder, N_FEATURES, seed_everything
 
 REPO       = Path(__file__).resolve().parents[2]
 PRE        = REPO / "lstm_pipeline" / "preprocessed"
-Z_ALPHA    = scipy_norm.ppf(1 - 0.01)   # z_{0.99} ≈ 2.326 for 1% FPR
 TARGET_FPR       = 0.01
 TARGET_PRECISION = 0.95
 # Grid search spaces (spec §4.2)
@@ -72,14 +70,19 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
 
 
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """eq:lstm_threshold: theta = mu_A + z_alpha * sigma_A from benign val reconstruction errors."""
+    """Non-parametric threshold: theta(k) = 99th percentile of the RSU's own
+    benign validation reconstruction errors. Supersedes eq:lstm_threshold's
+    parametric theta = mu_A + z_alpha * sigma_A — see fed_aggregator.py's
+    compute_theta() for the rationale (heavier-than-Gaussian benign error
+    tail). Kept consistent here so grid search selects hparams under the
+    SAME thresholding rule that will actually be deployed."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
     mu_a  = float(errs.mean())
     sig_a = float(errs.std())
-    theta = mu_a + Z_ALPHA * sig_a
+    theta = float(np.percentile(errs, 99))
     return theta, mu_a, sig_a
 
 

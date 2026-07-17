@@ -60,7 +60,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
-from scipy.stats import norm as scipy_norm
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
 from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash, seed_everything
@@ -72,7 +71,6 @@ TRUST_PATH  = REPO / "lstm_pipeline" / "rsu_trust_scores.json"
 HPARAMS_PATH = REPO / "lstm_pipeline" / "hparams.json"
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 
-Z_ALPHA          = scipy_norm.ppf(1 - 0.01)   # z_{0.99} ≈ 2.326 for 1% FPR
 TARGET_FPR       = 0.01
 TARGET_PRECISION = 0.95
 ROUND_GRID       = [50, 100, 150]   # global aggregation rounds R (spec §4.2)
@@ -206,14 +204,22 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
 
 
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """eq:lstm_threshold: theta = mu_A + z_alpha * sigma_A from benign val reconstruction errors."""
+    """Non-parametric threshold: theta(k) = 99th percentile of the RSU's own
+    benign validation reconstruction errors. Supersedes eq:lstm_threshold's
+    parametric theta = mu_A + z_alpha * sigma_A — empirical FPR (2.84-6.65%
+    on the working variants) showed the benign reconstruction-error
+    distribution has a heavier-than-Gaussian tail, so a Gaussian z-score
+    threshold undershoots the true 99th percentile and lets too many benign
+    windows through. Switched per supervisor review, 2026-07-15/16.
+    mu_a/sig_a are still returned for descriptive logging only — they no
+    longer feed into theta."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
     mu_a  = float(errs.mean())
     sig_a = float(errs.std())
-    theta = mu_a + Z_ALPHA * sig_a
+    theta = float(np.percentile(errs, 99))
     return theta, mu_a, sig_a
 
 

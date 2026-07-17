@@ -180,12 +180,21 @@ inline bool s5_detect(uint32_t recv_flow_id,
              << " pkt=" << packet_id
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
+        // Bucket is S5's OWN designated variant (4 = Attack 5, Active HF CP),
+        // NOT active_attack_variant — same misattribution fix as S1/S2.
+        // Unlike S6/S7/S8 (which gate on active_attack_variant and so were
+        // already implicitly safe), S5 has NO variant gate and shares its
+        // ground-truth array (active_hf_malicious_nodes) with S6/Attack 6 —
+        // confirmed 2026-07-14 as the DOMINANT contamination source: 155 of
+        // 221 detection events recorded into Attack 6's own bucket during an
+        // A6-only run actually came from S5, not S6.
+        const int S5_HOME_VARIANT = 4;   // Attack 5, per main.tex Signature S5
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[active_attack_variant][prev_sender])
+            !is_detected_node[S5_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(S5_HOME_VARIANT, prev_sender);
             cout << "[S5] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << active_attack_variant
+                 << prev_sender << " variant=" << S5_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

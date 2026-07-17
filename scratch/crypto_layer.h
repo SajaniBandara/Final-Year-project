@@ -558,6 +558,72 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     return ok;
 }
 
+// ── ML-DSA-87 Content-Authenticity Verify (Hidden-Forwarding copies) ────────
+//
+// mldsa87_verify()'s broadcast-skip branch (next_hop != signed_next_hop)
+// early-returns false for ANY receiver that is not the intended next hop,
+// BEFORE ever running real cryptography. That is correct for statistics like
+// sig_valid_rate, but it means it can never distinguish a content-fabricated
+// copy (Active HF, Attacks 5/6, eq:sig_s5/eq:sig_s6) from a content-unmodified
+// copy (Passive HF, Attacks 7/8, eq:sig_s7/eq:sig_s8): an eavesdropper's
+// current_hop never equals signed_next_hop in EITHER case, so the same
+// early-return fires regardless of content. Hop-legitimacy (b_hop(u), the
+// STARK check) is already handled independently by stark_verify_hop().
+//
+// This function checks ONLY content authenticity, decoupled from hop
+// identity, by genuinely re-running OQS_SIG_verify() against the ORIGINAL
+// signature the honest sender produced:
+//   fabricated=false  reconstructs the exact digest that was signed (real
+//                      nonce) — OQS_SIG_verify genuinely succeeds, matching
+//                      "the passive copy's content is unmodified."
+//   fabricated=true   recomputes the digest with the nonce field flipped,
+//                      simulating that the attacker altered the message
+//                      before forwarding it — the digest no longer matches
+//                      what OQS_SIG_sign() actually signed, so
+//                      OQS_SIG_verify() genuinely (not by hardcoding) fails.
+// Side-effect-free: unlike mldsa87_verify(), this does not write sig_valid,
+// nor touch g_verify_attempts/g_verify_passed — those belong to the
+// legitimate recipient's own verify call and must not be perturbed by this
+// receiver-specific, out-of-band content check performed at the eavesdropper.
+inline bool mldsa87_verify_copy_content(uint32_t claimed_signer, uint32_t pkt_id,
+                                         bool fabricated) {
+    if (g_disable_crypto) return !fabricated; // crypto disabled: keep deterministic semantics
+    if (claimed_signer >= (uint32_t)total_size) return false;
+    auto it = g_packet_crypto.find({claimed_signer, pkt_id});
+    if (it == g_packet_crypto.end() || it->second.sig_len == 0) return false;
+
+    uint32_t nonce_for_digest = fabricated ? (it->second.nonce ^ 0xFFFFFFFFu)
+                                            : it->second.nonce;
+
+    uint8_t sign_buf[MLDSA_SIGN_BUF] = {};
+    memcpy(sign_buf,    &pkt_id,                     4);
+    memcpy(sign_buf+4,  &it->second.sign_timestamp,   8);
+    memcpy(sign_buf+12, &nonce_for_digest,             4);
+    memcpy(sign_buf+16, &it->second.signed_next_hop,   4);
+    memcpy(sign_buf+20, &it->second.signed_zone_id,    4);
+
+    uint8_t digest[64];
+    if (!sha3_512_hash(sign_buf, MLDSA_SIGN_BUF, digest)) return false;
+
+    OQS_SIG* sig = get_oqs_ctx();
+    if (!sig) return false;
+
+    bool ok = OQS_SIG_verify(sig, digest, 64,
+                              it->second.sig, it->second.sig_len,
+                              g_node_keys[claimed_signer].pk) == OQS_SUCCESS;
+
+    if (CRYPTO_DEBUG_LOG) {
+        std::cout << "[PKT-CRYPTO] ── VERIFY-COPY-CONTENT (HF) ────────────────────────\n"
+                  << "[PKT-CRYPTO]   claimed_signer = " << claimed_signer << "\n"
+                  << "[PKT-CRYPTO]   pkt_id         = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   fabricated     = " << fabricated << "\n"
+                  << "[PKT-CRYPTO]   result         = "
+                  << (ok ? "PASS ✓  content authentic" : "FAIL ✗  content fabricated") << "\n"
+                  << "[PKT-CRYPTO] ─────────────────────────────────────────────────────\n";
+    }
+    return ok;
+}
+
 // ── STARK Proof Simulation — eq:stark_delay / eq:stark_hop ───────────────────
 
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {

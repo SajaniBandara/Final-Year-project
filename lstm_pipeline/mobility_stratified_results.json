@@ -1,0 +1,382 @@
+{
+  "bin_edges": {
+    "rho_edges": [
+      1.0,
+      15.100000381469727
+    ],
+    "vbar_edges": [
+      5.30444598197937
+    ]
+  },
+  "rho_labels": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "vbar_labels": [
+    "low",
+    "high"
+  ],
+  "per_variant": {
+    "Benign": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": null,
+      "rho=medium,v_bar=high": null,
+      "rho=high,v_bar=low": null,
+      "rho=high,v_bar=high": null
+    },
+    "A1 CP-SelectiveDelay": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.6489,
+        "DR": 0.7129,
+        "FPR": 0.0477,
+        "TP": 72,
+        "TN": 698,
+        "FP": 35,
+        "FN": 29,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.6155,
+        "DR": 0.8293,
+        "FPR": 0.07,
+        "TP": 34,
+        "TN": 425,
+        "FP": 32,
+        "FN": 7,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.7071,
+        "DR": 0.8635,
+        "FPR": 0.1075,
+        "TP": 215,
+        "TN": 747,
+        "FP": 90,
+        "FN": 34,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.8177,
+        "DR": 0.9048,
+        "FPR": 0.0741,
+        "TP": 57,
+        "TN": 125,
+        "FP": 10,
+        "FN": 6,
+        "n": 198
+      }
+    },
+    "A2 DP-SelectiveDelay": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.8909,
+        "DR": 0.9192,
+        "FPR": 0.0267,
+        "TP": 182,
+        "TN": 619,
+        "FP": 17,
+        "FN": 16,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.8704,
+        "DR": 0.9328,
+        "FPR": 0.0467,
+        "TP": 125,
+        "TN": 347,
+        "FP": 17,
+        "FN": 9,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.8632,
+        "DR": 0.9356,
+        "FPR": 0.0676,
+        "TP": 407,
+        "TN": 607,
+        "FP": 44,
+        "FN": 28,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.8682,
+        "DR": 0.9145,
+        "FPR": 0.037,
+        "TP": 107,
+        "TN": 78,
+        "FP": 3,
+        "FN": 10,
+        "n": 198
+      }
+    },
+    "A3 CP-TCAM": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.2635,
+        "DR": 0.9032,
+        "FPR": 0.5394,
+        "TP": 112,
+        "TN": 327,
+        "FP": 383,
+        "FN": 12,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.2744,
+        "DR": 0.94,
+        "FPR": 0.4844,
+        "TP": 47,
+        "TN": 231,
+        "FP": 217,
+        "FN": 3,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.3227,
+        "DR": 0.8971,
+        "FPR": 0.5369,
+        "TP": 244,
+        "TN": 377,
+        "FP": 437,
+        "FN": 28,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.5132,
+        "DR": 0.9474,
+        "FPR": 0.383,
+        "TP": 54,
+        "TN": 87,
+        "FP": 54,
+        "FN": 3,
+        "n": 198
+      }
+    },
+    "A4 DP-TCAM": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.2666,
+        "DR": 0.9641,
+        "FPR": 0.6672,
+        "TP": 161,
+        "TN": 222,
+        "FP": 445,
+        "FN": 6,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.372,
+        "DR": 0.9758,
+        "FPR": 0.5722,
+        "TP": 121,
+        "TN": 160,
+        "FP": 214,
+        "FN": 3,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.2718,
+        "DR": 0.979,
+        "FPR": 0.773,
+        "TP": 373,
+        "TN": 160,
+        "FP": 545,
+        "FN": 8,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.54,
+        "DR": 0.9919,
+        "FPR": 0.5811,
+        "TP": 123,
+        "TN": 31,
+        "FP": 43,
+        "FN": 1,
+        "n": 198
+      }
+    },
+    "A5 HF-BasicReplay": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.6073,
+        "DR": 0.6747,
+        "FPR": 0.0453,
+        "TP": 56,
+        "TN": 717,
+        "FP": 34,
+        "FN": 27,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.3443,
+        "DR": 0.5417,
+        "FPR": 0.0717,
+        "TP": 13,
+        "TN": 440,
+        "FP": 34,
+        "FN": 11,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.5168,
+        "DR": 0.7531,
+        "FPR": 0.1407,
+        "TP": 122,
+        "TN": 794,
+        "FP": 130,
+        "FN": 40,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.4625,
+        "DR": 0.625,
+        "FPR": 0.1205,
+        "TP": 20,
+        "TN": 146,
+        "FP": 20,
+        "FN": 12,
+        "n": 198
+      }
+    },
+    "A6 HF-TimestampManip": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.5732,
+        "DR": 0.5941,
+        "FPR": 0.0437,
+        "TP": 60,
+        "TN": 701,
+        "FP": 32,
+        "FN": 41,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.4867,
+        "DR": 0.619,
+        "FPR": 0.0658,
+        "TP": 26,
+        "TN": 426,
+        "FP": 30,
+        "FN": 16,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.4469,
+        "DR": 0.6871,
+        "FPR": 0.156,
+        "TP": 112,
+        "TN": 779,
+        "FP": 144,
+        "FN": 51,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.375,
+        "DR": 0.5667,
+        "FPR": 0.1429,
+        "TP": 17,
+        "TN": 144,
+        "FP": 24,
+        "FN": 13,
+        "n": 198
+      }
+    },
+    "A7 HF-MultiPath": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.5135,
+        "DR": 0.5556,
+        "FPR": 0.0333,
+        "TP": 30,
+        "TN": 754,
+        "FP": 26,
+        "FN": 24,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.3723,
+        "DR": 0.6538,
+        "FPR": 0.0975,
+        "TP": 17,
+        "TN": 426,
+        "FP": 46,
+        "FN": 9,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.4795,
+        "DR": 0.7051,
+        "FPR": 0.1387,
+        "TP": 110,
+        "TN": 801,
+        "FP": 129,
+        "FN": 46,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.6641,
+        "DR": 0.8571,
+        "FPR": 0.0734,
+        "TP": 18,
+        "TN": 164,
+        "FP": 13,
+        "FN": 3,
+        "n": 198
+      }
+    },
+    "A8 HF-CovertRelay": {
+      "rho=low,v_bar=low": null,
+      "rho=low,v_bar=high": null,
+      "rho=medium,v_bar=low": {
+        "MCC": 0.5261,
+        "DR": 0.6316,
+        "FPR": 0.0327,
+        "TP": 24,
+        "TN": 770,
+        "FP": 26,
+        "FN": 14,
+        "n": 834
+      },
+      "rho=medium,v_bar=high": {
+        "MCC": 0.4007,
+        "DR": 0.6562,
+        "FPR": 0.0987,
+        "TP": 21,
+        "TN": 420,
+        "FP": 46,
+        "FN": 11,
+        "n": 498
+      },
+      "rho=high,v_bar=low": {
+        "MCC": 0.4562,
+        "DR": 0.6623,
+        "FPR": 0.1305,
+        "TP": 100,
+        "TN": 813,
+        "FP": 122,
+        "FN": 51,
+        "n": 1086
+      },
+      "rho=high,v_bar=high": {
+        "MCC": 0.438,
+        "DR": 0.5882,
+        "FPR": 0.122,
+        "TP": 20,
+        "TN": 144,
+        "FP": 20,
+        "FN": 14,
+        "n": 198
+      }
+    }
+  }
+}
