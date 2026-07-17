@@ -114789,11 +114789,16 @@ double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 
 double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
-double   cp_attack_pct           = 40.0;    // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 40%)
+// NOTE: cp_attack_intensity is NOT the "attack percentage" referenced in the
+// report/thesis — that is --attack_percentage (drives num_controllers_compromised
+// via the threshold ladder below). cp_attack_intensity is a separate, legacy
+// RSU-targeting knob; see the "Fixed 2026-07-10" comment in tcam_attack_helper.h
+// and the case(2) block below for its current (non-)effect on Attack 3 logic.
+double   cp_attack_intensity     = 40.0;    // CLI: --cp_attack_intensity  (% of RSUs targeted by CP attack, default 40%; NOT the report's attack_percentage)
 // Attack 4 (DP): percentage of vehicles acting as attackers.
 // 0 = disabled (use --num_attackers directly).
 // >0 overrides num_attackers: num_attackers = ceil(N_Vehicles * dp_attack_pct/100).
-// Mirrors cp_attack_pct so both attacks have symmetric terminal control.
+// Mirrors cp_attack_intensity so both attacks have symmetric terminal control.
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === DETECTION TIMESTAMP GLOBALS ===
@@ -115086,7 +115091,7 @@ void initialise_stub_attack_state()
                 // mirroring Attack 1's reapply_cp_selective_delay(). At p=0, zero
                 // controllers are compromised -> zero RSUs flooded, matching
                 // main.tex's penetration formula floor(0.01p*264) attacker nodes.
-                // (Previously cp_attack_pct flooded a FIXED 40% of RSUs regardless
+                // (Previously cp_attack_intensity flooded a FIXED 40% of RSUs regardless
                 // of attack_percentage, so p=0 was attacked as hard as p=80 —
                 // confirmed via max U_TCAM=1.0 at every non-100% pct level.)
                 uint32_t num_controllers_compromised;
@@ -117514,7 +117519,22 @@ void calculate_witness_wapr_metric()
               << " R_W=" << 100.0 * current_WAP_recall << "%" << std::endl;
 }
 
-static const int TCAM_HW_SIZE = 256;
+// Single canonical TCAM capacity constant — every check that reads
+// g_tcam_rule_count (tcam_detection.h, lrad.h, lstm_logger.h,
+// bc_blockchain_helper.h::bc_check_s4(), and the slow-path delay block
+// below) uses this one value. Previously two constants existed
+// (TCAM_HW_SIZE=256 here, TCAM_CAPACITY=1000 at the old line ~121102)
+// disagreeing by ~4x on the same physical resource — reconciled 2026-07-13.
+// Non-const global (matches the `extern int TCAM_CAPACITY;` forward
+// declaration already in bc_blockchain_helper.h).
+// 2026-07-15: 256 -> 100. With the k=2 generator, busy zones reach 36-54 rules =
+// only 14-21% of 256 (too thin for the mobility-camouflage premise); at 100 that
+// is 36-54%, a properly loaded table. All util/threshold fractions derive from
+// this constant, so they auto-rescale. Must precede threshold calibration.
+int TCAM_CAPACITY = 2000;  // MEASUREMENT-ONLY (2026-07-15): generous/effectively uncapped
+                           // to measure TRUE uncapped demand under the new all-neighbor +
+                           // presence-eviction generator. NOT the final value — the real
+                           // capacity is chosen AFTER this run from the measured benign peak.
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
                                      // g_slowpath_hit_count extern'd inside header;
@@ -117625,13 +117645,26 @@ void write_security_metrics_csv()
 
 	TcamCycleMetrics tcam_metrics{};
 	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1) {
-		double active_vehicles = (double)N_Vehicles;
+		// Fix 2: REAL per-RSU zone density ρ_r(t) — same computation as the density
+		// loop below (linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, d_max_dsrc=270 m),
+		// hoisted here because the detector call precedes that loop in this function.
+		std::vector<double> rho_per_rsu(N_RSUs, 0.0);
+		for (uint32_t _r = 0; _r < N_RSUs; _r++) {
+			uint32_t rsu_sim_idx = N_Vehicles + _r;
+			uint32_t rc = 0;
+			for (uint32_t _v = 0; _v < (uint32_t)N_Vehicles; _v++)
+				if (_v < linklifetimeMatrix_dsrc.size() &&
+				    rsu_sim_idx < linklifetimeMatrix_dsrc[_v].size() &&
+				    linklifetimeMatrix_dsrc[_v][rsu_sim_idx] > 0.0)
+					rc++;
+			rho_per_rsu[_r] = (double)rc;
+		}
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
 			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
 			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
 			0.054688,          // tcam_util_thresh — calibrated benign p99 (Fix 3, rule_calibrator.py 2026-07-10)
-			active_vehicles
+			rho_per_rsu
 		);
 	}
 
@@ -117949,6 +117982,18 @@ void calculate_performance_evaluation_metrics()
 	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
 	// zone when linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, which matches the
 	// d_max_dsrc = 270 m coverage radius used by the routing engine.
+
+	// [density-logging] LOGGING ONLY (2026-07-14): one-time truncate-open of
+	// rsu_density.csv so repeated runs do not pool; header written once. Rows
+	// appended inside the loop below. Does NOT touch rho_t/v_bar_t computation.
+	static std::ofstream g_rsu_density_csv(
+		"/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/rsu_density.csv",
+		std::ios::trunc);
+	static bool g_rsu_density_hdr_done = [](){
+		g_rsu_density_csv << "t,rsu_id,rho_count,v_bar\n"; return true; }();
+	(void)g_rsu_density_hdr_done;
+	int _density_t = static_cast<int>(std::round(Simulator::Now().GetSeconds()));
+
 	for (uint32_t _r = 0; _r < N_RSUs; _r++)
 	{
 		uint32_t rsu_sim_idx = N_Vehicles + _r;
@@ -117968,6 +118013,13 @@ void calculate_performance_evaluation_metrics()
 		double rho_t   = (double)rho_count;
 		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
 
+		// [density-logging] LOGGING ONLY: one row per (cycle, rsu). rsu_id is the
+		// sim node index (N_Vehicles+_r), matching the tcam_occupancy_*.csv rsu_id
+		// convention. No effect on rho_t/v_bar_t or any detection/flow logic.
+		if (g_rsu_density_csv.is_open())
+			g_rsu_density_csv << _density_t << ',' << rsu_sim_idx << ','
+			                  << rho_count << ',' << v_bar_t << '\n';
+
 		// δ_r(t): use mean of observed hop-delays since the last update tick
 		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
 		double obs_delay = (s1_rsu_obs_count[_r] > 0)
@@ -117980,6 +118032,8 @@ void calculate_performance_evaluation_metrics()
 		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
+	// [density-logging] flush this cycle's rows so data survives any exit path.
+	if (g_rsu_density_csv.is_open()) g_rsu_density_csv.flush();
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
@@ -120957,13 +121011,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// Below capacity the packet hits a rule immediately (0 extra delay).
 						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
 						    current_hop >= N_Vehicles &&
-						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						    g_tcam_rule_count[current_hop] >= TCAM_CAPACITY)
 						{
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
-						              << "/" << TCAM_HW_SIZE
+						              << "/" << TCAM_CAPACITY
 						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
 						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
 						              << std::endl;
@@ -120977,13 +121031,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// Below capacity the packet hits a rule immediately (0 extra delay).
 						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
 						    current_hop >= N_Vehicles &&
-						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						    g_tcam_rule_count[current_hop] >= TCAM_CAPACITY)
 						{
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
-						              << "/" << TCAM_HW_SIZE
+						              << "/" << TCAM_CAPACITY
 						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
 						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
 						              << std::endl;
@@ -121172,9 +121226,16 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
 #include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
+#include "tcam_flow_generator.h" // k-NN concurrency flow generator (needs tcam_hit,
+                                 // lookup_vehicle_associated_rsu_local_idx, s1_detect_packet)
 
 int simulated_tcam_counter[200] = {0};
-int TCAM_CAPACITY = 1000;
+// TCAM_CAPACITY consolidated to the single definition at line ~117445
+// (was `int TCAM_CAPACITY = 1000;` here — dead-code Attack16/17 flood
+// helpers below never shared g_tcam_rule_count with the real S3/S4 path,
+// but they read the same global name, so removing the duplicate definition
+// also switches their local cap from 1000 to 256; those functions are
+// unused/uncalled from anywhere in this file, so this has no live effect).
 bool tcam_exhaust_malicious_nodes[200] = {false};
 uint32_t spy_node_id = 0;
 
@@ -141548,7 +141609,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
     cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): unused input -- num_attackers is now always recomputed from --attack_percentage (or --dp_attack_pct if >0) after CLI parsing; this flag has no effect", num_attackers);
     cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): manual override outside the --attack_percentage sweep (0-100, default 0.0=off). When >0, overrides the attack_percentage-derived attacker count. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
-    cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 40.0). Independent of --attack_percentage, which now only drives the ground-truth compromised-controller count.", cp_attack_pct);
+    cmd.AddValue ("cp_attack_intensity", "Attack 3 (CP TCAM): legacy RSU-targeting knob (0-100, default 40.0). NOT the attack percentage referenced in the report/thesis -- that is --attack_percentage, which drives the ground-truth compromised-controller count. cp_attack_intensity only affects output filename suffixing (tcam_attack_helper.h); it is not read by the current attack_percentage-driven Attack 3 logic.", cp_attack_intensity);
     double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
     cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
     cmd.AddValue ("qf", "qf", qf);
@@ -143557,7 +143618,14 @@ if (architecture == 3 && N_Vehicles > 0)
 					  Simulator::Schedule(Seconds(t+0.036000),transmit_delta_values);
 					  
 					  Simulator::Schedule(Seconds(t+0.099500),initialize_flow_counters);
-					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows); 
+					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows);
+					  // All-neighbour, presence-driven concurrency generator (2026-07-15).
+					  // Kicked ONCE; the tick then self-reschedules every 100 ms
+					  // (TCAM_GEN_PERIOD_S) for the whole run. Reuses the counted/capped
+					  // tcam_hit path; presence-driven eviction, no timeout for these flows.
+					  { static bool _gen_chain_started = false;
+					    if (!_gen_chain_started) { _gen_chain_started = true;
+					      Simulator::Schedule(Seconds(t+0.101000),tcam_flow_generator_tick); } }
 					  Simulator::Schedule(Seconds(t+data_transmission_period-0.002),calculate_performance_evaluation_metrics);
  		          		  
 				   	  

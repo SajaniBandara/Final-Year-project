@@ -13,11 +13,51 @@ extern int                    g_tcam_rule_count[300];
 extern std::vector<TcamEntry> g_tcam_table;
 extern int                    g_slowpath_hit_count[300];
 
+// Monotone cumulative install counters (defined in tcam_attack_helper.h, never
+// reset). S3 windows over (new + reinstall) — a slow-TCAM attacker refreshes
+// rules to keep them alive, which registers as reinstalls, so new-only is blind
+// to the attack's persistence mechanic.
+extern uint64_t g_lambda_new_cum[300];
+extern uint64_t g_lambda_reinstall_cum[300];
+
+// ── Empirical E[λ_l | ρ] (installs/s) ──────────────────────────────────────────
+// Sourced from the MEASURED new+reinstall install-rate curve (lambda_l_true.csv,
+// 90 s benign, t>40, 3136 RSU-cycles). NOT an invented linear fit. Bin means:
+//   ρ 0-3 → 0.02, 3-6 → 0.18, 6-10 → 0.44, 10-15 → 0.61, 15-25 → 0.75, 25+ → 0.89
+// Piecewise-linear interpolation across bin centres; clamped flat outside the
+// measured range (monotone, saturating).
+inline double EmpiricalExpectedLambdaL(double rho)
+{
+    static const double x[] = { 1.5, 4.5, 8.0, 12.5, 20.0, 30.0 };
+    static const double y[] = { 0.02, 0.18, 0.44, 0.61, 0.75, 0.89 };
+    const int n = 6;
+    if (rho <= x[0])     return y[0];
+    if (rho >= x[n - 1]) return y[n - 1];
+    for (int i = 1; i < n; ++i) {
+        if (rho <= x[i]) {
+            const double f = (rho - x[i - 1]) / (x[i] - x[i - 1]);
+            return y[i - 1] + f * (y[i] - y[i - 1]);
+        }
+    }
+    return y[n - 1];
+}
+
+// ── S3 sliding-window rate estimator (Fix 3) ───────────────────────────────────
+// Per-second λ_l is sparse/quantised (benign median 0, mean 0.33), so a per-cycle
+// threshold cannot separate benign from attack. Accumulate installs over a sliding
+// window and compare the windowed count against the window-scaled E[λ_l|ρ].
+// S3_LAMBDA_WINDOW_S is a tunable parameter left for later calibration.
+static const uint32_t S3_LAMBDA_WINDOW_S = 10;   // sliding-window length (s)
+static const uint32_t S3_HIST_MAX        = 128;  // ring capacity (>= window)
+static uint64_t g_s3_cum_hist[300][S3_HIST_MAX] = {{0}}; // per-node cum(new+reinstall) history
+static uint32_t g_s3_hist_count = 0;             // cycles recorded so far (shared clock)
+static bool     g_tcam_dbg_trace = true;         // print per-RSU (ρ,E,λ) validation tuples
+
 // ── Structs ───────────────────────────────────────────────────────────────────
 
 struct TcamDetectionState {
     uint32_t rsu_node_id;
-    double   tcam_util;       // g_tcam_rule_count[rsu_node_id] / TCAM_HW_SIZE
+    double   tcam_util;       // g_tcam_rule_count[rsu_node_id] / TCAM_CAPACITY
     double   lambda_fm;       // FlowMod install rate (rules/s this cycle)
     double   lambda_pi;       // PACKET_IN rate (slow-path hits/s this cycle)
     int      malicious_count; // is_malicious entries in g_tcam_table for this RSU
@@ -51,7 +91,7 @@ inline TcamCycleMetrics ComputeTcamDetection(
     double   lambda_fm_thresh,  // S3: anomalous FlowMod rate threshold (rules/s)
     double   lambda_pi_thresh,  // S4: PACKET_IN rate threshold (hits/s)
     double   tcam_util_thresh,  // shared utilisation threshold (e.g. 0.80)
-    double   vehicle_density)   // ρ(t): vehicles currently active
+    const std::vector<double>& rho_per_rsu) // ρ_r(t): REAL per-RSU zone density (Fix 2)
 {
     TcamCycleMetrics metrics{};
     metrics.max_tcam_util   = 0.0;
@@ -70,7 +110,7 @@ inline TcamCycleMetrics ComputeTcamDetection(
         const uint32_t node_id = N_Vehicles + r;
 
         // 1. TCAM utilisation, clamped to [0, 1]
-        double tcam_util = g_tcam_rule_count[node_id] / (double)TCAM_HW_SIZE;
+        double tcam_util = g_tcam_rule_count[node_id] / (double)TCAM_CAPACITY;
         tcam_util = (tcam_util < 0.0 ? 0.0 : (tcam_util > 1.0 ? 1.0 : tcam_util));
 
         // 2. FlowMod install rate (rules installed this cycle / 1 s)
@@ -89,12 +129,34 @@ inline TcamCycleMetrics ComputeTcamDetection(
             }
         }
 
-        // 5. Density-normalised expected FlowMod rate and anomalous excess (Eq. 3.3)
-        const double E_lambda_l   = 0.8 + 1.2 * (vehicle_density / (double)N_Vehicles);
-        const double lambda_hat_a = lambda_fm - E_lambda_l;
+        // 5. Windowed install count (new + reinstall) over the sliding window, and
+        //    density-normalised anomalous excess (Eq. 3.3) using the EMPIRICAL
+        //    E[λ_l|ρ] curve with the REAL per-RSU density ρ_r(t) (Fix 2 + Fix 3).
+        const double rho_r      = (r < rho_per_rsu.size()) ? rho_per_rsu[r] : 0.0;
+        const uint64_t cum_now  = g_lambda_new_cum[node_id] + g_lambda_reinstall_cum[node_id];
+        const uint32_t pos      = g_s3_hist_count % S3_HIST_MAX;
+        const uint32_t w_eff    = (g_s3_hist_count < S3_LAMBDA_WINDOW_S)
+                                  ? g_s3_hist_count : S3_LAMBDA_WINDOW_S;
+        const uint32_t past_pos = (g_s3_hist_count - w_eff) % S3_HIST_MAX;
+        const uint64_t cum_past = g_s3_cum_hist[node_id][past_pos];
+        g_s3_cum_hist[node_id][pos] = cum_now;         // record this cycle's cumulative
 
-        // 6. S3: excess FlowMod rate AND unauthorised entries present (eq:sig_s3)
-        const bool flag_s3 = (lambda_hat_a > lambda_fm_thresh) && (malicious_count > 0);
+        const double lambda_obs_win = (double)(cum_now - cum_past); // installs over window
+        const double E_lambda_l     = EmpiricalExpectedLambdaL(rho_r);      // installs/s
+        const double E_lambda_win   = E_lambda_l * (double)w_eff;           // window-scaled
+        const double lambda_hat_a   = lambda_obs_win - E_lambda_win;        // anomalous excess
+
+        // 6. S3: windowed excess FlowMod rate AND high TCAM utilisation (Fix 1: the
+        //    oracle `malicious_count > 0` is replaced by the intended U_TCAM > U_thresh).
+        const bool flag_s3 = (lambda_hat_a > lambda_fm_thresh) && (tcam_util > tcam_util_thresh);
+
+        // Validation trace: prove E_λ_l varies per RSU/cycle and λ̂_a is centred near 0.
+        if (g_tcam_dbg_trace && rho_r > 0.0)
+            std::cout << "[S3-DBG] t=" << (int)std::round(Simulator::Now().GetSeconds())
+                      << " rsu=" << node_id << " rho=" << rho_r
+                      << " E_lam=" << E_lambda_l << " E_win=" << E_lambda_win
+                      << " lam_obs=" << lambda_obs_win << " lam_hat_a=" << lambda_hat_a
+                      << " util=" << tcam_util << std::endl;
 
         // 7. S4: high PACKET_IN rate AND high TCAM utilisation (both required)
         const bool flag_s4 = (lambda_pi > lambda_pi_thresh) && (tcam_util > tcam_util_thresh);
@@ -112,6 +174,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
         if (flag_s3) { ++metrics.s3_fired_count; record_detection_event(2, node_id); }
         if (flag_s4) { ++metrics.s4_fired_count; record_detection_event(3, node_id); }
     }
+
+    ++g_s3_hist_count;   // advance the shared per-cycle window clock (Fix 3)
 
     metrics.avg_tcam_util = (N_RSUs > 0) ? (util_sum / N_RSUs) : 0.0;
     metrics.any_s3        = (metrics.s3_fired_count > 0);

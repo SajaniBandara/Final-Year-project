@@ -17,7 +17,7 @@
 //     crypto_event_log.h                 (for crypto_log_start/event)
 //     blockchain_sim.h                   (for bc_write_event)
 //     tcam_detection.h                   (for g_prev_rule_count,
-//                                          g_prev_slowpath_hits, TCAM_HW_SIZE)
+//                                          g_prev_slowpath_hits, TCAM_CAPACITY)
 //     tcam_attack_helper.h               (for g_tcam_table, TcamEntry)
 //     hf_attack_helper.h                 (for active/passive_hf_malicious_nodes)
 //
@@ -170,7 +170,7 @@ inline LRADTcamSnapshot lrad_tcam_snapshot(uint32_t rsu_node_id)
     if (rsu_node_id >= 300) return snap;
 
     // TCAM utilisation: rules currently installed vs hardware capacity.
-    double tcam_util = g_tcam_rule_count[rsu_node_id] / (double)TCAM_HW_SIZE;
+    double tcam_util = g_tcam_rule_count[rsu_node_id] / (double)TCAM_CAPACITY;
     if (tcam_util < 0.0) tcam_util = 0.0;
     if (tcam_util > 1.0) tcam_util = 1.0;
 
