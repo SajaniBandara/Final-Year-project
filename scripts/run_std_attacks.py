@@ -6,15 +6,16 @@ Runs both attack variants across all 6 attack percentages {0,20,40,60,80,100}
 as concurrent subprocesses so every combination finishes in the time of the
 longest single run instead of serially.
 
-Attack 2 runs TWICE per (percentage, delay): once as the normal MOBIGUARD
+Every attack runs TWICE per (percentage, delay): once as the normal MOBIGUARD
 run, and once as a TAP baseline run (--enable_tap=1, MOBIGUARD's own S1-S8
 detectors disabled via --enable_lrad_obu=0 --enable_lrad_rsu=0) — this is
-what actually produces the TAP_Attack2_<pct>.csv files scripts/plot_tap_results.py
-reads. Attack 1 only ever produces the MOBIGUARD file (TAP is not run
-against Attack 1).
+what actually produces the TAP_Attack<N>_<pct>.csv files. Note:
+scripts/plot_tap_results.py currently only reads/plots TAP_Attack2_*.csv —
+it needs a parallel update to cover Attack 1 TAP figures too.
 
 Result CSVs written by the simulation:
   results_routing/MOBIGUARD_Attack1_<pct>[_d<X>ms].csv  — Attack 1 (CP), MOBIGUARD S1 detector
+  results_routing/TAP_Attack1_<pct>[_d<X>ms].csv        — Attack 1 (CP), TAP baseline detector
   results_routing/MOBIGUARD_Attack2_<pct>[_d<X>ms].csv  — Attack 2 (DP), MOBIGUARD S2 detector
   results_routing/TAP_Attack2_<pct>[_d<X>ms].csv        — Attack 2 (DP), TAP baseline detector
 
@@ -22,7 +23,7 @@ Per-run logs (stdout + stderr):
   logs/A<N>_pct<P>[_d<X>ms]_seed<S>.log
 
 Usage examples:
-  # Run all 12 combinations (both attacks × 6 percentages) in parallel:
+  # Run all 24 combinations (2 attacks × 6 percentages × MOBIGUARD+TAP) in parallel:
   python3 scripts/run_std_attacks.py
 
   # Sync headers + rebuild only, then exit (run again without --build to simulate):
@@ -157,12 +158,10 @@ def clean_results(attack: int | None, percentage: int | None,
         for p in percs:
             for d in delays:
                 sfx = delay_suffix(d)
-                candidates = []
-                if a == 1:
-                    candidates.append(RESULTS_DIR / f"MOBIGUARD_Attack1_{p}{sfx}.csv")
-                else:
-                    candidates.append(RESULTS_DIR / f"MOBIGUARD_Attack2_{p}{sfx}.csv")
-                    candidates.append(RESULTS_DIR / f"TAP_Attack2_{p}{sfx}.csv")
+                candidates = [
+                    RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}{sfx}.csv",
+                    RESULTS_DIR / f"TAP_Attack{a}_{p}{sfx}.csv",
+                ]
                 for f in candidates:
                     if f.exists():
                         f.unlink()
@@ -171,11 +170,16 @@ def clean_results(attack: int | None, percentage: int | None,
         print(f"── Removed {removed} old result file(s) ──\n")
 
 
-# TAP baseline (Arsalan & Rehman FIT 2018) run overrides — only meaningful
-# for Attack 2 (attack_number=2), the only variant the TAP CSV/plotting
-# pipeline compares against. --enable_lrad_obu/--enable_lrad_rsu=0 disables
-# MOBIGUARD's own S1-S8 signature detectors so the TAP run is a clean
-# TAP-only baseline, not TAP+MOBIGUARD running simultaneously.
+# TAP baseline (Arsalan & Rehman FIT 2018) run overrides. Runs against both
+# attacks: tap_process_packet() (tap_detection.h) is gated only on
+# enable_tap and is_safety_critical_flow — its call site in routing.cc's
+# MacRx receive path has no attack-number dependency — so TAP is exercised
+# identically regardless of which attack is active. --enable_lrad_obu/
+# --enable_lrad_rsu=0 disables MOBIGUARD's own S1-S8 signature detectors so
+# the TAP run is a clean TAP-only baseline, not TAP+MOBIGUARD running
+# simultaneously. Note: scripts/plot_tap_results.py currently only reads/
+# plots TAP_Attack2_*.csv — it needs a parallel update to also cover
+# TAP_Attack1_*.csv if Attack 1 TAP figures are needed.
 TAP_PARAMS = {
     "enable_tap":       1,
     "enable_lrad_obu":  0,
@@ -267,14 +271,10 @@ def check_results(scope_attacks: list[int], scope_percs: list[int],
             print(f"  delay={d}ms:")
         for a in scope_attacks:
             for p in scope_percs:
-                files = []
-                if a == 1:
-                    files = [RESULTS_DIR / f"MOBIGUARD_Attack1_{p}{sfx}.csv"]
-                else:
-                    files = [
-                        RESULTS_DIR / f"MOBIGUARD_Attack2_{p}{sfx}.csv",
-                        RESULTS_DIR / f"TAP_Attack2_{p}{sfx}.csv",
-                    ]
+                files = [
+                    RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}{sfx}.csv",
+                    RESULTS_DIR / f"TAP_Attack{a}_{p}{sfx}.csv",
+                ]
                 for f in files:
                     exists = f.exists() and f.stat().st_size > 0
                     mark   = "✓" if exists else "✗ MISSING"
@@ -345,7 +345,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--workers", type=int, default=12,
-        help="Maximum number of parallel simulation processes (default: 12 = all at once).",
+        help="Maximum number of parallel simulation processes (default: 12; the full "
+             "default sweep is 24 runs, so it goes out in two waves of 12).",
     )
     args = parser.parse_args()
 
@@ -387,10 +388,10 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # ── Build run list ───────────────────────────────────────────────────────
-    # Attack 2 gets TWO runs per (percentage, delay): the normal MOBIGUARD
+    # Every attack gets TWO runs per (percentage, delay): the normal MOBIGUARD
     # run, plus a TAP-baseline run (--enable_tap=1, MOBIGUARD's own S1-S8
-    # disabled) — check_results()/clean_results() already expect
-    # TAP_Attack2_<pct>.csv to exist; this is what actually produces it.
+    # disabled) — check_results()/clean_results() expect TAP_Attack<N>_<pct>.csv
+    # to exist for every attack; this is what actually produces it.
     runs = []
     for a in scope_attacks:
         for p in scope_percs:
@@ -405,17 +406,16 @@ def main() -> None:
                         f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}.log"
                     ),
                 })
-                if a == 2:
-                    runs.append({
-                        "attack_number":     a,
-                        "attack_percentage": p,
-                        "delay_ms":          d,
-                        "extra_params":      TAP_PARAMS,
-                        "label_suffix":      "_TAP",
-                        "log": LOGS_DIR / (
-                            f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}_TAP.log"
-                        ),
-                    })
+                runs.append({
+                    "attack_number":     a,
+                    "attack_percentage": p,
+                    "delay_ms":          d,
+                    "extra_params":      TAP_PARAMS,
+                    "label_suffix":      "_TAP",
+                    "log": LOGS_DIR / (
+                        f"A{a}_pct{p}{delay_suffix(d)}_seed{args.seed}_TAP.log"
+                    ),
+                })
 
     total = len(runs)
     delay_desc = (

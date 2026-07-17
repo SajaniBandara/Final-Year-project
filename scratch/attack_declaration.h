@@ -245,7 +245,7 @@ inline void declare_attackers()
         }
 
         if (active_attack_variant == 0) {
-            cout << attack_tag() << " [ATTACK1] declare_attackers(): attack_percentage="
+            cout << attack_tag() << " declare_attackers(): attack_percentage="
                  << attack_percentage << "% -> " << num_to_compromise << " of "
                  << N_Controllers << " controllers compromised." << endl;
         }
@@ -276,15 +276,37 @@ inline void declare_attackers()
 }
 
 // reapply_cp_selective_delay():
-// Recurring task (re-scheduled every 1s) that poisons the routing table
-// for every RSU whose assigned controller is compromised. Runs only for
-// Attack 1 (active_attack_variant == 0). Re-derives next_hop fresh each
-// tick so it only ever poisons routes that have already converged.
+// Recurring task (re-scheduled every 1s) that installs the malicious controller's
+// poisoned flowMod on every RSU whose assigned controller is compromised. Runs only
+// for Attack 1 (active_attack_variant == 0).
+//
+// main.tex §1387: the malicious controller "transmits manipulated flowMod packets to
+// the RSU", and when a legitimate packet arrives the RSU, "processed according to these
+// compromised instructions", forwards it "with an intentional, variable delay".
+//
+// The poisoned rule's MATCH is the priority class, NOT the destination. Signature S1
+// (eq:sig_s1, main.tex:1730-1737): "only high-priority packets are delayed, while
+// best-effort traffic from the same RSU remains within baseline" — i.e. the same RSU
+// delays HIGH and passes best-effort, which a destination-keyed rule cannot express.
+// So the rule is installed once per compromised RSU into cp_poisoned_flowmod_delay[]
+// (routing.cc), and the Priority(p)=HIGH half of the match is applied at the forwarding
+// sites via is_safety_critical_flow[] (see calculate_unified_selective_delay() /
+// schedule_unified_selective_delay_attack() below).
+//
+// This replaces the previous per-(RSU,destination) routing_tables poison, which could
+// only fire when a poisoned (RSU,dst) pair happened to coincide with the traffic's
+// actual (forwarding-node,dst) pair — see cp_poisoned_flowmod_delay's declaration for
+// the measured effect (80 rules installed, delay applied 0 times in 447 forwards).
 inline void reapply_cp_selective_delay()
 {
     if (active_attack_variant != 0) return;
     double now = Simulator::Now().GetSeconds();
     if (now >= simTime) return;
+
+    // Use the single CLI-controlled delay value (--attack_delay_ms).
+    // Original implementation drew from Uniform(60 ms, 300 ms); replaced
+    // with a fixed value so delay is an explicit independent variable.
+    double variable_delay = attack_delay_ms / 1000.0;
 
     for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
     {
@@ -294,27 +316,28 @@ inline void reapply_cp_selective_delay()
         // call sites (e.g. RSU_dataunicast_alone,
         // RSU_metadata_downlink_unicast). Do not assume r == node ID.
         uint32_t rsu_node_id = N_Vehicles + r;
+        if (rsu_node_id >= (uint32_t)total_size) continue;
 
-        for (uint32_t f = 0; f < flows; f++)
-        {
-            uint32_t src = (delta_at_nodes_inst + f)->source_f;
-            uint32_t dst = (delta_at_nodes_inst + f)->destination_f;
-            if (src >= total_size || dst >= total_size) continue;
-            uint32_t current_next_hop = find_next_hop(src, dst, rsu_node_id);
-            if (current_next_hop == large) continue;
+        // Install (or refresh) the poisoned flowMod on this RSU.
+        bool first_install = (cp_poisoned_flowmod_delay[rsu_node_id] == 0.0);
+        cp_poisoned_flowmod_delay[rsu_node_id] = variable_delay;
 
-            // Use the single CLI-controlled delay value (--attack_delay_ms).
-            // Original implementation drew from Uniform(60 ms, 300 ms); replaced
-            // with a fixed value so delay is an explicit independent variable.
-            double variable_delay = attack_delay_ms / 1000.0;
+        // Log the install once per RSU: this task re-fires every 1s and would
+        // otherwise emit an identical line per compromised RSU per second.
+        // (The rule's match — Priority(p)=HIGH — is documented in this function's
+        // header and applied at the forwarding sites via is_safety_critical_flow[];
+        // it is not restated here, since only real state should be logged.)
+        if (first_install)
+            cout << attack_tag() << " Malicious controller " << owning_controller
+                 << " installed poisoned flowMod on RSU node " << rsu_node_id
+                 << " (rsu index " << r << "): delay=" << variable_delay * 1000.0 << "ms"
+                 << ", at t=" << now << "s" << endl;
 
-            update_route_malicious(rsu_node_id, dst, current_next_hop, variable_delay);
-            // NOTE: record_attack_onset(0, rsu_node_id) is intentionally NOT called
-            // here. Ground-truth onset recording for variant 0 is performed once in
-            // declare_attackers() at attack_start_time. Calling it here would
-            // overwrite t_onset[] on every 1-second tick, breaking the mitigation-
-            // latency metric Lmit = t_quarantine - t_onset (deviation D2 fix).
-        }
+        // NOTE: record_attack_onset(0, rsu_node_id) is intentionally NOT called
+        // here. Ground-truth onset recording for variant 0 is performed once in
+        // declare_attackers() at attack_start_time. Calling it here would
+        // overwrite t_onset[] on every 1-second tick, breaking the mitigation-
+        // latency metric Lmit = t_quarantine - t_onset (deviation D2 fix).
     }
 
     Simulator::Schedule(Seconds(1.0), &reapply_cp_selective_delay);

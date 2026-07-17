@@ -94573,7 +94573,7 @@ void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next
 {
 	update_route(source, destination, next_hop);   // install the routing decision first (benign part)
 	routing_tables[source].rows[destination].injected_delay = delay; // then poison the rule
-	cout << attack_tag() << " [ATTACK1] Malicious controller installed poisoned flowMod: "
+	cout << attack_tag() << " Malicious controller installed poisoned flowMod: "
 	     << "node=" << source << " dest=" << destination
 	     << " next_hop=" << next_hop
 	     << " injected_delay=" << delay * 1000.0 << "ms"
@@ -114751,6 +114751,31 @@ uint32_t sim_run  = 1;  // run index, distinct per seed
 // Indexed by flow_id (0 to 2*flows-1).
 bool is_safety_critical_flow[Flow_size + 2] = {false};
 
+// === ATTACK 1 (variant 0): the poisoned FlowMod installed by the malicious controller ===
+// main.tex §1387: "an adversary acting as a malicious controller ... transmits manipulated
+// flowMod packets to the RSU. When a legitimate packet arrives at the RSU, it is processed
+// according to these compromised instructions, causing the RSU to forward the packet with
+// an intentional, variable delay."
+//
+// This array IS that poisoned flowMod, one rule per RSU:
+//   match  = Priority(p) = HIGH   (applied at the call site via is_safety_critical_flow[])
+//   action = forward with delay delta_a  (the value stored here, from --attack_delay_ms)
+// Indexed by node id; 0.0 = no poisoned rule installed on that node (benign).
+//
+// Why a per-node rule rather than routing_tables[rsu].rows[dst].injected_delay:
+// routing_tables' rows are indexed BY DESTINATION, so a rule stored there can only ever
+// mean "delay packets going to destination D". Signature S1 (eq:sig_s1) requires the
+// opposite — the match is the PRIORITY CLASS, not the destination: "only high-priority
+// packets are delayed, while best-effort traffic from the same RSU remains within
+// baseline" (main.tex:1730-1737). No equation that consumes this delay (eq:sig_s1,
+// eq:rule_s1, eq:tvr, eq:delay_updated) is indexed by destination — they are all indexed
+// by (source vehicle v, RSU r, t) and gated on priority. The destination-keyed form could
+// therefore only fire when a poisoned (RSU,dst) pair coincided with the traffic's actual
+// (forwarding-node,dst) pair, which almost never happened: at attack_percentage=20 a
+// 15s run installed 80 poisoned rules and applied the delay 0 times across 447 forwards
+// (every read returned 0.000ms), which is why Attack 1 barely fired below 100%.
+double cp_poisoned_flowmod_delay[total_size] = {0.0};
+
 // === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
 // Malicious controller installs junk FlowMod rules into every RSU's TCAM at
 // attack_rate_pps rules/second. Entries flagged is_malicious=1.
@@ -115033,7 +115058,7 @@ void initialise_stub_attack_state()
             // injecting the malicious delay.
             Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
-            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, fixed delay="
+            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, fixed delay="
                  << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
             if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
@@ -115297,6 +115322,17 @@ void poison_test_network_cp_attackers()
 {
 	if (active_attack_variant == 0)
 	{
+		// routing_test (5-unit) topology only. Nodes 15/16 are its hardcoded
+		// compromised RSUs (see hardcode_test_network_attackers() below, which sets
+		// is_malicious_node[0][15]/[16]). Install the same per-node poisoned flowMod
+		// the SUMO path uses (reapply_cp_selective_delay), so the forwarding sites —
+		// which now read cp_poisoned_flowmod_delay[] rather than the destination-keyed
+		// routing_tables entry — actually apply the delay here too.
+		cp_poisoned_flowmod_delay[15] = 0.080;
+		cp_poisoned_flowmod_delay[16] = 0.080;
+
+		// Kept for the routing decision + audit log only; the injected_delay it writes
+		// into routing_tables is no longer read by the forwarding path.
 		update_route_malicious(15, 1, 1, 0.080);
 		update_route_malicious(16, 3, 3, 0.080);
 	}
@@ -117321,6 +117357,47 @@ void ufcr_attempt_unauthorized_flowmod()
                       << " committed=" << committed
                       << " blocked_total=" << g_ufcr_blocked
                       << "/" << g_ufcr_unauth_total << std::endl;
+
+        // ── Controller trust update (eq:ctrl_trust_update → eq:sc_revoke, M5) ──
+        // main.tex §"Controller Trust Scoring": controller trust is decremented
+        // by RSU-submitted conflict evidence — "when a received FlowMod is
+        // absent from the blockchain-committed endorsed policy" — with the
+        // blockchain as "the sole controller behavior monitor". A blocked
+        // unauthorized FlowMod (committed == false) IS exactly that evidence:
+        // it failed to collect f+1 honest endorsements (eq:endorsed_commit),
+        // i.e. conflict evidence ≥ f+1 → penalty branch. A clean commit is
+        // conflict evidence < f+1 → reward branch.
+        //
+        // Attribution: in this simulation the compromised controllers
+        // (controller_compromised[], set in declare_attackers per the attack
+        // threat model) are the origin of the unauthorized FlowMods, so the
+        // penalty is applied to them and the reward to the honest controllers —
+        // the faithful mapping of "the blockchain attributes the caught
+        // unauthorized FlowMod to its sending controller".
+        //
+        // Only accrues once the attack is active (t ≥ attack_start_time) so a
+        // controller is not revoked before it begins misbehaving.
+        //
+        // NOTE (provisional calibration): Δp^ctrl/Δr^ctrl/T_min^ctrl
+        // (TRUST_DELTA_P_CTRL=0.10, TRUST_DELTA_R_CTRL=0.05, TRUST_T_MIN_CTRL=0.50)
+        // are placeholder values, NOT the calibrated finals. main.tex §"Multi-
+        // Controller Trust Management" marks them [tbd] and requires an
+        // independent sweep (T_min^ctrl ∈ {0.3,0.5,0.7} for lowest false-
+        // revocation rate; Δp^ctrl>Δr^ctrl for minimum time-to-revocation). The
+        // constraint Δp^ctrl>Δr^ctrl is already satisfied; the sweep itself is
+        // a separate, still-pending calibration step.
+        if (enable_controller_failover &&
+            Simulator::Now().GetSeconds() >= attack_start_time)
+        {
+            for (uint32_t c = 0; c < (uint32_t)N_Controllers; c++)
+            {
+                if (g_ctrl_revoked[c]) continue; // already revoked — no re-fire
+                if (controller_compromised[c] && !committed)
+                    ctrl_trust_update_negative(c);   // conflict evidence ≥ f+1
+                else if (!controller_compromised[c])
+                    ctrl_trust_update_positive(c);   // clean behaviour, < f+1
+            }
+        }
     }
     if (Simulator::Now().GetSeconds() < simTime)
         Simulator::Schedule(Seconds(1.0), &ufcr_attempt_unauthorized_flowmod);
@@ -118284,19 +118361,19 @@ void transmit_delta_values()
 		// per-op row: node_id carries endorser count, pkt_id carries fid
 		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
 		                 _ct0, _committed);
-		// eq:ctrl_trust_update — reward branch (conflict evidence < f+1, i.e.
-		// the FlowMod collected f+1 honest endorsements and committed cleanly)
-		// vs. penalty branch (conflict evidence >= f+1, commit failed). Both
-		// branches read the same _committed outcome from the same per-cycle
-		// endorsement round, so the reward fires at the identical cadence the
-		// penalty already used — closing the gap where ctrl_trust_update_positive()
-		// was defined but never called (see docs/METHODOLOGY_CHAPTER_DEVIATIONS.md).
-		if (N_RSUs > 0) {
-			if (_committed)
-				ctrl_trust_update_positive(rsu_controller_assignment[N_Vehicles]);
-			else
-				ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
-		}
+		// NOTE: the eq:ctrl_trust_update reward/penalty is NO LONGER applied
+		// here. This honest per-cycle endorsement of fid=0 always commits, so it
+		// only ever exercised the reward branch, and it did so against
+		// rsu_controller_assignment[N_Vehicles] — a node-id (200) used as an
+		// RSU-local index (valid range 0..N_RSUs-1), which is never populated
+		// and therefore resolved to the zero-initialised entry (controller 0)
+		// regardless of which controller was actually compromised. That
+		// unconditional reward on a fixed controller directly fought the
+		// conflict-evidence penalty and is the reason SC.Revoke never fired.
+		// Controller trust (both branches of eq:ctrl_trust_update) is now driven
+		// solely by the UFCR conflict-evidence path in
+		// ufcr_attempt_unauthorized_flowmod(), which is where main.tex locates
+		// it ("the blockchain [is] the sole controller behavior monitor").
 	}
 
 	//read_csv();
@@ -120854,8 +120931,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             fade_forwarded_count[flow_id][current_hop]++;
                         }
 
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
-						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+						// Attack 1 (CP): the poisoned flowMod installed on THIS forwarding node.
+						// Same rule as the check_and_transmit() site — match is the priority
+						// class (applied via is_safety_critical_flow[flow_id] below), not the
+						// destination. See cp_poisoned_flowmod_delay's declaration for why.
+						double injected = cp_poisoned_flowmod_delay[current_hop];
 
 						double total_tx_delay = calculate_unified_selective_delay(
 							present_selective_delay_attack_nodes,
@@ -124087,8 +124167,16 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							default:   dev_to_use = wifidevices.Get(source); break;
 						}
 						
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
-						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
+						// Attack 1 (CP): read the poisoned flowMod the malicious controller
+						// installed on THIS forwarding node (main.tex §1387). The rule's match
+						// is the priority class, not the destination (eq:sig_s1: "only
+						// high-priority packets are delayed, while best-effort traffic from the
+						// same RSU remains within baseline"); the Priority(p)=HIGH half of the
+						// match is applied by the is_safety_critical_flow[fid] argument passed
+						// to schedule_unified_selective_delay_attack() below. Non-compromised
+						// nodes (and every node when Attack 1 is not active) hold 0.0 here, so
+						// this is inert outside the attack.
+						double injected_cp = cp_poisoned_flowmod_delay[source];
 
 						// Stamp BEFORE any attack delay so S2/S2-partial see the pre-delay time.
 						// Mirrors the RSU path at line 120457; without this, the vehicle path
