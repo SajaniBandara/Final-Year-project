@@ -28,8 +28,36 @@ extern int      TCAM_CAPACITY;         // single canonical TCAM size (defined in
 // install_time regardless of ongoing traffic. Applies to legit and
 // malicious entries alike -- tcam_evict_expired() does not look at
 // is_malicious.
-double TCAM_IDLE_TIMEOUT_S = 10.0;
-double TCAM_HARD_TIMEOUT_S = 30.0;
+double TCAM_IDLE_TIMEOUT_S = 30.0;   // 2026-07-16: 10 -> 30. Applies to fixed-timeout
+                                     // entries: ip-hook observations and the malicious
+                                     // fallback idle (moot while the attacker refreshes,
+                                     // see tcam_refresh_malicious_on_node). Benign
+                                     // generator flows use their OWN uniform(9,22)s
+                                     // residence-window idle_timeout_s instead of this.
+double TCAM_HARD_TIMEOUT_S = 120.0;  // 2026-07-16: 30 -> 120. Hard cap from install_time
+                                     // for BENIGN entries only. Rarely fires for gen flows
+                                     // (the vehicle departs / the flow idles out within the
+                                     // 9-22s residence window first); raised so present-
+                                     // vehicle rules refresh less aggressively. Malicious
+                                     // rules are EXEMPT from the hard timeout entirely (see
+                                     // tcam_evict_expired) -- required so the slow attacker
+                                     // can accumulate to capacity rather than being capped
+                                     // at rate x hard_timeout.
+
+// ---------- Legit-flow idle-timeout, 9-22s residence window (2026-07-16) ----------
+// main.tex Sec. mobility_amplification: a vehicle crosses a 300-500m RSU zone
+// in ~9-22s at highway speed. Each generator (legit) flow gets its OWN
+// idle_timeout drawn uniformly from this window at install time (TcamEntry::
+// idle_timeout_s), instead of the fixed global TCAM_IDLE_TIMEOUT_S, so a
+// legit rule expires around when its vehicle would plausibly have left the
+// zone even if no explicit neighbour-departure event ever fires for it.
+// Malicious/ip-hook entries keep using the fixed global TCAM_IDLE_TIMEOUT_S.
+inline double sample_gen_idle_timeout_s()
+{
+    static Ptr<UniformRandomVariable> rng = nullptr;
+    if (!rng) rng = CreateObject<UniformRandomVariable>();
+    return rng->GetValue(9.0, 22.0);
+}
 
 // ---------- Change 8: TCAM snapshot exporter — 5-tuple stamped at install ----------
 
@@ -46,10 +74,17 @@ struct TcamEntry {
     uint64_t packet_count;   // packets forwarded through this entry
     uint64_t byte_count;     // bytes  forwarded through this entry
     bool     is_malicious;   // true when injected by attacker (Change 5–7)
-    bool     presence_managed = false; // true = generator flow evicted ONLY by neighbour
-                             // departure (tcam_evict_gen_entry), NOT by idle/hard timeout.
-                             // tcam_evict_expired() skips these. Set in tcam_install() when
-                             // the install fid is a gen-fid (gen_flow_lookup true).
+    bool     presence_managed = false; // true = generator (legit) flow. Evicted by
+                             // EITHER trigger, whichever fires first: explicit
+                             // neighbour departure (tcam_evict_gen_entry) or the
+                             // normal idle/hard-timeout sweep in tcam_evict_expired()
+                             // using this entry's own idle_timeout_s (2026-07-16).
+                             // Set in tcam_install() when the install fid is a
+                             // gen-fid (gen_flow_lookup true).
+    double   idle_timeout_s = TCAM_IDLE_TIMEOUT_S; // per-entry idle timeout; generator
+                             // flows override this with sample_gen_idle_timeout_s()
+                             // (uniform 9-22s, main.tex zone-residence window).
+                             // Non-generator entries keep the fixed global default.
     bool     counts_capacity;// true = genuine data-plane TCAM rule that occupies a
                              // slot in g_tcam_rule_count (installed via tcam_install /
                              // tcam_install_malicious, sim-index node space, capped at
@@ -73,6 +108,19 @@ int g_tcam_rule_count[300] = {0}; // indexed by node_id, sized >= total_size
 // found g_tcam_rule_count[node_id] >= TCAM_CAPACITY and was refused. Mirrors
 // g_tcam_rule_count's indexing/lifetime.
 int g_tcam_reject_count[300] = {0};
+
+// Per-node cumulative PACKET_IN (table-miss) count -- the S4 λ_PI signal
+// (eq:sig_s4). A PACKET_IN fires on every table MISS: (a) each new rule install
+// (a miss that triggered PACKET_IN -> controller -> FlowMod), counted in
+// tcam_install / tcam_install_malicious, and (b) each packet arriving at a FULL
+// table that cannot install a rule (repeated slow-path miss), counted in the
+// slow-path block in routing.cc. This is the paper's PACKET_IN flood rate, which
+// is nonzero from attack onset (and has a benign baseline from legit installs),
+// UNLIKE g_slowpath_hit_count which only counts the full-table delay case and is
+// therefore zero until exhaustion. S4's lambda_pi is derived from THIS counter.
+// DEFINED in routing.cc (alongside g_slowpath_hit_count); externed here so the
+// install/malicious-install paths below can increment it.
+extern int g_packetin_count[300];
 
 // ── True install-rate instrumentation (2026-07-15, MEASUREMENT ONLY) ─────────
 // Per-node counters accumulated within each 1-s snapshot window, then flushed
@@ -259,9 +307,26 @@ inline void tcam_hit(uint32_t node_id, uint32_t original_fid, uint32_t pkt_bytes
             return;
         }
     }
-    // Entry not yet installed — install first, then record the hit.
+    // Entry not yet installed — install, then record the hit ONCE by re-scanning.
+    // The previous code recursed back into tcam_hit(), which infinite-loops when
+    // the table is FULL: tcam_install() rejects (TABLE_FULL), the entry still is
+    // not present, so the recursive call installs+rejects again forever ->
+    // stack-overflow SIGSEGV. This only surfaced once the attack could actually
+    // exhaust the table (2026-07-17). If the install was rejected (table full),
+    // the second scan finds nothing and we return: the packet took the controller
+    // slow path with no rule installed, which is the correct exhaustion behaviour.
     tcam_install(node_id, original_fid);
-    tcam_hit(node_id, original_fid, pkt_bytes);
+    for (auto& e : g_tcam_table)
+    {
+        if (e.flow_id == actual_fid && e.node_id == node_id)
+        {
+            e.packet_count++;
+            e.byte_count   += pkt_bytes;
+            e.last_seen_time = Simulator::Now().GetSeconds();
+            return;
+        }
+    }
+    // Install rejected (TABLE_FULL) — no rule to update; slow-path drop.
 }
 
 // Install a TCAM rule for (flow_id, node_id) once.  Subsequent calls for the
@@ -321,9 +386,11 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     e.byte_count     = 0;
     e.is_malicious   = false;
     e.counts_capacity = true;   // genuine data-plane rule: occupies a TCAM slot
-    e.presence_managed = is_gen_flow; // generator flows evicted by departure only, no timeout
+    e.presence_managed = is_gen_flow; // generator flows: departure + idle-timeout, whichever first
+    e.idle_timeout_s   = is_gen_flow ? sample_gen_idle_timeout_s() : TCAM_IDLE_TIMEOUT_S;
     g_tcam_table.push_back(e);
     g_tcam_rule_count[node_id]++;
+    g_packetin_count[node_id]++;   // this install was triggered by a table miss -> PACKET_IN (eq:sig_s4 λ_PI)
 
     // TRUE lambda_l instrument (measurement only): a fresh key vs a churn refresh.
     if (g_tcam_ever_evicted.count(key)) { g_lambda_reinstall[node_id]++; g_lambda_reinstall_cum[node_id]++; }
@@ -347,20 +414,34 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
         Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
 }
 
-// ── Rule eviction (2026-07-13) ──────────────────────────────────────────────
+// ── Rule eviction (2026-07-13; extended 2026-07-16) ─────────────────────────
 // Evicts any TcamEntry whose idle_timeout or hard_timeout has expired, for
-// both legit and malicious entries alike. Frees the (flow_id, node_id) dedup
-// key too, so a legit flow whose next packet arrives after eviction goes
-// through tcam_hit() -> tcam_install() again as a genuine fresh install
-// (reactive re-install), rather than being silently blocked by a stale
-// dedup entry.
+// legit, malicious, and generator entries alike (each entry's OWN
+// idle_timeout_s -- global TCAM_IDLE_TIMEOUT_S for non-generator entries,
+// uniform(9,22)s residence-window sample for generator entries). Generator
+// entries are evicted by whichever fires first: this sweep, or the explicit
+// neighbour-departure trigger in tcam_evict_gen_entry(). Frees the
+// (flow_id, node_id) dedup key too, so a legit flow whose next packet
+// arrives after eviction goes through tcam_hit() -> tcam_install() again as
+// a genuine fresh install (reactive re-install), rather than being silently
+// blocked by a stale dedup entry.
 inline void tcam_evict_expired()
 {
     double now = Simulator::Now().GetSeconds();
     auto is_expired = [now](const TcamEntry& e) {
-        if (e.presence_managed) return false; // generator flows: presence-driven eviction only
-        bool idle_expired = (now - e.last_seen_time) >= TCAM_IDLE_TIMEOUT_S;
-        bool hard_expired = (now - e.install_time)   >= TCAM_HARD_TIMEOUT_S;
+        bool idle_expired = (now - e.last_seen_time) >= e.idle_timeout_s;
+        // Attacker-maintained malicious rules (Attacks 3/4): idle-timeout ONLY,
+        // no hard timeout. The attacker refreshes them every tick
+        // (tcam_refresh_malicious_on_node), so last_seen stays current and idle
+        // never fires while the attack is active -> the malicious set persists
+        // and accumulates toward TCAM_CAPACITY, matching the paper's slow-
+        // exhaustion mechanism (periodic refresh keeps rules resident). Once the
+        // attack stops refreshing, they idle out normally. A hard timeout here
+        // would cap resident malicious rules at rate x hard_timeout, which for
+        // the slow band (3.2 pps) is far below any realistic capacity and would
+        // make exhaustion structurally impossible.
+        if (e.is_malicious) return idle_expired;
+        bool hard_expired = (now - e.install_time) >= TCAM_HARD_TIMEOUT_S;
         return idle_expired || hard_expired;
     };
 
@@ -395,6 +476,11 @@ inline void tcam_evict_expired()
 // counted-path bookkeeping of tcam_evict_expired() exactly (decrement counter,
 // free dedup key, feed the λ_l evict instrument) so the leak invariant and
 // occupancy accounting stay correct. Only touches presence_managed entries.
+// This is one of TWO independent eviction triggers for generator entries
+// (2026-07-16) -- the other is the per-entry idle_timeout_s sweep in
+// tcam_evict_expired(), whichever fires first. If tcam_evict_expired() has
+// already timed the entry out, remove_if below simply matches nothing and
+// this call is a safe no-op.
 inline void tcam_evict_gen_entry(uint32_t actual_fid, uint32_t node_id)
 {
     double now = Simulator::Now().GetSeconds();
@@ -412,6 +498,23 @@ inline void tcam_evict_gen_entry(uint32_t actual_fid, uint32_t node_id)
             return true;
         });
     g_tcam_table.erase(new_end, g_tcam_table.end());
+}
+
+// ── Attacker keep-alive refresh (2026-07-16) ────────────────────────────────
+// Bumps last_seen_time to now for every malicious entry on `node_id`, so the
+// idle-timeout sweep in tcam_evict_expired() does not evict them. Models a slow
+// TCAM-exhaustion attacker periodically re-sending packets that match its
+// already-installed malicious flows (main.tex Mechanism 3 / PASCOAL2020107223):
+// the rules stay resident and the per-tick new install accumulates the table
+// toward TCAM_CAPACITY, instead of the malicious count saturating at
+// rate x idle_timeout. Called once per attacker tick per target RSU, BEFORE the
+// tick installs its one new rule. Cheap: one linear pass over g_tcam_table.
+inline void tcam_refresh_malicious_on_node(uint32_t node_id)
+{
+    double now = Simulator::Now().GetSeconds();
+    for (auto& e : g_tcam_table)
+        if (e.is_malicious && e.node_id == node_id)
+            e.last_seen_time = now;
 }
 
 // ── Per-second snapshot exporter (Change 8) ────────────────────────────────
@@ -456,19 +559,30 @@ inline void tcam_snapshot_dump()
     }
 
     const std::string base_dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string snap_path = base_dir + "tcam_snapshots_" + mode + ".csv";
     std::string occ_path  = base_dir + "tcam_occupancy_"  + mode + ".csv";
 
-    // Open in append mode; write header only when file is new/empty.
-    std::ofstream snap_f(snap_path, std::ios::app);
+    // Self-truncating per run (2026-07-16): the VERY FIRST snapshot dump of this
+    // process truncates the file, so a stale file left by a PRIOR run is wiped
+    // rather than appended to (the old "append + header-only-when-empty" logic
+    // silently merged runs). Subsequent per-second dumps within THIS run append.
+    // Mirrors the lambda_first pattern below. This removes the need to manually
+    // delete old CSVs before every run.
+    static bool tcam_dump_first = true;
+    std::ios::openmode dump_mode = tcam_dump_first ? std::ios::trunc : std::ios::app;
+
+    // Write header only when the file is new/empty (true right after a truncate).
+    std::ofstream snap_f(snap_path, dump_mode);
     if (snap_f.is_open() && snap_f.tellp() == 0)
         snap_f << "t,rsu_id,flow_id,src_ip,dst_ip,src_port,dst_port,proto,"
                << "install_time,duration,packets,bytes,is_malicious\n";
 
-    std::ofstream occ_f(occ_path, std::ios::app);
+    std::ofstream occ_f(occ_path, dump_mode);
     if (occ_f.is_open() && occ_f.tellp() == 0)
         occ_f << "t,rsu_id,total_rule_count,cum_rejections,counted_rule_count\n";
+
+    tcam_dump_first = false;
 
     // Walk every installed entry; build per-node rule count as we go.
     std::map<uint32_t,int> rule_count;
@@ -520,7 +634,12 @@ inline void tcam_snapshot_dump()
     // accumulated over the 1-s window since the last snapshot => rates per second.
     {
         static bool lambda_first = true;
-        const std::string lam_path = base_dir + "lambda_l_true.csv";
+        // Mode-suffixed (2026-07-16) so concurrent runs of DIFFERENT modes
+        // (e.g. baseline + attack3_pct40) do not both write the same
+        // lambda_l_true.csv and interleave/corrupt each other. Previously this
+        // was a single untagged file -- unlike the mode-tagged snapshot/occupancy
+        // files -- so two concurrent sims collided here even with distinct seeds.
+        const std::string lam_path = base_dir + "lambda_l_true_" + mode + ".csv";
         std::ofstream lam_f(lam_path, lambda_first ? std::ios::trunc : std::ios::app);
         if (lambda_first && lam_f.is_open())
             lam_f << "t,rsu_id,new_installs,evictions,reinstalls\n";
@@ -565,7 +684,7 @@ inline void export_tcam_snapshot_baseline()
             mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     }
     std::string path =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
     std::ofstream fout(path, std::ios::trunc);
     fout << "flow_id,node_id,src_ip,dst_ip,src_port,dst_port,proto,install_time,packets,bytes\n";
     for (const auto& e : g_tcam_table)
@@ -658,6 +777,17 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     e.counts_capacity = true;   // genuine data-plane rule (attacker-injected)
     g_tcam_table.push_back(e);
     g_tcam_rule_count[target_rsu_node_id]++;
+    g_packetin_count[target_rsu_node_id]++;  // attacker's unique-5-tuple packet missed -> PACKET_IN (eq:sig_s4 λ_PI)
+
+    // A malicious FlowMod IS a FlowMod install, so it must count in λ_FM / λ_obs
+    // (eq:sig_s3: λ_FM = FlowMod rate from the controller = legit + malicious).
+    // Without this the S3 windowed excess (λ_obs − E[λ_l|ρ]) stays at the benign
+    // level and S3's rate term is blind to the attack (λ̂_a stays negative -> S3
+    // never fires). Each attack fid is unique (never evicted before) -> always a
+    // NEW install, not a reinstall. E[λ_l|ρ] is fit from BENIGN only (no malicious
+    // installs there), so this does not contaminate the density calibration.
+    g_lambda_new[target_rsu_node_id]++;
+    g_lambda_new_cum[target_rsu_node_id]++;
     // NOTE: intentionally NOT inserted into g_tcam_installed so repeated calls
     // with the same fake_fid could be used for refresh; but dp_attack_tick always
     // increments g_dp_attack_fid_counter so each call is truly unique.
@@ -701,6 +831,9 @@ inline void dp_attack_tick_for(uint32_t attacker_node)
     if (rsu_local_idx < N_RSUs)
     {
         uint32_t target_rsu_node_id = N_Vehicles + rsu_local_idx;
+        // Keep this attacker's already-installed rules on the target RSU alive,
+        // then add one new rule -> persistent accumulation toward capacity.
+        tcam_refresh_malicious_on_node(target_rsu_node_id);
         uint32_t fake_fid = g_dp_attack_fid_counter++;
         tcam_install_malicious(attacker_node, target_rsu_node_id, fake_fid);
     }
@@ -757,6 +890,9 @@ inline void cp_attack_tick()
         if (!controller_compromised[owning_controller]) continue;
 
         uint32_t rsu_idx  = N_Vehicles + r;        // sim node index of RSU r
+        // Keep prior malicious rules on this RSU alive, then add one new rule ->
+        // persistent accumulation toward capacity (slow exhaustion).
+        tcam_refresh_malicious_on_node(rsu_idx);
         uint32_t fake_fid = g_cp_attack_fid_counter++;
         tcam_install_malicious(rsu_idx, rsu_idx, fake_fid); // attacker == victim RSU, same as before
     }

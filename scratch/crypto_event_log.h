@@ -48,7 +48,7 @@ inline void crypto_log_init()
 {
     if (g_crypto_log_open) return;
 
-    std::string path = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    std::string path = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = getenv("HOME");
     if (home)
         path = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
