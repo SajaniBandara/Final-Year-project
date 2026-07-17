@@ -36,27 +36,12 @@
 //
 // ── Active vs Passive distinction ────────────────────────────────────────────
 //
-//   The duplicate packet sent to the eavesdropper is wire-identical for both
-//   variants (send_hidden_duplicate() in routing.cc, shared by both blocks) —
-//   an earlier attempt to tag the wire-level flow_id with a 0xDEAD0000
-//   fabrication marker caused a SIGSEGV (see PENDING_FIXES.md "HF-1") because
-//   that field is used to index pd_all_inst[]/fade_received[] at the receiver.
+//   ACTIVE (Variants 5, 6):  Duplicate packet has flow_id set to
+//     (0xDEAD0000 | original_flow_id) — a fabrication marker that causes
+//     EdDSA verification failure, feeding 𝟙[π_hop=⊥] = 1 into the LSTM.
 //
-//   ACTIVE (Variants 5, 6): content fabrication is instead simulated
-//     cryptographically. mldsa87_verify_copy_content(prev_sender, packet_id,
-//     fabricated=true) (crypto_layer.h), called from s5_detect()/s6_detect(),
-//     re-derives the signed digest with a deliberately corrupted field and
-//     genuinely re-runs OQS_SIG_verify() against the original signature —
-//     a real ML-DSA-87 verification failure, feeding b_hop(u)=0 and
-//     ML-DSA-87.Verify=0 (eq:sig_s5/eq:sig_s6) into S5/S6 and, via
-//     g_lstm_stark_counts, 𝟙[π_hop=⊥]=1 into the LSTM.
-//
-//   PASSIVE (Variants 7, 8): exact copy, no content change.
-//     mldsa87_verify_copy_content(..., fabricated=false) reconstructs the
-//     exact digest that was actually signed, so OQS_SIG_verify() genuinely
-//     succeeds (ML-DSA-87.Verify=1, eq:sig_s7/eq:sig_s8) — real content-
-//     authenticity confirmation, not a hardcoded pass. Still undetectable by
-//     volume/conservation methods alone (FADE MCC = 0 on this signal).
+//   PASSIVE (Variants 7, 8):  Exact copy, no content change.
+//     Undetectable by volume/conservation methods (FADE MCC = 0).
 //
 // ── Multi-RSU scaling (SUMO networks) ────────────────────────────────────────
 //
@@ -825,21 +810,91 @@ inline void hf_init_attack8_dp(uint32_t flow_id,
 }
 
 // =============================================================================
-// DUPLICATE SENDER — called from check_delivery_and_retransmit
+// DUPLICATE SENDERS — called from check_delivery_and_retransmit
 // =============================================================================
-//
-// NOTE: hf_send_passive_duplicate()/hf_send_active_duplicate() (helper
-// wrappers that used to live here) were dead code — never called from
-// routing.cc. The real active/passive HF duplicate-scheduling logic is
-// inlined directly in check_delivery_and_retransmit() (routing.cc, the
-// "=== ACTIVE HIDDEN FORWARDING (Attacks 5 & 6) ===" and
-// "=== PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) ===" blocks), which
-// stage the g_hdup_* globals and schedule send_hidden_duplicate_trampoline()
-// directly. Removed 2026-07-16 to avoid the stale copies (which still
-// referenced the reverted 0xDEAD0000 wire marker — see PENDING_FIXES.md
-// "HF-1") misleading future readers into thinking they were the live path.
 
 // Forward-declare the trampoline (defined in routing.cc)
 void send_hidden_duplicate_trampoline();
+
+// ── Passive duplicate (Variants 7, 8) — exact unmodified copy ────────────────
+inline void hf_send_passive_duplicate(uint32_t rsu_node,
+                                       uint32_t eavesdropper_node,
+                                       uint32_t flow_id,
+                                       uint32_t packet_id,
+                                       uint32_t channel,
+                                       uint32_t p_size,
+                                       Time     original_timestamp)
+{
+    g_hdup_rsu         = rsu_node;
+    g_hdup_eaves       = eavesdropper_node;
+    g_hdup_flow_id     = flow_id;           // unmodified
+    g_hdup_packet_id   = packet_id;
+    g_hdup_channel     = channel;
+    g_hdup_p_size      = p_size;
+    g_hdup_timestamp   = original_timestamp;
+    g_hdup_intentional = true;
+    g_total_copies_scheduled++;
+
+    HfDuplicateEvent ev;
+    ev.event_time     = Simulator::Now().GetSeconds();
+    ev.flow_id        = flow_id;
+    ev.packet_id      = packet_id;
+    ev.malicious_node = rsu_node;
+    ev.eavesdropper   = eavesdropper_node;
+    ev.is_active      = false;
+    ev.is_cp          = (active_attack_variant == 6); // variant 6 = Attack 7 CP
+    g_hf_event_log.push_back(ev);
+
+    std::cout << "[HF PASSIVE] RSU(" << rsu_node << ")"
+              << " -> eavesdropper(" << eavesdropper_node << ")"
+              << " pkt=" << packet_id << " flow=" << flow_id
+              << " [" << (ev.is_cp ? "CP" : "DP") << "] UNMODIFIED copy"
+              << " t=" << ev.event_time << "s" << std::endl;
+
+    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
+}
+
+// ── Active duplicate (Variants 5, 6) — content-fabricated copy ───────────────
+// Sets g_hdup_flow_id to (0xDEAD0000 | flow_id) so the tag in the duplicate
+// packet contains a tampered flow ID. This causes EdDSA verification failure
+// at the receiver, which MOBIGUARD detects as π_hop = ⊥.
+//
+inline void hf_send_active_duplicate(uint32_t rsu_node,
+                                      uint32_t eavesdropper_node,
+                                      uint32_t flow_id,
+                                      uint32_t packet_id,
+                                      uint32_t channel,
+                                      uint32_t p_size,
+                                      Time     original_timestamp)
+{
+    g_hdup_rsu         = rsu_node;
+    g_hdup_eaves       = eavesdropper_node;
+    g_hdup_flow_id     = 0xDEAD0000u | flow_id;   // fabrication marker
+    g_hdup_packet_id   = packet_id;
+    g_hdup_channel     = channel;
+    g_hdup_p_size      = p_size;
+    g_hdup_timestamp   = original_timestamp;
+    g_hdup_intentional = true;
+    g_total_copies_scheduled++;
+
+    HfDuplicateEvent ev;
+    ev.event_time     = Simulator::Now().GetSeconds();
+    ev.flow_id        = flow_id;
+    ev.packet_id      = packet_id;
+    ev.malicious_node = rsu_node;
+    ev.eavesdropper   = eavesdropper_node;
+    ev.is_active      = true;
+    ev.is_cp          = (active_attack_variant == 4); // variant 4 = Attack 5 CP
+    g_hf_event_log.push_back(ev);
+
+    std::cout << "[HF ACTIVE] RSU(" << rsu_node << ")"
+              << " -> eavesdropper(" << eavesdropper_node << ")"
+              << " pkt=" << packet_id << " flow=" << flow_id
+              << " fabricated_flow_id=0x" << std::hex << (0xDEAD0000u | flow_id) << std::dec
+              << " [" << (ev.is_cp ? "CP" : "DP") << "] CONTENT MODIFIED — EdDSA FAIL"
+              << " t=" << ev.event_time << "s" << std::endl;
+
+    Simulator::Schedule(Seconds(0.001), send_hidden_duplicate_trampoline);
+}
 
 #endif // HF_ATTACK_HELPER_H

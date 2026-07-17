@@ -17,7 +17,7 @@
 //     crypto_event_log.h                 (for crypto_log_start/event)
 //     blockchain_sim.h                   (for bc_write_event)
 //     tcam_detection.h                   (for g_prev_rule_count,
-//                                          g_prev_slowpath_hits, TCAM_CAPACITY)
+//                                          g_prev_slowpath_hits, TCAM_HW_SIZE)
 //     tcam_attack_helper.h               (for g_tcam_table, TcamEntry)
 //     hf_attack_helper.h                 (for active/passive_hf_malicious_nodes)
 //
@@ -170,7 +170,7 @@ inline LRADTcamSnapshot lrad_tcam_snapshot(uint32_t rsu_node_id)
     if (rsu_node_id >= 300) return snap;
 
     // TCAM utilisation: rules currently installed vs hardware capacity.
-    double tcam_util = g_tcam_rule_count[rsu_node_id] / (double)TCAM_CAPACITY;
+    double tcam_util = g_tcam_rule_count[rsu_node_id] / (double)TCAM_HW_SIZE;
     if (tcam_util < 0.0) tcam_util = 0.0;
     if (tcam_util > 1.0) tcam_util = 1.0;
 
@@ -268,7 +268,6 @@ inline LRADRSUFlags lrad_rsu(
     uint32_t     obu_assoc_rsu_node_id  /* = UINT32_MAX */)  // S3/S4 suspect
 {
     LRADRSUFlags flags;
-    if (!enable_lrad_rsu) return flags; // AB1-A: RSU engine off — all-false, no escalation processing
     auto _t0 = crypto_log_start();
 
     // Use .find() — never operator[] — to avoid silently inserting a
@@ -401,12 +400,10 @@ inline void escalate_to_rsu(
 // Evaluates S1, S2-partial, S3, S4 at the OBU (vehicle) and writes D_OBU.
 // If D_OBU=1, triggers escalation to the associated RSU.
 //
-// prev_sender: the node that forwarded this packet to `vehicle`. Used for
-//   S2-partial's HMAC lookup below (that tag was stamped by prev_sender).
-//   NOT used for S1's ground-truth attribution (see note at the S1 call
-//   below) — main.tex's alg:lrad_obu takes no "previous sender" parameter
-//   at all; it evaluates the baseline for RSU r and escalates to that same
-//   r, with no separate sender concept.
+// prev_sender: the node that forwarded this packet to `vehicle`; used as
+//   sender_node_id in s1_detect_packet() so record_detection_event() targets
+//   the forwarding RSU (the potential attacker), NOT the receiving vehicle.
+//   Passing vehicle here would corrupt TP/FP/FN counts.
 // =========================================================================
 
 inline LRADOBUFlags lrad_obu(
@@ -420,7 +417,6 @@ inline LRADOBUFlags lrad_obu(
     uint32_t assoc_rsu_local_idx)   // RSU local index (0..N_RSUs-1)
 {
     LRADOBUFlags flags;
-    if (!enable_lrad_obu) return flags; // AB1-B: OBU engine off — all-false, no escalation
     auto _t0 = crypto_log_start();
 
     // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────
@@ -429,17 +425,7 @@ inline LRADOBUFlags lrad_obu(
     if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
         flags.flag_S1 = s1_detect_packet(
             assoc_rsu_local_idx, delta_p, is_high_priority,
-            // sender_node_id → fed into record_detection_event. Must be the
-            // associated RSU (matching alg:lrad_obu's ESCALATE(p,v,r,...)
-            // and the ground-truth model, which marks RSUs malicious via
-            // controller compromise — never vehicles). prev_sender is the
-            // immediate previous hop, which in multi-hop VANET routing is
-            // very often another vehicle; since ground truth never marks
-            // vehicles malicious, that misattribution was a guaranteed
-            // false positive whenever it happened — confirmed empirically:
-            // 265 of 276 S1 firings targeted vehicle-range IDs in a 0%-
-            // attack (zero ground-truth-malicious) baseline run.
-            N_Vehicles + assoc_rsu_local_idx,
+            prev_sender,            // sender_node_id → fed into record_detection_event
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
     }

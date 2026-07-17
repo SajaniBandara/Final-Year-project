@@ -25,18 +25,15 @@
 //       unauthorized FlowMod.
 //   (2) prev_sender is the flagged active malicious RSU:
 //       active_hf_malicious_nodes[prev_sender] == true.
-//   (3) ML-DSA-87 failure (content fabricated): a REAL cryptographic check via
-//       mldsa87_verify_copy_content(prev_sender, packet_id, fabricated=true)
-//       (crypto_layer.h) — re-derives the signed digest with a deliberately
-//       corrupted field and genuinely re-runs OQS_SIG_verify() against the
-//       original signature, independent of hop identity (see the
-//       "REIMPLEMENTED 2026-07-16" comment at the call site for the full
-//       trace of why mldsa87_verify() itself cannot be reused here).
-//   (4) b_hop(u) = 0: a FRESH, receiver-specific call to the pure function
-//       stark_verify_hop(current_hop, prev_sender, packet_id) — directly
-//       compares the eavesdropper's own current_hop against the record's
-//       signed_next_hop, with no shared-state side effects. Kept logically
-//       independent from (3) per Eq. sig_s5.
+//   (3) ML-DSA-87 failure: recv_flow_id carries the 0xDEAD0000 fabrication
+//       marker set by hf_send_active_duplicate(). In deployed MOBIGUARD this
+//       corresponds to ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0.
+//   (4) b_hop(u) = 0: kept as an INDEPENDENT check from ML-DSA-87.
+//       In deployed MOBIGUARD, STARK.Verify(π_hop(u), C_hop, H_SHA3) = 0
+//       because d' ∉ P(s,d) — the RSU cannot produce a valid hop ZKP for an
+//       unauthorized destination. Simulation proxy: active_hf_malicious_nodes
+//       [prev_sender] (already confirmed in conjunction 2; re-stated explicitly
+//       per Eq. sig_s5 to keep the two conditions logically separable).
 //
 // DESIGN NOTE:
 //   Included inside routing.cc AFTER all global variable declarations, so
@@ -45,10 +42,8 @@
 //   Do NOT include this header before the global declarations.
 //
 // INDEPENDENCE:
-//   S5 has no individual master-enable flag — gated solely by
-//   enable_lrad_rsu (AB1, lrad.h) via s5_detect()'s only call site inside
-//   lrad_rsu(). No per-signature toggle is specified anywhere in main.tex;
-//   removed 2026-07-09.
+//   Controlled solely by s5_detection_active (declared in routing.cc).
+//   Disabling any other detection switch does not affect S5.
 // =========================================================================
 
 #include <iostream>
@@ -57,6 +52,9 @@
 
 using namespace ns3;
 using namespace std;
+
+// Fabrication marker placed in flow_id field by hf_send_active_duplicate()
+static const uint32_t S5_DEAD_MARKER = 0xDEAD0000u;
 
 // =========================================================================
 // s5_detect():
@@ -68,13 +66,14 @@ using namespace std;
 //   1. active_attack_variant == 4      (CP active HF — Attack 5)
 //   2. prev_sender is a known active malicious RSU
 //      (active_hf_malicious_nodes[prev_sender] == true)
-//   3. ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0 — ground truth via (2)
-//   4. b_hop(u) = 0 — fresh stark_verify_hop(current_hop, prev_sender, packet_id)
-//      call; fails because d' is absent from the authorized next-hop policy
-//      P(s,d) for this flow.
+//   3. recv_flow_id carries the 0xDEAD0000 fabrication marker
+//      (ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0)
+//   4. b_hop(u) = 0 — independent from ML-DSA-87; confirmed by (2).
+//      STARK hop ZKP fails because d' is absent from the authorized next-hop
+//      policy P(s,d) for this flow.
 //
 // Parameters:
-//   recv_flow_id  — flow ID from the received packet tag (retained for logging)
+//   recv_flow_id  — flow ID from the received packet tag (may carry 0xDEAD0000)
 //   prev_sender   — node that sent this packet (the malicious RSU, u)
 //   current_hop   — node currently receiving the packet (the eavesdropper, d')
 //   packet_id     — packet ID (for logging and detection event recording)
@@ -86,6 +85,8 @@ inline bool s5_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
+    if (!s5_detection_active) return false;
+
     // Conjunction 1: FlowMod not committed to blockchain — unauthorized (eq:unauth_flowmod).
     // bc_query_flowmod returns true iff the FlowMod was f+1 endorsed and committed.
     // If committed, the FlowMod is legitimate → S5 does not fire.
@@ -97,45 +98,24 @@ inline bool s5_detect(uint32_t recv_flow_id,
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!active_hf_malicious_nodes[prev_sender]) return false;
 
-    // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0 (content fabricated).
-    //
-    // REIMPLEMENTED 2026-07-16 — mldsa87_verify() cannot be called fresh here:
-    // for ANY eavesdropper (next_hop != signed_next_hop) it deterministically
-    // hits its broadcast-skip early-return regardless of active vs passive
-    // content, since that function conflates hop-legitimacy with content
-    // authenticity. The 0xDEAD0000-marker approach (see PENDING_FIXES.md
-    // "HF-1") tried to fix this by tagging the fabricated copy's flow_id on
-    // the wire, but that field is used to index pd_all_inst[]/fade_received[]
-    // at the receiver, and the SIGSEGV came from indexing with the corrupted
-    // value — the fabrication marker itself was never the problem.
-    //
-    // mldsa87_verify_copy_content() (crypto_layer.h) checks content
-    // authenticity ONLY, independent of hop identity: it re-derives the
-    // signed digest using a deliberately corrupted nonce field (simulating
-    // the attacker altering the message before forwarding the copy) and runs
-    // a REAL OQS_SIG_verify() against the original signature — a genuine
-    // cryptographic failure, not a restated ground-truth boolean. Conjunction
-    // 2 above already confirms prev_sender is a flagged ACTIVE HF attacker, so
-    // fabricated=true is passed here (this specific duplicate IS the
-    // attacker-fabricated copy); the crypto call still does real work and
-    // would genuinely fail even if invoked blind.
-    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true);
+    // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0
+    // Primary: result of mldsa87_verify() stored in g_packet_crypto by MacRx.
+    // Fallback to 0xDEAD0000 marker if crypto record not yet populated.
+    auto it_s5 = g_packet_crypto.find({prev_sender, packet_id});
+    bool mldsa_fails;
+    if (it_s5 != g_packet_crypto.end() && it_s5->second.sig_len > 0)
+        mldsa_fails = !it_s5->second.sig_valid;
+    else
+        mldsa_fails = ((recv_flow_id & S5_DEAD_MARKER) == S5_DEAD_MARKER);
 
-    // Conjunction 4: b_hop(u) = 0 (STARK hop-legitimacy proof fails).
-    //
-    // FIXED 2026-07-10 — stark_hop_ok on the shared g_packet_crypto record has
-    // the identical staleness problem as sig_valid above: it is written only
-    // by stark_update_meta(), which is called from routing.cc gated on the
-    // CALLER's own sig_ok — true only for the legitimate recipient (whose
-    // hop IS correct), never for an eavesdropper. So the shared field reflects
-    // the legitimate recipient's (correct) hop, not the eavesdropper's.
-    //
-    // stark_verify_hop() itself, however, is a PURE function with no shared-
-    // state side effects — it directly compares its current_hop argument
-    // against the record's (immutable, set-once-at-signing) signed_next_hop.
-    // Calling it fresh, here, with the EAVESDROPPER's own current_hop gives a
-    // correct, deterministic, receiver-specific answer with zero race risk.
-    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+    // Conjunction 4: b_hop(u) = 0 — INDEPENDENT from ML-DSA-87.
+    // Primary: stark_hop_ok from g_packet_crypto set by stark_update_meta().
+    // Fallback: active_hf_malicious_nodes ground truth.
+    bool b_hop_fails;
+    if (it_s5 != g_packet_crypto.end() && it_s5->second.sig_len > 0)
+        b_hop_fails = !it_s5->second.stark_hop_ok;
+    else
+        b_hop_fails = active_hf_malicious_nodes[prev_sender];
 
     // Conjunction 0 (Eq. sig_s5 first term): d' ∉ P(s,d).
     // Explicit guard: if current_hop is the legitimate authorized destination for
@@ -168,27 +148,18 @@ inline bool s5_detect(uint32_t recv_flow_id,
              << " sender_rsu u=" << prev_sender
              << " d' ∉ P(s,d) (current_hop is NOT the authorized destination)"
              << " FlowMod(CP) installed by poisoned controller"
-             << " ML-DSA-87.Verify=0 (content fabricated, active-HF ground truth)"
+             << " ML-DSA-87.Verify=0 (0xDEAD0000 fabrication marker)"
              << " b_hop(u)=⊥ (STARK hop ZKP fails; independent of ML-DSA-87)"
              << " flow=" << base_flow_id
              << " pkt=" << packet_id
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
-        // Bucket is S5's OWN designated variant (4 = Attack 5, Active HF CP),
-        // NOT active_attack_variant — same misattribution fix as S1/S2.
-        // Unlike S6/S7/S8 (which gate on active_attack_variant and so were
-        // already implicitly safe), S5 has NO variant gate and shares its
-        // ground-truth array (active_hf_malicious_nodes) with S6/Attack 6 —
-        // confirmed 2026-07-14 as the DOMINANT contamination source: 155 of
-        // 221 detection events recorded into Attack 6's own bucket during an
-        // A6-only run actually came from S5, not S6.
-        const int S5_HOME_VARIANT = 4;   // Attack 5, per main.tex Signature S5
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[S5_HOME_VARIANT][prev_sender])
+            !is_detected_node[active_attack_variant][prev_sender])
         {
-            record_detection_event(S5_HOME_VARIANT, prev_sender);
+            record_detection_event(active_attack_variant, prev_sender);
             cout << "[S5] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << S5_HOME_VARIANT
+                 << prev_sender << " variant=" << active_attack_variant
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

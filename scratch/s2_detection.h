@@ -20,10 +20,8 @@
 //   before the global declarations.
 //
 // INDEPENDENCE:
-//   S2 has no individual master-enable flag — gated solely by
-//   enable_lrad_rsu (AB1, lrad.h) via s2_detect_packet()'s only call site
-//   inside lrad_rsu(). No per-signature toggle is specified anywhere in
-//   main.tex; removed 2026-07-09.
+//   S2 uses its own s2_detection_active flag (declared in routing.cc),
+//   independent of s1_detection_active. Disabling S1 does not affect S2.
 // =========================================================================
 
 #include <iostream>
@@ -63,6 +61,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
                               uint32_t packet_id,
                               uint32_t flow_id)
 {
+    if (!s2_detection_active) return false;
     if (sender_sim_index >= (uint32_t)var) return false;
     if (packet_id >= (uint32_t)(Flow_size + 2)) return false;
 
@@ -76,28 +75,15 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     double t_fwd_by_sender = t_claimed_packet[sender_sim_index][packet_id];
     if (t_fwd_by_sender <= 0.0) return false;
 
-    // eq:delay_updated — t_fwd_by_sender is the sender's own (possibly
-    // Byzantine-compromised) clock reading (node_local_time(), M9
-    // TIME_REF_F_BAD/TIME_REF_DELTA_ATTACK); anchor it using the sender's
-    // known offset before computing the hop delay, so a compromised sender
-    // cannot inflate its own claim to hide a real delay from THIS signature's
-    // own detection decision (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md —
-    // this correction was originally missed here, fixed on re-audit).
-    double t_fwd_anchored = t_fwd_by_sender - node_clock_offset(sender_sim_index);
-    double hop_delay = t_recv_now - t_fwd_anchored;
+    double hop_delay = t_recv_now - t_fwd_by_sender;
 
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
     bool delay_exceeds = (hop_delay > S2_DELTA_MAX);
 
     // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥  (eq:stark_delay_verify)
-    // Must use the same anchored timestamp as hop_delay above — otherwise a
-    // compromised sender's offset would make delay_exceeds and zkp_proof_fails
-    // disagree (STARK's own internal threshold re-check would see the raw,
-    // deceptively-small interval and could pass even when the anchored
-    // hop_delay correctly flags a violation), silently suppressing S2.
-    StarkTimingProof proof = stark_prove_timing(t_fwd_anchored, t_recv_now,
+    StarkTimingProof proof = stark_prove_timing(t_fwd_by_sender, t_recv_now,
                                                 (uint32_t)packet_id);
-    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_anchored, t_recv_now);
+    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_by_sender, t_recv_now);
 
     cout << "[S2] sender=" << sender_sim_index
          << " receiver=" << current_hop
@@ -119,16 +105,13 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
              << " sender node " << sender_sim_index
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
-        // Bucket is S2's OWN designated variant (1 = Attack 2, Selective Delay
-        // DP), NOT active_attack_variant — same misattribution fix as S1
-        // (see s1_detection.h). main.tex: "one primary signature per variant."
-        const int S2_HOME_VARIANT = 1;   // Attack 2, per main.tex Signature S2
-        if (sender_sim_index < (uint32_t)total_size &&
-            !is_detected_node[S2_HOME_VARIANT][sender_sim_index])
+        if (active_attack_variant >= 0 &&
+            sender_sim_index < (uint32_t)total_size &&
+            !is_detected_node[active_attack_variant][sender_sim_index])
         {
-            record_detection_event(S2_HOME_VARIANT, sender_sim_index);
+            record_detection_event(active_attack_variant, sender_sim_index);
             cout << "[S2] record_detection_event fired for node "
-                 << sender_sim_index << " variant=" << S2_HOME_VARIANT
+                 << sender_sim_index << " variant=" << active_attack_variant
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

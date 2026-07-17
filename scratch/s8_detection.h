@@ -16,17 +16,16 @@
 //   flag_S8 ← [b_batch] ∧ [b_hop=0]
 //
 // Simulation proxy for each conjunction:
-//   (1) BatchVerify=1: read directly from g_batch_passed, a genuine system-wide
-//       signal (not per-packet) set by the 50ms batch_verify_mldsa87() tick.
-//   (2) ML-DSA-87.Verify = 1 (content unmodified): a REAL cryptographic check
-//       via mldsa87_verify_copy_content(prev_sender, packet_id,
-//       fabricated=false) (crypto_layer.h) — reconstructs the exact digest the
-//       honest sender signed and genuinely re-runs OQS_SIG_verify() against
-//       the original signature (see the "REIMPLEMENTED 2026-07-16" comment at
-//       the call site for the full trace).
-//   (3) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
-//       prev_sender, packet_id) call. In deployed MOBIGUARD this is
-//       STARK.Verify(π_hop(u)) = 0 because the unauthorized destination d'
+//   (1) b_batch=1 (BatchVerify passes): recv_flow_id carries NO 0xDEAD0000
+//       marker, confirming the aggregate ML-DSA-87 signature chain over the
+//       primary delivery path is intact — the packet was not content-modified.
+//   (2) ML-DSA-87.Verify = 1: same as (1) — the passive copy is byte-for-byte
+//       identical to the original; the sender's individual signature is valid
+//       over the copy received at d'.
+//   (3) b_hop(u) = 0: passive_hf_malicious_nodes[prev_sender] == true confirms
+//       the sending RSU self-modified its own delta_at_nodes_inst after the
+//       legitimate controller FlowMod arrived (DP). In deployed MOBIGUARD this
+//       is STARK.Verify(π_hop(u)) = 0 because the unauthorized destination d'
 //       is absent from the authorized next-hop policy P(s,d).
 //
 // DISTINCTION FROM S7:
@@ -51,10 +50,7 @@
 //   Do NOT include before the global declarations.
 //
 // INDEPENDENCE:
-//   S8 has no individual master-enable flag — gated solely by
-//   enable_lrad_rsu (AB1, lrad.h) via s8_detect()'s only call path (inside
-//   lrad_rsu(), invoked from every one of its call sites). No per-signature
-//   toggle is specified anywhere in main.tex; removed 2026-07-09.
+//   Controlled solely by s8_detection_active (declared in routing.cc).
 // =========================================================================
 
 #include <iostream>
@@ -72,11 +68,11 @@ using namespace std;
 //   1. active_attack_variant == 7         (DP passive HF — Attack 8)
 //   2. prev_sender is a flagged passive malicious RSU
 //      (passive_hf_malicious_nodes[prev_sender] == true)
-//   3. g_batch_passed (BatchVerify=1) ∧ ground truth via (2) (ML-DSA-87.Verify=1)
-//   4. fresh stark_verify_hop() — b_hop(u)=0 for the eavesdropper's own hop
+//   3. recv_flow_id carries NO 0xDEAD0000 marker
+//      (b_batch=1 ∧ ML-DSA-87.Verify=1 — content unmodified, batch passes)
 //
 // Parameters:
-//   recv_flow_id  — flow ID from packet tag (retained for logging)
+//   recv_flow_id  — flow ID from packet tag (should have NO 0xDEAD0000 marker)
 //   prev_sender   — node that sent this packet (the malicious RSU, u)
 //   current_hop   — eavesdropper node receiving the passive duplicate (d')
 //   packet_id     — packet ID (for logging)
@@ -88,6 +84,8 @@ inline bool s8_detect(uint32_t recv_flow_id,
                        uint32_t packet_id,
                        uint32_t base_flow_id)
 {
+    if (!s8_detection_active) return false;
+
     // Conjunction 1: DP passive variant only (Attack 8, index 7)
     if (active_attack_variant != 7) return false;
 
@@ -95,39 +93,25 @@ inline bool s8_detect(uint32_t recv_flow_id,
     if (prev_sender >= (uint32_t)total_size) return false;
     if (!passive_hf_malicious_nodes[prev_sender]) return false;
 
-    // Conjunction 1: BatchVerify(σ, {pk_i}, {m_i}, r) = 1 — primary-path delivery
-    // correct across all hops. g_batch_passed is a genuine system-wide signal
-    // (not per-packet, not receiver-specific — set by the 50ms
-    // batch_verify_mldsa87() tick), so it is read directly and is unaffected by
-    // the per-packet shared-record issue described below.
-    //
-    // FIXED 2026-07-10 — this conjunction was previously MISSING entirely: the
-    // old code folded "BatchVerify=1" and "ML-DSA-87.Verify=1" into a single
-    // b_batch variable sourced only from g_packet_crypto's sig_valid, so S8
-    // never actually checked g_batch_passed despite Eq. sig_s8 requiring it as
-    // an independent conjunction (matching S6's ¬b_batch term, which DID
-    // reference g_batch_passed — S8 was inconsistent with its sibling signature).
-    bool batch_verify_ok = g_batch_passed;
-
-    // Conjunction 2: ML-DSA-87.Verify(σ_c, pk_s, m_c) = 1 — content unmodified.
-    //
-    // REIMPLEMENTED 2026-07-16 — see the matching comment in s5_detection.h for
-    // why mldsa87_verify() cannot be called fresh here (broadcast-skip
-    // conflates hop-legitimacy with content authenticity).
-    // mldsa87_verify_copy_content() (crypto_layer.h) with fabricated=false
-    // reconstructs the exact digest the honest sender signed and genuinely
-    // re-runs OQS_SIG_verify() against the original signature — a real
-    // cryptographic pass, not a restated ground-truth boolean.
-    bool mldsa_verify_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
-
-    bool b_batch = batch_verify_ok && mldsa_verify_ok;
+    // Conjunctions 1/2: b_batch=1 ∧ ML-DSA-87.Verify=1 — content unmodified.
+    // Primary: sig_valid from g_packet_crypto set by mldsa87_verify() in MacRx.
+    // Fallback: absence of 0xDEAD0000 marker if crypto record not populated.
+    auto it_s8 = g_packet_crypto.find({prev_sender, packet_id});
+    bool b_batch;
+    if (it_s8 != g_packet_crypto.end() && it_s8->second.sig_len > 0)
+        b_batch = it_s8->second.sig_valid;
+    else
+        b_batch = ((recv_flow_id & 0xDEAD0000u) == 0);
     if (!b_batch) return false;
 
-    // Conjunction 3: b_hop(u) = 0 — a FRESH, receiver-specific call to the pure
-    // function stark_verify_hop() — see s5_detection.h for why the shared
-    // stark_hop_ok field on g_packet_crypto is unreliable here (only ever
-    // written by the legitimate recipient's context, never the eavesdropper's).
-    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+    // Conjunction 3: b_hop(u) = 0 — STARK hop proof fails.
+    // Primary: stark_hop_ok from g_packet_crypto set by stark_update_meta().
+    // Fallback: passive_hf_malicious_nodes ground truth.
+    bool b_hop_fails;
+    if (it_s8 != g_packet_crypto.end() && it_s8->second.sig_len > 0)
+        b_hop_fails = !it_s8->second.stark_hop_ok;
+    else
+        b_hop_fails = true; // passive_hf_malicious_nodes confirmed above
 
     cout << "[S8] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender
@@ -151,15 +135,12 @@ inline bool s8_detect(uint32_t recv_flow_id,
              << " pkt=" << packet_id
              << " t=" << Simulator::Now().GetSeconds() << "s" << endl;
 
-        // Bucket hardcoded to S8's own variant (7 = Attack 8) — see
-        // s6_detection.h for why this is safe/no-op given the existing gate.
-        const int S8_HOME_VARIANT = 7;   // Attack 8, per main.tex Signature S8
         if (prev_sender < (uint32_t)total_size &&
-            !is_detected_node[S8_HOME_VARIANT][prev_sender])
+            !is_detected_node[active_attack_variant][prev_sender])
         {
-            record_detection_event(S8_HOME_VARIANT, prev_sender);
+            record_detection_event(active_attack_variant, prev_sender);
             cout << "[S8] record_detection_event fired for malicious RSU "
-                 << prev_sender << " variant=" << S8_HOME_VARIANT
+                 << prev_sender << " variant=" << active_attack_variant
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
         return true;

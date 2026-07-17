@@ -46,10 +46,8 @@ NS3_RESULTS  = NS3_DIR / "results_routing"       # blockchain CSVs (hardcoded BC
 # Use default network size — small networks cause routing topology crashes.
 # DKG, sign/verify, batch ticks and T_ref sync all fire early regardless of attack.
 SIM_TIME    = 5      # seconds — enough for DKG + ~100 batch ticks + packet flows
-SIM_ATTACK  = 2      # Attack 2 (data-plane selective delay): S2 detection (and therefore
-                     # STARK-PROVE) runs whenever enable_lrad_rsu is on (default true) —
-                     # no longer tied to a per-attack_number flag; SIM_ATTACK=2 just picks
-                     # a variant that actually produces safety-critical S2-eligible traffic.
+SIM_ATTACK  = 2      # Attack 2 (data-plane selective delay): pass as --attack_number so
+                     # declare_attack_states() arms s2_detection_active=true → STARK-PROVE fires
 SIM_TIMEOUT = 420    # seconds — waf+simulation wall-clock budget
 
 # FIPS 204 / liboqs ML-DSA-87 constants  (verified from oqs/sig_ml_dsa.h)
