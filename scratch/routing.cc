@@ -121024,26 +121024,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						{
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
-						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
-						              << " rules=" << g_tcam_rule_count[current_hop]
-						              << "/" << TCAM_CAPACITY
-						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
-						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
-						              << std::endl;
-						}
-
-						// TCAM slow-path delay (Attacks 3 & 4).
-						// Real TCAM lookup is O(1) — fill level does not affect latency.
-						// The penalty fires only when the table is AT OR ABOVE capacity:
-						// the incoming packet has no matching rule, so it takes the
-						// controller slow path (PacketIn → FlowMod round-trip).
-						// Below capacity the packet hits a rule immediately (0 extra delay).
-						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
-						    current_hop >= N_Vehicles &&
-						    g_tcam_rule_count[current_hop] >= TCAM_CAPACITY)
-						{
-						    total_tx_delay += tcam_slowpath_s;
-						    g_slowpath_hit_count[current_hop]++;
+						    g_packetin_count[current_hop]++;  // full-table miss is also a PACKET_IN (eq:sig_s4 λ_PI)
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
 						              << "/" << TCAM_CAPACITY
