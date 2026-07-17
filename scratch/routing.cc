@@ -114751,6 +114751,31 @@ uint32_t sim_run  = 1;  // run index, distinct per seed
 // Indexed by flow_id (0 to 2*flows-1).
 bool is_safety_critical_flow[Flow_size + 2] = {false};
 
+// === ATTACK 1 (variant 0): the poisoned FlowMod installed by the malicious controller ===
+// main.tex §1387: "an adversary acting as a malicious controller ... transmits manipulated
+// flowMod packets to the RSU. When a legitimate packet arrives at the RSU, it is processed
+// according to these compromised instructions, causing the RSU to forward the packet with
+// an intentional, variable delay."
+//
+// This array IS that poisoned flowMod, one rule per RSU:
+//   match  = Priority(p) = HIGH   (applied at the call site via is_safety_critical_flow[])
+//   action = forward with delay delta_a  (the value stored here, from --attack_delay_ms)
+// Indexed by node id; 0.0 = no poisoned rule installed on that node (benign).
+//
+// Why a per-node rule rather than routing_tables[rsu].rows[dst].injected_delay:
+// routing_tables' rows are indexed BY DESTINATION, so a rule stored there can only ever
+// mean "delay packets going to destination D". Signature S1 (eq:sig_s1) requires the
+// opposite — the match is the PRIORITY CLASS, not the destination: "only high-priority
+// packets are delayed, while best-effort traffic from the same RSU remains within
+// baseline" (main.tex:1730-1737). No equation that consumes this delay (eq:sig_s1,
+// eq:rule_s1, eq:tvr, eq:delay_updated) is indexed by destination — they are all indexed
+// by (source vehicle v, RSU r, t) and gated on priority. The destination-keyed form could
+// therefore only fire when a poisoned (RSU,dst) pair coincided with the traffic's actual
+// (forwarding-node,dst) pair, which almost never happened: at attack_percentage=20 a
+// 15s run installed 80 poisoned rules and applied the delay 0 times across 447 forwards
+// (every read returned 0.000ms), which is why Attack 1 barely fired below 100%.
+double cp_poisoned_flowmod_delay[total_size] = {0.0};
+
 // === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
 // Malicious controller installs junk FlowMod rules into every RSU's TCAM at
 // attack_rate_pps rules/second. Entries flagged is_malicious=1.
@@ -115297,6 +115322,17 @@ void poison_test_network_cp_attackers()
 {
 	if (active_attack_variant == 0)
 	{
+		// routing_test (5-unit) topology only. Nodes 15/16 are its hardcoded
+		// compromised RSUs (see hardcode_test_network_attackers() below, which sets
+		// is_malicious_node[0][15]/[16]). Install the same per-node poisoned flowMod
+		// the SUMO path uses (reapply_cp_selective_delay), so the forwarding sites —
+		// which now read cp_poisoned_flowmod_delay[] rather than the destination-keyed
+		// routing_tables entry — actually apply the delay here too.
+		cp_poisoned_flowmod_delay[15] = 0.080;
+		cp_poisoned_flowmod_delay[16] = 0.080;
+
+		// Kept for the routing decision + audit log only; the injected_delay it writes
+		// into routing_tables is no longer read by the forwarding path.
 		update_route_malicious(15, 1, 1, 0.080);
 		update_route_malicious(16, 3, 3, 0.080);
 	}
@@ -120895,20 +120931,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             fade_forwarded_count[flow_id][current_hop]++;
                         }
 
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
-						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
-
-						// TEMP DIAGNOSTIC — 2026-07-16, see matching note at the
-						// check_and_transmit() call site (~line 124091). Remove once root-caused.
-						if (present_selective_delay_cp_attack) {
-							cout << "[ATTACK1-DEBUG-RETX] t=" << Simulator::Now().GetSeconds()
-							     << " flow_id=" << flow_id << " current_hop=" << current_hop
-							     << (current_hop < N_Vehicles ? " (vehicle)" : " (RSU)")
-							     << " dest_for_lookup=" << dest_for_lookup
-							     << " injected=" << injected * 1000.0 << "ms"
-							     << " is_safety_critical=" << is_safety_critical_flow[flow_id]
-							     << endl;
-						}
+						// Attack 1 (CP): the poisoned flowMod installed on THIS forwarding node.
+						// Same rule as the check_and_transmit() site — match is the priority
+						// class (applied via is_safety_critical_flow[flow_id] below), not the
+						// destination. See cp_poisoned_flowmod_delay's declaration for why.
+						double injected = cp_poisoned_flowmod_delay[current_hop];
 
 						double total_tx_delay = calculate_unified_selective_delay(
 							present_selective_delay_attack_nodes,
@@ -124140,23 +124167,16 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							default:   dev_to_use = wifidevices.Get(source); break;
 						}
 						
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
-						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
-
-						// TEMP DIAGNOSTIC — 2026-07-16, tracing why Attack 1's poisoned
-						// injected_delay never reaches schedule_unified_selective_delay_attack()
-						// (its own "obeying poisoned flowMod" line had zero occurrences in a
-						// full 38s/pct20 run). Remove once root-caused. Gated on
-						// present_selective_delay_cp_attack so it's silent outside Attack 1 runs.
-						if (present_selective_delay_cp_attack) {
-							cout << "[ATTACK1-DEBUG] t=" << Simulator::Now().GetSeconds()
-							     << " fid=" << fid << " source=" << source
-							     << (source < N_Vehicles ? " (vehicle)" : " (RSU)")
-							     << " dest_for_lookup=" << dest_for_lookup
-							     << " injected_cp=" << injected_cp * 1000.0 << "ms"
-							     << " is_safety_critical=" << is_safety_critical_flow[fid]
-							     << endl;
-						}
+						// Attack 1 (CP): read the poisoned flowMod the malicious controller
+						// installed on THIS forwarding node (main.tex §1387). The rule's match
+						// is the priority class, not the destination (eq:sig_s1: "only
+						// high-priority packets are delayed, while best-effort traffic from the
+						// same RSU remains within baseline"); the Priority(p)=HIGH half of the
+						// match is applied by the is_safety_critical_flow[fid] argument passed
+						// to schedule_unified_selective_delay_attack() below. Non-compromised
+						// nodes (and every node when Attack 1 is not active) hold 0.0 here, so
+						// this is inert outside the attack.
+						double injected_cp = cp_poisoned_flowmod_delay[source];
 
 						// Stamp BEFORE any attack delay so S2/S2-partial see the pre-delay time.
 						// Mirrors the RSU path at line 120457; without this, the vehicle path
