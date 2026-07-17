@@ -18,11 +18,12 @@
 // Simulation proxy for each conjunction:
 //   (1) BatchVerify=1: read directly from g_batch_passed, a genuine system-wide
 //       signal (not per-packet) set by the 50ms batch_verify_mldsa87() tick.
-//   (2) ML-DSA-87.Verify = 1 (content unmodified): ground truth via
-//       passive_hf_malicious_nodes[prev_sender] (conjunction 2 above, restated)
-//       — not a real per-packet crypto check; g_packet_crypto's shared
-//       per-(signer,packet_id) record cannot express a receiver-specific
-//       verify outcome (see the "FIXED 2026-07-10" comments at the call site).
+//   (2) ML-DSA-87.Verify = 1 (content unmodified): a REAL cryptographic check
+//       via mldsa87_verify_copy_content(prev_sender, packet_id,
+//       fabricated=false) (crypto_layer.h) — reconstructs the exact digest the
+//       honest sender signed and genuinely re-runs OQS_SIG_verify() against
+//       the original signature (see the "REIMPLEMENTED 2026-07-16" comment at
+//       the call site for the full trace).
 //   (3) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
 //       prev_sender, packet_id) call. In deployed MOBIGUARD this is
 //       STARK.Verify(π_hop(u)) = 0 because the unauthorized destination d'
@@ -110,19 +111,14 @@ inline bool s8_detect(uint32_t recv_flow_id,
 
     // Conjunction 2: ML-DSA-87.Verify(σ_c, pk_s, m_c) = 1 — content unmodified.
     //
-    // FIXED 2026-07-10 — g_packet_crypto's sig_valid is a SINGLE record shared
-    // across every receiver of (prev_sender, packet_id): mldsa87_sign() sets
-    // sig_valid=true immediately at signing, and an eavesdropper's own verify
-    // attempt always hits the broadcast-skip early-return (next_hop !=
-    // signed_next_hop) BEFORE it could ever write sig_valid=false — so this
-    // check happened to usually read true (matching what S8 needs), but for the
-    // wrong reason: residual state from the legitimate recipient's own
-    // successful verify, not a genuine per-copy determination. See the matching
-    // comment in s5_detection.h (conjunction 3) for the full trace. Ground truth
-    // via passive_hf_malicious_nodes[prev_sender] (conjunction 2 above, already
-    // confirmed) is the only mechanism that actually encodes "this specific
-    // duplicate is unmodified" — deterministic, not timing-dependent.
-    bool mldsa_verify_ok = passive_hf_malicious_nodes[prev_sender];
+    // REIMPLEMENTED 2026-07-16 — see the matching comment in s5_detection.h for
+    // why mldsa87_verify() cannot be called fresh here (broadcast-skip
+    // conflates hop-legitimacy with content authenticity).
+    // mldsa87_verify_copy_content() (crypto_layer.h) with fabricated=false
+    // reconstructs the exact digest the honest sender signed and genuinely
+    // re-runs OQS_SIG_verify() against the original signature — a real
+    // cryptographic pass, not a restated ground-truth boolean.
+    bool mldsa_verify_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
 
     bool b_batch = batch_verify_ok && mldsa_verify_ok;
     if (!b_batch) return false;

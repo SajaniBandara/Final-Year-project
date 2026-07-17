@@ -1098,7 +1098,8 @@ of each previously-open item:
 ---
 
 ## Fix 14 — Rule-based sweep completed post-Fix-10/11; MOBIGUARD still
-loses to FADE on MCC for A5–A8 (found 2026-07-15, UNRESOLVED)
+loses to FADE on MCC for A5–A8 (found 2026-07-15, PARTIALLY RESOLVED
+2026-07-16 — see follow-up below)
 
 The 144-run rule-based sweep (`scripts/run_rule_based_sweep.py --seeds 1 2 3
 --workers 28 --sim-time 40`, PID 1220382) completed 144/144 after the S1
@@ -1124,15 +1125,70 @@ percentage 20–100%** — this was the exact discrepancy that motivated Fix
 Same pattern holds at 20/40/60/80% too (not just 100%) — this is not a
 single-point artifact. So the bucketing bug was NOT the root cause of
 MOBIGUARD losing to FADE on these four attacks; it only changed which
-events got miscounted. The real gap is unexplained and **unresolved** —
-candidate causes not yet investigated: MOBIGUARD's rule-based (S5–S8)
-detectors using a stricter/differently-calibrated threshold than FADE's
-duplication-count check, or the two MCC columns
-(`load_fade_summary_mcc()`'s node-per-epoch counters vs
-`MOB_COL_MCC_CUR`'s per-cycle column) not being computed on comparable
-populations. Needs root-cause work before this comparison is report-ready;
-explicitly excluded from the 2026-07-15 supervisor report submission for
-this reason.
+events got miscounted. Explicitly excluded from the 2026-07-15 supervisor
+report submission for this reason.
+
+**Follow-up (2026-07-16) — root cause found, partially fixed:** the two
+MCC columns were NOT computed on comparable populations, confirming the
+second candidate cause listed above. Traced in `routing.cc`:
+
+- FADE's MCC (`load_fade_summary_mcc()`) comes from `fade_save_metrics()`,
+  called **exactly once**, at the very end of the whole simulation
+  (comment: `"write final metrics row for this run"`), using
+  `pp_tp/fp/tn/fn_global` accumulated over the entire run. One converged,
+  end-of-run snapshot per run.
+- MOBIGUARD's MCC (`MOB_COL_MCC_CUR`, the CSV's `cur_MCC` column) is a
+  **per-cycle snapshot** recomputed every cycle from `sec_TP/FP/TN/FN`,
+  which scan every node's `is_detected_node[v][n]` state — a flag that is
+  set `true` once (`record_detection_event()`) and **never reset**. So
+  `cur_MCC` necessarily starts at exactly 0 during the run's cold-start
+  cycles (before any node is malicious — confirmed in raw CSV: cycles 1-9
+  of `MOBIGUARD_Attack6_100_seed1.csv` all show TP=FP=FN=0) and ramps
+  toward a converged value as detection accumulates, often still rising at
+  the last logged cycle for high attack percentages.
+  `scripts/plot_fade_results.py` was averaging `cur_MCC` over **every**
+  cycle (`mean_and_ci` over the full per-cycle column) — i.e. comparing a
+  cold-start-diluted time-average against FADE's single converged number.
+  Not apples-to-apples.
+
+**Fix applied**: `scripts/plot_fade_results.py` now has
+`load_mobiguard_final_mcc()`, which reads each seed's file separately and
+uses only the **last row's** cumulative TP/FP/TN/FN (the run's own
+converged endpoint) — mirroring FADE's methodology exactly. `MOB_COL_TP/
+FP/TN/FN` (13/14/15/16) added; `plot_mcc_metric()` updated to use this
+instead of averaging `MOB_COL_MCC_CUR`. Plots regenerated.
+
+**Corrected comparison** (converged-vs-converged, both methods):
+
+| Attack | pct | FADE MCC | MOBIGUARD MCC (old, time-avg) | MOBIGUARD MCC (fixed, converged) |
+|---|---|---|---|---|
+| A6 | 60%  | 0.844 | 0.459 | **0.694** |
+| A6 | 100% | 0.870 | 0.186 | **0.341** |
+| A5 | 60%  | 0.726 | 0.233 | **0.366** |
+| A8 | 40%  | 0.718 | 0.332 | **0.514** |
+
+The averaging bug alone roughly doubles MOBIGUARD's reported MCC across
+the board — accounting for most, but not all, of the apparent gap.
+
+**Residual gap — still open, not a script bug, needs either a longer
+`simTime` or a design discussion**: even using the converged endpoint,
+MOBIGUARD still trails FADE, and the gap widens (rather than narrows) at
+80-100% attack percentage for A5/A7/A8 — counter-intuitive, since more
+attack activity should be easier to detect. Two contributing factors
+observed directly in the raw CSVs, neither yet independently confirmed as
+sole cause:
+1. At high attack percentages, TP is **still climbing at the last logged
+   cycle** (e.g. `Attack6_100_seed1.csv`: TP=219, FN=39, both still moving
+   at cycle 38/38) — 40s `simTime` may not be long enough for the
+   rule-based detector to reach steady state, whereas at pct=60 the same
+   seed plateaus by ~cycle 31.
+2. At high attack percentages the true-negative pool shrinks sharply
+   (e.g. only TN=9 of 268 nodes at `Attack6_100`), making MCC numerically
+   sensitive to even a single FP swing — a structural instability of the
+   metric at the tail, not necessarily a detector-quality difference.
+
+Not yet resolved; flagging both candidates rather than picking one without
+further evidence.
 
 ---
 

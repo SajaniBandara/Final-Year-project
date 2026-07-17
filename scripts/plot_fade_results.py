@@ -16,6 +16,21 @@ the FADE/B3 comparison per main.tex:
     degenerates to ~0 by the MCC formula's epsilon term whenever a cycle
     has only TP samples and no TN counterexample (or vice versa). See
     load_fade_summary_mcc()'s docstring below.
+
+    MOBIGUARD's side is read from each run's LAST cycle's cumulative
+    TP/FP/TN/FN (see load_mobiguard_final_mcc()), NOT a mean of every
+    cycle's cur_MCC. write_security_metrics_csv()'s cur_MCC is a per-cycle
+    snapshot over a STICKY confusion matrix (is_detected_node[] is set
+    true once and never reset, routing.cc) — it necessarily starts at 0
+    during the run's cold-start cycles (before any node is malicious yet)
+    and ramps toward a converged value as detection accumulates. FADE's
+    fade_save_metrics() is called exactly ONCE, at the end of the whole
+    run, using the fully-accumulated pp_tp/fp/tn/fn counters — i.e. FADE
+    reports a single converged snapshot. Averaging MOBIGUARD's cur_MCC
+    over every cycle (including the cold-start ones) against FADE's single
+    converged number is not apples-to-apples and structurally understates
+    MOBIGUARD (found + fixed 2026-07-16, see PENDING_FIXES.md Fix 14).
+    Using MOBIGUARD's own last cycle mirrors FADE's methodology exactly.
   - M3 (UCR)  — "reported for S5-S8 only" (main.tex Experiment 5 table);
     THIS replaces TVR (M2), which main.tex marks N/A for S5-S8 — TVR is a
     Selective-Time-Delay metric (Variants 1-4) and is not meaningful here.
@@ -86,8 +101,12 @@ EXCLUDED_PERCENTAGES = {}
 # MOBIGUARD_Attack<N>_<pct>.csv column layout (write_security_metrics_csv, routing.cc)
 MOB_COL_PDR_AVG = 2
 MOB_COL_LAT_AVG = 4
-MOB_COL_MCC_CUR = 5
+MOB_COL_MCC_CUR = 5   # kept for reference; MCC panel now uses last-cycle TP/FP/TN/FN instead
 MOB_COL_MIT_CUR = 11
+MOB_COL_TP      = 13
+MOB_COL_FP      = 14
+MOB_COL_TN      = 15
+MOB_COL_FN      = 16
 MOB_COL_UCR_AVG = 20
 
 # FADE_Attack<N>_<pct>.csv column layout (fade_write_per_cycle_csv, routing.cc)
@@ -196,6 +215,41 @@ def load_fade_summary_mcc(attack_number, seeds=(1,)):
     return data
 
 
+def compute_mcc(tp, fp, tn, fn):
+    eps = 1e-6
+    num = (tp * tn) - (fp * fn)
+    den = np.sqrt((tp + fp + eps) * (tp + fn + eps) * (tn + fp + eps) * (tn + fn + eps))
+    return num / den
+
+
+def load_mobiguard_final_mcc(attack_number, seeds=(1, 2, 3)):
+    """
+    MOBIGUARD's converged, end-of-run MCC per (pct, seed) — the LAST row's
+    cumulative TP/FP/TN/FN in each seed's own CSV, matching FADE's
+    single-converged-snapshot methodology (see module docstring's M1
+    section). Each seed's file is read separately (unlike load_method_data,
+    which concatenates all seeds' rows together and would lose the
+    per-seed "last row" boundary needed here).
+    """
+    data = {}
+    for pct in ATTACK_PERCENTAGES:
+        vals = []
+        for seed in seeds:
+            for filepath in glob.glob(os.path.join(
+                    RESULTS_DIR, f"MOBIGUARD_Attack{attack_number}_{pct}*_seed{seed}.csv")):
+                rows = read_csv(filepath)
+                if not rows:
+                    continue
+                last = rows[-1]
+                if len(last) <= MOB_COL_FN:
+                    continue
+                tp, fp, tn, fn = (last[MOB_COL_TP], last[MOB_COL_FP],
+                                   last[MOB_COL_TN], last[MOB_COL_FN])
+                vals.append(compute_mcc(tp, fp, tn, fn))
+        data[pct] = vals
+    return data
+
+
 def plot_metric(ax, fade_data, mob_data, fade_col, mob_col, ylabel, title,
                  pcts, excluded_pcts, ylim=None, yticks=None):
     x = np.array(pcts)
@@ -214,10 +268,11 @@ def plot_metric(ax, fade_data, mob_data, fade_col, mob_col, ylabel, title,
                              excluded_pcts, ylim, yticks)
 
 
-def plot_mcc_metric(ax, attack_number, mob_data, mob_col, ylabel, title,
+def plot_mcc_metric(ax, attack_number, ylabel, title,
                      pcts, excluded_pcts, ylim=None, yticks=None):
     x = np.array(pcts)
     fade_mcc = load_fade_summary_mcc(attack_number)
+    mob_mcc  = load_mobiguard_final_mcc(attack_number, seeds=(1, 2, 3))
 
     fade_means, fade_cis = [], []
     mob_means, mob_cis = [], []
@@ -226,7 +281,7 @@ def plot_mcc_metric(ax, attack_number, mob_data, mob_col, ylabel, title,
         fm, fc = mean_and_ci(np.array(fade_mcc[pct]))
         fade_means.append(fm); fade_cis.append(fc)
 
-        mm, mc = mean_and_ci(extract_column(mob_data[pct], mob_col))
+        mm, mc = mean_and_ci(np.array(mob_mcc[pct]))
         mob_means.append(mm); mob_cis.append(mc)
 
     return _draw_comparison(ax, x, fade_means, fade_cis, mob_means, mob_cis, ylabel, title,
@@ -310,7 +365,7 @@ def plot_attack_row(axes_row, attack_number, row_label=None):
         return None, None
 
     p1, p2 = plot_mcc_metric(
-        axes_row[0], attack_number, mob_data, MOB_COL_MCC_CUR,
+        axes_row[0], attack_number,
         "Matthews Correlation Coefficient", "(b) MCC [M1]",
         pcts, excluded,
         ylim=[-1.1, 1.1], yticks=[-1.0, -0.5, 0.0, 0.5, 1.0]
