@@ -163,9 +163,12 @@ extern double   simTime;
 static const int    BC_S3_RATE_THRESH   = 10;   // FlowMods per second
 
 // S4: data-plane TCAM exhaustion threshold.
-// routing.cc defines TCAM_CAPACITY = 1000; 80% = 800 rules (sim_params.go S4UtcamThresh=80).
-// We read the actual capacity from the extern defined in routing.cc.
-extern int TCAM_CAPACITY;                        // defined in routing.cc (line ~120984)
+// routing.cc defines TCAM_CAPACITY (single canonical constant, reconciled
+// 2026-07-13 from a disagreeing 256-vs-1000 pair; set to 100 on 2026-07-15);
+// 80% gate = 0.8*TCAM_CAPACITY, computed at runtime (S4UtcamThresh=80% fraction,
+// unchanged) — it auto-tracks whatever capacity routing.cc sets, so do NOT restate
+// the rule count here. We read the actual capacity from the extern in routing.cc.
+extern int TCAM_CAPACITY;                        // defined in routing.cc (line ~117453)
 static const double BC_S4_UTIL_THRESH   = 0.80; // 80% utilisation triggers penalty
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -392,7 +395,7 @@ inline void bc_check_s4()
 
     double now_ms = Simulator::Now().GetMilliSeconds();
     double now_s  = Simulator::Now().GetSeconds();
-    int    thresh = static_cast<int>(TCAM_CAPACITY * BC_S4_UTIL_THRESH); // 800
+    int    thresh = static_cast<int>(TCAM_CAPACITY * BC_S4_UTIL_THRESH); // 0.8 * current capacity
 
     for (uint32_t r = 0; r < N_RSUs; r++) {
         uint32_t rsu_idx = N_Vehicles + r;  // sim node index (e.g. 200+r for N_Vehicles=200)

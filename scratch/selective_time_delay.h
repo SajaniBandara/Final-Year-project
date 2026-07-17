@@ -58,7 +58,7 @@ inline double calculate_unified_selective_delay(
     if (present_selective_delay_cp && injected_delay_cp > 0.0
         && is_safety_critical)
     {
-        cout << attack_tag() << " [ATTACK1] RSU (node " << current_hop
+        cout << attack_tag() << " RSU (node " << current_hop
              << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
              << packet_id << ", flow " << flow_id
              << " [SAFETY-CRITICAL]"
@@ -115,7 +115,7 @@ inline bool schedule_unified_selective_delay_attack(
     if (present_selective_delay_cp && injected_delay_cp > 0.0
         && is_safety_critical)
     {
-        cout << attack_tag() << " [ATTACK1] RSU (node " << source
+        cout << attack_tag() << " RSU (node " << source
              << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
              << packet_ID << ", flow " << fid
              << " [SAFETY-CRITICAL]"

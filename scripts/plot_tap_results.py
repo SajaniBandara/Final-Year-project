@@ -10,26 +10,29 @@ Follows supervisor's MATLAB style:
   - FontSize 22 (matching supervisor's MATLAB)
 
 Metric scope: plots only the current, active main.tex performance metrics
-applicable to a TAP-vs-MOBIGUARD comparison on Attack 2 (Selective Time
-Delay, Data Plane) — M1 (MCC), M2 (TVR), M4 (Mitigation Latency), M6
-(Overall Latency) — plus PDR as a supplementary QoS sanity-check panel
-(PDR is not one of the 12 numbered metrics in the current main.tex
-revision; it only existed as "M5" in an old, now-commented-out numbering).
-Detection Rate and FPR were dropped: FPR is explicitly a hyperparameter
-hard-constraint in main.tex (not a top-level metric), and DR doesn't
-appear under any current M1-M12 title — both are sub-components MCC
-already summarizes. M3/M5/M7-M12 are excluded: M3 (UCR) only applies to
-hidden-forwarding attacks (Attack 2 never produces unauthorized copies);
-M5/M8/M9/M12 are ablation-only, excluded from all benchmarking per
-main.tex:4623; M7/M11 have no TAP-side equivalent (TAP has no
-crypto/blockchain layer); M10 is a static architectural claim, not a
-runtime metric.
+applicable to a TAP-vs-MOBIGUARD comparison — M1 (MCC), M2 (TVR), M4
+(Mitigation Latency), M6 (Overall Latency) — plus PDR as a supplementary
+QoS sanity-check panel (PDR is not one of the 12 numbered metrics in the
+current main.tex revision; it only existed as "M5" in an old, now-
+commented-out numbering). Detection Rate and FPR were dropped: FPR is
+explicitly a hyperparameter hard-constraint in main.tex (not a top-level
+metric), and DR doesn't appear under any current M1-M12 title — both are
+sub-components MCC already summarizes. M3/M5/M7-M12 are excluded: M3
+(UCR) only applies to hidden-forwarding attacks (neither Attack 1 nor
+Attack 2 produces unauthorized copies); M5/M8/M9/M12 are ablation-only,
+excluded from all benchmarking per main.tex:4623; M7/M11 have no TAP-side
+equivalent (TAP has no crypto/blockchain layer); M10 is a static
+architectural claim, not a runtime metric.
+
+Supports both Attack 1 (Selective Time Delay, Control Plane) and Attack 2
+(Selective Time Delay, Data Plane) via --attack {1,2} (default: 2).
 
 Usage:
-    python3 plot_tap_results.py
+    python3 plot_tap_results.py                # Attack 2 (default)
+    python3 plot_tap_results.py --attack 1      # Attack 1
 
 CSV files must be in:
-    /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
+    ~/ms3_g13/ns-allinone-3.35/ns-3.35/results_routing/
 
 CSV column order (columns are 0-indexed):
     0:  cycle
@@ -61,12 +64,19 @@ import scipy.stats as stats
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-RESULTS_DIR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+RESULTS_DIR = os.path.expanduser(
+    "~/ms3_g13/ns-allinone-3.35/ns-3.35/results_routing")
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
 
 ATTACK_PERCENTAGES = [0, 20, 40, 60, 80, 100]
+
+# attack_number -> description used in figure titles
+ATTACK_INFO = {
+    1: "Selective Time Delay Attack — Control Plane",
+    2: "Selective Time Delay Attack — Data Plane",
+}
 
 # The simulation appends a "_d<delay>ms" suffix to every Attack 1/2 result file
 # whenever --attack_number is set (routing.cc, g_delay_suffix). run_std_attacks.py
@@ -138,7 +148,7 @@ def mean_and_ci(values):
 
 # ─── Load data for all attack percentages ────────────────────────────────────
 
-def load_method_data(prefix, suffix=""):
+def load_method_data(prefix, attack_number, suffix=""):
     """
     Load data for one method (TAP or MOBIGUARD) across all attack percentages.
     `suffix` is the delay tag (e.g. '_d80ms') the simulation appends to the
@@ -146,7 +156,7 @@ def load_method_data(prefix, suffix=""):
     """
     data = {}
     for pct in ATTACK_PERCENTAGES:
-        filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack2_{pct}{suffix}.csv")
+        filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}{suffix}.csv")
         data[pct] = read_csv(filepath)
     return data
 
@@ -233,7 +243,11 @@ def plot_metric(ax, tap_data, mob_data, col, ylabel, title,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Plot TAP vs MOBIGUARD comparison for Attack 2.",
+        description="Plot TAP vs MOBIGUARD comparison for Attack 1 or Attack 2.",
+    )
+    parser.add_argument(
+        "--attack", type=int, choices=[1, 2], default=2,
+        help="Which attack's results to plot: 1 (Control Plane) or 2 (Data Plane). Default: 2.",
     )
     parser.add_argument(
         "--delay", type=int, default=DEFAULT_DELAY_MS, metavar="MS",
@@ -249,13 +263,15 @@ def main():
     )
     args = parser.parse_args()
 
+    attack_number = args.attack
+    attack_desc = ATTACK_INFO[attack_number]
     suffix = "" if args.no_suffix else delay_suffix(args.delay)
 
-    print("Loading CSV data...")
+    print(f"Loading CSV data for Attack {attack_number} ({attack_desc})...")
     if suffix:
         print(f"  Using filename suffix '{suffix}'")
-    tap_data = load_method_data("TAP", suffix)
-    mob_data = load_method_data("MOBIGUARD", suffix)
+    tap_data = load_method_data("TAP", attack_number, suffix)
+    mob_data = load_method_data("MOBIGUARD", attack_number, suffix)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # Verify files loaded
@@ -267,15 +283,15 @@ def main():
     if all(len(tap_data[p]) == 0 for p in ATTACK_PERCENTAGES) and \
        all(len(mob_data[p]) == 0 for p in ATTACK_PERCENTAGES):
         print(f"\n⚠  No data found in {RESULTS_DIR}")
-        print(f"   Expected files like  TAP_Attack2_40{suffix}.csv")
+        print(f"   Expected files like  TAP_Attack{attack_number}_40{suffix}.csv")
         print( "   Check the --delay value matches the runs, or pass --no-suffix.")
 
     print("\nGenerating Figure 1: Detection Quality (M1 MCC, M2 TVR)")
 
     # ── Figure 1: Detection-quality metrics — M1 (MCC), M2 (TVR) ─────────────
     fig, axes = plt.subplots(1, 2, figsize=(14, 7))
-    fig.suptitle("Detection Quality — Attack 2\n"
-                 "(Selective Time Delay Attack — Data Plane)",
+    fig.suptitle(f"Detection Quality — Attack {attack_number}\n"
+                 f"({attack_desc})",
                  fontsize=22, fontweight='bold', y=1.02)
 
     # Subplot (a): Matthews Correlation Coefficient (M1)
@@ -310,7 +326,7 @@ def main():
     )
 
     plt.tight_layout()
-    fig1_path = os.path.join(OUTPUT_DIR, "Figure1_Attack2_MCC_TVR.png")
+    fig1_path = os.path.join(OUTPUT_DIR, f"Figure1_Attack{attack_number}_MCC_TVR.png")
     fig.savefig(fig1_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {fig1_path}")
     plt.close(fig)
@@ -319,8 +335,8 @@ def main():
     print("\nGenerating Figure 2: Mitigation & Overall Latency (M4, M6)")
 
     fig2, axes2 = plt.subplots(1, 2, figsize=(14, 7))
-    fig2.suptitle("Mitigation and Latency Performance — Attack 2\n"
-                  "(Selective Time Delay Attack — Data Plane)",
+    fig2.suptitle(f"Mitigation and Latency Performance — Attack {attack_number}\n"
+                  f"({attack_desc})",
                   fontsize=22, fontweight='bold', y=1.02)
 
     # Subplot (a): Mitigation Latency (M4)
@@ -354,7 +370,7 @@ def main():
     )
 
     plt.tight_layout()
-    fig2_path = os.path.join(OUTPUT_DIR, "Figure2_Attack2_Mitigation_Latency.png")
+    fig2_path = os.path.join(OUTPUT_DIR, f"Figure2_Attack{attack_number}_Mitigation_Latency.png")
     fig2.savefig(fig2_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {fig2_path}")
     plt.close(fig2)
@@ -371,7 +387,7 @@ def main():
     ]
 
     fig3, axes3 = plt.subplots(1, len(metrics), figsize=(7 * len(metrics), 7))
-    fig3.suptitle("Complete Performance Evaluation — Attack 2 (Selective Time Delay, Data Plane)\n"
+    fig3.suptitle(f"Complete Performance Evaluation — Attack {attack_number} ({attack_desc})\n"
                   "TAP (Arsalan & Rehman FIT 2018) vs MOBIGUARD (Proposed)",
                   fontsize=22, fontweight='bold', y=1.02)
 
@@ -391,7 +407,7 @@ def main():
     )
 
     plt.tight_layout()
-    fig3_path = os.path.join(OUTPUT_DIR, "Figure3_Attack2_AllMetrics.png")
+    fig3_path = os.path.join(OUTPUT_DIR, f"Figure3_Attack{attack_number}_AllMetrics.png")
     fig3.savefig(fig3_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {fig3_path}")
     plt.close(fig3)
@@ -399,9 +415,9 @@ def main():
     print("\n✅ All figures generated successfully.")
     print(f"   Output directory: {OUTPUT_DIR}")
     print("   Files created:")
-    print(f"   - Figure1_Attack2_MCC_TVR.png")
-    print(f"   - Figure2_Attack2_Mitigation_Latency.png")
-    print(f"   - Figure3_Attack2_AllMetrics.png")
+    print(f"   - Figure1_Attack{attack_number}_MCC_TVR.png")
+    print(f"   - Figure2_Attack{attack_number}_Mitigation_Latency.png")
+    print(f"   - Figure3_Attack{attack_number}_AllMetrics.png")
 
 
 if __name__ == "__main__":

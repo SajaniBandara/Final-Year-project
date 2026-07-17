@@ -94573,7 +94573,7 @@ void update_route_malicious(uint32_t source, uint32_t destination, uint32_t next
 {
 	update_route(source, destination, next_hop);   // install the routing decision first (benign part)
 	routing_tables[source].rows[destination].injected_delay = delay; // then poison the rule
-	cout << attack_tag() << " [ATTACK1] Malicious controller installed poisoned flowMod: "
+	cout << attack_tag() << " Malicious controller installed poisoned flowMod: "
 	     << "node=" << source << " dest=" << destination
 	     << " next_hop=" << next_hop
 	     << " injected_delay=" << delay * 1000.0 << "ms"
@@ -114751,6 +114751,31 @@ uint32_t sim_run  = 1;  // run index, distinct per seed
 // Indexed by flow_id (0 to 2*flows-1).
 bool is_safety_critical_flow[Flow_size + 2] = {false};
 
+// === ATTACK 1 (variant 0): the poisoned FlowMod installed by the malicious controller ===
+// main.tex §1387: "an adversary acting as a malicious controller ... transmits manipulated
+// flowMod packets to the RSU. When a legitimate packet arrives at the RSU, it is processed
+// according to these compromised instructions, causing the RSU to forward the packet with
+// an intentional, variable delay."
+//
+// This array IS that poisoned flowMod, one rule per RSU:
+//   match  = Priority(p) = HIGH   (applied at the call site via is_safety_critical_flow[])
+//   action = forward with delay delta_a  (the value stored here, from --attack_delay_ms)
+// Indexed by node id; 0.0 = no poisoned rule installed on that node (benign).
+//
+// Why a per-node rule rather than routing_tables[rsu].rows[dst].injected_delay:
+// routing_tables' rows are indexed BY DESTINATION, so a rule stored there can only ever
+// mean "delay packets going to destination D". Signature S1 (eq:sig_s1) requires the
+// opposite — the match is the PRIORITY CLASS, not the destination: "only high-priority
+// packets are delayed, while best-effort traffic from the same RSU remains within
+// baseline" (main.tex:1730-1737). No equation that consumes this delay (eq:sig_s1,
+// eq:rule_s1, eq:tvr, eq:delay_updated) is indexed by destination — they are all indexed
+// by (source vehicle v, RSU r, t) and gated on priority. The destination-keyed form could
+// therefore only fire when a poisoned (RSU,dst) pair coincided with the traffic's actual
+// (forwarding-node,dst) pair, which almost never happened: at attack_percentage=20 a
+// 15s run installed 80 poisoned rules and applied the delay 0 times across 447 forwards
+// (every read returned 0.000ms), which is why Attack 1 barely fired below 100%.
+double cp_poisoned_flowmod_delay[total_size] = {0.0};
+
 // === ATTACK 3 (variant 2): Slow-flow TCAM exhaustion — Control Plane ===
 // Malicious controller installs junk FlowMod rules into every RSU's TCAM at
 // attack_rate_pps rules/second. Entries flagged is_malicious=1.
@@ -114764,11 +114789,16 @@ double   attack_rate_pps         = 20.0;    // CLI: --attack_rate_pps (3.2–40 
 double   attack_start_time       = 10.0;    // CLI: --attack_start_time (benign baseline window, s)
 uint32_t g_dp_attack_fid_counter = 1000000; // DP FID space: 1M+ (distinct from CP 2M+)
 int      num_attackers           = 1;       // CLI: --num_attackers  (nodes 0..N-1 each run Attack 4)
-double   cp_attack_pct           = 40.0;    // CLI: --cp_attack_pct  (% of RSUs targeted by CP attack, default 40%)
+// NOTE: cp_attack_intensity is NOT the "attack percentage" referenced in the
+// report/thesis — that is --attack_percentage (drives num_controllers_compromised
+// via the threshold ladder below). cp_attack_intensity is a separate, legacy
+// RSU-targeting knob; see the "Fixed 2026-07-10" comment in tcam_attack_helper.h
+// and the case(2) block below for its current (non-)effect on Attack 3 logic.
+double   cp_attack_intensity     = 40.0;    // CLI: --cp_attack_intensity  (% of RSUs targeted by CP attack, default 40%; NOT the report's attack_percentage)
 // Attack 4 (DP): percentage of vehicles acting as attackers.
 // 0 = disabled (use --num_attackers directly).
 // >0 overrides num_attackers: num_attackers = ceil(N_Vehicles * dp_attack_pct/100).
-// Mirrors cp_attack_pct so both attacks have symmetric terminal control.
+// Mirrors cp_attack_intensity so both attacks have symmetric terminal control.
 double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 
 // === DETECTION TIMESTAMP GLOBALS ===
@@ -115033,7 +115063,7 @@ void initialise_stub_attack_state()
             // injecting the malicious delay.
             Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
-            cout << attack_tag() << " [ATTACK1] [INIT] Selective Time Delay CP attack armed, fixed delay="
+            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, fixed delay="
                  << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
             if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
@@ -115061,7 +115091,7 @@ void initialise_stub_attack_state()
                 // mirroring Attack 1's reapply_cp_selective_delay(). At p=0, zero
                 // controllers are compromised -> zero RSUs flooded, matching
                 // main.tex's penetration formula floor(0.01p*264) attacker nodes.
-                // (Previously cp_attack_pct flooded a FIXED 40% of RSUs regardless
+                // (Previously cp_attack_intensity flooded a FIXED 40% of RSUs regardless
                 // of attack_percentage, so p=0 was attacked as hard as p=80 —
                 // confirmed via max U_TCAM=1.0 at every non-100% pct level.)
                 uint32_t num_controllers_compromised;
@@ -115297,6 +115327,17 @@ void poison_test_network_cp_attackers()
 {
 	if (active_attack_variant == 0)
 	{
+		// routing_test (5-unit) topology only. Nodes 15/16 are its hardcoded
+		// compromised RSUs (see hardcode_test_network_attackers() below, which sets
+		// is_malicious_node[0][15]/[16]). Install the same per-node poisoned flowMod
+		// the SUMO path uses (reapply_cp_selective_delay), so the forwarding sites —
+		// which now read cp_poisoned_flowmod_delay[] rather than the destination-keyed
+		// routing_tables entry — actually apply the delay here too.
+		cp_poisoned_flowmod_delay[15] = 0.080;
+		cp_poisoned_flowmod_delay[16] = 0.080;
+
+		// Kept for the routing decision + audit log only; the injected_delay it writes
+		// into routing_tables is no longer read by the forwarding path.
 		update_route_malicious(15, 1, 1, 0.080);
 		update_route_malicious(16, 3, 3, 0.080);
 	}
@@ -117321,6 +117362,47 @@ void ufcr_attempt_unauthorized_flowmod()
                       << " committed=" << committed
                       << " blocked_total=" << g_ufcr_blocked
                       << "/" << g_ufcr_unauth_total << std::endl;
+
+        // ── Controller trust update (eq:ctrl_trust_update → eq:sc_revoke, M5) ──
+        // main.tex §"Controller Trust Scoring": controller trust is decremented
+        // by RSU-submitted conflict evidence — "when a received FlowMod is
+        // absent from the blockchain-committed endorsed policy" — with the
+        // blockchain as "the sole controller behavior monitor". A blocked
+        // unauthorized FlowMod (committed == false) IS exactly that evidence:
+        // it failed to collect f+1 honest endorsements (eq:endorsed_commit),
+        // i.e. conflict evidence ≥ f+1 → penalty branch. A clean commit is
+        // conflict evidence < f+1 → reward branch.
+        //
+        // Attribution: in this simulation the compromised controllers
+        // (controller_compromised[], set in declare_attackers per the attack
+        // threat model) are the origin of the unauthorized FlowMods, so the
+        // penalty is applied to them and the reward to the honest controllers —
+        // the faithful mapping of "the blockchain attributes the caught
+        // unauthorized FlowMod to its sending controller".
+        //
+        // Only accrues once the attack is active (t ≥ attack_start_time) so a
+        // controller is not revoked before it begins misbehaving.
+        //
+        // NOTE (provisional calibration): Δp^ctrl/Δr^ctrl/T_min^ctrl
+        // (TRUST_DELTA_P_CTRL=0.10, TRUST_DELTA_R_CTRL=0.05, TRUST_T_MIN_CTRL=0.50)
+        // are placeholder values, NOT the calibrated finals. main.tex §"Multi-
+        // Controller Trust Management" marks them [tbd] and requires an
+        // independent sweep (T_min^ctrl ∈ {0.3,0.5,0.7} for lowest false-
+        // revocation rate; Δp^ctrl>Δr^ctrl for minimum time-to-revocation). The
+        // constraint Δp^ctrl>Δr^ctrl is already satisfied; the sweep itself is
+        // a separate, still-pending calibration step.
+        if (enable_controller_failover &&
+            Simulator::Now().GetSeconds() >= attack_start_time)
+        {
+            for (uint32_t c = 0; c < (uint32_t)N_Controllers; c++)
+            {
+                if (g_ctrl_revoked[c]) continue; // already revoked — no re-fire
+                if (controller_compromised[c] && !committed)
+                    ctrl_trust_update_negative(c);   // conflict evidence ≥ f+1
+                else if (!controller_compromised[c])
+                    ctrl_trust_update_positive(c);   // clean behaviour, < f+1
+            }
+        }
     }
     if (Simulator::Now().GetSeconds() < simTime)
         Simulator::Schedule(Seconds(1.0), &ufcr_attempt_unauthorized_flowmod);
@@ -117437,7 +117519,30 @@ void calculate_witness_wapr_metric()
               << " R_W=" << 100.0 * current_WAP_recall << "%" << std::endl;
 }
 
-static const int TCAM_HW_SIZE = 256;
+// Single canonical TCAM capacity constant — every check that reads
+// g_tcam_rule_count (tcam_detection.h, lrad.h, lstm_logger.h,
+// bc_blockchain_helper.h::bc_check_s4(), and the slow-path delay block
+// below) uses this one value. Previously two constants existed
+// (TCAM_HW_SIZE=256 here, TCAM_CAPACITY=1000 at the old line ~121102)
+// disagreeing by ~4x on the same physical resource — reconciled 2026-07-13.
+// Non-const global (matches the `extern int TCAM_CAPACITY;` forward
+// declaration already in bc_blockchain_helper.h).
+// 2026-07-15: 256 -> 100. With the k=2 generator, busy zones reach 36-54 rules =
+// only 14-21% of 256 (too thin for the mobility-camouflage premise); at 100 that
+// is 36-54%, a properly loaded table. All util/threshold fractions derive from
+// this constant, so they auto-rescale. Must precede threshold calibration.
+int TCAM_CAPACITY = 1500;  // 2026-07-17: production capacity. Floor of the cited
+                           // 1,500-8,000 rules/switch range (PASCOAL2020107223,
+                           // main.tex:576) -- do NOT go lower or the citation breaks.
+                           // Benign traffic peaks at ~367 concurrent rules (=24.5%
+                           // util) under the all-neighbour generator + 9-22s residence
+                           // timeouts, leaving comfortable headroom while ensuring the
+                           // slow attack reaches full-table exhaustion WITHIN an 80s
+                           // sim (attacker refresh accumulates ~rate/s; at 20 pps the
+                           // busiest RSU hits 1500 around t~70, giving a clear
+                           // rejection + slow-path + S4 exhaustion window). At 1700 the
+                           // attack only reached capacity in the final ~2s; 1500
+                           // captures the full stealthy-climb -> exhaustion lifecycle.
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
                                      // g_slowpath_hit_count extern'd inside header;
@@ -117548,13 +117653,26 @@ void write_security_metrics_csv()
 
 	TcamCycleMetrics tcam_metrics{};
 	if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1) {
-		double active_vehicles = (double)N_Vehicles;
+		// Fix 2: REAL per-RSU zone density ρ_r(t) — same computation as the density
+		// loop below (linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, d_max_dsrc=270 m),
+		// hoisted here because the detector call precedes that loop in this function.
+		std::vector<double> rho_per_rsu(N_RSUs, 0.0);
+		for (uint32_t _r = 0; _r < N_RSUs; _r++) {
+			uint32_t rsu_sim_idx = N_Vehicles + _r;
+			uint32_t rc = 0;
+			for (uint32_t _v = 0; _v < (uint32_t)N_Vehicles; _v++)
+				if (_v < linklifetimeMatrix_dsrc.size() &&
+				    rsu_sim_idx < linklifetimeMatrix_dsrc[_v].size() &&
+				    linklifetimeMatrix_dsrc[_v][rsu_sim_idx] > 0.0)
+					rc++;
+			rho_per_rsu[_r] = (double)rc;
+		}
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
 			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
 			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
 			0.054688,          // tcam_util_thresh — calibrated benign p99 (Fix 3, rule_calibrator.py 2026-07-10)
-			active_vehicles
+			rho_per_rsu
 		);
 	}
 
@@ -117872,6 +117990,18 @@ void calculate_performance_evaluation_metrics()
 	// matrix and velocity vectors (Eq. 3.11). A vehicle is counted in RSU r's
 	// zone when linklifetimeMatrix_dsrc[v][rsu_sim_idx] > 0, which matches the
 	// d_max_dsrc = 270 m coverage radius used by the routing engine.
+
+	// [density-logging] LOGGING ONLY (2026-07-14): one-time truncate-open of
+	// rsu_density.csv so repeated runs do not pool; header written once. Rows
+	// appended inside the loop below. Does NOT touch rho_t/v_bar_t computation.
+	static std::ofstream g_rsu_density_csv(
+		"/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/rsu_density.csv",
+		std::ios::trunc);
+	static bool g_rsu_density_hdr_done = [](){
+		g_rsu_density_csv << "t,rsu_id,rho_count,v_bar\n"; return true; }();
+	(void)g_rsu_density_hdr_done;
+	int _density_t = static_cast<int>(std::round(Simulator::Now().GetSeconds()));
+
 	for (uint32_t _r = 0; _r < N_RSUs; _r++)
 	{
 		uint32_t rsu_sim_idx = N_Vehicles + _r;
@@ -117891,6 +118021,13 @@ void calculate_performance_evaluation_metrics()
 		double rho_t   = (double)rho_count;
 		double v_bar_t = (rho_count > 0) ? (speed_sum / rho_count) : 14.0;
 
+		// [density-logging] LOGGING ONLY: one row per (cycle, rsu). rsu_id is the
+		// sim node index (N_Vehicles+_r), matching the tcam_occupancy_*.csv rsu_id
+		// convention. No effect on rho_t/v_bar_t or any detection/flow logic.
+		if (g_rsu_density_csv.is_open())
+			g_rsu_density_csv << _density_t << ',' << rsu_sim_idx << ','
+			                  << rho_count << ',' << v_bar_t << '\n';
+
 		// δ_r(t): use mean of observed hop-delays since the last update tick
 		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
 		double obs_delay = (s1_rsu_obs_count[_r] > 0)
@@ -117903,6 +118040,8 @@ void calculate_performance_evaluation_metrics()
 		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
+	// [density-logging] flush this cycle's rows so data survives any exit path.
+	if (g_rsu_density_csv.is_open()) g_rsu_density_csv.flush();
 	// Resolve the results directory dynamically using the user or HOME environment variable
 	std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 	char* home_env = getenv("HOME");
@@ -118284,19 +118423,19 @@ void transmit_delta_values()
 		// per-op row: node_id carries endorser count, pkt_id carries fid
 		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
 		                 _ct0, _committed);
-		// eq:ctrl_trust_update — reward branch (conflict evidence < f+1, i.e.
-		// the FlowMod collected f+1 honest endorsements and committed cleanly)
-		// vs. penalty branch (conflict evidence >= f+1, commit failed). Both
-		// branches read the same _committed outcome from the same per-cycle
-		// endorsement round, so the reward fires at the identical cadence the
-		// penalty already used — closing the gap where ctrl_trust_update_positive()
-		// was defined but never called (see docs/METHODOLOGY_CHAPTER_DEVIATIONS.md).
-		if (N_RSUs > 0) {
-			if (_committed)
-				ctrl_trust_update_positive(rsu_controller_assignment[N_Vehicles]);
-			else
-				ctrl_trust_update_negative(rsu_controller_assignment[N_Vehicles]);
-		}
+		// NOTE: the eq:ctrl_trust_update reward/penalty is NO LONGER applied
+		// here. This honest per-cycle endorsement of fid=0 always commits, so it
+		// only ever exercised the reward branch, and it did so against
+		// rsu_controller_assignment[N_Vehicles] — a node-id (200) used as an
+		// RSU-local index (valid range 0..N_RSUs-1), which is never populated
+		// and therefore resolved to the zero-initialised entry (controller 0)
+		// regardless of which controller was actually compromised. That
+		// unconditional reward on a fixed controller directly fought the
+		// conflict-evidence penalty and is the reason SC.Revoke never fired.
+		// Controller trust (both branches of eq:ctrl_trust_update) is now driven
+		// solely by the UFCR conflict-evidence path in
+		// ufcr_attempt_unauthorized_flowmod(), which is where main.tex locates
+		// it ("the blockchain [is] the sole controller behavior monitor").
 	}
 
 	//read_csv();
@@ -120854,8 +120993,11 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             fade_forwarded_count[flow_id][current_hop]++;
                         }
 
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + flow_id)->destination_f;
-						double injected = routing_tables[current_hop].rows[dest_for_lookup].injected_delay;
+						// Attack 1 (CP): the poisoned flowMod installed on THIS forwarding node.
+						// Same rule as the check_and_transmit() site — match is the priority
+						// class (applied via is_safety_critical_flow[flow_id] below), not the
+						// destination. See cp_poisoned_flowmod_delay's declaration for why.
+						double injected = cp_poisoned_flowmod_delay[current_hop];
 
 						double total_tx_delay = calculate_unified_selective_delay(
 							present_selective_delay_attack_nodes,
@@ -120877,13 +121019,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// Below capacity the packet hits a rule immediately (0 extra delay).
 						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
 						    current_hop >= N_Vehicles &&
-						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						    g_tcam_rule_count[current_hop] >= TCAM_CAPACITY)
 						{
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
-						              << "/" << TCAM_HW_SIZE
+						              << "/" << TCAM_CAPACITY
 						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
 						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
 						              << std::endl;
@@ -120897,13 +121039,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// Below capacity the packet hits a rule immediately (0 extra delay).
 						if ((active_attack_variant == 2 || active_attack_variant == 3) &&
 						    current_hop >= N_Vehicles &&
-						    g_tcam_rule_count[current_hop] >= TCAM_HW_SIZE)
+						    g_tcam_rule_count[current_hop] >= TCAM_CAPACITY)
 						{
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
-						              << "/" << TCAM_HW_SIZE
+						              << "/" << TCAM_CAPACITY
 						              << " slowpath=" << (tcam_slowpath_s * 1000.0) << "ms"
 						              << " total_tx_delay=" << (total_tx_delay * 1000.0) << "ms"
 						              << std::endl;
@@ -121092,9 +121234,16 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 #include "tcam_attack_helper.h"
 #include "hf_attack_helper.h"
 #include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
+#include "tcam_flow_generator.h" // k-NN concurrency flow generator (needs tcam_hit,
+                                 // lookup_vehicle_associated_rsu_local_idx, s1_detect_packet)
 
 int simulated_tcam_counter[200] = {0};
-int TCAM_CAPACITY = 1000;
+// TCAM_CAPACITY consolidated to the single definition at line ~117445
+// (was `int TCAM_CAPACITY = 1000;` here — dead-code Attack16/17 flood
+// helpers below never shared g_tcam_rule_count with the real S3/S4 path,
+// but they read the same global name, so removing the duplicate definition
+// also switches their local cap from 1000 to 256; those functions are
+// unused/uncalled from anywhere in this file, so this has no live effect).
 bool tcam_exhaust_malicious_nodes[200] = {false};
 uint32_t spy_node_id = 0;
 
@@ -124087,8 +124236,16 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							default:   dev_to_use = wifidevices.Get(source); break;
 						}
 						
-						uint32_t dest_for_lookup = (delta_at_nodes_inst + fid)->destination_f;
-						double injected_cp = routing_tables[source].rows[dest_for_lookup].injected_delay;
+						// Attack 1 (CP): read the poisoned flowMod the malicious controller
+						// installed on THIS forwarding node (main.tex §1387). The rule's match
+						// is the priority class, not the destination (eq:sig_s1: "only
+						// high-priority packets are delayed, while best-effort traffic from the
+						// same RSU remains within baseline"); the Priority(p)=HIGH half of the
+						// match is applied by the is_safety_critical_flow[fid] argument passed
+						// to schedule_unified_selective_delay_attack() below. Non-compromised
+						// nodes (and every node when Attack 1 is not active) hold 0.0 here, so
+						// this is inert outside the attack.
+						double injected_cp = cp_poisoned_flowmod_delay[source];
 
 						// Stamp BEFORE any attack delay so S2/S2-partial see the pre-delay time.
 						// Mirrors the RSU path at line 120457; without this, the vehicle path
@@ -141460,7 +141617,7 @@ int main(int argc, char *argv[])
     cmd.AddValue ("attack_start_time", "Sim time (s) when attack begins — benign baseline collected before this (default 10.0)", attack_start_time);
     cmd.AddValue ("num_attackers", "Attack 4 (DP TCAM): unused input -- num_attackers is now always recomputed from --attack_percentage (or --dp_attack_pct if >0) after CLI parsing; this flag has no effect", num_attackers);
     cmd.AddValue ("dp_attack_pct", "Attack 4 (DP TCAM): manual override outside the --attack_percentage sweep (0-100, default 0.0=off). When >0, overrides the attack_percentage-derived attacker count. E.g. 25 -> ceil(N_Vehicles*0.25) attackers.", dp_attack_pct);
-    cmd.AddValue ("cp_attack_pct", "Attack 3 (CP TCAM): percentage of RSUs targeted per tick (0-100, default 40.0). Independent of --attack_percentage, which now only drives the ground-truth compromised-controller count.", cp_attack_pct);
+    cmd.AddValue ("cp_attack_intensity", "Attack 3 (CP TCAM): legacy RSU-targeting knob (0-100, default 40.0). NOT the attack percentage referenced in the report/thesis -- that is --attack_percentage, which drives the ground-truth compromised-controller count. cp_attack_intensity only affects output filename suffixing (tcam_attack_helper.h); it is not read by the current attack_percentage-driven Attack 3 logic.", cp_attack_intensity);
     double tcam_slowpath_ms_cli = 50.0; // CLI input in ms; converted to seconds below
     cmd.AddValue ("tcam_slowpath_ms", "Attacks 3+4: fixed controller slow-path delay when TCAM is full (ms, default 50). Applied as a step: 0ms below capacity, this value at/above capacity.", tcam_slowpath_ms_cli);
     cmd.AddValue ("qf", "qf", qf);
@@ -143469,7 +143626,14 @@ if (architecture == 3 && N_Vehicles > 0)
 					  Simulator::Schedule(Seconds(t+0.036000),transmit_delta_values);
 					  
 					  Simulator::Schedule(Seconds(t+0.099500),initialize_flow_counters);
-					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows); 
+					  Simulator::Schedule(Seconds(t+0.100000),initiate_all_flows);
+					  // All-neighbour, presence-driven concurrency generator (2026-07-15).
+					  // Kicked ONCE; the tick then self-reschedules every 100 ms
+					  // (TCAM_GEN_PERIOD_S) for the whole run. Reuses the counted/capped
+					  // tcam_hit path; presence-driven eviction, no timeout for these flows.
+					  { static bool _gen_chain_started = false;
+					    if (!_gen_chain_started) { _gen_chain_started = true;
+					      Simulator::Schedule(Seconds(t+0.101000),tcam_flow_generator_tick); } }
 					  Simulator::Schedule(Seconds(t+data_transmission_period-0.002),calculate_performance_evaluation_metrics);
  		          		  
 				   	  

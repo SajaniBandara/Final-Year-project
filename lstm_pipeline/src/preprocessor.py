@@ -45,6 +45,7 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
     files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
+    skipped = 0
     for path in files:
         p = Path(path)
         parts = p.stem.split("_")
@@ -52,12 +53,18 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         pct      = int(parts[1][3:])
         seed     = int(parts[2][4:])
         rsu_id   = int(p.parent.name[4:])
+        if attack_v in EXCLUDE_ATTACKS:
+            skipped += 1
+            continue
         df = pd.read_csv(path)
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
+    if skipped:
+        print(f"  Excluded {skipped} files for attacks {sorted(EXCLUDE_ATTACKS)} "
+              f"(label fix pending)")
     return pd.concat(dfs, ignore_index=True)
 
 
