@@ -120791,6 +120791,7 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // it without moving the include.
 extern int g_tcam_rule_count[300];
 int g_slowpath_hit_count[300] = {0}; // satisfies the extern in lstm_logger.h
+int g_packetin_count[300] = {0}; // satisfies the extern in tcam_detection.h (PACKET_IN/table-miss rate source for S4 λ_PI)
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
 // (packet matched immediately), TCAM_SLOWPATH_S when the table is full

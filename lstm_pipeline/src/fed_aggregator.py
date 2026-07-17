@@ -203,23 +203,35 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
     return total_loss / max(len(X_train) * local_epochs, 1)
 
 
+Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
+
+
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """Non-parametric threshold: theta(k) = 99th percentile of the RSU's own
-    benign validation reconstruction errors. Supersedes eq:lstm_threshold's
-    parametric theta = mu_A + z_alpha * sigma_A — empirical FPR (2.84-6.65%
-    on the working variants) showed the benign reconstruction-error
-    distribution has a heavier-than-Gaussian tail, so a Gaussian z-score
-    threshold undershoots the true 99th percentile and lets too many benign
-    windows through. Switched per supervisor review, 2026-07-15/16.
-    mu_a/sig_a are still returned for descriptive logging only — they no
-    longer feed into theta."""
+    """Hybrid threshold: theta(k) = max(Gaussian, non-parametric P99) per
+    RSU, each computed from the RSU's own benign validation reconstruction
+    errors. History: eq:lstm_threshold's parametric theta = mu_A +
+    z_alpha*sigma_A gave empirical FPR 2.84-6.65% on the working variants —
+    supervisor review attributed this to a heavier-than-Gaussian benign
+    error tail and asked for a non-parametric P99 threshold instead
+    (2026-07-15/16). Tried in isolation: P99 alone gave FPR 3.6-8.5%,
+    WORSE, not better — several RSUs calibrate on as few as ~20-100 benign
+    windows, and the empirical P99 of a small sample underestimates the
+    true tail (regresses toward the sample max), so P99-alone is actually
+    MORE permissive than Gaussian here, not less. Per supervisor direction
+    ("take whichever performs best"), taking the max of both formulas
+    per RSU is a hybrid that is never more permissive than either formula
+    alone — whichever one under-covers the tail for a given RSU is
+    overridden by the other. mu_a/sig_a are still returned for descriptive
+    logging."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
-    mu_a  = float(errs.mean())
-    sig_a = float(errs.std())
-    theta = float(np.percentile(errs, 99))
+    mu_a       = float(errs.mean())
+    sig_a      = float(errs.std())
+    theta_gauss = mu_a + Z_ALPHA * sig_a
+    theta_pctl  = float(np.percentile(errs, 99))
+    theta = max(theta_gauss, theta_pctl)
     return theta, mu_a, sig_a
 
 
