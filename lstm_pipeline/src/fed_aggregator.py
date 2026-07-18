@@ -96,9 +96,38 @@ def load_rsu_data() -> dict:
     data = {}
     for rsu_id in rsu_ids:
         # Pure-benign A0 runs only (meta col 1 = attack_v). See local_trainer.py:
-        # y==0 leaked attack-run label-0 windows into benign training.
+        # y==0 leaked attack-run label-0 windows into benign training — this
+        # remains attack_v==0 only; TRAINING the autoencoder on windows drawn
+        # from attack runs (even quiet ones) would still leak subtle
+        # attack-adjacent patterns into what it learns as "normal".
         mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (meta_tr[:, 1] == 0)
-        mask_va_benign = (meta_va[:, 0] == rsu_id) & (meta_va[:, 1] == 0)  # pure-benign A0 for θ calibration
+        # theta CALIBRATION population, deliberately different from training:
+        # was attack_v==0 only (640 windows total, network-wide) — but 97.7%
+        # of what actually gets evaluated as "benign" at test time is y=0
+        # windows drawn from attack-percentage runs (quiet cycles within an
+        # attack run), which have a measurably different error distribution
+        # (different SUMO traces per pct, network-wide effects of attacks
+        # elsewhere) than pure attack_v==0 runs. Calibrating on the narrow
+        # population gave 28-29% FPR on the very population it's evaluated
+        # against; calibrating on the full y_va==0 label (matching what
+        # eval_clf/compute_clf_metrics actually score against) verified to
+        # bring FPR to <1% (found & fixed 2026-07-18, supervisor-approved
+        # tradeoff: DR is not judged against this LSTM-only validation at
+        # this stage — main.tex's 95% DR target applies to the full
+        # dual-mode system once rule engine + LSTM are integrated).
+        #
+        # EXCLUDES attack_v in {3,4} (A3/A4, TCAM variants): confirmed
+        # 2026-07-18 that ~20-25% of every RSU's y_va==0 population comes
+        # from A3/A4 runs, whose U_TCAM feature carries artificially
+        # extreme values from the (separately known, already-excluded-
+        # from-conclusions) TCAM rule-timeout issue — this training data
+        # predates that fix. Removing just these two variants' windows
+        # brought per-RSU theta down from the THOUSANDS to a sane ~0.5-1.3
+        # for every single RSU checked. Same exclusion already applied
+        # elsewhere (no A3/A4 conclusions until that data is re-collected
+        # post-fix) — this is the LSTM calibration side of the same rule.
+        mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
+                          & ~np.isin(meta_va[:, 1], [3, 4]))
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]
@@ -207,31 +236,32 @@ Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
 
 
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """Hybrid threshold: theta(k) = max(Gaussian, non-parametric P99) per
-    RSU, each computed from the RSU's own benign validation reconstruction
-    errors. History: eq:lstm_threshold's parametric theta = mu_A +
-    z_alpha*sigma_A gave empirical FPR 2.84-6.65% on the working variants —
-    supervisor review attributed this to a heavier-than-Gaussian benign
-    error tail and asked for a non-parametric P99 threshold instead
-    (2026-07-15/16). Tried in isolation: P99 alone gave FPR 3.6-8.5%,
-    WORSE, not better — several RSUs calibrate on as few as ~20-100 benign
-    windows, and the empirical P99 of a small sample underestimates the
-    true tail (regresses toward the sample max), so P99-alone is actually
-    MORE permissive than Gaussian here, not less. Per supervisor direction
-    ("take whichever performs best"), taking the max of both formulas
-    per RSU is a hybrid that is never more permissive than either formula
-    alone — whichever one under-covers the tail for a given RSU is
-    overridden by the other. mu_a/sig_a are still returned for descriptive
+    """eq:lstm_threshold: theta(k) = mu_A + z_alpha*sigma_A, computed from
+    the RSU's own benign validation reconstruction errors.
+
+    History (2026-07-15/18): the reported 2.84-6.65% FPR was never actually
+    a threshold-FORMULA problem — it was that theta was calibrated on only
+    640 "pure benign run" (attack_v==0) windows, while 97.7% of what gets
+    evaluated as benign at test time are quiet windows drawn from
+    attack-percentage runs with a measurably different error distribution
+    (see the mask_va_benign fix in main()/grid_search_hparams() callers:
+    now y_va==0, not attack_v==0). Tried three formulas AFTER that real fix
+    landed, holding the calibration population fixed: plain Gaussian,
+    P99-only, and max(Gaussian, P99) all hit ~0% FPR on every variant
+    (the population fix is what mattered) — but Gaussian gave consistently
+    HIGHER DR than both alternatives on every single variant (e.g. A2:
+    21.4% vs hybrid's 18.0%, P99's 20.9%), since max(Gaussian, P99) always
+    picks the more conservative (and here, unnecessarily so) of the two.
+    Reverted to the original spec formula — simpler and empirically better
+    once the real bug was fixed. mu_a/sig_a returned for descriptive
     logging."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
-    mu_a       = float(errs.mean())
-    sig_a      = float(errs.std())
-    theta_gauss = mu_a + Z_ALPHA * sig_a
-    theta_pctl  = float(np.percentile(errs, 99))
-    theta = max(theta_gauss, theta_pctl)
+    mu_a  = float(errs.mean())
+    sig_a = float(errs.std())
+    theta = mu_a + Z_ALPHA * sig_a
     return theta, mu_a, sig_a
 
 

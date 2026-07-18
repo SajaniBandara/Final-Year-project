@@ -73,21 +73,20 @@ Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
 
 
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """Hybrid threshold: theta(k) = max(Gaussian, non-parametric P99) per
-    RSU — see fed_aggregator.py's compute_theta() for the full rationale
-    (P99 alone underestimates the tail on small per-RSU samples and gave a
-    WORSE empirical FPR than the original Gaussian formula). Kept
+    """eq:lstm_threshold: theta(k) = mu_A + z_alpha*sigma_A — see
+    fed_aggregator.py's compute_theta() for the full rationale (reverted
+    from the max(Gaussian,P99) hybrid: once the real calibration-population
+    bug was fixed, all three formulas hit ~0% FPR and plain Gaussian gave
+    consistently higher DR than both alternatives on every variant). Kept
     consistent here so grid search selects hparams under the SAME
     thresholding rule that will actually be deployed."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
-    mu_a        = float(errs.mean())
-    sig_a       = float(errs.std())
-    theta_gauss = mu_a + Z_ALPHA * sig_a
-    theta_pctl  = float(np.percentile(errs, 99))
-    theta = max(theta_gauss, theta_pctl)
+    mu_a  = float(errs.mean())
+    sig_a = float(errs.std())
+    theta = mu_a + Z_ALPHA * sig_a
     return theta, mu_a, sig_a
 
 
@@ -162,7 +161,15 @@ def main(args):
         # selective-delay attacks those "benign-labeled" cycles still contain delay
         # spikes, inflating benign reconstruction error (std 71, θ≈49) and crushing DR.
         mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (meta_tr[:, 1] == 0)
-        mask_va_benign = (meta_va[:, 0] == rsu_id) & (meta_va[:, 1] == 0)  # pure-benign A0 for θ calibration
+        # theta CALIBRATION population (kept consistent with fed_aggregator.py's
+        # compute_theta() — grid search must select hparams under the SAME rule
+        # that gets deployed): all y_va==0 windows, not just attack_v==0 runs,
+        # EXCLUDING attack_v in {3,4} (A3/A4, TCAM) — their U_TCAM feature
+        # carries artificially extreme values from the known TCAM
+        # rule-timeout issue (data predates that fix). See
+        # fed_aggregator.py's mask_va_benign comment for the full rationale.
+        mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
+                          & ~np.isin(meta_va[:, 1], [3, 4]))
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]

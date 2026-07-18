@@ -18,6 +18,10 @@
 //     blockchain_sim.h                   (for bc_write_event)
 //     tcam_detection.h                   (for g_prev_rule_count,
 //                                          g_prev_slowpath_hits, TCAM_CAPACITY)
+//     lstm_logger.h                      (for g_lstm_escalation_count —
+//                                          main.tex §5039/5307 escalation
+//                                          to LSTM detector, see
+//                                          process_escalation_at_rsu())
 //     tcam_attack_helper.h               (for g_tcam_table, TcamEntry)
 //     hf_attack_helper.h                 (for active/passive_hf_malicious_nodes)
 //
@@ -349,6 +353,22 @@ inline void process_escalation_at_rsu(uint32_t rsu_id)
         lrad_rsu(rsu_id, ev.vehicle_id, ev.pkt_id, ev.flow_id,
                  ev.obu_flags, ns3::Simulator::Now().GetSeconds(),
                  ev.orig_prev_sender, ev.assoc_rsu_node_id);
+
+    // main.tex §5039/5307 "Escalation to LSTM detector": the same D_OBU
+    // escalation that reaches LRAD-RSU above must also reach the LSTM side
+    // (main.tex:4159-4160 — "LRAD-OBU pre-filters, escalates to LRAD-RSU
+    // and BRFA-v2 LSTM"). g_lstm_escalation_count is defined in
+    // lstm_logger.h (included before this header) and drained once per
+    // cycle by lstm_log_rsu_cycle(). rsu_id here is N_Vehicles + local
+    // index (per escalate_to_rsu()'s construction) — convert back to the
+    // local RSU index lstm_log_rsu_cycle() indexes by.
+    if (rsu_id >= (uint32_t)N_Vehicles)
+    {
+        uint32_t rsu_local_idx = rsu_id - (uint32_t)N_Vehicles;
+        if (rsu_local_idx < g_lstm_escalation_count.size())
+            g_lstm_escalation_count[rsu_local_idx] += (uint32_t)queue.size();
+    }
+
     queue.clear();
 }
 

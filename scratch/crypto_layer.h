@@ -144,6 +144,13 @@ bool enable_quarantine             = true;  // AB7: trust updates + SC.Quarantin
 bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
 bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
 bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
+bool enable_lstm_inference         = false; // main.tex sec:fed_lstm: live in-sim LSTM
+                                             // (lstm_inference.h). Default OFF — needs
+                                             // lstm_pipeline/lstm_weights_cpp.bin to already
+                                             // exist (a prior offline training run's
+                                             // export_weights_cpp.py output); every other
+                                             // run/script in the repo must keep working
+                                             // unchanged without that file present.
 
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
@@ -585,6 +592,20 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 // nor touch g_verify_attempts/g_verify_passed — those belong to the
 // legitimate recipient's own verify call and must not be perturbed by this
 // receiver-specific, out-of-band content check performed at the eavesdropper.
+//
+// KNOWN LIMITATION (inherited, not introduced here): g_packet_crypto is keyed
+// only by (signer, pkt_id), and pkt_id values are small and reused every
+// ~1s cycle across a flow's lifetime — the same limitation the pre-existing
+// ground-truth-proxy code (see s5-s8_detection.h history) was working around.
+// If the RSU signs a LATER packet that reuses the same pkt_id before this
+// duplicate's receive-side check runs, the shared record has already moved
+// on, and this function reads content that isn't the one the duplicate was
+// actually built from. Empirically ~5-6% of fabricated=false calls in a
+// pct60/13s smoke run (2026-07-16) hit this and read FAIL where the copy was
+// genuinely unmodified. Directionally safe (missed detection, never a false
+// positive), and a full fix would require per-instance (not per-key) crypto
+// records — out of scope for this change; documented rather than silently
+// left unexplained.
 inline bool mldsa87_verify_copy_content(uint32_t claimed_signer, uint32_t pkt_id,
                                          bool fabricated) {
     if (g_disable_crypto) return !fabricated; // crypto disabled: keep deterministic semantics
@@ -1398,6 +1419,8 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
+    cmd.AddValue("enable_lstm_inference",         "sec:fed_lstm: live in-sim LSTM inference "
+                                                   "(needs lstm_weights_cpp.bin already exported)", enable_lstm_inference);
 }
 
 #endif // CRYPTO_LAYER_H
