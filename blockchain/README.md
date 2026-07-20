@@ -176,7 +176,7 @@ sudo apt-get install -y nodejs
 ### 4. Setup Fabric Images and CLI Binaries
 Navigate to the blockchain directory and download the matching platform binaries and Docker images:
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain"
 chmod +x install-fabric.sh
 ./install-fabric.sh docker binary 2.5.15 1.5.17
 ```

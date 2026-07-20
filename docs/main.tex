@@ -100,9 +100,20 @@
 }
 
 \DeclareAcronym{V2I}{
-  short = V2I,
-  long  = Vehicle-to-Infrastructure
+  short = {V2I},
+  long = {vehicle-to-infrastructure}
 }
+\DeclareAcronym{OLS}{
+  short = {OLS},
+  long = {ordinary least squares}
+}
+  
+\DeclareAcronym{UCR}{
+  short = {UCR},
+  long  = {Unauthorized Copy Rate}
+
+}
+ 
 
 \DeclareAcronym{RSU}{
   short = RSU,
@@ -242,7 +253,7 @@
 }
 \DeclareAcronym{MLDSA}{
   short = ML-DSA-87,
-  long  = Module Lattice-based Digital Signature Algorithm (FIPS~204, Security Level~5)
+  long  = {Module Lattice-based Digital Signature Algorithm (FIPS~204, Security Level~5)}
 }
 \DeclareAcronym{STARK}{
   short = STARK,
@@ -253,6 +264,28 @@
   long  = Secure Hash Algorithm 3, 512-bit
 }
 
+\DeclareAcronym{FlowMod}{
+  short = FlowMod,
+  long  = Flow Modification
+}
+
+\DeclareAcronym{BFT}{
+  short = BFT,
+  long  = Byzantine Fault Tolerance
+}
+
+\DeclareAcronym{FTISCON}{
+  short = FTISCON,
+  long  = Flow Table Integrity Through Smart Contract
+}
+\DeclareAcronym{BlockREV}{
+  short = BlockREV,
+  long  =  Blockchain-Enabled Multi-Controller Rule Enforcement Verification
+}
+\DeclareAcronym{GPS}{
+  short = GPS,
+  long  = Global Positioning System,
+}
 \begin{document}
 
 \include{cover}
@@ -1265,6 +1298,27 @@ frameworks.
                         (Eq.~\ref{eq:trust_update}). \\
 
                         \hline
+                                             
+                        $\delta_{best}(r,t)$ &
+                        Mean per-hop forwarding delay of best-effort
+                        (non-high-priority) packets at \ac{RSU} $r$
+                        during observation window; used as the selectivity
+                        condition in Signature~S1
+                        (Eq.~\ref{eq:rule_s1}). \\
+                        \hline
+                        $\mathcal{E}_{delay}(c_i,t)$ &
+                        Delay evidence count for controller $c_i$: number
+                        of \ac{RSU}s currently assigned to $c_i$ that have
+                        detected a timing anomaly (S1) attributable to
+                        $c_i$'s \texttt{FlowMod}s
+                        (Eq.~\ref{eq:delay_evidence}). \\
+                        \hline
+                        $T_{hold}$ &
+                        Maximum duration for \ac{OBU} local forwarding
+                        suspension pending \ac{RSU} confirmation
+                        (Eq.~\ref{eq:local_quarantine}). \\
+                        
+                       \hline
                         $\mathcal{L}_w, W, H(p)$ & Witness short-term cache, observation time window, and cryptographic packet hash, respectively. \\
 
                         \hline
@@ -1326,6 +1380,34 @@ frameworks.
                         (Eq.~\ref{eq:overhead_batch}).\\
 
                         \hline
+                        $H(p)$ &
+                        SHA3-512 packet hash used as the universal packet
+                        identity across \ac{UCR} (Eq.~\ref{eq:ucr}),
+                        witness cache, and Signature~S6
+                        (Eq.~\ref{eq:sig_s6}); replaces \textit{msg\_id}
+                        for notational consistency. \\
+                        \hline
+                        $\textsc{BC.QueryReceipt}(H(p),d',W)$ &
+                        Blockchain query returning the reception log entry
+                        (Eq.~\ref{eq:packet_receipt_log}) for packet $H(p)$
+                        at destination $d'$ within window $W$; enables
+                        cross-\ac{RSU} duplication detection for
+                        Signatures~S6--S8. \\
+                        \hline
+                        $v_{atk,copy}$ &
+                        Forwarding node identified by per-signature
+                        fallback verification (Eq.~\ref{eq:batch_fallback})
+                        after \textsc{BatchVerify} failure; the specific
+                        node whose signature fails in the multi-hop chain. \\
+                          \hline
+                          $U_{thresh}$ &
+                          TCAM utilisation detection threshold for
+                          Signature~S4 (Eq.~\ref{eq:rule_s4}); calibrated
+                          from benign validation traces; separates benign
+                          utilisation ($\leq 29\%$) from attack saturation
+                          ($\approx 100\%$). \\
+
+
                 \end{tabular}
         \end{center}
         \vspace{-10pt}
@@ -1512,32 +1594,45 @@ intersections reach rates of hundreds of \texttt{FlowMod} messages
 per minute as vehicles continuously enter and leave RSU coverage
 zones. The slow TCAM exhaustion variants (Attacks~3 and~4) operate
 at rates of 3.2--40\,packets/s~\cite{Pascoal2017}, which fall within
-the lower tail of the legitimate installation rate distribution. Let
-$\lambda_l(t)$ denote the legitimate flow installation rate as a
-function of vehicle density $\rho(t)$, and $\lambda_a$ the attack
-installation rate. Detection requires identifying $\lambda_a$ as
-anomalous within the observed total rate $\lambda_{obs}(t) =
-\lambda_l(t) + \lambda_a$. A static threshold $\lambda_{thresh}$
-calibrated for static SDN will generate unacceptably high false
-positive rates in SDVN because $\lambda_l(t)$ varies significantly
-with road density. This requires vehicle-density-normalized TCAM
-installation rate monitoring as formalised in
-Equation~\eqref{eq:density_normalized_rate}:
+the lower tail of the legitimate installation rate distribution.
+Even after mobility-conditioning, rate-based detection
+alone is insufficient. The mobility-conditioned anomalous
+rate estimator is formalised in
+Equation~\eqref{eq:density_normalized_rate} to
+characterise the residual separation problem.
 \begin{equation}
-\hat{\lambda}_a(t) = \lambda_{obs}(t) - \mathbb{E}\left[\lambda_l(t)\,|\,\rho(t)\right]
+\hat{\lambda}_a(t) = \lambda_{obs}(t) -
+\mathbb{E}\!\left[
+\lambda_l(t)\,|\,\rho(t),\bar{v}(t)
+\right]
 \label{eq:density_normalized_rate}
 \end{equation}
-As shown in Equation~\eqref{eq:density_normalized_rate}, the
-density-normalised anomalous rate estimator $\hat{\lambda}_a(t)$
-isolates the attack contribution by subtracting the expected
-legitimate flow installation rate conditioned on the current vehicle
-density $\rho(t)$ from the total observed rate $\lambda_{obs}(t)$,
-ensuring that surges in legitimate FlowMod activity caused by
-high-density traffic do not trigger false positives that would arise
-from a static threshold calibrated on low-density conditions.
-as part of the rule-based detection signature for Variants~3 and~4,
-where $\mathbb{E}[\lambda_l(t)\,|\,\rho(t)]$ is estimated from the
-predicted vehicle density at the RSU.
+As given in Equation~\eqref{eq:density_normalized_rate},
+even conditioning on both density $\rho(t)$ and speed
+$\bar{v}(t)$, the estimated residual $\hat{\lambda}_a(t)$
+does not reliably separate attack from benign traffic.
+Under realistic \ac{SDVN} mobility, a busy intersection
+generates legitimate \texttt{FlowMod} installations at
+the same rate as the slow attacker, causing the attack
+and benign rate distributions to overlap. For S4, the
+rate collapses to zero precisely when the attack is
+strongest---when the \ac{TCAM} table is saturated and
+new rule installations are refused---inverting the
+expected detection signal. Simulation confirms
+$\approx 3\%$ detection rate for S3 and $\approx 2\%$
+for S4 at the empirical 99th-percentile rate threshold,
+validating the theoretical overlap argument. Rate-based
+monitoring therefore serves as a formal characterisation
+of why mobility camouflage makes slow \ac{TCAM}
+exhaustion fundamentally hard to detect by rate alone,
+motivating the signal choices in the detection rules
+below.
+
+
+
+
+
+
 
 \textbf{Mechanism 4: Short observation windows for hidden forwarding
 detection.}
@@ -1652,11 +1747,17 @@ logic across two operational modes as summarized in Table~\ref{tab:dm_separation
 \textbf{Component} & \textbf{Lightweight Mode} & \textbf{Full Mode} \\
 \hline
 \textbf{Detection} 
-& Rule-based attack signature matching with mobility-adjusted thresholds (OBU-deployable) 
+& Rule-based detection of S1 and S2-partial using
+mobility-adjusted thresholds and \ac{HMAC} timestamps;
+local forwarding suspension on detection.
+
 & Federated LSTM anomaly detection at RSU edge nodes \\
 \hline
 \textbf{Mitigation} 
-& HMAC-based lightweight packet authentication; local flow-rule quarantine 
+& \ac{HMAC}-based lightweight packet authentication;
+local forwarding suspension (Eq.~\ref{eq:local_quarantine})
+pending \ac{RSU} confirmation.
+
 & ML-DSA-87 + aggregate signatures + ZKP behavioral proofs; blockchain-enforced trust penalties \\
 \hline
 \textbf{Blockchain} 
@@ -1736,16 +1837,44 @@ remains within baseline. The selective nature (only high-priority
 packets are delayed) is the distinguishing feature separating Attack~1
 from generic congestion.
 The condition formalising Signature~S1 is given in
-Equation~\eqref{eq:sig_s1}.
+Equation
 \begin{equation}
-\text{S1:}\quad \delta_p(v,r,t) > \bar{\delta}_r(t) + k\sigma_r(t)
-\quad \land \quad \text{Priority}(p) = \textsc{High}
+\text{S1:}\quad
+\delta_p(v,r,t) > \bar{\delta}_r(t) + k\sigma_r(t)
+\;\land\;
+\text{Priority}(p) = \textsc{High}
+\;\land\;
+\delta_{best}(r,t) \leq \bar{\delta}_r(t) + k\sigma_r(t)
 \label{eq:sig_s1}
 \end{equation}
-As shown in Equation~\eqref{eq:sig_s1}, the conjunction of the
-delay threshold violation and the high-priority flag is what
-distinguishes attack~1 from generic network congestion, where delays
-would affect all traffic classes equally.
+
+
+As given in Equation~\eqref{eq:sig_s1}, the third
+conjunct $\delta_{best}(r,t)\leq\bar{\delta}_r(t)+k\sigma_r(t)$
+is the selectivity condition: Attack~1 delays only
+high-priority packets while best-effort traffic at
+the same \ac{RSU} remains within baseline. Under
+genuine congestion, both traffic classes experience
+elevated delay simultaneously, so the selectivity
+condition evaluates to false and S1 does not fire,
+preventing congestion-induced false positives
+
+\textit{Limitation:} The \ac{EWMA} variance estimator
+(Eq.~\ref{eq:ewma_variance}) is susceptible to gradual
+inflation under a sustained slow attack, since the
+attacker's induced delays contribute to $\sigma_r^2(t)$
+over time, progressively widening the detection
+threshold and reducing sensitivity. In the vehicular
+setting this effect is bounded by the zone residence
+time of 9--22\,s --- after which the vehicle hands
+off to a new \ac{RSU} and the \ac{EWMA} estimate
+resets on the fresh \ac{RSU}'s local traffic
+distribution. For the slowest simulated attacker
+(3.2\,packets/s), the inflation effect within a single
+zone crossing is limited and is further mitigated by
+the selectivity condition (Eq.~\ref{eq:rule_s1}),
+which remains sensitive even under moderate variance
+inflation.
 
 %------------------------------------------------------------------
 % S2
@@ -1788,37 +1917,81 @@ tamper-proof ground truth for evaluating~S3.
 The condition formalising Signature~S3 is given in
 Equation~\eqref{eq:sig_s3}.
 \begin{equation}
-\text{S3:}\quad \lambda_{FM}(r,t) - \mathbb{E}[\lambda_l(t)\,|\,\rho(t)]
-> \lambda_{thresh} \quad \land \quad
-\nexists\, v : \text{flow}(r) \in \mathcal{F}_{active}(v)
+\text{S3:}\quad
+f_{unauth}(r_k, t) = 1
+\;\land\;
+\nexists\, v : \text{flow}(r) \in
+\mathcal{F}_{active}(v)
 \label{eq:sig_s3}
 \end{equation}
-As shown in Equation~\eqref{eq:sig_s3}, the density-normalised
-rate excess combined with the absence of any active vehicle flow
-provides a detection signal that is fully independent of controller
-self-reporting, closing the trust gap inherent in controller-sourced
-monitoring.
+
+
+As given in Equation~\eqref{eq:sig_s3}, S3 is detected
+when a received \texttt{FlowMod} fails the blockchain
+endorsement check ($f_{unauth}{=}1$,
+Eq.~\ref{eq:unauth_flowmod}) and no corresponding
+active vehicle flow exists. The endorsement check is
+the primary signal: every legitimate \texttt{FlowMod}
+has a valid blockchain commitment by design, so an
+unauthorized one is detected at 0\% \ac{FPR}
+regardless of its rate. The rate-based estimator
+(Eq.~\ref{eq:density_normalized_rate}) is insufficient
+as a primary detector because the slow attacker
+deliberately operates within the legitimate rate
+distribution; its role is characterising the
+camouflage problem, not detecting it.
+Importantly, detection correctly ceases once the
+compromised controller is revoked via
+\textsc{SC.Revoke} (Eq.~\ref{eq:sc_revoke}), since
+no further unauthorized \texttt{FlowMod}s can be
+issued by the revoked controller.
+
+ 
 
 %------------------------------------------------------------------
 % S4
 %------------------------------------------------------------------
 \textbf{Signature~S4 (Slow TCAM Exhaustion, Data Plane):}
-A single source vehicle $v_{atk}$ generates a stream of packets with
-unique 5-tuples at rate $\lambda_{atk}$ causing repeated
-\texttt{PACKET\_IN} floods to the controller, with TCAM utilization
-$U_{TCAM}(r,t)$ exceeding threshold $U_{thresh}$ while $v_{atk}$
-has no legitimate active session requiring such flow diversity.
-This condition is formalised in Equation~\eqref{eq:sig_s4}.
+A single source vehicle $v_{atk}$ generates packets with
+unique 5-tuples causing repeated \texttt{PACKET\_IN}
+floods to the controller, exhausting the \ac{TCAM} table.
+The attack effect is \ac{TCAM} saturation: legitimate
+\ac{RSU} \ac{TCAM} utilisation remains below $\approx
+30\%$ under normal vehicular mobility, while exhaustion
+attacks drive utilisation to $\approx 100\%$, creating
+a reliable separation that rate monitoring cannot provide.
+The per-source \texttt{PACKET\_IN} rate $\lambda_{PI}$
+identifies which vehicle is the highest-volume flooder
+and serves as the attacker attribution signal. The S4
+detection condition is formalised in
+Equation~\eqref{eq:sig_s4}.
+
+
 \begin{equation}
-\text{S4:}\quad \lambda_{PI}(v_{atk}, r, t) > \lambda_{PI,thresh}
-\quad \land \quad U_{TCAM}(r,t) > U_{thresh}
+\text{S4:}\quad
+U_{TCAM}(r,t) > U_{thresh}
+\;\land\;
+v_{atk} = \arg\max_{v'}\,\lambda_{PI}(v',r,t)
 \label{eq:sig_s4}
 \end{equation}
-As shown in Equation~\eqref{eq:sig_s4}, the joint condition on
-\texttt{PACKET\_IN} flood rate and TCAM utilisation prevents false
-positives in legitimate high-traffic scenarios where either threshold
-alone may be transiently exceeded due to vehicular density
-fluctuations.
+
+As given in Equation~\eqref{eq:sig_s4}, $U_{TCAM}>
+U_{thresh}$ is the primary detection trigger, exploiting
+the empirically confirmed separation between benign
+utilisation ($\leq 30\%$) and attack utilisation
+($\approx 100\%$). Note that the \texttt{PACKET\_IN}
+rate collapses to zero at full saturation since new
+rule installations are refused --- using rate as the
+primary signal would therefore produce near-zero
+detection precisely when the attack is most severe.
+$v_{atk}$ is identified as the highest \texttt{PACKET\_IN}
+source vehicle at the saturated \ac{RSU} and passed
+to \texttt{BTMM} for attribution and quarantine.
+The condition $v_{atk}$ has no legitimate active session
+requiring such flow diversity is verified against the
+blockchain-committed authorised flow policy
+(Eq.~\ref{eq:policy_commit}).
+
 
 \textbf{Signature~S5 (Active Hidden Forwarding, Control Plane):}
 
@@ -1831,8 +2004,22 @@ destination $d'$ is absent from the authorized next-hop policy set
 $\mathcal{P}(s,d)$.
 The conjunction of an explicitly installed unauthorized \texttt{FlowMod}
 rule, a failed ML-DSA-87 verification on the fabricated copy, and a failed
-hop-legitimacy proof distinguishes Attack~5 from passive forwarding variants
-and from benign routing updates.
+hop-legitimacy proof distinguishes Attack~5 from passive forwarding variants and from benign routing updates. A key distinction governs proof behaviour across active
+and passive hidden forwarding variants. For active attacks
+(S5, S6), the compromised node injects a fabricated copy
+through the normal protocol stack at $d'$, where the
+copy must carry a signature attributable to the original
+sender -- since the attacker does not possess the
+original sender's \ac{MLDSA} private key, the copy
+fails \ac{MLDSA} verification and consequently fails
+aggregate \textsc{BatchVerify}. For passive attacks
+(S7, S8), the original already-signed packet is
+retransmitted verbatim over the shared broadcast radio
+medium, bypassing the protocol stack entirely -- all
+cryptographic verifications pass because the
+signatures are authentic; only the unauthorized
+destination and the witness observations reveal the
+attack.
 The condition formalising Signature~S5 is given in
 Equation~\eqref{eq:sig_s5}.
 \begin{equation}
@@ -1843,54 +2030,79 @@ Equation~\eqref{eq:sig_s5}.
     \text{ installed } (s \to d') \\
   & \wedge\; \textsc{ML-DSA-87.Verify}(
     \sigma_{copy}, pk_s, m_{copy}) = 0 \\
+  & \wedge\; \textsc{BatchVerify}(
+    \boldsymbol{\sigma},\{pk_i\},\{m_i\},
+    \mathbf{r}) = 0 \\
   & \wedge\; b_{hop}(u) = 0
 \end{aligned}
 \label{eq:sig_s5}
 \end{equation}
+
 As given in Equation~\eqref{eq:sig_s5},
-$\textsc{ML-DSA-87.Verify}(\sigma_{copy}, pk_s,
-m_{copy}) = 0$ confirms that the copy at $d'$
-has been content-modified (active forwarding),
-since the original sender's \ac{MLDSA} signature
-is invalid over the altered content;
-$b_{hop}(u) = 0$ is the \ac{STARK} next-hop
-proof failure indicating unauthorised forwarding.
+$\textsc{ML-DSA-87.Verify}=0$ on the copy at $d'$
+(retrieved via Eq.~\ref{eq:packet_receipt_log})
+confirms content fabrication; since the attacker lacks
+the original sender's private key, the fabricated copy
+also fails \textsc{BatchVerify} at the aggregate level.
+$b_{hop}(u) = 0$ is the \ac{STARK} next-hop proof
+failure. The \textsc{ML-DSA-87.Verify} result at $d'$
+is evaluated from the blockchain receipt log
+(Eq.~\ref{eq:packet_receipt_log}) rather than locally,
+since $d'$ may lie under a different \ac{RSU}.
+
 
 % ------------------------------------------------------------
 
 \textbf{Signature~S6 (Active Hidden Forwarding, Data Plane):}
 
-The fabrication of packet content is evidenced by an ML-DSA-87 verification
-failure on the copy received at $d'$, since the forged content does not
-match the original sender's cryptographic signature.
-The duplication is further directly observable: the same unique message
-identifier \textit{msg\_id} is recorded as arriving at two distinct
-destination nodes $d$ and $d'$ within the observation window $W$, where
-only one is the authorized destination per the current flow table.
-The absence of a controller-issued \texttt{FlowMod} authorizing flows
-toward $d'$ confirms the attack originates in the data plane.
-The intermediate compromised node $u$ additionally fails to produce a valid
-Zero-Knowledge Proof of hop legitimacy $\pi_{hop}(u)$, since the
-unauthorized destination $d'$ does not belong to the authorized next-hop
-set for the current flow.
+The fabrication of packet content is evidenced by an
+\ac{MLDSA} verification failure on the copy received
+at $d'$, retrieved from the blockchain receipt log
+(Eq.~\ref{eq:packet_receipt_log}). Duplication is
+confirmed when the same packet hash $H(p)$ is
+observed locally at $d$ and queried via
+$\textsc{BC.QueryReceipt}(H(p),d',W)=1$ at the
+off-path destination $d'$ within window $W$.
+The absence of a controller-issued \texttt{FlowMod}
+authorizing flows toward $d'$ confirms the attack
+originates in the data plane and distinguishes S6
+from the control-plane variant S5. The compromised
+node $u$ additionally fails to produce a valid
+hop-legitimacy \ac{ZKP} $\pi_{hop}(u)$.
+
 The condition formalising Signature~S6 is given in
 Equation~\eqref{eq:sig_s6}.
 \begin{equation}
 \begin{aligned}
 \text{S6:}\quad
   & \exists\, d, d' : d \neq d' \\
-  & \wedge\; \textit{msg\_id} \in \mathcal{R}(d, W) \\
-  & \wedge\; \textit{msg\_id} \in \mathcal{R}(d', W) \\
+  & \wedge\; H(p) \in \mathcal{R}(d, W) \\
+  & \wedge\; \textsc{BC.QueryReceipt}(H(p), d', W)
+    = 1 \\
+  & \wedge\; \nexists\,\texttt{FM}(r){:}
+    \text{dst}{=}d' \\
   & \wedge\; \textsc{ML-DSA-87.Verify}(
     \sigma_{copy}, pk_s, m_{copy}) = 0 \\
   & \wedge\; b_{hop}(u) = 0
 \end{aligned}
 \label{eq:sig_s6}
 \end{equation}
+
 As given in Equation~\eqref{eq:sig_s6}, the
-\ac{MLDSA} verification failure on the copy
-confirms content fabrication in the data-plane
-active forwarding variant.
+observation of $H(p)$ at both $d$ (locally) and $d'$
+(via blockchain receipt query,
+Eq.~\ref{eq:packet_receipt_log}) within window $W$
+confirms duplication. The \ac{FlowMod}-absence
+conjunct $\nexists\,\texttt{FM}(r){:}\text{dst}{=}d'$
+distinguishes S6 (data-plane origin, no controller
+\texttt{FlowMod} authorizing $d'$) from S5
+(control-plane origin, controller-installed rule).
+Without this condition, S6 would also fire under S5
+events where the same packet hash arrives at $d'$.
+The \ac{MLDSA} copy verification result is retrieved
+from the blockchain receipt log at $d'$'s \ac{RSU}
+(Eq.~\ref{eq:packet_receipt_log})
+
 
 
 % ------------------------------------------------------------
@@ -1987,7 +2199,7 @@ committed to the blockchain by \ac{RSU} consensus at
 regular intervals to provide a tamper-evident audit
 trail for all detection decisions.
 
-\subsection{Lightweight Rule-Based Detection Engine}
+\subsection{the anomalous Rule-Based Detection Engine}
 \label{sec:rule_based}
 
 The lightweight detection engine evaluates signatures
@@ -2029,55 +2241,108 @@ responsive estimate, while a smaller $\beta$ prioritises recent
 observations and adapts more quickly to rapid changes in vehicular
 density.
 A packet $p$ is flagged by the S1 rule as formalised in
-Equation~\eqref{eq:rule_s1}:
+Equation
+
 \begin{equation}
 f_{S1}(p,r,t) =
 \begin{cases}
-1 & \delta_p > \bar{\delta}_r(t) + k\sigma_r(t)
-    \;\land\; \text{Priority}(p) = \textsc{High} \\
+1 & \delta_p > \bar{\delta}_r(t){+}k\sigma_r(t)
+    \;\land\; \text{Priority}(p){=}\textsc{High}
+    \;\land\; \delta_{best}(r,t){\leq}
+    \bar{\delta}_r(t){+}k\sigma_r(t) \\
 0 & \text{otherwise}
 \end{cases}
 \label{eq:rule_s1}
 \end{equation}
-As shown in Equation~\eqref{eq:rule_s1}, the flag is raised only
-when both the delay threshold and the high-priority condition are
-satisfied simultaneously, ensuring that best-effort traffic
-experiencing transient congestion-induced delays does not trigger a
-false positive.
-For TCAM exhaustion detection, the anomalous installation rate
-estimator from~\eqref{eq:density_normalized_rate} triggers a flag;
-the corresponding flag function is formalised in
-Equation~\eqref{eq:rule_s34}:
+
+As given in Equation~\eqref{eq:rule_s1}, all three
+conditions must hold simultaneously: the delay
+threshold, the high-priority class, and the selectivity
+condition confirming best-effort traffic is within
+baseline. This ensures that genuine congestion, which
+elevates delay across all traffic classes, does not
+satisfy the selectivity conjunct and does not trigger
+the flag.
+
+For \ac{TCAM} exhaustion detection, the rate-based
+estimator (Eq.~\ref{eq:density_normalized_rate}) was
+found insufficient as a detection signal under
+realistic vehicular mobility (see
+Eq.~\ref{eq:density_normalized_rate} discussion in
+Section~\ref{sec:mobility_amplification}). The S3
+detection flag uses the blockchain endorsement check
+as the primary signal
+(Eq.~\ref{eq:rule_s3}) and the S4 detection flag
+uses \ac{TCAM} utilisation saturation
+(Eq.~\ref{eq:rule_s4}).
+
+The S3 detection flag is given in
+Equation~\eqref{eq:rule_s3}.
 \begin{equation}
-f_{S3,S4}(r,t) =
+f_{S3}(r,t) =
 \begin{cases}
-1 & \hat{\lambda}_a(r,t) > \lambda_{thresh}
-    \;\land\; U_{TCAM}(r,t) > U_{thresh} \\
+1 & f_{unauth}(r_k,t) = 1
+    \;\land\; \nexists\,v :
+    \text{flow}(r) \in \mathcal{F}_{active}(v) \\
 0 & \text{otherwise}
 \end{cases}
-\label{eq:rule_s34}
+\label{eq:rule_s3}
 \end{equation}
-As shown in Equation~\eqref{eq:rule_s34}, the joint condition on
-the density-normalised anomalous rate $\hat{\lambda}_a$ and TCAM
-utilisation $U_{TCAM}$ prevents false positives in dense traffic
-scenarios where either threshold may be transiently exceeded in
-isolation due to legitimate vehicular density fluctuations.
+
+As given in Equation~\eqref{eq:rule_s3}, S3 fires on
+the blockchain endorsement failure alone ---
+$f_{unauth}{=}1$ is a binary deterministic signal with
+0\% \ac{FPR} by construction, so no rate threshold is
+needed. The absence-of-active-flow condition cross-checks
+that the \texttt{FlowMod} has no legitimate vehicle
+session behind it, confirming exhaustion intent rather
+than a legitimate but unendorsed update.
+
+
+\begin{equation}
+f_{S4}(r,t) =
+\begin{cases}
+1 & U_{TCAM}(r,t) > U_{thresh} \\
+0 & \text{otherwise}
+\end{cases}
+\;\text{with}\;
+v_{atk} = \arg\max_{v'}\,\lambda_{PI}(v',r,t)
+\label{eq:rule_s4}
+\end{equation}
+
+As given in Equation~\eqref{eq:rule_s4}, $U_{TCAM}>
+U_{thresh}$ is the sole detection condition, calibrated
+at $U_{thresh}$ [tbd: $\{0.5, 0.6, 0.7, 0.8\}$]
+selected for best \ac{MCC} at $\leq 1\%$ \ac{FPR} on
+the benign validation split. $v_{atk}$ is computed
+concurrently as the highest \texttt{PACKET\_IN} source
+vehicle and passed to \texttt{BTMM}
+(Eq.~\ref{eq:batch_fallback}) for quarantine; it does
+not gate the detection decision.
+
+
+
 The composite \ac{OBU}-side detection decision for
 node $v$ at time $t$ is given in
 Equation~\eqref{eq:composite_light}.
 \begin{equation}
 D_{OBU}(v,t) = f_{S1}(v,t) \lor f_{S2p}(v,t)
-\lor f_{S3}(v,t) \lor f_{S4}(v,t)
 \label{eq:composite_light}
 \end{equation}
+
 As given in Equation~\eqref{eq:composite_light},
-$D_{OBU}$ evaluates to 1 if any of the four
+$D_{OBU}$ evaluates to 1 if either of the two
 \ac{OBU}-computable signature rules fires,
-immediately triggering escalation to the nearest
-\ac{RSU} for full-mode analysis. Signatures S2-full
-and S5--S8 are not evaluated at the \ac{OBU} since
-they require \ac{ZKP} inputs unavailable on
-resource-constrained nodes.
+immediately triggering local flow-rule quarantine
+(Eq.~\ref{eq:local_quarantine}) and escalation to
+the nearest \ac{RSU}. Signatures S3 and S4 require
+\ac{RSU}-side infrastructure observables (FlowMod
+rate, TCAM utilisation, PACKET\_IN rate per source)
+that are inaccessible to resource-constrained \ac{OBU}s
+and are evaluated exclusively in \texttt{LRAD-RSU}.
+Signatures S2-full and S5--S8 require \ac{ZKP}
+inputs unavailable on \ac{OBU}s.
+
 
 The lightweight detection algorithm deployed on
 resource-constrained \ac{OBU}s evaluates only signatures
@@ -2088,7 +2353,7 @@ Algorithm~\ref{alg:lrad_obu}.
 
 
 \begin{algorithm}[H]
-\caption{OBU Lightweight Rule-Based Detection
+\caption{\ac{OBU} Lightweight Rule-Based Detection
 (\texttt{LRAD-OBU})}
 \begin{algorithmic}[1]
 \small
@@ -2096,42 +2361,62 @@ Algorithm~\ref{alg:lrad_obu}.
   \State $\bar{\delta} \gets \delta_0
          +\alpha_\rho\cdot\rho
          +\alpha_v\cdot\bar{v}^{-1}$
-         \hfill\Comment{Mobility-adjusted baseline}
+         \hfill\Comment{Mobility-adjusted baseline
+         (Eq.~\ref{eq:mobility_baseline})}
   \State $\sigma_r \gets \texttt{EWMA}(\delta_r,\beta)$
-         \hfill\Comment{Running variance estimate}
-  \State $\hat{\lambda}_a \gets \lambda_{obs}
-         -\mathbb{E}[\lambda_l|\rho]$
-         \hfill\Comment{Density-normalised TCAM rate}
+         \hfill\Comment{Running variance
+         (Eq.~\ref{eq:ewma_variance})}
   \State $flag_{S1} \gets
          [\delta_p{>}\bar{\delta}{+}k\sigma_r]
-         \land[\text{Priority}(p){=}\textsc{High}]$
-         \hfill\Comment{S1: selective timing delay}
+         \land[\text{Priority}(p){=}\textsc{High}]
+         \land[\delta_{best}(r,t){\leq}
+         \bar{\delta}{+}k\sigma_r]$
+         \hfill\Comment{S1: selective delay,
+         congestion-filtered
+         (Eq.~\ref{eq:rule_s1})}
   \State $ts_{recv} \gets \texttt{HMAC.Verify}(\tau,p)$
          \hfill\Comment{Recover authenticated timestamp}
   \State $flag_{S2p} \gets
          (t_{now}-ts_{recv})>\Delta_{max}$
-         \hfill\Comment{S2-partial: threshold only, no ZKP}
-  \State $flag_{S3} \gets
-         [\hat{\lambda}_a>\lambda_{thresh}]
-         \land[U_{TCAM}>U_{thresh}]$
-         \hfill\Comment{S3: TCAM exhaustion}
-  \State $flag_{S4} \gets
-         [\lambda_{PI}(v,r,t)>\lambda_{PI,thresh}]
-         \land[U_{TCAM}>U_{thresh}]$
-         \hfill\Comment{S4: data-plane TCAM flooding}
-  \State $D_{OBU} \gets flag_{S1}\lor flag_{S2p}
-         \lor flag_{S3}\lor flag_{S4}$
+         \hfill\Comment{S2-partial: threshold only,
+         no ZKP}
+  \State $D_{OBU} \gets flag_{S1}\lor flag_{S2p}$
+         \hfill\Comment{S3, S4 evaluated at RSU only}
   \If{$D_{OBU}$}
+    \State \texttt{HOLD\_FORWARD}$(v,r)$
+           \hfill\Comment{Local quarantine: suspend
+           forwarding pending RSU confirmation
+           (Eq.~\ref{eq:local_quarantine})}
     \State \texttt{ESCALATE}$(p,v,r,
-           \{flag_{S1},flag_{S2p},
-           flag_{S3},flag_{S4}\})$
-           \hfill\Comment{S2-full, S5--S8 at RSU only}
+           \{flag_{S1},flag_{S2p}\})$
+           \hfill\Comment{S2-full, S3--S8 at RSU only}
   \EndIf
   \State \textbf{return} $D_{OBU}$
 \EndProcedure
 \end{algorithmic}
 \label{alg:lrad_obu}
 \end{algorithm}
+
+The local flow-rule quarantine action executed by the
+\ac{OBU} upon detection is formalised in
+Equation~\eqref{eq:local_quarantine}.
+\begin{equation}
+\texttt{HOLD\_FORWARD}(v,r) \Rightarrow
+\text{fwd\_state}(v) = \textsc{Hold}
+\quad\text{until}\quad
+\texttt{RSU.Confirm}(v,r)\;\lor\;
+t > t_{detect} + T_{hold}
+\label{eq:local_quarantine}
+\end{equation}
+As given in Equation~\eqref{eq:local_quarantine},
+upon $D_{OBU}{=}1$ the \ac{OBU} suspends forwarding
+of flows matching the flagged signature for a maximum
+hold window $T_{hold}$, awaiting either \ac{RSU}
+confirmation or timeout. This prevents an \ac{OBU}
+from continuing to forward potentially attack-affected
+traffic before the \ac{RSU} completes full-mode
+analysis.
+
 
 The \ac{RSU}-side full detection algorithm receives escalated
 events from \ac{OBU}s and evaluates all remaining
@@ -2140,51 +2425,147 @@ pipeline. The \ac{RSU}-side full detection procedure is given
 in Algorithm~\ref{alg:lrad_rsu}.
 
 \begin{algorithm}[H]
-\caption{RSU Full Detection (\texttt{LRAD-RSU})}
+\caption{\ac{RSU} Full Detection (\texttt{LRAD-RSU})}
 \begin{algorithmic}[1]
 \small
 \Procedure{\texttt{LRAD-RSU}}{$p, v, r, \pi_{delay},
   \pi_{hop}, \boldsymbol{\sigma},
-  \{pk_i\}, \{m_i\}$}
+  \{pk_i\}, \{m_i\}, D_{LSTM}^{(k)}$}
+  % --- S2-full ---
   \State $flag_{S2f} \gets
          [\textsc{STARK.Verify}(\pi_{delay},
          C_{delay}, H_{\text{SHA3-512}}) = 0]$
          \hfill\Comment{S2-full: timing proof failure}
+  % --- Batch and hop verification ---
   \State $\mathbf{r} \gets
          H_{\text{SHA3-512}}(\boldsymbol{\sigma}
          \| m_1 \| \cdots \| m_n)$
-         \hfill\Comment{Eq.~\eqref{eq:batch_challenge}}
+         \hfill\Comment{Eq.~\ref{eq:batch_challenge}}
   \State $b_{batch} \gets
          \textsc{BatchVerify}(\boldsymbol{\sigma},
          \{pk_i\}, \{m_i\}, \mathbf{r})$
-         \hfill\Comment{Eq.~\eqref{eq:batch_verify}}
+         \hfill\Comment{Eq.~\ref{eq:batch_verify}}
   \State $b_{hop} \gets
          \textsc{STARK.Verify}(\pi_{hop},
          C_{hop}, H_{\text{SHA3-512}})$
-         \hfill\Comment{Eq.~\eqref{eq:stark_hop_verify}}
-  \State $flag_{S5} \gets [\neg b_{batch}]
-         \land[\texttt{FlowMod}_{recv}
-         \notin\textsc{BC.Query}
-         (\mathcal{C}_\mathcal{P})]$
-         \hfill\Comment{S5: active HF ctrl-plane}
-  \State $flag_{S6} \gets [\neg b_{batch}]
-         \land[\texttt{DUP}(\text{msg\_id},W)]$
-         \hfill\Comment{S6: active HF data-plane}
+         \hfill\Comment{Eq.~\ref{eq:stark_hop_verify}}
+ \State $flag_{S3} \gets
+         [f_{unauth}(r,t){=}1]
+         \land[\nexists\,v{:}\text{flow}(r)
+         {\in}\mathcal{F}_{active}(v)]$
+         \hfill\Comment{S3: Eq.~\ref{eq:rule_s3};
+         blockchain endorsement primary}
+  % --- S4: Data-plane TCAM (utilization-based) ---
+  \State $flag_{S4} \gets
+         [U_{TCAM}(r,t){>}U_{thresh}]$
+         \hfill\Comment{S4: Eq.~\ref{eq:rule_s4};
+         TCAM saturation primary}
+  \State $v_{atk} \gets
+         \arg\max_{v'}\,\lambda_{PI}(v',r,t)$
+         \hfill\Comment{Attribution only; does not
+         gate $flag_{S4}$}
+  % --- S5--S8 (existing) ---
+   % --- Attacker identification after batch failure ---
+  \If{$\neg b_{batch}$}
+    \State $v_{atk,copy} \gets
+           \arg\min_{i}\{i :
+           \textsc{ML-DSA-87.Verify}
+           (\sigma_i,pk_i,m_i)=0\}$
+           \hfill\Comment{Eq.~\ref{eq:batch_fallback}:
+           isolate failing node}
+  \EndIf
+  % --- S5: Active HF Control Plane ---
+  \State $\text{CopyVerify}_{d'} \gets
+         \textsc{BC.QueryReceipt}(H(p),d',W).\text{verify}$
+         \hfill\Comment{Eq.~\ref{eq:packet_receipt_log}}
+  \State $flag_{S5} \gets
+         [\neg b_{batch}]
+         \land[f_{unauth}(r,t){=}1]
+         \land[\text{CopyVerify}_{d'}{=}0]
+         \land[b_{hop}{=}0]$
+         \hfill\Comment{S5: Eq.~\ref{eq:sig_s5};
+         all four conjuncts}
+  % --- S6: Active HF Data Plane ---
+  \State $\text{RecvAt}_{d'} \gets
+         \textsc{BC.QueryReceipt}(H(p),d',W)$
+         \hfill\Comment{Cross-RSU via blockchain}
+  \State $\text{NoFM}_{d'} \gets
+         \nexists\,\texttt{FM}(r){:}\text{dst}{=}d'$
+         \hfill\Comment{FlowMod-absence check}
+  \State $flag_{S6} \gets
+         [\text{RecvAt}_{d'}{=}1]
+         \land[\text{NoFM}_{d'}]
+         \land[\text{CopyVerify}_{d'}{=}0]
+         \land[b_{hop}{=}0]$
+         \hfill\Comment{S6: Eq.~\ref{eq:sig_s6};
+         gated on FlowMod-absence to exclude S5}
+  % --- S7: Passive HF Control Plane ---
+  \State $\text{CopyVerify}_{d',S7} \gets
+         \textsc{BC.QueryReceipt}(H(p),d',W).\text{verify}$
   \State $flag_{S7} \gets
-         [\tfrac{d}{dt}\text{Vol}(d',t)
-         {>}\epsilon_{vol}]
+         [\tfrac{d}{dt}\text{Vol}(d',t){>}\epsilon_{vol}]
+         \land[\nexists\,\texttt{FM}(r){:}\text{dst}{=}d']
+         \land[\text{CopyVerify}_{d',S7}{=}1]
          \land[b_{hop}{=}0]$
-         \hfill\Comment{S7: passive HF ctrl-plane}
-  \State $flag_{S8} \gets [b_{batch}]
+         \hfill\Comment{S7: Eq.~\ref{eq:sig_s7};
+         all four conjuncts; primary via witness}
+  % --- S8: Passive HF Data Plane ---
+  \State $\text{CopyVerify}_{d',S8} \gets
+         \textsc{BC.QueryReceipt}(H(p),d',W).\text{verify}$
+  \State $flag_{S8} \gets
+         [b_{batch}]
+         \land[\text{CopyVerify}_{d',S8}{=}1]
          \land[b_{hop}{=}0]$
-         \hfill\Comment{S8: passive HF data-plane}
-  \State $D_{RSU} \gets flag_{S2f}\lor flag_{S5}
-         \lor flag_{S6}\lor flag_{S7}\lor flag_{S8}$
+         \hfill\Comment{S8: Eq.~\ref{eq:sig_s8};
+         all three conjuncts; primary via witness}
+
+  % --- LSTM path ---
+  \State $flag_{LSTM} \gets D_{LSTM}^{(k)}$
+         \hfill\Comment{Eq.~\ref{eq:lstm_detection};
+         covers residual anomalies}
+  % --- Composite RSU decision ---
+  \State $D_{RSU} \gets flag_{S2f}\lor flag_{S3}
+         \lor flag_{S4}\lor flag_{S5}\lor flag_{S6}
+         \lor flag_{S7}\lor flag_{S8}\lor flag_{LSTM}$
   \If{$D_{RSU}$}
-    \State \texttt{BC.Write}$(r,v,D_{RSU},ts)$
-    \State \texttt{BTMM}$(v, \boldsymbol{\sigma},
-           \pi_{delay}, \pi_{hop},
-           \{pk_i\}, \{m_i\})$
+    % --- Plane-based attribution and routing ---
+    \If{$flag_{S3}\lor flag_{S5}\lor flag_{S7}$}
+      \State $c_{atk} \gets c^*(r,t)$
+             \hfill\Comment{Eq.~\ref{eq:rsu_ctrl_assign}}
+      \State \texttt{BC.Write}$(r,c_{atk},D_{RSU},ts)$
+      \State \texttt{BTMM}$(c_{atk},
+             \textsc{ctrl-plane})$
+             \hfill\Comment{Controller trust update path}
+      \If{$flag_{S5}$}
+        \Comment{S5: dual attribution ---
+        also penalize forwarding node}
+        \State \texttt{BTMM}$(v_{atk,copy},
+               \textsc{data-plane})$
+               \hfill\Comment{Node identified by
+               Eq.~\ref{eq:batch_fallback}}
+      \EndIf
+      \If{$flag_{S7}\lor flag_{S8}$}
+        \Comment{Witness path invoked independently
+        by SC.PenalizeTrust via Eq.~\ref{eq:bft_penalty}}
+        \State \textit{// Witness threshold checked
+               on-chain; no direct BTMM call needed}
+      \EndIf
+    \Else
+      \hfill\Comment{Data-plane or LSTM: attacker is
+      vehicle/RSU}
+      \If{$flag_{S4}$}
+        \State $v_{report} \gets v_{atk}$
+      \Else
+        \State $v_{report} \gets v$
+      \EndIf
+      \State \texttt{BC.Write}$(r,v_{report},
+             D_{RSU},ts)$
+      \State \texttt{BTMM}$(v_{report},
+             \textsc{data-plane})$
+    \EndIf
+    \State \texttt{RSU.Confirm}$(v,r)$
+           \hfill\Comment{Release OBU hold if
+           warranted}
   \EndIf
   \State \textbf{return} $D_{RSU}$
 \EndProcedure
@@ -2192,25 +2573,30 @@ in Algorithm~\ref{alg:lrad_rsu}.
 \label{alg:lrad_rsu}
 \end{algorithm}
 
-As outlined in Algorithms~\ref{alg:lrad_obu} and~\ref{alg:lrad_rsu},
-\texttt{LRAD} splits detection across a lightweight OBU stage and a full
-RSU stage. The OBU stage (Algorithm~\ref{alg:lrad_obu}) provides a
-computationally lightweight first line of defence on resource-constrained
-nodes, evaluating only the signatures computable from local data and
-HMAC-authenticated timestamps---selective timing delay (S1), the
-threshold-only component of timestamp manipulation (S2-partial), and
-TCAM exhaustion and data-plane flooding (S3--S4)---using mobility-adjusted
-baselines and density-normalised rates rather than purely static
-thresholds, so that normal handoff-induced delays and legitimate
-flow-rule churn at high vehicle densities do not trigger false positives.
-If any of these signatures fires, the event is immediately escalated to
-the nearest RSU, where the full stage (Algorithm~\ref{alg:lrad_rsu})
-evaluates the remaining ZKP-dependent signatures (S2-full and S5--S8)
-through the aggregate-signature and ZKP cryptographic pipeline. This
-division of labour ensures that no attack variant escapes detection
-solely due to OBU resource constraints, while keeping the OBU role
-limited to fast pre-filtering and reserving the heavier verification
-workload for RSU edge nodes.
+
+As outlined in Algorithms~\ref{alg:lrad_obu}
+and~\ref{alg:lrad_rsu}, \texttt{LRAD} splits
+detection across a lightweight \ac{OBU} stage and a
+full \ac{RSU} stage. The \ac{OBU} stage evaluates
+only S1 and S2-partial --- the two signatures
+computable from local data and \ac{HMAC}-authenticated
+timestamps --- using mobility-adjusted baselines, and
+immediately suspends forwarding (Eq.~\ref{eq:local_quarantine})
+upon detection. The \ac{RSU} stage evaluates all
+remaining signatures: S2-full via \ac{STARK} timing
+proof, S3 and S4 via \ac{RSU}-observable TCAM metrics
+and mobility-conditioned rate estimation, and S5--S8
+via the aggregate signature and hop-legitimacy
+pipeline. The \ac{RSU} stage further incorporates the
+federated \ac{LSTM} detection output $D_{LSTM}^{(k)}$
+as a complementary detection signal. Critically,
+mitigation is routed by attack plane: control-plane
+attacks (S3, S5, S7) attribute to the assigned
+controller and invoke the controller trust update and
+failover path; data-plane attacks (S2, S4, S6, S8)
+attribute to the source vehicle and invoke node
+quarantine.
+
 
 \subsection{Witness-Based Forwarding Verification}
 \label{sec:witness}
@@ -2310,20 +2696,31 @@ penalty directly. The smart contract penalty trigger
 is given in Equation~\eqref{eq:bft_penalty}.
 \begin{equation}
 \textsc{SC.PenalizeTrust}(v_i) \Leftarrow
-\Bigl|\bigl\{\alpha_w \cup \beta_w :
-\textsc{ML-DSA-87.Verify}(\cdot) = 1
+\Bigl|\bigl\{
+w : \exists\,(\alpha_w \text{ or } \beta_w)
+\text{ s.t. }
+\textsc{ML-DSA-87.Verify}(\cdot,pk_w,\cdot) = 1
+\;\land\; \text{event}(v_i,p,w)\text{ confirmed}
 \bigr\}\Bigr|
 \geq 2f{+}1
 \label{eq:bft_penalty}
 \end{equation}
-As given in Equation~\eqref{eq:bft_penalty}, $f$
-is the maximum number of colluding malicious
-witnesses in the locality. The smart contract
-independently verifies each submitted alert under
-the submitting vehicle's \ac{MLDSA} public key
-before counting it toward the $2f{+}1$ threshold,
-ensuring that forged alerts from nodes lacking
-the corresponding private key are rejected.
+
+As given in Equation~\eqref{eq:bft_penalty}, $f$ is
+the maximum number of colluding malicious witnesses
+in the locality. The cardinality is over
+\textbf{distinct witness vehicles} $w$ that have
+each submitted at least one valid alert
+(signed under their own $pk_w$) for the same
+$(v_i, p)$ event --- not over the total number of
+alert messages. A single witness submitting multiple
+alerts for the same event is counted as one, preventing
+any one vehicle from crossing the $2f{+}1$ threshold
+unilaterally. The smart contract deduplicates by
+$(w, v_i, H(p))$ before counting, and independently
+verifies each alert under $pk_w$ to reject forged
+submissions.
+
 
 
 
@@ -2488,6 +2885,30 @@ ensures that batch verification of the $n$ per-hop
 signatures completes within the 50\,ms processing
 budget at \ac{RSU} edge nodes even for realistic
 multi-hop path lengths in dense vehicular environments.
+
+When $\textsc{BatchVerify}=0$, the batch rejection
+identifies that at least one hop signature is invalid
+but does not identify which specific node is responsible.
+A per-signature linear fallback is executed immediately
+after batch failure to isolate the attacker. The
+attacker identification step is formalised in
+Equation~\eqref{eq:batch_fallback}.
+\begin{equation}
+v_{atk} = \arg\min_{i \in \{1,\ldots,n\}}
+\Bigl\{i :
+\textsc{ML-DSA-87.Verify}(\sigma_i, pk_i, m_i) = 0
+\Bigr\}
+\label{eq:batch_fallback}
+\end{equation}
+As given in Equation~\eqref{eq:batch_fallback}, the
+linear scan over individual signatures identifies the
+first failing node $v_{atk}$, whose identity is then
+passed to \texttt{BTMM} for trust update and
+quarantine. The $O(n)$ per-signature fallback is
+incurred only on attack detection events, not on
+normal traffic, preserving the efficiency of
+\textsc{BatchVerify} for the common benign case.
+
 
 
 
@@ -3076,6 +3497,32 @@ commitment $C_{\mathcal{P}}$ from Eq.~\eqref{eq:endorsed_commit}
 is immediately flagged as unauthorized;
 the unauthorised FlowMod detection flag is formalised in
 Equation \eqref{eq:unauth_flowmod}:
+
+To support cross-\ac{RSU} packet identity verification
+for Signatures~S6--S8, each \ac{RSU} additionally logs
+every packet reception to the \ac{RSU}-chain immediately
+upon receipt. The packet reception log entry is formalised
+in Equation~\eqref{eq:packet_receipt_log}.
+\begin{equation}
+\textsc{BC.LogReceipt}\!\left(
+H(p),\; dst,\; r_k,\; ts_{recv},\;
+\textsc{ML-DSA-87.Verify}(\sigma_{copy},pk_s,m_{copy})
+\right)
+\label{eq:packet_receipt_log}
+\end{equation}
+As given in Equation~\eqref{eq:packet_receipt_log},
+the log commits the packet hash $H(p)$, the observed
+destination $dst$, the receiving \ac{RSU} $r_k$, the
+reception timestamp, and the \ac{MLDSA} verification
+result on the received copy. Any \ac{RSU} may then
+query: $\textsc{BC.QueryReceipt}(H(p), d', W)$ to
+determine whether $H(p)$ was received at destination
+$d'$ within window $W$ under any \ac{RSU}'s
+observation, enabling evaluation of cross-\ac{RSU}
+duplication conditions without requiring direct
+\ac{RSU}-to-\ac{RSU} communication channels.
+
+
 \begin{equation}
 f_{unauth}(r_k, t) =
 \begin{cases}
@@ -3085,17 +3532,31 @@ f_{unauth}(r_k, t) =
 \end{cases}
 \label{eq:unauth_flowmod}
 \end{equation}
-As shown in Equation \eqref{eq:unauth_flowmod}{, the flag
-$f_{unauth}$ evaluates to 1 whenever the received FlowMod hash
-cannot be matched against any valid commitment record in the
-blockchain query result $\mathcal{C}_{\mathcal{P}}$, providing a
-controller-independent tamper-proof ground truth that directly
-underlies the detection of Attacks~1, 3, 5, and~7 without any
-reliance on controller self-reporting.}
-This detects malicious controller FlowMods underlying Attacks~1,
-3, 5, and~7 without relying on the controller's own reporting,
-closing the design flaw inherent in controller-sourced blockchain
-writes.
+As given in Equation~\eqref{eq:unauth_flowmod},
+$f_{unauth}$ evaluates to 1 whenever the received
+\texttt{FlowMod} hash is absent from
+$\mathcal{C}_{\mathcal{P}}$. Critically, this flag acts
+as a \textbf{pre-installation enforcement gate}: an
+\ac{RSU} that evaluates $f_{unauth}(r_k,t){=}1$ rejects
+and does not install the \texttt{FlowMod} into its flow
+table. The hash is still logged to the blockchain via
+Eq.~\eqref{eq:flowmod_log} for audit purposes, but the
+malicious rule never takes effect. This converts the
+detection flag into a prevention mechanism, ensuring
+that controller compromise cannot alter forwarding
+behavior even transiently before detection is confirmed.
+Because it relies solely on the tamper-proof commitment
+record rather than controller self-reporting,
+$f_{unauth}$ directly underlies the detection and
+prevention of Attacks~1, 3, and~5, where the attacker
+actively installs an unauthorized \texttt{FlowMod}. For
+Attack~7, $f_{unauth}$ contributes only a corroborating
+condition within the S7 signature
+(Eq.~\ref{eq:sig_s7}); the primary detection mechanism
+there is witness-based monitoring
+(Eq.~\ref{eq:bft_penalty}), since the passive variant of
+Attack~7 produces no \texttt{FlowMod}-level observable
+that is absent from the blockchain.
 
 \subsubsection{Two-Tier Chain Structure}
 A local RSU-level permissioned chain (RSU-chain) operates with
@@ -3233,36 +3694,58 @@ formalized in Algorithm\ref{alg:btmm}.
 (\texttt{BTMM})}
 \begin{algorithmic}[1]
 \small
-\Procedure{\texttt{BTMM}}{$v, \boldsymbol{\sigma},
-  \pi_{delay}, \pi_{hop},
-  \{pk_i\}, \{m_i\}$}
-  \Comment{Called by RSU $r_k$, not controller}
-  \State $\mathbf{r} \gets
-         H_{\text{SHA3-512}}(
-         \boldsymbol{\sigma}\|m_1\|\cdots\|m_n)$
-  \State $b_{batch} \gets
-         \textsc{BatchVerify}(\boldsymbol{\sigma},
-         \{pk_i\}, \{m_i\}, \mathbf{r})$
-         \hfill\Comment{Eq.~\eqref{eq:batch_verify}}
-  \State $b_{\pi} \gets
-         \textsc{STARK.Verify}(\pi_{delay},
-         C_{delay}, H_{\text{SHA3-512}})$
-         $\land\;\textsc{STARK.Verify}(\pi_{hop},
-         C_{hop}, H_{\text{SHA3-512}})$
-  \If{$b_{batch} \land b_{\pi}$}
-    \State $T_v \gets \min(1, T_v + \Delta_r)$
-           \hfill\Comment{Eq.~\eqref{eq:trust_update}}
+\Procedure{\texttt{BTMM}}{$node,\; attack\_plane$}
+  \Comment{$node$ is $v_{atk}$ (data-plane) or
+  $c_{atk}$ (control-plane)}
+  \If{$attack\_plane = \textsc{ctrl-plane}$}
+    % --- Controller mitigation path ---
+    \State Submit delay evidence
+           $f_{S1}(r,t)$ to blockchain
+           \hfill\Comment{Eq.~\ref{eq:delay_evidence}}
+    \State \textbf{if} $\mathcal{E}_{delay}(c_{atk},t)
+           \geq f{+}1$ \textbf{then}
+    \State \quad $T_{c_{atk}} \gets
+           \max(0,T_{c_{atk}}-\Delta_p^{ctrl})$
+           \hfill\Comment{Eq.~\ref{eq:ctrl_trust_update}}
+    \State \quad \texttt{BC.LOG}$(c_{atk},
+           \mathcal{E}_{delay},ts_{event})$
+    \State \textbf{if} $T_{c_{atk}}
+           < T_{min}^{ctrl}$ \textbf{then}
+    \State \quad \texttt{SC.Revoke}$(c_{atk})$
+           \hfill\Comment{Eq.~\ref{eq:sc_revoke}:
+           triggers failover}
   \Else
-    \State $T_v \gets \max(0, T_v - \Delta_p)$
-           \hfill\Comment{Eq.~\eqref{eq:trust_update}}
-    \State \texttt{BC.LOG}$(v, \neg b_{batch},
-           \neg b_{\pi}, ts_{event})$
+    % --- Node/vehicle mitigation path ---
+    \State $\mathbf{r} \gets
+           H_{\text{SHA3-512}}(
+           \boldsymbol{\sigma}\|m_1\|\cdots\|m_n)$
+    \State $b_{batch} \gets
+           \textsc{BatchVerify}(\boldsymbol{\sigma},
+           \{pk_i\},\{m_i\},\mathbf{r})$
+           \hfill\Comment{Eq.~\ref{eq:batch_verify}}
+    \State $b_{\pi} \gets
+           \textsc{STARK.Verify}(\pi_{delay},
+           C_{delay},H_{\text{SHA3-512}})$
+           $\land\;\textsc{STARK.Verify}(\pi_{hop},
+           C_{hop},H_{\text{SHA3-512}})$
+    \If{$b_{batch} \land b_{\pi}$}
+      \State $T_{node} \gets
+             \min(1,T_{node}+\Delta_r)$
+             \hfill\Comment{Eq.~\ref{eq:trust_update}}
+    \Else
+      \State $T_{node} \gets
+             \max(0,T_{node}-\Delta_p)$
+             \hfill\Comment{Eq.~\ref{eq:trust_update}}
+      \State \texttt{BC.LOG}$(node,
+             \neg b_{batch},\neg b_{\pi},
+             ts_{event})$
+    \EndIf
+    \If{$T_{node} < T_{min}$}
+      \State \texttt{SC.Quarantine}$(node)$
+             \hfill\Comment{Eq.~\ref{eq:quarantine}}
+    \EndIf
   \EndIf
-  \If{$T_v < T_{min}$}
-    \State \texttt{SC.Quarantine}$(v)$
-           \hfill\Comment{Eq.~\eqref{eq:quarantine}}
-  \EndIf
-  \State \textbf{return} $T_v$
+  \State \textbf{return} $T_{node}$ (or $T_{c_{atk}}$)
 \EndProcedure
 \end{algorithmic}
 \label{alg:btmm}
@@ -3306,25 +3789,67 @@ As given in Equation~\eqref{eq:trusted_ctrl_set},
 $T_{min}^{ctrl}$ is the minimum operational trust
 threshold. Controllers below it are excluded from the
 trusted set and cannot receive \ac{RSU} assignments.
-The controller trust score update, triggered by
-\ac{RSU}-submitted conflict evidence written directly
-to the blockchain, is given in
-Equation~\eqref{eq:ctrl_trust_update}.
+
+
+The controller trust score update is driven by two
+independent evidence channels. Conflict evidence
+accumulates when RSUs receive \texttt{FlowMod}s absent
+from the blockchain-committed endorsed policy
+(Eq.~\ref{eq:unauth_flowmod}). Delay evidence
+accumulates when independent RSUs assigned to $c_i$
+detect timing anomalies attributable to $c_i$'s
+\texttt{FlowMod}s via Signature~S1. The delay
+evidence count for controller $c_i$ at time $t$ is
+given in Equation~\eqref{eq:delay_evidence}.
+\begin{equation}
+\mathcal{E}_{delay}(c_i,t) =
+\left|\left\{
+r_k \in \mathcal{R}_{c_i}(t) :
+f_{S1}(r_k,t) = 1
+\right\}\right|
+\label{eq:delay_evidence}
+\end{equation}
+As given in Equation~\eqref{eq:delay_evidence},
+$\mathcal{R}_{c_i}(t)$ is the set of \ac{RSU}s
+currently assigned to controller $c_i$
+(Eq.~\ref{eq:rsu_ctrl_assign}). A threshold of
+$f{+}1$ independent \ac{RSU}s is required before
+delay evidence triggers a trust penalty, preserving
+the \ac{BFT} structure and preventing a single
+compromised \ac{RSU} from falsely accusing a
+controller. The controller trust score update is
+given in Equation~\eqref{eq:ctrl_trust_update}.
+
+
 \begin{equation}
 T_{c_i}^{(t+1)}{=}
 \begin{cases}
 \min(1,T_{c_i}^{(t)}{+}\Delta_r^{ctrl}) &
-\text{conflict evidence}{<}f{+}1\\
+\text{conflict evidence}{<}f{+}1
+\;\land\;
+\mathcal{E}_{delay}(c_i,t){<}f{+}1
+\\
 \max(0,T_{c_i}^{(t)}{-}\Delta_p^{ctrl}) &
 \text{conflict evidence}{\geq}f{+}1
+\;\lor\;
+\mathcal{E}_{delay}(c_i,t){\geq}f{+}1
 \end{cases}
 \label{eq:ctrl_trust_update}
 \end{equation}
+
 As given in Equation~\eqref{eq:ctrl_trust_update},
-conflict evidence is submitted when a received
-\texttt{FlowMod} is absent from the blockchain-committed
-endorsed policy, making the blockchain the sole
-controller behavior monitor.
+the trust score decrements when either conflict
+evidence (unauthorized \texttt{FlowMod}s) or delay
+evidence (Eq.~\ref{eq:delay_evidence}, $f{+}1$
+independent S1 detections across assigned \ac{RSU}s)
+reaches threshold. This closes the critical gap
+where a timing-manipulating controller issuing
+topologically valid \texttt{FlowMod}s accumulates
+conflict evidence of zero and is incorrectly rewarded;
+the delay evidence channel makes the controller trust
+system responsive to timing behavior independently
+of \texttt{FlowMod} content.
+
 
 
 
@@ -4317,10 +4842,16 @@ model's detection quality hold under poisoning?).
 
 \textbf{Component isolated:}
 The witness monitoring mechanism for passive hidden
-forwarding detection (Eqs.~\ref{eq:dup_alert_cond},
-\ref{eq:nfwd_detect}, \ref{eq:bft_penalty}), which
-is the primary detector for Variants~7 and~8 where
-\ac{ZKP} corroboration alone is insufficient.
+forwarding detection
+(Eqs.~\ref{eq:dup_alert_cond},~\ref{eq:bft_penalty}),
+which is the primary detector for Variants~7 and~8
+where \ac{ZKP} corroboration alone is insufficient.
+Eq.~\ref{eq:nfwd_detect} detects delay-equivalent
+non-delivery and is formally classified as a severe
+case of Selective Time Delay Variants~1--4; it does
+not target hidden forwarding and is excluded from
+this ablation's scope.
+
 
 \textbf{Configurations compared:}
 \begin{itemize}
@@ -5003,10 +5534,13 @@ The dual-mode detection architecture parameters are established as follows:
 
 \begin{itemize}
     \item \textbf{Lightweight rule engine (OBU):} Hop-delay detection threshold $= 50$\,ms; forwarding-ratio deviation threshold $= 20$\%.
-    \item \textbf{Signature coverage:} Signatures~S1, S2-partial, S3, and S4 are evaluated
-locally at the \ac{OBU} using the mobility-adjusted
-thresholds above; Signature~S2-full and
-Signatures~S5--S8 escalate to the \ac{RSU}, since
+    \item \textbf{Signature coverage:} Signatures~S1 and S2-partial are evaluated locally
+at the \ac{OBU} using mobility-adjusted thresholds;
+Signatures~S3 and S4 are evaluated at the \ac{RSU}
+using \ac{RSU}-observable TCAM metrics (FlowMod rate,
+PACKET\_IN rate per source); Signatures~S2-full and
+S5--S8 are evaluated at the \ac{RSU} via the
+cryptographic pipeline, since
 they require \ac{ZKP} timing ($\pi_{\text{delay}}$)
 and hop-legitimacy ($\pi_{\text{hop}}$) proof inputs
 unavailable on resource-constrained \ac{OBU}s
@@ -5028,6 +5562,29 @@ unavailable on resource-constrained \ac{OBU}s
     convergence of $\sigma_r^2(t)$ within the
     9\,s minimum RSU zone residence window derived
     in Section~\ref{sec:mobility_amplification}.
+    \item \textbf{S3 \ac{TCAM} exhaustion detection
+    (Eq.~\ref{eq:rule_s3}):}
+    Primary signal is $f_{unauth}$ (blockchain endorsement
+    check, Eq.~\ref{eq:unauth_flowmod}); no rate threshold
+    required. Detection rate $\approx 100\%$ at $0\%$
+    \ac{FPR} confirmed on validation runs; rate-based
+    monitoring (Eq.~\ref{eq:density_normalized_rate})
+    gives $\approx 3\%$ detection at the same \ac{FPR}
+    target under realistic mobility and is excluded from
+    the detection path.
+    
+    \item \textbf{S4 \ac{TCAM} utilisation threshold
+    $U_{thresh}$ (Eq.~\ref{eq:rule_s4}):}
+    $U_{thresh}$ \textbf{[tbd: $\{0.5, 0.6, 0.7,
+    0.8\}$]}, selected for best \ac{MCC} at $\leq 1\%$
+    \ac{FPR} on the benign validation split. Benign
+    utilisation confirmed $\leq 29\%$ under all simulated
+    vehicle densities; attacked \ac{RSU}s saturate to
+    $\approx 100\%$. Rate-based S4 gives $\approx 2\%$
+    detection at the same \ac{FPR} target and is excluded.
+    Attacker identified as $v_{atk} = \arg\max_{v'}
+    \lambda_{PI}(v',r,t)$ concurrently with detection.
+    
 
     \item \textbf{Standard deviation multiplier
     $k$ (Eq.~\ref{eq:rule_s1}):}
@@ -5397,6 +5954,20 @@ One-time ceremony among 64 RSUs pre-simulation
             mitigation; only metric capturing passive
             hidden forwarding (Attacks~7--8) \\
         
+  \hline
+  $U_{thresh}$ (S4 TCAM utilisation threshold,
+  Eq.~\ref{eq:rule_s4}) &
+  [tbd: $\{0.5, 0.6, 0.7, 0.8\}$]; benign
+  utilisation confirmed $\leq 29\%$; selected for
+  best MCC at $\leq 1\%$ FPR on validation split \\
+  \hline
+  Rate-based estimator $\hat{\lambda}_a$
+  (Eq.~\ref{eq:density_normalized_rate}) &
+  Excluded from S3 and S4 detection paths;
+  retained as theoretical motivation showing
+  $\approx 3\%$ / $2\%$ DR under realistic mobility
+  for S3 / S4 respectively at the 99th-percentile
+  rate threshold \\
 
 \end{longtable}
 
@@ -5445,6 +6016,131 @@ with an average latency of 2.43\,ms. Variant~7 achieves an MCC of
 0 with one false negative, reflecting the passive nature of the 
 attack where no observable network degradation occurs, with an 
 average mitigation latency of 50\,ms.
+
+\subsection{Federated LSTM Validation Results}
+\label{sec:lstm_validation}
+
+The federated LSTM detector (Section~\ref{sec:fed_lstm}) was trained and
+evaluated on the full $6\times8\times5=240$ run-instance dataset (1,399,040
+feature rows across 64 RSUs and all 8 attack variants plus benign baseline runs, following
+the 70/15/15 seed-partitioned split, 10\,s/5\,s windowing, and hyperparameter
+grid search specified above. Detection quality is reported on the held-out
+test split (seed 5, never used in training or validation).
+
+\begin{table}[H]
+\centering
+\caption{Federated LSTM Detection Quality (M1--M3) per Attack Variant, Held-Out Test Split}
+\label{tab:lstm_detection}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{4.2cm}|p{1.6cm}|p{1.6cm}|p{1.6cm}|}
+\hline
+\textbf{Attack} & \textbf{M1 MCC} & \textbf{M2 DR (\%)} & \textbf{M3 FPR (\%)} \\
+\hline
+A1 CP-Selective Delay & 0.720 & 83.26 & 5.11 \\
+\hline
+A2 DP-Selective Delay & 0.893 & 92.87 & 2.84 \\
+\hline
+A3 CP-TCAM & 0.259 & 90.85 & 52.95 \\
+\hline
+A4 DP-TCAM & 0.434 & 9HF-
+7.74 & 44.51 \\
+\hline
+A5 Active HF Attack (Control plane) & 0.544 & 70.10 & 6.22 \\
+\hline
+A6 Active HF Attack (Data Plane) & 0.505 & 63.99 & 6.65 \\
+\hline
+A7 Passive HF Attack (Control plane) & 0.513 & 68.09 & 6.03 \\
+\hline
+A8 Passive HF Attack (Data plane) & 0.487 & 64.71 & 6.08 \\
+\hline
+
+\textbf{Overall (A1--A8)} & \textbf{0.526} & \textbf{84.52} & \textbf{15.84} \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_LSTM_DetectionQuality.eps}
+    \caption{Federated LSTM detection quality (M1 MCC, M2 DR, M3 FPR) per attack variant.}
+    \label{fig:lstm_detection}
+\end{figure}
+
+As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_detection},
+detection quality separates into two regimes: Selective Time Delay and
+Hidden Forwarding attacks (A1, A2, A5--A8) combine moderate-to-high MCC
+(0.49--0.89) with a low false-positive rate (3--7\%), while the TCAM
+exhaustion attacks (A3, A4) achieve very high detection rates (91--98\%) at
+a higher false-positive cost (45--53\%) -- a consequence of the ground-truth
+labelling any RSU holding even one malicious TCAM entry as attack-positive
+for its entire observation window, since installed entries persist. A
+consistent pattern holds within both attack families: the data-plane variant
+outperforms its control-plane sibling on MCC (A2: 0.893 vs.\ A1: 0.720; A4:
+0.434 vs.\ A3: 0.259), likely because data-plane attacks act more directly
+on observed traffic, leaving a cleaner per-RSU signal, whereas control-plane
+attacks act indirectly through a compromised controller or flow rules,
+potentially diluting the signal across additional intermediate steps.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Figure_LSTM_Convergence.eps}
+    \caption{Federated training convergence (BRFA-v2): global validation loss vs.\ aggregation round.}
+    \label{fig:lstm_convergence}
+\end{figure}
+
+Figure~\ref{fig:lstm_convergence} shows the global validation loss
+(sample-weighted mean benign reconstruction error across all 64 RSUs)
+converging over the $R\in\{50,100,150\}$ round grid. The steep loss
+reduction in the first $\sim$20 rounds is consistent with the global model
+moving away from its random initialisation toward the shared benign-traffic
+manifold, with the long tail to round 150 plausibly reflecting fine-tuning
+around per-RSU variation in local mobility and traffic conditions. $R=150$
+was selected as the smallest round within the convergence tolerance of the
+final loss.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{Figure_LSTM_M8_Poisoning.eps}
+    \caption{M8 federated model poisoning resistance: BRFA-v2 vs.\ naive FedAvg.}
+    \label{fig:lstm_poisoning}
+\end{figure}
+
+Figure~\ref{fig:lstm_poisoning} evaluates M8 ($\Delta_{poison}$,
+Eq.~\ref{eq:delta_poison}) as the malicious RSU fraction $\rho_{mal}$
+increases toward the PBFT bound $f<n/3$. At $\rho_{mal}=0.3$, BRFA-v2 holds
+$\Delta_{poison}=0.023$ versus naive FedAvg's $0.081$ -- a $3.5\times$
+improvement. Naive FedAvg shows a sharp degradation between $\rho_{mal}=0.1$
+and $0.2$ (0.014 $\to$ 0.069, a $5\times$ jump) that BRFA-v2 does not
+exhibit: FedAvg averages every submitted update unconditionally, so once
+enough poisoned gradients are present they begin to dominate the mean,
+producing a tipping point. BRFA-v2's Krum step instead rejects updates that
+are statistically distant from the coordinate-wise median \emph{before}
+aggregation, so poisoned updates are excluded rather than diluting the
+average, giving the smoother, near-linear degradation observed.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{Figure_LSTM_MobilityStratifiedMCC.eps}
+    \caption{Mobility-stratified MCC (Eq.~\ref{eq:mcc_mobility}) per attack variant, across vehicle density ($\rho$) and speed ($\bar{v}$) bins. Low-$\rho$/low-$\bar{v}$ and low-$\rho$/high-$\bar{v}$ cells are unpopulated in the evaluated trace (see text) and marked n/a.}
+    \label{fig:lstm_mobility}
+\end{figure}
+
+Figure~\ref{fig:lstm_mobility} validates the mobility-adjusted threshold
+(Eq.~\ref{eq:mobility_baseline}): MCC holds or improves at higher density
+and speed for most attacks (e.g.\ A1: 0.65 $\to$ 0.82), with A5 and A6 as
+the two exceptions that degrade under denser, faster traffic. A plausible
+explanation is that for A1, denser and faster traffic increases the volume
+of legitimate high-priority packets the mobility-adjusted baseline is
+estimated from, sharpening the delay-anomaly signal the selective-delay
+attack has to hide within, while A5 and A6 (active hidden forwarding)
+degrade under the same conditions because denser traffic may give a hidden
+duplicate more legitimate concurrent forwarding activity to blend into,
+diluting the count-based duplication signal these signatures rely on. The
+low-density bins are unpopulated in the evaluated SUMO trace low density
+and low speed do not co-occur in this mobility model, and the
+low-density/high-speed stratum contains no attack-positive test windows 
+reflecting the evaluated scenario rather than a detection failure.
 
 
 \chapter{Timeline and Resource Required}
