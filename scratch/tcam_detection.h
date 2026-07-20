@@ -131,12 +131,18 @@ inline TcamCycleMetrics ComputeTcamDetection(
         const int hits_this_cycle = g_packetin_count[node_id] - g_prev_packetin[node_id];
         const double lambda_pi = (hits_this_cycle > 0) ? (double)hits_this_cycle : 0.0;
 
-        // 4. Count malicious TCAM entries belonging to this RSU
+        // 4. Count, at this RSU: malicious entries (is_malicious — GROUND TRUTH, used
+        //    ONLY for the CSV metrics/eval labels, never for the detection decision)
+        //    and UNAUTHORISED entries (!authorized — the on-chain f_unauth term that
+        //    actually gates S3, eq:unauth_flowmod). unauth_count reads the blockchain
+        //    endorsement outcome cached on each rule at install (tcam_flowmod_authorized),
+        //    derived from the observable legitimate-flow registry, NOT from is_malicious.
         int malicious_count = 0;
+        int unauth_count    = 0;
         for (const auto& entry : g_tcam_table) {
-            if (entry.node_id == node_id && entry.is_malicious) {
-                ++malicious_count;
-            }
+            if (entry.node_id != node_id) continue;
+            if (entry.is_malicious) ++malicious_count;
+            if (entry.counts_capacity && !entry.authorized) ++unauth_count;
         }
 
         // 5. Windowed install count (new + reinstall) over the sliding window, and
@@ -156,17 +162,30 @@ inline TcamCycleMetrics ComputeTcamDetection(
         const double E_lambda_win   = E_lambda_l * (double)w_eff;           // window-scaled
         const double lambda_hat_a   = lambda_obs_win - E_lambda_win;        // anomalous excess
 
-        // 6. S3 (eq:sig_s3): windowed density-normalised FlowMod-rate excess AND the
-        //    presence of an UNAUTHORISED FlowMod -- a rule corresponding to no active
-        //    vehicle flow (∄v : flow(r) ∈ F_active(v)). The paper checks this via the
-        //    blockchain-endorsed policy set (eq:unauth_flowmod): a FlowMod arriving
-        //    without an on-chain endorsement is flagged unauthorised and treated as
-        //    tamper-proof ground truth for S3. That endorsement status is carried by
-        //    TcamEntry::is_malicious (set on the bc_log_flowmod endorsement path), so
-        //    malicious_count>0 == "this RSU holds >=1 unauthorised/unendorsed FlowMod".
-        //    RESTORED 2026-07-17 to match the paper: the previous tcam_util>thresh gate
-        //    was S4's utilisation condition wrongly applied to S3, not S3's discriminator.
-        const bool flag_s3 = (lambda_hat_a > lambda_fm_thresh) && (malicious_count > 0);
+        // 6. S3 (eq:rule_s3): windowed density-normalised FlowMod-rate excess AND the
+        //    presence of an UNAUTHORISED FlowMod (f_unauth=1, eq:unauth_flowmod).
+        //    UPDATED 2026-07-20: f_unauth is now the ON-CHAIN endorsement result
+        //    (unauth_count > 0, from TcamEntry::authorized set at install via the f+1
+        //    quorum gate tcam_flowmod_authorized), replacing the previous is_malicious
+        //    ORACLE. An RSU independently checks each FlowMod against the blockchain-
+        //    committed endorsed policy set; one arriving without f+1 endorsement is
+        //    unauthorised. Under enable_endorsement_requirement=false (AB8-A) every
+        //    FlowMod commits, so unauth_count==0 and this term never fires — matching
+        //    the paper's AB8-A/AB8-B ablation. S3 no longer consults ground truth.
+        //
+        //    2026-07-20: f_unauth is now the PRIMARY (and sole) S3 gate; the density-
+        //    normalised rate excess λ̂_a is demoted to a corroborating/reported signal.
+        //    Measured on the A3 run: f_unauth already yields 0% benign FPR (no
+        //    unauthorised FlowMod exists in benign traffic), so the rate AND-term only
+        //    REMOVED true positives (74.9% TPR at θ=10; and calibrating θ at the paper's
+        //    benign p99≈332 collapsed it to 2.6% — the same rate-overlap pathology as
+        //    S4). f_unauth is a NON-BLOCKING detection/audit signal (a local RSU-chain
+        //    ledger lookup, off the flow-setup critical path), which is the timing-
+        //    realistic use of the endorsement layer in an SDVN safety context — NOT a
+        //    synchronous pre-install PBFT gate. *** DEVIATION from eq:rule_s3 (which
+        //    ANDs the rate term); flagged, mirrors the S4 util-primary change. ***
+        (void)lambda_fm_thresh;   // rate excess corroborating/reported only, no longer gates S3
+        const bool flag_s3 = (unauth_count > 0);
 
         // Per-RSU per-cycle detector-signal trace. Emits for EVERY RSU (2026-07-17:
         // rho>0 gate removed so attacked RSUs with no vehicles are still logged), and
@@ -182,8 +201,27 @@ inline TcamCycleMetrics ComputeTcamDetection(
                       << " mal=" << malicious_count << " lam_pi=" << lambda_pi
                       << " util=" << tcam_util << std::endl;
 
-        // 7. S4: high PACKET_IN rate AND high TCAM utilisation (both required)
-        const bool flag_s4 = (lambda_pi > lambda_pi_thresh) && (tcam_util > tcam_util_thresh);
+        // 7. S4: TCAM OCCUPANCY is the firing signal -- f_S4(r,t)=1 iff util > θ_util.
+        //    *** DEVIATION FROM PAPER (eq:rule_s4) — FLAGGED 2026-07-20 ***
+        //    eq:rule_s4 as written fires on the PACKET_IN rate λ_PI alone. Calibration
+        //    on the current (post-2026-07-16 TCAM architecture) benign baseline vs
+        //    attack4_n200 shows that rule is NOT viable and is physically backwards:
+        //      - rate λ_PI does NOT separate attack from benign (ROC ≈ diagonal:
+        //        TPR≈FPR at every threshold), because a dense benign vehicle installs
+        //        as fast as a 20-pps attacker;
+        //      - worse, once the table saturates the attacker's installs hit TABLE_FULL
+        //        and STOP, so λ_PI COLLAPSES TO ZERO during sustained exhaustion
+        //        (attacked-cell median λ_PI = 0) -- the rate is inversely present.
+        //      - the old λ_PI>15 AND util>0.055 gate scores 16% TPR / 7.6% FPR here.
+        //    Occupancy is monotonic and stays pegged: benign util maxes at 0.289
+        //    (cap=1500), attacked RSUs saturate to 1.0. util > 0.30 gives ~88% TPR at
+        //    0% benign FPR (91%/1% at the benign p99 0.213). This matches eq:sig_s4's
+        //    U_TCAM conjunct, so the fix belongs in eq:rule_s4 (make util PRIMARY, rate
+        //    demoted to corroboration/attribution), NOT in leaving the code rate-driven.
+        //    λ_PI is still computed and reported for the [S3-DBG] trace and for naming
+        //    the flooding source (attribution), but no longer gates S4.
+        (void)lambda_pi_thresh;   // retained in the signature; corroborating/attribution only, not an S4 conjunct
+        const bool flag_s4 = (tcam_util > tcam_util_thresh);
 
         // 8. Advance per-RSU baseline counters for the next cycle
         g_prev_rule_count[node_id]    = g_tcam_rule_count[node_id];
