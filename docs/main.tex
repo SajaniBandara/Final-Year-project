@@ -1399,7 +1399,15 @@ frameworks.
                         fallback verification (Eq.~\ref{eq:batch_fallback})
                         after \textsc{BatchVerify} failure; the specific
                         node whose signature fails in the multi-hop chain. \\
-                        
+                          \hline
+                          $U_{thresh}$ &
+                          TCAM utilisation detection threshold for
+                          Signature~S4 (Eq.~\ref{eq:rule_s4}); calibrated
+                          from benign validation traces; separates benign
+                          utilisation ($\leq 29\%$) from attack saturation
+                          ($\approx 100\%$). \\
+
+
                 \end{tabular}
         \end{center}
         \vspace{-10pt}
@@ -1587,32 +1595,39 @@ per minute as vehicles continuously enter and leave RSU coverage
 zones. The slow TCAM exhaustion variants (Attacks~3 and~4) operate
 at rates of 3.2--40\,packets/s~\cite{Pascoal2017}, which fall within
 the lower tail of the legitimate installation rate distribution.
-This requires mobility-conditioned TCAM installation
-rate monitoring. By Little's Law applied to RSU zone
-crossings, the legitimate FlowMod installation rate
-is proportional to the zone-crossing rate
-$\rho(t)\cdot\bar{v}(t)/z_w$, where $z_w$ is the
-fixed RSU zone width, giving
-$\lambda_l(t) \propto \rho(t)\cdot\bar{v}(t)$.
-Conditioning only on $\rho(t)$ ignores the speed
-dimension and underestimates $\lambda_l(t)$ under
-high-speed scenarios. The corrected mobility-conditioned
-anomalous rate estimator is formalised in
-Equation~\eqref{eq:density_normalized_rate}:
+Even after mobility-conditioning, rate-based detection
+alone is insufficient. The mobility-conditioned anomalous
+rate estimator is formalised in
+Equation~\eqref{eq:density_normalized_rate} to
+characterise the residual separation problem.
 \begin{equation}
 \hat{\lambda}_a(t) = \lambda_{obs}(t) -
-\mathbb{E}\!\left[\lambda_l(t)\,|\,\rho(t),\bar{v}(t)\right]
+\mathbb{E}\!\left[
+\lambda_l(t)\,|\,\rho(t),\bar{v}(t)
+\right]
 \label{eq:density_normalized_rate}
 \end{equation}
 As given in Equation~\eqref{eq:density_normalized_rate},
-the mobility-conditioned anomalous rate estimator
-$\hat{\lambda}_a(t)$ subtracts the expected legitimate
-rate conditioned jointly on vehicle density $\rho(t)$
-and mean speed $\bar{v}(t)$ from the observed rate.
-$\mathbb{E}[\lambda_l|\rho,\bar{v}]$ is estimated by
-\ac{OLS} regression of $\lambda_{obs}$ on $\rho\cdot\bar{v}$
-from benign \ac{SUMO} traces, consistent with the
-mobility-adjusted baseline (Eq.~\ref{eq:mobility_baseline}).
+even conditioning on both density $\rho(t)$ and speed
+$\bar{v}(t)$, the estimated residual $\hat{\lambda}_a(t)$
+does not reliably separate attack from benign traffic.
+Under realistic \ac{SDVN} mobility, a busy intersection
+generates legitimate \texttt{FlowMod} installations at
+the same rate as the slow attacker, causing the attack
+and benign rate distributions to overlap. For S4, the
+rate collapses to zero precisely when the attack is
+strongest---when the \ac{TCAM} table is saturated and
+new rule installations are refused---inverting the
+expected detection signal. Simulation confirms
+$\approx 3\%$ detection rate for S3 and $\approx 2\%$
+for S4 at the empirical 99th-percentile rate threshold,
+validating the theoretical overlap argument. Rate-based
+monitoring therefore serves as a formal characterisation
+of why mobility camouflage makes slow \ac{TCAM}
+exhaustion fundamentally hard to detect by rate alone,
+motivating the signal choices in the detection rules
+below.
+
 
 
 
@@ -1844,6 +1859,22 @@ elevated delay simultaneously, so the selectivity
 condition evaluates to false and S1 does not fire,
 preventing congestion-induced false positives
 
+\textit{Limitation:} The \ac{EWMA} variance estimator
+(Eq.~\ref{eq:ewma_variance}) is susceptible to gradual
+inflation under a sustained slow attack, since the
+attacker's induced delays contribute to $\sigma_r^2(t)$
+over time, progressively widening the detection
+threshold and reducing sensitivity. In the vehicular
+setting this effect is bounded by the zone residence
+time of 9--22\,s --- after which the vehicle hands
+off to a new \ac{RSU} and the \ac{EWMA} estimate
+resets on the fresh \ac{RSU}'s local traffic
+distribution. For the slowest simulated attacker
+(3.2\,packets/s), the inflation effect within a single
+zone crossing is limited and is further mitigated by
+the selectivity condition (Eq.~\ref{eq:rule_s1}),
+which remains sensitive even under moderate variance
+inflation.
 
 %------------------------------------------------------------------
 % S2
@@ -1886,38 +1917,81 @@ tamper-proof ground truth for evaluating~S3.
 The condition formalising Signature~S3 is given in
 Equation~\eqref{eq:sig_s3}.
 \begin{equation}
-\text{S3:}\quad   \lambda_{FM}(r,t) - \mathbb{E}[\lambda_l(t)\,|\,\rho(t),\bar{v}(t)]
-> \lambda_{thresh} \quad \land \quad
-\nexists\, v : \text{flow}(r) \in \mathcal{F}_{active}(v)
+\text{S3:}\quad
+f_{unauth}(r_k, t) = 1
+\;\land\;
+\nexists\, v : \text{flow}(r) \in
+\mathcal{F}_{active}(v)
 \label{eq:sig_s3}
 \end{equation}
-As shown in Equation~\eqref{eq:sig_s3}, the density-normalised
-rate excess combined with the absence of any active vehicle flow
-provides a detection signal that is fully independent of controller
-self-reporting, closing the trust gap inherent in controller-sourced
-monitoring.
+
+
+As given in Equation~\eqref{eq:sig_s3}, S3 is detected
+when a received \texttt{FlowMod} fails the blockchain
+endorsement check ($f_{unauth}{=}1$,
+Eq.~\ref{eq:unauth_flowmod}) and no corresponding
+active vehicle flow exists. The endorsement check is
+the primary signal: every legitimate \texttt{FlowMod}
+has a valid blockchain commitment by design, so an
+unauthorized one is detected at 0\% \ac{FPR}
+regardless of its rate. The rate-based estimator
+(Eq.~\ref{eq:density_normalized_rate}) is insufficient
+as a primary detector because the slow attacker
+deliberately operates within the legitimate rate
+distribution; its role is characterising the
+camouflage problem, not detecting it.
+Importantly, detection correctly ceases once the
+compromised controller is revoked via
+\textsc{SC.Revoke} (Eq.~\ref{eq:sc_revoke}), since
+no further unauthorized \texttt{FlowMod}s can be
+issued by the revoked controller.
+
  
 
 %------------------------------------------------------------------
 % S4
 %------------------------------------------------------------------
 \textbf{Signature~S4 (Slow TCAM Exhaustion, Data Plane):}
-A single source vehicle $v_{atk}$ generates a stream of packets with
-unique 5-tuples at rate $\lambda_{atk}$ causing repeated
-\texttt{PACKET\_IN} floods to the controller, with TCAM utilization
-$U_{TCAM}(r,t)$ exceeding threshold $U_{thresh}$ while $v_{atk}$
-has no legitimate active session requiring such flow diversity.
-This condition is formalised in Equation~\eqref{eq:sig_s4}.
+A single source vehicle $v_{atk}$ generates packets with
+unique 5-tuples causing repeated \texttt{PACKET\_IN}
+floods to the controller, exhausting the \ac{TCAM} table.
+The attack effect is \ac{TCAM} saturation: legitimate
+\ac{RSU} \ac{TCAM} utilisation remains below $\approx
+30\%$ under normal vehicular mobility, while exhaustion
+attacks drive utilisation to $\approx 100\%$, creating
+a reliable separation that rate monitoring cannot provide.
+The per-source \texttt{PACKET\_IN} rate $\lambda_{PI}$
+identifies which vehicle is the highest-volume flooder
+and serves as the attacker attribution signal. The S4
+detection condition is formalised in
+Equation~\eqref{eq:sig_s4}.
+
+
 \begin{equation}
-\text{S4:}\quad \lambda_{PI}(v_{atk}, r, t) > \lambda_{PI,thresh}
-\quad \land \quad U_{TCAM}(r,t) > U_{thresh}
+\text{S4:}\quad
+U_{TCAM}(r,t) > U_{thresh}
+\;\land\;
+v_{atk} = \arg\max_{v'}\,\lambda_{PI}(v',r,t)
 \label{eq:sig_s4}
 \end{equation}
-As shown in Equation~\eqref{eq:sig_s4}, the joint condition on
-\texttt{PACKET\_IN} flood rate and TCAM utilisation prevents false
-positives in legitimate high-traffic scenarios where either threshold
-alone may be transiently exceeded due to vehicular density
-fluctuations.
+
+As given in Equation~\eqref{eq:sig_s4}, $U_{TCAM}>
+U_{thresh}$ is the primary detection trigger, exploiting
+the empirically confirmed separation between benign
+utilisation ($\leq 30\%$) and attack utilisation
+($\approx 100\%$). Note that the \texttt{PACKET\_IN}
+rate collapses to zero at full saturation since new
+rule installations are refused --- using rate as the
+primary signal would therefore produce near-zero
+detection precisely when the attack is most severe.
+$v_{atk}$ is identified as the highest \texttt{PACKET\_IN}
+source vehicle at the saturated \ac{RSU} and passed
+to \texttt{BTMM} for attribution and quarantine.
+The condition $v_{atk}$ has no legitimate active session
+requiring such flow diversity is verified against the
+blockchain-committed authorised flow policy
+(Eq.~\ref{eq:policy_commit}).
+
 
 \textbf{Signature~S5 (Active Hidden Forwarding, Control Plane):}
 
@@ -2125,7 +2199,7 @@ committed to the blockchain by \ac{RSU} consensus at
 regular intervals to provide a tamper-evident audit
 trail for all detection decisions.
 
-\subsection{Lightweight Rule-Based Detection Engine}
+\subsection{the anomalous Rule-Based Detection Engine}
 \label{sec:rule_based}
 
 The lightweight detection engine evaluates signatures
@@ -2190,45 +2264,62 @@ elevates delay across all traffic classes, does not
 satisfy the selectivity conjunct and does not trigger
 the flag.
 
+For \ac{TCAM} exhaustion detection, the rate-based
+estimator (Eq.~\ref{eq:density_normalized_rate}) was
+found insufficient as a detection signal under
+realistic vehicular mobility (see
+Eq.~\ref{eq:density_normalized_rate} discussion in
+Section~\ref{sec:mobility_amplification}). The S3
+detection flag uses the blockchain endorsement check
+as the primary signal
+(Eq.~\ref{eq:rule_s3}) and the S4 detection flag
+uses \ac{TCAM} utilisation saturation
+(Eq.~\ref{eq:rule_s4}).
+
 The S3 detection flag is given in
 Equation~\eqref{eq:rule_s3}.
 \begin{equation}
 f_{S3}(r,t) =
 \begin{cases}
-1 & \hat{\lambda}_a(r,t) > \lambda_{thresh}
-    \;\land\; f_{unauth}(r_k,t) = 1 \\
+1 & f_{unauth}(r_k,t) = 1
+    \;\land\; \nexists\,v :
+    \text{flow}(r) \in \mathcal{F}_{active}(v) \\
 0 & \text{otherwise}
 \end{cases}
 \label{eq:rule_s3}
 \end{equation}
-As given in Equation~\eqref{eq:rule_s3}, S3 fires
-when the mobility-conditioned rate excess
-(Eq.~\ref{eq:density_normalized_rate}) is anomalous
-AND the received \texttt{FlowMod} fails the blockchain
-endorsement check (Eq.~\ref{eq:unauth_flowmod}).
-$U_{TCAM}$ is not a mandatory conjunct --- requiring
-it would delay detection until the attack has already
-partially filled the table; the rate signal alone
-provides early detection. The S4 detection flag is
-given in Equation~\eqref{eq:rule_s4}.
+
+As given in Equation~\eqref{eq:rule_s3}, S3 fires on
+the blockchain endorsement failure alone ---
+$f_{unauth}{=}1$ is a binary deterministic signal with
+0\% \ac{FPR} by construction, so no rate threshold is
+needed. The absence-of-active-flow condition cross-checks
+that the \texttt{FlowMod} has no legitimate vehicle
+session behind it, confirming exhaustion intent rather
+than a legitimate but unendorsed update.
+
+
 \begin{equation}
-f_{S4}(v_{atk},r,t) =
+f_{S4}(r,t) =
 \begin{cases}
-1 & \lambda_{PI}(v_{atk},r,t) > \lambda_{PI,thresh} \\
+1 & U_{TCAM}(r,t) > U_{thresh} \\
 0 & \text{otherwise}
 \end{cases}
+\;\text{with}\;
+v_{atk} = \arg\max_{v'}\,\lambda_{PI}(v',r,t)
 \label{eq:rule_s4}
 \end{equation}
-As given in Equation~\eqref{eq:rule_s4}, S4 uses
-the per-source \texttt{PACKET\_IN} rate
-$\lambda_{PI}(v_{atk},r,t)$ as the primary signal,
-where $v_{atk} = \arg\max_v \lambda_{PI}(v,r,t)$
-is the highest-flooding source vehicle. This is the
-correct data-plane observable for S4 --- the
-\texttt{PACKET\_IN} flood originates from $v_{atk}$'s
-unique 5-tuples, not from controller \texttt{FlowMod}
-installations. $U_{TCAM}$ again serves as a
-corroborating indicator only.
+
+As given in Equation~\eqref{eq:rule_s4}, $U_{TCAM}>
+U_{thresh}$ is the sole detection condition, calibrated
+at $U_{thresh}$ [tbd: $\{0.5, 0.6, 0.7, 0.8\}$]
+selected for best \ac{MCC} at $\leq 1\%$ \ac{FPR} on
+the benign validation split. $v_{atk}$ is computed
+concurrently as the highest \texttt{PACKET\_IN} source
+vehicle and passed to \texttt{BTMM}
+(Eq.~\ref{eq:batch_fallback}) for quarantine; it does
+not gate the detection decision.
+
 
 
 The composite \ac{OBU}-side detection decision for
@@ -2358,24 +2449,21 @@ in Algorithm~\ref{alg:lrad_rsu}.
          \textsc{STARK.Verify}(\pi_{hop},
          C_{hop}, H_{\text{SHA3-512}})$
          \hfill\Comment{Eq.~\ref{eq:stark_hop_verify}}
-  % --- S3: Control-plane TCAM (RSU-observable) ---
-  \State $\hat{\lambda}_a \gets \lambda_{FM}(r,t)
-         - \mathbb{E}[\lambda_l|\rho,\bar{v}]$
-         \hfill\Comment{Eq.~\ref{eq:density_normalized_rate}}
-  \State $flag_{S3} \gets
-         [\hat{\lambda}_a>\lambda_{thresh}]
-         \land[f_{unauth}(r,t)=1]$
-         \hfill\Comment{S3: TCAM exhaustion CP
-         (Eq.~\ref{eq:rule_s3})}
-  % --- S4: Data-plane TCAM (RSU-observable) ---
+ \State $flag_{S3} \gets
+         [f_{unauth}(r,t){=}1]
+         \land[\nexists\,v{:}\text{flow}(r)
+         {\in}\mathcal{F}_{active}(v)]$
+         \hfill\Comment{S3: Eq.~\ref{eq:rule_s3};
+         blockchain endorsement primary}
+  % --- S4: Data-plane TCAM (utilization-based) ---
+  \State $flag_{S4} \gets
+         [U_{TCAM}(r,t){>}U_{thresh}]$
+         \hfill\Comment{S4: Eq.~\ref{eq:rule_s4};
+         TCAM saturation primary}
   \State $v_{atk} \gets
          \arg\max_{v'}\,\lambda_{PI}(v',r,t)$
-         \hfill\Comment{Highest PACKET\_IN source}
-  \State $flag_{S4} \gets
-         [\lambda_{PI}(v_{atk},r,t)>
-         \lambda_{PI,thresh}]$
-         \hfill\Comment{S4: TCAM flooding DP
-         (Eq.~\ref{eq:rule_s4})}
+         \hfill\Comment{Attribution only; does not
+         gate $flag_{S4}$}
   % --- S5--S8 (existing) ---
    % --- Attacker identification after batch failure ---
   \If{$\neg b_{batch}$}
@@ -5474,6 +5562,29 @@ unavailable on resource-constrained \ac{OBU}s
     convergence of $\sigma_r^2(t)$ within the
     9\,s minimum RSU zone residence window derived
     in Section~\ref{sec:mobility_amplification}.
+    \item \textbf{S3 \ac{TCAM} exhaustion detection
+    (Eq.~\ref{eq:rule_s3}):}
+    Primary signal is $f_{unauth}$ (blockchain endorsement
+    check, Eq.~\ref{eq:unauth_flowmod}); no rate threshold
+    required. Detection rate $\approx 100\%$ at $0\%$
+    \ac{FPR} confirmed on validation runs; rate-based
+    monitoring (Eq.~\ref{eq:density_normalized_rate})
+    gives $\approx 3\%$ detection at the same \ac{FPR}
+    target under realistic mobility and is excluded from
+    the detection path.
+    
+    \item \textbf{S4 \ac{TCAM} utilisation threshold
+    $U_{thresh}$ (Eq.~\ref{eq:rule_s4}):}
+    $U_{thresh}$ \textbf{[tbd: $\{0.5, 0.6, 0.7,
+    0.8\}$]}, selected for best \ac{MCC} at $\leq 1\%$
+    \ac{FPR} on the benign validation split. Benign
+    utilisation confirmed $\leq 29\%$ under all simulated
+    vehicle densities; attacked \ac{RSU}s saturate to
+    $\approx 100\%$. Rate-based S4 gives $\approx 2\%$
+    detection at the same \ac{FPR} target and is excluded.
+    Attacker identified as $v_{atk} = \arg\max_{v'}
+    \lambda_{PI}(v',r,t)$ concurrently with detection.
+    
 
     \item \textbf{Standard deviation multiplier
     $k$ (Eq.~\ref{eq:rule_s1}):}
@@ -5843,6 +5954,20 @@ One-time ceremony among 64 RSUs pre-simulation
             mitigation; only metric capturing passive
             hidden forwarding (Attacks~7--8) \\
         
+  \hline
+  $U_{thresh}$ (S4 TCAM utilisation threshold,
+  Eq.~\ref{eq:rule_s4}) &
+  [tbd: $\{0.5, 0.6, 0.7, 0.8\}$]; benign
+  utilisation confirmed $\leq 29\%$; selected for
+  best MCC at $\leq 1\%$ FPR on validation split \\
+  \hline
+  Rate-based estimator $\hat{\lambda}_a$
+  (Eq.~\ref{eq:density_normalized_rate}) &
+  Excluded from S3 and S4 detection paths;
+  retained as theoretical motivation showing
+  $\approx 3\%$ / $2\%$ DR under realistic mobility
+  for S3 / S4 respectively at the 99th-percentile
+  rate threshold \\
 
 \end{longtable}
 
