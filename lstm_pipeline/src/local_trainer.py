@@ -164,10 +164,12 @@ def main(args):
         # theta CALIBRATION population (kept consistent with fed_aggregator.py's
         # compute_theta() — grid search must select hparams under the SAME rule
         # that gets deployed): all y_va==0 windows, not just attack_v==0 runs,
-        # EXCLUDING attack_v in {3,4} (A3/A4, TCAM) — their U_TCAM feature
-        # carries artificially extreme values from the known TCAM
-        # rule-timeout issue (data predates that fix). See
-        # fed_aggregator.py's mask_va_benign comment for the full rationale.
+        # EXCLUDING attack_v in {3,4} (A3/A4, TCAM) — see fed_aggregator.py's
+        # mask_va_benign comment: re-collecting fresh post-fix A3/A4 data and
+        # re-testing (2026-07-20) confirmed this is a structural property of
+        # TCAM exhaustion attacks (elevated U_TCAM persists through the whole
+        # run, not just an artifact of stale data), so the exclusion stays
+        # permanently rather than being staleness-conditional.
         mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
                           & ~np.isin(meta_va[:, 1], [3, 4]))
         mask_va_all    = (meta_va[:, 0] == rsu_id)

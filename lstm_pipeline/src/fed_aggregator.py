@@ -116,16 +116,20 @@ def load_rsu_data() -> dict:
         # this stage — main.tex's 95% DR target applies to the full
         # dual-mode system once rule engine + LSTM are integrated).
         #
-        # EXCLUDES attack_v in {3,4} (A3/A4, TCAM variants): confirmed
-        # 2026-07-18 that ~20-25% of every RSU's y_va==0 population comes
-        # from A3/A4 runs, whose U_TCAM feature carries artificially
-        # extreme values from the (separately known, already-excluded-
-        # from-conclusions) TCAM rule-timeout issue — this training data
-        # predates that fix. Removing just these two variants' windows
-        # brought per-RSU theta down from the THOUSANDS to a sane ~0.5-1.3
-        # for every single RSU checked. Same exclusion already applied
-        # elsewhere (no A3/A4 conclusions until that data is re-collected
-        # post-fix) — this is the LSTM calibration side of the same rule.
+        # EXCLUDES attack_v in {3,4} (A3/A4, TCAM variants). Originally
+        # excluded 2026-07-18 believing the cause was stale pre-timeout-fix
+        # data; A3/A4 were fully re-collected post-fix on 2026-07-20 (60
+        # runs, 3840 CSVs) and the exclusion was reverted to test that
+        # theory — it reproduced the EXACT same failure (per-RSU theta back
+        # into the hundreds/thousands, A5-A8 collapsing to degenerate 0/0/0
+        # detection, A1/A2 DR crushed 75%->20%). So staleness was never the
+        # real cause: TCAM exhaustion attacks structurally elevate U_TCAM
+        # for the whole run's duration (residual TCAM occupancy persists
+        # even in cycles not at the attack's peak), unlike delay/HF attacks
+        # which don't alter the RSU's baseline TCAM state at all. A3/A4's
+        # own "quiet" windows are therefore never a fair calibration
+        # population for a per-RSU benign baseline, regardless of data
+        # freshness — re-excluding permanently (2026-07-20).
         mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
                           & ~np.isin(meta_va[:, 1], [3, 4]))
         mask_va_all    = (meta_va[:, 0] == rsu_id)
@@ -279,10 +283,12 @@ def eval_clf(model, X_val_full: np.ndarray, y_val_full: np.ndarray, theta: float
     return {"mcc": mcc, "fpr": fpr, "precision": prec, "dr": dr}
 
 
-def global_validation_loss(global_sd: dict, rsu_data: dict, rsu_ids: list) -> float:
+def global_validation_loss(model: LSTMAutoencoder, global_sd: dict, rsu_data: dict, rsu_ids: list) -> float:
     """Sample-weighted mean benign reconstruction error of the current global model
-    across all RSUs' validation windows — the 'global loss' R-convergence is measured on."""
-    model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
+    across all RSUs' validation windows — the 'global loss' R-convergence is measured on.
+    `model` is reused across every call (once per round, 150 total) rather than
+    freshly constructed each time — see the local_model reuse comment in main()
+    for the full rationale (Fix 22)."""
     model.load_state_dict(global_sd)
     model.eval()
     losses, weights = [], []
@@ -596,15 +602,31 @@ def main(args):
     round_log, round_losses, checkpoints, checkpoint_meta = [], {}, {}, {}
     round_models_at_grid = {}   # rnd -> {rsu_id: {"state_dict", "n_train"}}, for M8's rsu_{k}.pt
 
+    # Reused across every (round, RSU) local-training step instead of
+    # constructing a fresh LSTMAutoencoder each time (150 rounds x 64 RSUs =
+    # 9600 constructions) — that churn was triggering a rare CUDA
+    # allocator/PyTorch-internal corruption (nn.LSTM's own reset_parameters()
+    # crashing with nonsensical type errors, e.g. "argument of type 'LSTM' is
+    # not iterable", reproducible across independent runs at different
+    # rounds). state_dict() shares tensor storage with the live model by
+    # default, so round_models must store an explicit clone (same pattern
+    # global_sd already uses above) — otherwise every RSU's stored "weights"
+    # would silently alias the same reused model and get overwritten by the
+    # next RSU's training.
+    local_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
+    # Same reuse rationale as local_model above — global_validation_loss()
+    # used to construct its own fresh LSTMAutoencoder every round (150
+    # calls), a second fresh-construction site the original Fix 22 missed.
+    val_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
+
     for rnd in range(1, r_max + 1):
         round_models = {}
         for rsu_id in rsu_ids:
             hp = hparams[rsu_id]
-            local_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
             local_model.load_state_dict(global_sd)
             train_local_epochs(local_model, rsu_data[rsu_id]["X_tr"],
                                hp["lr"], hp["batch"], hp["epochs"])
-            local_sd = local_model.state_dict()
+            local_sd = {k: v.clone() for k, v in local_model.state_dict().items()}
             round_models[rsu_id] = {"state_dict": local_sd,
                                     "committed_hash": compute_weights_hash(local_sd),
                                     "n_train": rsu_data[rsu_id]["n_train"]}
@@ -625,7 +647,7 @@ def main(args):
         reference   = round_models[verified[0]]["state_dict"]
         global_sd   = unflatten_weights(global_flat, reference)
 
-        g_loss = global_validation_loss(global_sd, rsu_data, rsu_ids)
+        g_loss = global_validation_loss(val_model, global_sd, rsu_data, rsu_ids)
         round_log.append({"round": rnd, "global_loss": g_loss,
                           "n_eligible": len(eligible), "n_verified": len(verified),
                           "n_accepted": int(mask.sum())})
