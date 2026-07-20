@@ -35,10 +35,12 @@ RHO_IDX   = 5   # FEATURES index of "rho"   (preprocessor.py FEATURES order)
 VBAR_IDX  = 6   # FEATURES index of "v_bar"
 MIN_CELL  = 20  # skip a stratum cell if it has too few windows for a stable MCC
 
+# 5-8 match main.tex's own attack titles — see evaluator.py's ATTACK_NAMES
+# comment for the full mapping to Attack 5-8 / S5-S8.
 ATTACK_NAMES = {
     0: "Benign", 1: "A1 CP-SelectiveDelay", 2: "A2 DP-SelectiveDelay",
-    3: "A3 CP-TCAM", 4: "A4 DP-TCAM", 5: "A5 HF-BasicReplay",
-    6: "A6 HF-TimestampManip", 7: "A7 HF-MultiPath", 8: "A8 HF-CovertRelay",
+    3: "A3 CP-TCAM", 4: "A4 DP-TCAM", 5: "A5 CP-ActiveHF",
+    6: "A6 DP-ActiveHF", 7: "A7 CP-PassiveHF", 8: "A8 DP-PassiveHF",
 }
 
 

@@ -30,16 +30,20 @@ RESULTS   = Path(os.environ.get("HOME", "/home/sdvn_hidden_attacks")) / \
             "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 
+# 5-8 match main.tex's own attack titles: Attack 5 "Active Hidden Forward
+# Attack: Control Plane", Attack 6 "...: Data Plane", Attack 7 "Passive
+# Hidden Forward Attack: Control Plane", Attack 8 "...: Data Plane"
+# (main.tex sec:Overview of the four Hidden Forwarding Attacks, S5-S8).
 ATTACK_NAMES = {
     0: "Benign",
     1: "A1 CP-SelectiveDelay",
     2: "A2 DP-SelectiveDelay",
     3: "A3 CP-TCAM",
     4: "A4 DP-TCAM",
-    5: "A5 HF-BasicReplay",
-    6: "A6 HF-TimestampManip",
-    7: "A7 HF-MultiPath",
-    8: "A8 HF-CovertRelay",
+    5: "A5 CP-ActiveHF",
+    6: "A6 DP-ActiveHF",
+    7: "A7 CP-PassiveHF",
+    8: "A8 DP-PassiveHF",
 }
 
 

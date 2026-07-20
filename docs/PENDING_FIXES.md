@@ -1174,10 +1174,10 @@ percentage 20–100%** — this was the exact discrepancy that motivated Fix
 
 | Attack | pct=100% FADE MCC | pct=100% MOBIGUARD MCC |
 |---|---|---|
-| A5 HF-BasicReplay     | 0.80 | 0.13 |
-| A6 HF-TimestampManip  | 0.87 | 0.19 |
-| A7 HF-MultiPath       | 0.82 | 0.20 |
-| A8 HF-CovertRelay     | 0.79 | 0.09 |
+| A5 CP-ActiveHF     | 0.80 | 0.13 |
+| A6 DP-ActiveHF  | 0.87 | 0.19 |
+| A7 CP-PassiveHF       | 0.82 | 0.20 |
+| A8 DP-PassiveHF     | 0.79 | 0.09 |
 
 Same pattern holds at 20/40/60/80% too (not just 100%) — this is not a
 single-point artifact. So the bucketing bug was NOT the root cause of
@@ -1277,10 +1277,10 @@ missed by a wide margin:**
 |---|---|---|---|
 | A1 CP-SelectiveDelay | +0.703 | 0.848 | 6.1% |
 | A2 DP-SelectiveDelay | +0.880 | 0.931 | 3.6% |
-| A5 HF-BasicReplay | +0.533 | 0.744 | 7.8% |
-| A6 HF-TimestampManip | +0.489 | 0.679 | 8.5% |
-| A7 HF-MultiPath | +0.505 | 0.724 | 7.4% |
-| A8 HF-CovertRelay | +0.497 | 0.694 | 6.9% |
+| A5 CP-ActiveHF | +0.533 | 0.744 | 7.8% |
+| A6 DP-ActiveHF | +0.489 | 0.679 | 8.5% |
+| A7 CP-PassiveHF | +0.505 | 0.724 | 7.4% |
+| A8 DP-PassiveHF | +0.497 | 0.694 | 6.9% |
 | Pure-benign (no attack present) | — | — | 16.9% |
 | A3/A4 (TCAM, excluded per known sim issue) | — | — | 44–54% |
 
@@ -1642,10 +1642,10 @@ pending TCAM re-collection, since their own FPR under these thetas is
 |---|---|---|---|
 | A1 CP-SelectiveDelay | +0.775 | 76.2% | 1.9% |
 | A2 DP-SelectiveDelay | +0.890 | 90.6% | 2.2% |
-| A5 HF-BasicReplay | +0.504 | 45.2% | 2.2% |
-| A6 HF-TimestampManip | +0.499 | 45.2% | 2.5% |
-| A7 HF-MultiPath | +0.437 | 37.7% | 2.0% |
-| A8 HF-CovertRelay | +0.485 | 42.7% | 1.9% |
+| A5 CP-ActiveHF | +0.504 | 45.2% | 2.2% |
+| A6 DP-ActiveHF | +0.499 | 45.2% | 2.5% |
+| A7 CP-PassiveHF | +0.437 | 37.7% | 2.0% |
+| A8 DP-PassiveHF | +0.485 | 42.7% | 1.9% |
 | Overall (1-8, incl. A3/A4) | +0.508 | 74.8% | 12.6% |
 
 Per-RSU θ across the 64 RSUs: min=0.0243, median=0.2179, max=1.4519 — no
