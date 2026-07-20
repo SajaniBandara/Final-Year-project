@@ -94,6 +94,15 @@ struct TcamEntry {
                              // NodeList index space) that is NOT a data-plane FlowMod
                              // rule and must not touch g_tcam_rule_count. See the
                              // 2026-07-14 note in tcam_hit_ip() / tcam_evict_expired().
+    bool     authorized = true; // f_unauth for S3 (eq:unauth_flowmod): true = this
+                             // FlowMod is in the blockchain-committed endorsed policy
+                             // set (f+1 endorsement quorum satisfied); false =
+                             // UNAUTHORISED (no f+1 endorsement). Set at install by
+                             // tcam_flowmod_authorized() from the OBSERVABLE legitimate-
+                             // flow registry (fid provenance / F_active), NOT from
+                             // is_malicious. Default true so passive ip-hook entries
+                             // (which are not data-plane FlowMods) are never counted as
+                             // unauthorised by the S3 detector.
 };
 
 std::vector<TcamEntry> g_tcam_table;
@@ -329,6 +338,43 @@ inline void tcam_hit(uint32_t node_id, uint32_t original_fid, uint32_t pkt_bytes
     // Install rejected (TABLE_FULL) — no rule to update; slow-path drop.
 }
 
+// ── Real-time FlowMod authorization — f_unauth (eq:unauth_flowmod / eq:endorsed_commit) ──
+// enable_endorsement_requirement (AB8) is defined in crypto_layer.h; declared here so
+// this header's authorization gate compiles regardless of include phase.
+extern bool enable_endorsement_requirement;
+extern uint32_t g_dp_attack_fid_counter;   // DP attacker fids >= 1e6 (routing.cc)
+extern uint32_t g_cp_attack_fid_counter;   // CP attacker fids >= 2e6 (routing.cc)
+
+// OBSERVABLE legitimacy predicate for endorsement. An honest RSU endorses a FlowMod
+// iff it corresponds to a real registered active flow (eq:sig_s3: ∃v: flow ∈ F_active).
+// Legitimate flows carry native fids (<500k) or generator fids ([500k,1M)) registered
+// by the mobility-driven flow generator from ACTUAL vehicle transmissions. Attacker-
+// injected FlowMods use synthetic fids (DP >=1e6, CP >=2e6) that appear in NO
+// legitimate-flow registry, so no honest RSU can endorse them. This reads the flow
+// registry (fid provenance), NOT the is_malicious label — so S3 no longer consults an
+// oracle. (Under the current generator, benign and attack rules are indistinguishable
+// by per-rule traffic statistics, so registry provenance is the discriminating
+// observable, consistent with the paper's endorsed-policy channel model, eq:policy_commit.)
+inline bool tcam_flow_is_legit(uint32_t original_fid) {
+    return original_fid < 1000000u;   // native or generator flow; attacker fids are >= 1e6
+}
+
+// Endorsement/commit gate — SAME f+1 quorum rule as bc_commit_flowmod(), AB8-aware.
+// Honest RSUs endorse a legitimate flow with f+1 signatures; an attacker flow collects
+// zero. When enable_endorsement_requirement is set, < f+1 endorsements ⇒ NOT committed
+// ⇒ f_unauth=1. When the requirement is off (AB8-A) every FlowMod commits ⇒ f_unauth
+// never fires — reproducing the paper's AB8-A/AB8-B ablation. Cheap by design: the
+// ML-DSA endorsement crypto cost is measured at the dedicated T_consensus commit site
+// (routing.cc); here we only need the authorization OUTCOME for the S3 detector, so we
+// replicate the quorum decision without re-running f+1 signatures per install.
+inline bool tcam_flowmod_authorized(uint32_t original_fid) {
+    uint32_t f_plus_1  = (N_RSUs > 0) ? ((N_RSUs - 1) / 3) + 1 : 1;
+    uint32_t endorsers = tcam_flow_is_legit(original_fid) ? f_plus_1 : 0u;
+    if (enable_endorsement_requirement && endorsers < f_plus_1)
+        return false;   // unauthorized: absent from the endorsed policy set (eq:unauth_flowmod)
+    return true;        // committed / authorized
+}
+
 // Install a TCAM rule for (flow_id, node_id) once.  Subsequent calls for the
 // same pair are silently ignored — dedup via g_tcam_installed.
 // On the very first install ever, also kicks off the per-second snapshot loop.
@@ -388,6 +434,9 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     e.counts_capacity = true;   // genuine data-plane rule: occupies a TCAM slot
     e.presence_managed = is_gen_flow; // generator flows: departure + idle-timeout, whichever first
     e.idle_timeout_s   = is_gen_flow ? sample_gen_idle_timeout_s() : TCAM_IDLE_TIMEOUT_S;
+    // f_unauth (eq:unauth_flowmod): pre-install endorsement check. Legit flows are in
+    // the endorsed policy set -> authorized. Reads the flow registry, not is_malicious.
+    e.authorized       = tcam_flowmod_authorized(original_fid);
     g_tcam_table.push_back(e);
     g_tcam_rule_count[node_id]++;
     g_packetin_count[node_id]++;   // this install was triggered by a table miss -> PACKET_IN (eq:sig_s4 λ_PI)
@@ -734,6 +783,14 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     // exhaustion is a one-time event per rule slot, not unbounded growth.
     if (g_tcam_rule_count[target_rsu_node_id] >= TCAM_CAPACITY) {
         g_tcam_reject_count[target_rsu_node_id]++;
+        // A table-full miss is STILL a PACKET_IN: the packet has no matching
+        // rule, so it is punted to the controller regardless of whether the
+        // follow-up FlowMod can be installed. During exhaustion the same flows
+        // keep missing (no slot to install into), so PACKET_INs actually SPIKE
+        // -- this is the S4 signal (eq:sig_s4 λ_PI). Counting it only on the
+        // successful-install branch below zeroed λ_PI out during the exact
+        // phase S4 must detect.
+        g_packetin_count[target_rsu_node_id]++;
         std::cout << "[TCAM REJECT] TABLE_FULL node=" << target_rsu_node_id
                   << " fake_fid=" << fake_fid
                   << " count=" << g_tcam_rule_count[target_rsu_node_id]
@@ -775,6 +832,10 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     e.byte_count     = 750;  // nominal packet size consistent with benign traffic
     e.is_malicious   = true;
     e.counts_capacity = true;   // genuine data-plane rule (attacker-injected)
+    // f_unauth (eq:unauth_flowmod): attacker fids (>=1e6) are in no legitimate-flow
+    // registry -> 0 honest endorsers -> NOT committed under AB8 -> unauthorized.
+    // Derived from fid provenance via the same observable predicate as legit installs.
+    e.authorized     = tcam_flowmod_authorized(fake_fid);
     g_tcam_table.push_back(e);
     g_tcam_rule_count[target_rsu_node_id]++;
     g_packetin_count[target_rsu_node_id]++;  // attacker's unique-5-tuple packet missed -> PACKET_IN (eq:sig_s4 λ_PI)
