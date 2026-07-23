@@ -56,7 +56,20 @@ struct LRADRSUFlags {
     bool flag_S6  = false;  // Active HF DP: ¬b_batch ∧ DUP(msg_id, W)
     bool flag_S7  = false;  // Passive HF CP: vol > εvol ∧ b_hop=0
     bool flag_S8  = false;  // Passive HF DP: b_batch ∧ b_hop=0
-    bool D_RSU    = false;  // flag_S2f ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨ flag_S8
+    // flag_LSTM = D_LSTM^(k), the live federated-LSTM per-RSU anomaly
+    // output (main.tex eq:lstm_detection, post-2026-07-20 dev merge —
+    // see docs/DEV_MERGE_SPEC_CHANGES.md item #10). Complementary signal,
+    // "covers residual anomalies" not caught by S2f/S5-S8.
+    bool flag_LSTM = false;
+    // D_RSU = flag_S2f ∨ flag_S3 ∨ flag_S4 ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨
+    //         flag_S8 ∨ flag_LSTM per the current spec. flag_S3/flag_S4 are
+    // NOT yet members here — main.tex's post-merge S3/S4 redefinition
+    // (drop U_TCAM, add f_unauth conjunct, RSU-only) hasn't been
+    // implemented yet (DEV_MERGE_SPEC_CHANGES.md items #3/#4); the OLD
+    // OBU-side S3/S4 (lrad_obu(), still spec-stale themselves) must not be
+    // folded in here under the NEW composite's name. This struct currently
+    // implements only the flag_LSTM addition.
+    bool D_RSU    = false;  // flag_S2f ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨ flag_S8 ∨ flag_LSTM
 };
 
 // Carries OBU detection flags from vehicle to RSU via escalate_to_rsu().
@@ -296,8 +309,21 @@ inline LRADRSUFlags lrad_rsu(
     flags.flag_S7 = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
     flags.flag_S8 = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
 
+    // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection) ──────────────────────────
+    // `rsu` is the sim node id (N_Vehicles + local RSU index, per
+    // process_escalation_at_rsu()/every call site below); g_lstm_last_dlstm[]
+    // is indexed by local index (lstm_logger.h convention). g_lstm_last_dlstm
+    // is only populated once --enable_lstm_inference=1 AND the per-RSU
+    // window has bootstrapped (LSTM_WINDOW cycles) — defaults to false
+    // (fail-closed: no live LSTM signal available yet) otherwise.
+    if (rsu >= (uint32_t)N_Vehicles) {
+        uint32_t rsu_local_idx = rsu - (uint32_t)N_Vehicles;
+        if (rsu_local_idx < g_lstm_last_dlstm.size())
+            flags.flag_LSTM = g_lstm_last_dlstm[rsu_local_idx];
+    }
+
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
-                  flags.flag_S7 || flags.flag_S8;
+                  flags.flag_S7 || flags.flag_S8 || flags.flag_LSTM;
 
     // ── BC.Write per-signal + BTMM (eq:rsu_write, alg:lrad_rsu) ─────────────
     // Per thesis alg:lrad_rsu: BTMM and BC.Write are BOTH inside the D_RSU gate.
@@ -315,6 +341,30 @@ inline LRADRSUFlags lrad_rsu(
         if (flags.flag_S5)  bc_write_detection_event(rsu, prev_sender, 5, t_now);
         if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);
         if (flags.flag_S7)  bc_write_detection_event(rsu, prev_sender, 7, t_now);
+        // flag_LSTM: unlike S2f/S5-S8, no s*_detect() call recorded this
+        // detection, so it must be recorded here or it never reaches the
+        // TP/FP confusion-matrix counters (is_detected_node[][], read by
+        // write_security_metrics_csv()'s cur_DR/cur_FPR/cur_MCC every
+        // cycle) — the exact gap that made D_LSTM "logging-only" before
+        // this change. Attributed to prev_sender, matching S5-S8's own
+        // attribution (same variable, no separate suspect concept exists
+        // for a per-RSU rather than per-packet signal) — a judgment call;
+        // main.tex's plane-based attribution (DEV_MERGE_SPEC_CHANGES.md
+        // #11, c_atk vs v_atk routing) is not yet implemented, so this is
+        // provisional pending that work. bc_write_detection_event() is
+        // deliberately NOT called for flag_LSTM: it hard-rejects
+        // signal_idx outside [1,8] (bc_blockchain_helper.h) and signal 9
+        // (LSTM) hasn't been added to that range — blockchain audit-trail
+        // logging for LSTM-attributed detections is deferred, not silently
+        // dropped by oversight.
+        if (flags.flag_LSTM &&
+            active_attack_variant >= 0 &&
+            active_attack_variant < NUM_ATTACK_VARIANTS &&
+            prev_sender < (uint32_t)total_size &&
+            !is_detected_node[active_attack_variant][prev_sender])
+        {
+            record_detection_event(active_attack_variant, prev_sender);
+        }
         if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);
     }
 

@@ -46,6 +46,49 @@ alone).
       `tcam_flow_generator.h`.
 - [ ] Add `v̄(t)` as a second regressor; refit via OLS on benign-only traces.
 
+## 3/4 UPDATE (2026-07-23 pull, commits c580490 + 706b44a)
+S3/S4 have been reimplemented by Nipuni (code, `706b44a`) and documented by
+Apsari (main.tex, `c580490`) — **superseding items #3/#4 below in
+substance**, though with two confirmed deviations from main.tex's own
+literal equations and one likely typo:
+
+- **S3** (`tcam_detection.h` `ComputeTcamDetection()`): now gates on
+  `f_unauth` alone (`unauth_count > 0`, sourced from
+  `TcamEntry::authorized`, set at install by `tcam_flowmod_authorized()` —
+  an f+1 endorsement-quorum check keyed on FlowMod fid provenance, not
+  `is_malicious`). The rate term (`λ̂_a`) is explicitly demoted to
+  reporting-only. **Mismatch**: main.tex's own updated `eq:rule_s3`
+  (post `c580490`) still requires a second mandatory conjunct,
+  `∄v: flow(r) ∈ F_active(v)` — the code's `flag_s3` line
+  (`tcam_detection.h`, "7. S4" comment block) implements only
+  `unauth_count > 0`, no active-flow check at all.
+- **S4**: now `U_TCAM(r,t) > U_thresh` alone (`tcam_util_thresh`), with
+  `v_atk = argmax λ_PI` computed only for attribution, not gating.
+  Threshold hardcoded to **0.213** (calibrated to real benign p99,
+  `routing.cc` comment: "benign util p99=0.213 (max=0.289)... gives ~91%
+  TPR at ~1% benign FPR"). **Mismatch**: main.tex's own updated
+  `eq:rule_s4` text still lists `U_thresh` as
+  `[tbd: {0.5, 0.6, 0.7, 0.8}]` — an unresolved sweep placeholder that
+  doesn't even include the value actually calibrated and shipped in code.
+- Both deviations from the *original* literal equations (dropping the
+  rate-AND-term) are explicitly, deliberately flagged in code comments
+  with empirical justification (rate-based S3/S4 measured at ~2-3% DR
+  under realistic mobility due to attack/benign rate overlap — a real,
+  documented finding, not an oversight). The two *doc vs. code* mismatches
+  above (S3's missing active-flow conjunct, S4's stale threshold sweep)
+  are NOT flagged anywhere and look like `c580490` not fully catching up
+  to `706b44a`'s exact final implementation — worth a fix pass.
+- Likely typo introduced in `c580490`: `main.tex` §sec:rule_based's
+  section title changed from "Lightweight Rule-Based Detection Engine" to
+  **"the anomalous Rule-Based Detection Engine"** — reads like an
+  accidental bad edit, not an intentional rename.
+- **Still not done** (unaffected by this pull): S3/S4 remain evaluated at
+  OBU-side too, via `lrad_tcam_snapshot()` in `lrad.h` — a THIRD,
+  independent, still-stale implementation (hardcoded `lambda_hat_a>10.0`,
+  `lambda_pi>15.0`, `tcam_util>0.80`, untouched by either commit). Items
+  #5/#6 (shrink `D_OBU` to S1/S2p only, move S3/S4 to RSU-only) would
+  retire this stale copy entirely — still pending.
+
 ## 3. Signature S3 — redefined (TCAM control-plane)
 `main.tex` eq:rule_s3 (~L1886), eq:sig_s3
 
