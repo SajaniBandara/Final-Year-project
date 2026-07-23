@@ -52,8 +52,8 @@ struct LRADOBUFlags {
 // RSU-side detection results (alg:lrad_rsu output).
 struct LRADRSUFlags {
     bool flag_S2f = false;  // S2-full: STARK delay proof fails
-    bool flag_S5  = false;  // Active HF CP: ¬b_batch ∧ FlowMod ∉ BC.Query
-    bool flag_S6  = false;  // Active HF DP: ¬b_batch ∧ DUP(msg_id, W)
+    bool flag_S5  = false;  // Active HF CP: ¬b_batch ∧ FlowMod∉BC.Query ∧ CopyVerify=0 ∧ b_hop=0
+    bool flag_S6  = false;  // Active HF DP: DUP(msg_id,W) ∧ NoFM_d' ∧ CopyVerify=0 ∧ b_hop=0
     bool flag_S7  = false;  // Passive HF CP: vol > εvol ∧ b_hop=0
     bool flag_S8  = false;  // Passive HF DP: b_batch ∧ b_hop=0
     // flag_LSTM = D_LSTM^(k), the live federated-LSTM per-RSU anomaly
@@ -338,7 +338,25 @@ inline LRADRSUFlags lrad_rsu(
             btmm(prev_sender, it->second.sig_valid && g_batch_passed,
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
-        if (flags.flag_S5)  bc_write_detection_event(rsu, prev_sender, 5, t_now);
+        if (flags.flag_S5) {
+            bc_write_detection_event(rsu, prev_sender, 5, t_now);
+            // Dual attribution (2026-07-20 alg:lrad_rsu revision, eq:batch_fallback):
+            // on S5 detection, penalize BOTH the controller (ctrl-plane — done at
+            // the active-HF eavesdropper receive site in routing.cc via
+            // ctrl_trust_update_negative(), unconditionally whenever this reception
+            // event occurs) AND the forwarding node identified as
+            // v_atk,copy = argmin{i : ML-DSA-87.Verify(σ_i,pk_i,m_i)=0} (data-plane).
+            // In this simulation the batch never has more than one attacker-
+            // fabricated entry per packet, already isolated by s5_detect()'s own
+            // conjunction 2 (active_hf_malicious_nodes[prev_sender]), so
+            // v_atk,copy == prev_sender here — no separate batch scan is needed.
+            // Explicit and unconditional (not folded into the have_crypto-gated
+            // btmm() call above): g_packet_crypto is keyed by the ORIGINAL
+            // signer, not the forwarding node u, so a {prev_sender, pkt_id}
+            // record frequently does not exist for the eavesdropper path and
+            // that btmm() call would otherwise silently skip this penalty.
+            trust_update_negative(prev_sender);
+        }
         if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);
         if (flags.flag_S7)  bc_write_detection_event(rsu, prev_sender, 7, t_now);
         // flag_LSTM: unlike S2f/S5-S8, no s*_detect() call recorded this

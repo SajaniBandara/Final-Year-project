@@ -836,6 +836,18 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     // registry -> 0 honest endorsers -> NOT committed under AB8 -> unauthorized.
     // Derived from fid provenance via the same observable predicate as legit installs.
     e.authorized     = tcam_flowmod_authorized(fake_fid);
+    // Ground-truth wiring for M1-M3 (calculate_security_detection_metrics): mark the
+    // VICTIM RSU malicious using the SAME node-index space (RSU node_id) that
+    // record_detection_event() uses when flag_s3/flag_s4 fires (tcam_detection.h).
+    // Previously this was either never set (variant 2 / Attack 3, marker removed
+    // 2026-07-10) or set on the ATTACKER's own node index (variant 3 / Attack 4) --
+    // a different index space than record_detection_event's RSU-indexed marking, so
+    // is_malicious_node and is_detected_node could never overlap and sec_TP/DR were
+    // structurally 0 for both S3 and S4 regardless of detector quality. Guarded to
+    // fire once per RSU so t_onset[] reflects the FIRST attack time (needed for the
+    // M4 mitigation-latency metric), not the most recent tick.
+    if (!is_malicious_node[active_attack_variant][target_rsu_node_id])
+        record_attack_onset(active_attack_variant, target_rsu_node_id);
     g_tcam_table.push_back(e);
     g_tcam_rule_count[target_rsu_node_id]++;
     g_packetin_count[target_rsu_node_id]++;  // attacker's unique-5-tuple packet missed -> PACKET_IN (eq:sig_s4 λ_PI)

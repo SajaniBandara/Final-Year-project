@@ -11,7 +11,13 @@
 //   d' ∉ P(s,d)                                         [unauthorized destination]
 //   ∧ FlowMod(r) installed (s → d')                     [CP: controller poisoned]
 //   ∧ ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0        [content modified]
+//   ∧ BatchVerify(σ, {pk_i}, {m_i}, r) = 0              [aggregate batch fails]
 //   ∧ b_hop(u) = 0                                       [STARK hop proof fails]
+//
+// Also matches the practical flag_S5 in the 2026-07-20 alg:lrad_rsu revision:
+//   flag_S5 = [¬b_batch] ∧ [f_unauth(r,t)=1] ∧ [CopyVerify_d'=0] ∧ [b_hop=0]
+// NOT fully implemented, by necessity — see conjunction (3b) below for why
+// the ¬b_batch/BatchVerify term was added 2026-07-20 then reverted 2026-07-21.
 //
 // Simulation proxy for each conjunction:
 //   (0) d' ∉ P(s,d): enforced inside s5_detect() by comparing current_hop
@@ -32,6 +38,18 @@
 //       original signature, independent of hop identity (see the
 //       "REIMPLEMENTED 2026-07-16" comment at the call site for the full
 //       trace of why mldsa87_verify() itself cannot be reused here).
+//   (3b) BatchVerify = 0 (¬b_batch): ADDED 2026-07-20, then REVERTED
+//       2026-07-21 after runtime verification. g_batch_passed (crypto_layer.h)
+//       is fed purely from g_packet_crypto — entries created at ORIGINAL
+//       signing time and re-checked against that signer's own recorded
+//       signed_next_hop. An S5 attack's fabricated duplicate is never a
+//       separate signing event, so it can never appear in that batch or
+//       drive g_batch_passed false — confirmed empirically: 38 batch-verify
+//       ticks, 0 failures, across a full attack run where every other
+//       conjunct correctly fired 48/48 times. Requiring this term (as both
+//       eq:sig_s5 and flag_S5 literally specify) makes S5 permanently
+//       undetectable in this simulation; see s6_detection.h's/
+//       s7_detection.h's NoFM_d' revert for the same lesson applied earlier.
 //   (4) b_hop(u) = 0: a FRESH, receiver-specific call to the pure function
 //       stark_verify_hop(current_hop, prev_sender, packet_id) — directly
 //       compares the eavesdropper's own current_hop against the record's
@@ -91,6 +109,17 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // If committed, the FlowMod is legitimate → S5 does not fire.
     // In Attack 5, the controller injects the FlowMod bypassing endorsement,
     // so bc_query_flowmod returns false → S5 proceeds to the remaining conjunctions.
+    //
+    // FIXED 2026-07-21 — this was permanently vacuous until routing.cc's
+    // transmit_delta_values() was made attack-aware (see the "ADDED
+    // 2026-07-21" comment at its flow-0 endorsement site): hf_target_flow_id
+    // is hardcoded to 0, the same flow id transmit_delta_values()'s
+    // attack-agnostic endorsement loop legitimately committed every cycle
+    // regardless of attack state, so bc_query_flowmod(0) previously read
+    // permanently true and this line early-returned on every packet — S5
+    // fired zero times ever, confirmed empirically. transmit_delta_values()
+    // now forces that cycle's commit back to unauthorized while Attack 5 is
+    // live, so this conjunction is now a genuine, non-vacuous check.
     if (bc_query_flowmod(base_flow_id)) return false;
 
     // Conjunction 2: prev_sender must be a flagged active malicious RSU
@@ -136,6 +165,27 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // Calling it fresh, here, with the EAVESDROPPER's own current_hop gives a
     // correct, deterministic, receiver-specific answer with zero race risk.
     bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+
+    // Conjunction 3b: BatchVerify(σ, {pk_i}, {m_i}, r) = 0 — ADDED 2026-07-20,
+    // then REVERTED 2026-07-21 after runtime verification. crypto_batch_verify_tick()
+    // (crypto_layer.h) builds its batch purely from g_packet_crypto — entries
+    // created when a node ORIGINALLY signs a packet, keyed by {signer, pkt_id}
+    // and re-checked against that signer's own recorded signed_next_hop. The
+    // S5 attack's fabricated duplicate is never a separate signing event — it
+    // rides the SAME g_packet_crypto record as the original, legitimately-
+    // signed packet, and is only ever inspected by the separate, one-off
+    // mldsa87_verify_copy_content(fabricated=true) call (conjunction 3 above).
+    // So g_batch_passed has no mechanism by which an S5 attack could ever
+    // drive it false: it reflects aggregate integrity of ORIGINAL signed
+    // traffic, which stays genuinely valid throughout. Verified empirically
+    // (routing_test=true --attack_number=5, post-FlowMod-fix): 48/48 calls
+    // had mldsa_fails=1, b_hop_fails=1, d_prime_unauthorized=1 — every real
+    // signal correctly indicating the attack — yet batch_fails=0 on all 48,
+    // across 38 batch-verify ticks with zero failures, permanently blocking
+    // detection exactly like the bc_query_flowmod collision did. Same
+    // lesson as s6_detection.h/s7_detection.h's NoFM_d' revert: requiring a
+    // literal per-equation term the simulation has no mechanism to satisfy
+    // just kills detection with zero discriminating value.
 
     // Conjunction 0 (Eq. sig_s5 first term): d' ∉ P(s,d).
     // Explicit guard: if current_hop is the legitimate authorized destination for
