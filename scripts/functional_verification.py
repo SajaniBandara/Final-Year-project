@@ -39,7 +39,7 @@ GREEN, RED, YELLOW, DIM, RESET = (
     "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
 ) if sys.stdout.isatty() else ("", "", "", "", "")
 
-DEFAULT_RESULTS = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+DEFAULT_RESULTS = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"
 
 # TAP baseline CSV has its own 19-column schema (write_tap_csv in tap_detection.h).
 TAP_COLUMNS = [
