@@ -118051,6 +118051,16 @@ void calculate_performance_evaluation_metrics()
 		s1_rsu_obs_sum[_r]   = 0.0;
 		s1_rsu_obs_count[_r] = 0;
 
+		// eq:rule_s1 selectivity conjunct: δ_best(r,t), mean best-effort
+		// packet delay this cycle. No-observation cycles fall back to 0.0
+		// (fail-open — see s1_detection.h's s1_best_obs_sum comment).
+		double best_effort_delay = (s1_best_obs_count[_r] > 0)
+		                 ? (s1_best_obs_sum[_r] / (double)s1_best_obs_count[_r])
+		                 : 0.0;
+		s1_update_best_effort_baseline(_r, best_effort_delay);
+		s1_best_obs_sum[_r]   = 0.0;
+		s1_best_obs_count[_r] = 0;
+
 		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}

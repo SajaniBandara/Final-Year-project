@@ -30,16 +30,20 @@ RESULTS   = Path(os.environ.get("HOME", "/home/sdvn_hidden_attacks")) / \
             "ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 
+# 5-8 match main.tex's own attack titles: Attack 5 "Active Hidden Forward
+# Attack: Control Plane", Attack 6 "...: Data Plane", Attack 7 "Passive
+# Hidden Forward Attack: Control Plane", Attack 8 "...: Data Plane"
+# (main.tex sec:Overview of the four Hidden Forwarding Attacks, S5-S8).
 ATTACK_NAMES = {
     0: "Benign",
     1: "A1 CP-SelectiveDelay",
     2: "A2 DP-SelectiveDelay",
     3: "A3 CP-TCAM",
     4: "A4 DP-TCAM",
-    5: "A5 HF-BasicReplay",
-    6: "A6 HF-TimestampManip",
-    7: "A7 HF-MultiPath",
-    8: "A8 HF-CovertRelay",
+    5: "A5 CP-ActiveHF",
+    6: "A6 DP-ActiveHF",
+    7: "A7 CP-PassiveHF",
+    8: "A8 DP-PassiveHF",
 }
 
 
@@ -55,10 +59,25 @@ def load_global_model() -> tuple:
     model.eval()
     with open(REPO / "lstm_pipeline" / "fed_summary.json") as fh:
         fed = json.load(fh)
-    return model, float(fed["global_theta"])
+    # eq:lstm_threshold/eq:lstm_detection: theta^(k) is explicitly PER-RSU
+    # ("ensuring that each RSU applies a locally calibrated decision
+    # boundary rather than a global threshold that would fail to account
+    # for RSU-specific traffic distributions" — main.tex's own words).
+    # This function used to return only the single scalar global_theta
+    # (the mean across all 64 per-RSU thetas) and predict_test() applied
+    # THAT ONE VALUE to every RSU's test windows — silently ignoring the
+    # per-RSU calibration entirely. With per-RSU thetas ranging from ~0.7
+    # to ~2200 (found 2026-07-18), that mean is dominated by whichever
+    # RSUs happen to have inflated individual thetas, making the effective
+    # cutoff far too conservative for every other RSU. Now returns the
+    # full per-RSU dict; global_theta is kept only as the fallback for an
+    # RSU id absent from fed_summary.json (e.g. skipped for <MIN_BENIGN
+    # windows during training).
+    per_rsu_theta = {int(k): float(v["theta"]) for k, v in fed["per_rsu"].items()}
+    return model, per_rsu_theta, float(fed["global_theta"])
 
 
-def predict_test(model: LSTMAutoencoder, theta: float) -> tuple:
+def predict_test(model: LSTMAutoencoder, per_rsu_theta: dict, global_theta: float) -> tuple:
     X    = np.load(PRE / "test_X.npy")
     y    = np.load(PRE / "test_y.npy")
     meta = np.load(PRE / "test_meta.npy")
@@ -69,7 +88,9 @@ def predict_test(model: LSTMAutoencoder, theta: float) -> tuple:
             xb = torch.from_numpy(X[i:i+bs]).float().to(DEVICE)
             scores.append(model.anomaly_score(xb).cpu().numpy())
     scores = np.concatenate(scores)
-    y_pred = (scores > theta).astype(np.int8)
+    rsu_ids = meta[:, 0].astype(int)
+    theta_arr = np.array([per_rsu_theta.get(r, global_theta) for r in rsu_ids])
+    y_pred = (scores > theta_arr).astype(np.int8)
     return y, y_pred, scores, meta
 
 
@@ -139,11 +160,14 @@ def extract_sim_metrics(df: pd.DataFrame) -> dict:
 
 def main(args):
     print(f"Loading global federated model …")
-    model, theta = load_global_model()
-    print(f"  Global θ = {theta:.6f}")
+    model, per_rsu_theta, global_theta = load_global_model()
+    theta_vals = list(per_rsu_theta.values())
+    print(f"  Per-RSU θ: n={len(theta_vals)} min={min(theta_vals):.4f} "
+          f"median={sorted(theta_vals)[len(theta_vals)//2]:.4f} max={max(theta_vals):.4f}")
+    print(f"  Global θ (fallback only) = {global_theta:.6f}")
 
     print("Running inference on test split …")
-    y_true, y_pred, scores, meta = predict_test(model, theta)
+    y_true, y_pred, scores, meta = predict_test(model, per_rsu_theta, global_theta)
 
     all_results = {}
 

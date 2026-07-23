@@ -39,7 +39,7 @@ PIPELINE_DIR = os.path.join(PROJECT_DIR, "lstm_pipeline")
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "lstm")
 
 ATTACK_ORDER = ["A1 CP-SelectiveDelay", "A2 DP-SelectiveDelay", "A3 CP-TCAM", "A4 DP-TCAM",
-                "A5 HF-BasicReplay", "A6 HF-TimestampManip", "A7 HF-MultiPath", "A8 HF-CovertRelay"]
+                "A5 CP-ActiveHF", "A6 DP-ActiveHF", "A7 CP-PassiveHF", "A8 DP-PassiveHF"]
 ATTACK_SHORT = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"]
 
 INK, MUTED, ACCENT, ACCENT_2, PASS, GRID, BG = (

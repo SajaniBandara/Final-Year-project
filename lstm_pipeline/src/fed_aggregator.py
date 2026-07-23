@@ -96,9 +96,42 @@ def load_rsu_data() -> dict:
     data = {}
     for rsu_id in rsu_ids:
         # Pure-benign A0 runs only (meta col 1 = attack_v). See local_trainer.py:
-        # y==0 leaked attack-run label-0 windows into benign training.
+        # y==0 leaked attack-run label-0 windows into benign training — this
+        # remains attack_v==0 only; TRAINING the autoencoder on windows drawn
+        # from attack runs (even quiet ones) would still leak subtle
+        # attack-adjacent patterns into what it learns as "normal".
         mask_tr_benign = (meta_tr[:, 0] == rsu_id) & (meta_tr[:, 1] == 0)
-        mask_va_benign = (meta_va[:, 0] == rsu_id) & (meta_va[:, 1] == 0)  # pure-benign A0 for θ calibration
+        # theta CALIBRATION population, deliberately different from training:
+        # was attack_v==0 only (640 windows total, network-wide) — but 97.7%
+        # of what actually gets evaluated as "benign" at test time is y=0
+        # windows drawn from attack-percentage runs (quiet cycles within an
+        # attack run), which have a measurably different error distribution
+        # (different SUMO traces per pct, network-wide effects of attacks
+        # elsewhere) than pure attack_v==0 runs. Calibrating on the narrow
+        # population gave 28-29% FPR on the very population it's evaluated
+        # against; calibrating on the full y_va==0 label (matching what
+        # eval_clf/compute_clf_metrics actually score against) verified to
+        # bring FPR to <1% (found & fixed 2026-07-18, supervisor-approved
+        # tradeoff: DR is not judged against this LSTM-only validation at
+        # this stage — main.tex's 95% DR target applies to the full
+        # dual-mode system once rule engine + LSTM are integrated).
+        #
+        # EXCLUDES attack_v in {3,4} (A3/A4, TCAM variants). Originally
+        # excluded 2026-07-18 believing the cause was stale pre-timeout-fix
+        # data; A3/A4 were fully re-collected post-fix on 2026-07-20 (60
+        # runs, 3840 CSVs) and the exclusion was reverted to test that
+        # theory — it reproduced the EXACT same failure (per-RSU theta back
+        # into the hundreds/thousands, A5-A8 collapsing to degenerate 0/0/0
+        # detection, A1/A2 DR crushed 75%->20%). So staleness was never the
+        # real cause: TCAM exhaustion attacks structurally elevate U_TCAM
+        # for the whole run's duration (residual TCAM occupancy persists
+        # even in cycles not at the attack's peak), unlike delay/HF attacks
+        # which don't alter the RSU's baseline TCAM state at all. A3/A4's
+        # own "quiet" windows are therefore never a fair calibration
+        # population for a per-RSU benign baseline, regardless of data
+        # freshness — re-excluding permanently (2026-07-20).
+        mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
+                          & ~np.isin(meta_va[:, 1], [3, 4]))
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]
@@ -207,31 +240,32 @@ Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
 
 
 def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
-    """Hybrid threshold: theta(k) = max(Gaussian, non-parametric P99) per
-    RSU, each computed from the RSU's own benign validation reconstruction
-    errors. History: eq:lstm_threshold's parametric theta = mu_A +
-    z_alpha*sigma_A gave empirical FPR 2.84-6.65% on the working variants —
-    supervisor review attributed this to a heavier-than-Gaussian benign
-    error tail and asked for a non-parametric P99 threshold instead
-    (2026-07-15/16). Tried in isolation: P99 alone gave FPR 3.6-8.5%,
-    WORSE, not better — several RSUs calibrate on as few as ~20-100 benign
-    windows, and the empirical P99 of a small sample underestimates the
-    true tail (regresses toward the sample max), so P99-alone is actually
-    MORE permissive than Gaussian here, not less. Per supervisor direction
-    ("take whichever performs best"), taking the max of both formulas
-    per RSU is a hybrid that is never more permissive than either formula
-    alone — whichever one under-covers the tail for a given RSU is
-    overridden by the other. mu_a/sig_a are still returned for descriptive
+    """eq:lstm_threshold: theta(k) = mu_A + z_alpha*sigma_A, computed from
+    the RSU's own benign validation reconstruction errors.
+
+    History (2026-07-15/18): the reported 2.84-6.65% FPR was never actually
+    a threshold-FORMULA problem — it was that theta was calibrated on only
+    640 "pure benign run" (attack_v==0) windows, while 97.7% of what gets
+    evaluated as benign at test time are quiet windows drawn from
+    attack-percentage runs with a measurably different error distribution
+    (see the mask_va_benign fix in main()/grid_search_hparams() callers:
+    now y_va==0, not attack_v==0). Tried three formulas AFTER that real fix
+    landed, holding the calibration population fixed: plain Gaussian,
+    P99-only, and max(Gaussian, P99) all hit ~0% FPR on every variant
+    (the population fix is what mattered) — but Gaussian gave consistently
+    HIGHER DR than both alternatives on every single variant (e.g. A2:
+    21.4% vs hybrid's 18.0%, P99's 20.9%), since max(Gaussian, P99) always
+    picks the more conservative (and here, unnecessarily so) of the two.
+    Reverted to the original spec formula — simpler and empirically better
+    once the real bug was fixed. mu_a/sig_a returned for descriptive
     logging."""
     model.eval()
     with torch.no_grad():
         xv   = torch.from_numpy(X_val_benign).float().to(DEVICE)
         errs = model.anomaly_score(xv).cpu().numpy()
-    mu_a       = float(errs.mean())
-    sig_a      = float(errs.std())
-    theta_gauss = mu_a + Z_ALPHA * sig_a
-    theta_pctl  = float(np.percentile(errs, 99))
-    theta = max(theta_gauss, theta_pctl)
+    mu_a  = float(errs.mean())
+    sig_a = float(errs.std())
+    theta = mu_a + Z_ALPHA * sig_a
     return theta, mu_a, sig_a
 
 
@@ -249,10 +283,12 @@ def eval_clf(model, X_val_full: np.ndarray, y_val_full: np.ndarray, theta: float
     return {"mcc": mcc, "fpr": fpr, "precision": prec, "dr": dr}
 
 
-def global_validation_loss(global_sd: dict, rsu_data: dict, rsu_ids: list) -> float:
+def global_validation_loss(model: LSTMAutoencoder, global_sd: dict, rsu_data: dict, rsu_ids: list) -> float:
     """Sample-weighted mean benign reconstruction error of the current global model
-    across all RSUs' validation windows — the 'global loss' R-convergence is measured on."""
-    model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
+    across all RSUs' validation windows — the 'global loss' R-convergence is measured on.
+    `model` is reused across every call (once per round, 150 total) rather than
+    freshly constructed each time — see the local_model reuse comment in main()
+    for the full rationale (Fix 22)."""
     model.load_state_dict(global_sd)
     model.eval()
     losses, weights = [], []
@@ -566,15 +602,31 @@ def main(args):
     round_log, round_losses, checkpoints, checkpoint_meta = [], {}, {}, {}
     round_models_at_grid = {}   # rnd -> {rsu_id: {"state_dict", "n_train"}}, for M8's rsu_{k}.pt
 
+    # Reused across every (round, RSU) local-training step instead of
+    # constructing a fresh LSTMAutoencoder each time (150 rounds x 64 RSUs =
+    # 9600 constructions) — that churn was triggering a rare CUDA
+    # allocator/PyTorch-internal corruption (nn.LSTM's own reset_parameters()
+    # crashing with nonsensical type errors, e.g. "argument of type 'LSTM' is
+    # not iterable", reproducible across independent runs at different
+    # rounds). state_dict() shares tensor storage with the live model by
+    # default, so round_models must store an explicit clone (same pattern
+    # global_sd already uses above) — otherwise every RSU's stored "weights"
+    # would silently alias the same reused model and get overwritten by the
+    # next RSU's training.
+    local_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
+    # Same reuse rationale as local_model above — global_validation_loss()
+    # used to construct its own fresh LSTMAutoencoder every round (150
+    # calls), a second fresh-construction site the original Fix 22 missed.
+    val_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
+
     for rnd in range(1, r_max + 1):
         round_models = {}
         for rsu_id in rsu_ids:
             hp = hparams[rsu_id]
-            local_model = LSTMAutoencoder(n_features=N_FEATURES).to(DEVICE)
             local_model.load_state_dict(global_sd)
             train_local_epochs(local_model, rsu_data[rsu_id]["X_tr"],
                                hp["lr"], hp["batch"], hp["epochs"])
-            local_sd = local_model.state_dict()
+            local_sd = {k: v.clone() for k, v in local_model.state_dict().items()}
             round_models[rsu_id] = {"state_dict": local_sd,
                                     "committed_hash": compute_weights_hash(local_sd),
                                     "n_train": rsu_data[rsu_id]["n_train"]}
@@ -595,7 +647,7 @@ def main(args):
         reference   = round_models[verified[0]]["state_dict"]
         global_sd   = unflatten_weights(global_flat, reference)
 
-        g_loss = global_validation_loss(global_sd, rsu_data, rsu_ids)
+        g_loss = global_validation_loss(val_model, global_sd, rsu_data, rsu_ids)
         round_log.append({"round": rnd, "global_loss": g_loss,
                           "n_eligible": len(eligible), "n_verified": len(verified),
                           "n_accepted": int(mask.sum())})
