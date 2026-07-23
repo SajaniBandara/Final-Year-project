@@ -32,6 +32,13 @@ MAX_CYCLE  = 87
 # delta_t spike above the benign p99 (attack actually firing this window),
 # not merely because it came from an attacker RSU's run. See make_windows().
 SPIKE_QUANTILE = 0.99
+# A5-A8 (hidden forwarding) perturb no delta_t signal — the delta_t-only
+# spike criterion below leaves almost all HF windows unlabeled as positive,
+# so DR against this ground truth is largely blind to when the attack is
+# actually active. main.tex designed zkp_delay_fail/zkp_hop_fail exactly to
+# carry HF's cryptographic evidence into the LSTM (eq:lstm_input, AB3
+# rationale — main.tex:4648-4676) — use them as the HF spike criterion.
+HF_VARIANTS = {5, 6, 7, 8}
 
 BASE = Path(os.environ.get("HOME", "/home/sdvn_hidden_attacks")) / \
        "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
@@ -45,7 +52,6 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
     files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
-    skipped = 0
     for path in files:
         p = Path(path)
         parts = p.stem.split("_")
@@ -53,18 +59,12 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         pct      = int(parts[1][3:])
         seed     = int(parts[2][4:])
         rsu_id   = int(p.parent.name[4:])
-        if attack_v in EXCLUDE_ATTACKS:
-            skipped += 1
-            continue
         df = pd.read_csv(path)
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
-    if skipped:
-        print(f"  Excluded {skipped} files for attacks {sorted(EXCLUDE_ATTACKS)} "
-              f"(label fix pending)")
     return pd.concat(dfs, ignore_index=True)
 
 
@@ -153,18 +153,28 @@ def main(args):
     # Selective-delay attacks fire on only a fraction of cycles, so a per-row
     # spike flag marks WHEN the attack is actually active. Threshold = benign
     # (attack_v==0) p99 of delta_t — the same ≤1% false-rate budget used for the
-    # rule-based S1/S3 thresholds. Only delta_t carries a per-RSU signal for the
-    # attacks the LSTM can see (A1/A2); A3/A4 are excluded (label fix pending)
-    # and A5-A8 (hidden forwarding) perturb no per-RSU feature — they are
-    # detected by the crypto-layer UCR metric, not this model.
+    # rule-based S1/S3 thresholds. delta_t carries the per-RSU signal for the
+    # attacks the LSTM can see via timing (A1/A2); A3/A4 are excluded (label
+    # fix pending). A5-A8 (hidden forwarding) perturb no delta_t signal, so
+    # they use zkp_delay_fail/zkp_hop_fail instead (see HF_VARIANTS comment
+    # above) — these are still ONLY windowing/ground-truth criteria, not new
+    # model features; eq:lstm_input is unchanged.
     benign_delta = df.loc[df["attack_v"] == BENIGN_V, "delta_t"]
     spike_thr = float(benign_delta.quantile(SPIKE_QUANTILE))
-    df["is_spike"] = (df["delta_t"] > spike_thr).astype(np.int8)
+    delta_spike = df["delta_t"] > spike_thr
+    zkp_spike   = df["attack_v"].isin(HF_VARIANTS) & (
+                      (df["zkp_delay_fail"] > 0) | (df["zkp_hop_fail"] > 0))
+    df["is_spike"] = (delta_spike | zkp_spike).astype(np.int8)
     n_spike_atk = int(df.loc[df["attack_v"] != BENIGN_V, "is_spike"].sum())
     n_atk_rows  = int((df["attack_v"] != BENIGN_V).sum())
+    n_hf_rows   = int(df["attack_v"].isin(HF_VARIANTS).sum())
+    n_hf_spike  = int(zkp_spike.sum())
     print(f"  Cycle-level spike flag: delta_t > benign p{int(SPIKE_QUANTILE*100)} "
-          f"= {spike_thr*1000:.3f} ms → {n_spike_atk:,}/{n_atk_rows:,} "
+          f"= {spike_thr*1000:.3f} ms (A1/A2/A3/A4) OR zkp_delay_fail|zkp_hop_fail "
+          f"(A5-A8) → {n_spike_atk:,}/{n_atk_rows:,} "
           f"({100*n_spike_atk/max(n_atk_rows,1):.1f}%) attack rows are active")
+    print(f"  HF (A5-A8) spike breakdown: {n_hf_spike:,}/{n_hf_rows:,} "
+          f"({100*n_hf_spike/max(n_hf_rows,1):.1f}%) rows flagged via ZKP failure")
 
     print("Fitting Z-score scaler on benign data …")
     mu, std = fit_scaler(df)

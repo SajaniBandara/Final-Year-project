@@ -35,10 +35,12 @@ RHO_IDX   = 5   # FEATURES index of "rho"   (preprocessor.py FEATURES order)
 VBAR_IDX  = 6   # FEATURES index of "v_bar"
 MIN_CELL  = 20  # skip a stratum cell if it has too few windows for a stable MCC
 
+# 5-8 match main.tex's own attack titles — see evaluator.py's ATTACK_NAMES
+# comment for the full mapping to Attack 5-8 / S5-S8.
 ATTACK_NAMES = {
     0: "Benign", 1: "A1 CP-SelectiveDelay", 2: "A2 DP-SelectiveDelay",
-    3: "A3 CP-TCAM", 4: "A4 DP-TCAM", 5: "A5 HF-BasicReplay",
-    6: "A6 HF-TimestampManip", 7: "A7 HF-MultiPath", 8: "A8 HF-CovertRelay",
+    3: "A3 CP-TCAM", 4: "A4 DP-TCAM", 5: "A5 CP-ActiveHF",
+    6: "A6 DP-ActiveHF", 7: "A7 CP-PassiveHF", 8: "A8 DP-PassiveHF",
 }
 
 
@@ -56,17 +58,22 @@ def load_global_model() -> tuple:
     model.eval()
     with open(REPO / "lstm_pipeline" / "fed_summary.json") as fh:
         fed = json.load(fh)
-    return model, float(fed["global_theta"])
+    # eq:lstm_threshold: theta^(k) is per-RSU — see evaluator.py's
+    # load_global_model() for the full rationale (this file had the same
+    # single-global-theta bug, found & fixed 2026-07-18 alongside it).
+    per_rsu_theta = {int(k): float(v["theta"]) for k, v in fed["per_rsu"].items()}
+    return model, per_rsu_theta, float(fed["global_theta"])
 
 
-def predict(model, theta, X) -> np.ndarray:
+def predict(model, per_rsu_theta, global_theta, X, rsu_ids) -> np.ndarray:
     bs, scores = 512, []
     with torch.no_grad():
         for i in range(0, len(X), bs):
             xb = torch.from_numpy(X[i:i + bs]).float().to(DEVICE)
             scores.append(model.anomaly_score(xb).cpu().numpy())
     scores = np.concatenate(scores)
-    return (scores > theta).astype(np.int8)
+    theta_arr = np.array([per_rsu_theta.get(int(r), global_theta) for r in rsu_ids])
+    return (scores > theta_arr).astype(np.int8)
 
 
 def raw_mobility(X: np.ndarray, mu: dict, std: dict) -> tuple:
@@ -126,8 +133,8 @@ def main():
     vbar_bin_te = bin_vbar(vbar_te, edges["vbar_edges"])
 
     print("Loading global federated model …")
-    model, theta = load_global_model()
-    y_pred = predict(model, theta, X_te)
+    model, per_rsu_theta, global_theta = load_global_model()
+    y_pred = predict(model, per_rsu_theta, global_theta, X_te, meta_te[:, 0])
 
     RHO_LABELS  = ["low", "medium", "high"]
     VBAR_LABELS = ["low", "high"]

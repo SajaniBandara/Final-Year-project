@@ -9,9 +9,16 @@
 //
 // S1 (Attack 1 — Selective Time Delay, Control Plane):
 //   δ_p(v,r,t) > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p) = HIGH
-//   Eq. 3.4, §1608–1627
+//   ∧  δ_best(r,t) ≤ δ̄_r(t) + k·σ_r(t)
+//   Eq. 3.4/eq:rule_s1, main.tex ~L1930 (post 2026-07-20 dev merge)
 //   Detection uses a per-RSU mobility-adjusted baseline delay (Eq. 3.11)
-//   and an EWMA variance estimator (Eq. 3.12/3.13).
+//   and an EWMA variance estimator (Eq. 3.12/3.13). The third conjunct
+//   (selectivity condition, δ_best) requires best-effort traffic to remain
+//   within the same threshold that safety-critical traffic just violated —
+//   under genuine congestion both classes are delayed together, so this
+//   conjunct evaluates false and S1 correctly does not fire; under Attack 1
+//   only high-priority traffic is delayed, so δ_best stays low and the
+//   conjunct passes.
 //
 // DESIGN NOTE:
 //   This header is included inside routing.cc AFTER all global variables
@@ -70,6 +77,17 @@ std::vector<double>   s1_sigma2;        // σ²_r(t): EWMA variance per RSU
 std::vector<double>   s1_rsu_obs_sum;
 std::vector<uint32_t> s1_rsu_obs_count;
 
+// Per-RSU δ_best(r,t): mean per-hop delay of best-effort (non-high-priority)
+// packets, the S1 selectivity conjunct (main.tex eq:rule_s1, symbol table
+// ~L1298). Accumulated in s1_detect_packet() for non-safety-critical
+// packets; drained into s1_delta_best[] once per cycle at the same call
+// site that drains s1_rsu_obs_sum/count, mirroring δ̄_r(t)'s own per-cycle
+// cadence. No-observation cycles default to 0.0 (fail-open: absence of
+// best-effort traffic must not suppress a genuine S1 detection).
+std::vector<double>   s1_best_obs_sum;
+std::vector<uint32_t> s1_best_obs_count;
+std::vector<double>   s1_delta_best;
+
 // =========================================================================
 // s1_update_baseline():
 // Updates the mobility-adjusted baseline δ̄_r(t) for one RSU (Eq. 3.11).
@@ -93,6 +111,19 @@ inline void s1_update_baseline(uint32_t rsu_idx,
     double inv_v = (v_bar_t > 0.1) ? (1.0 / v_bar_t) : 10.0;
     s1_delta_bar[rsu_idx] = s1_delta0 + s1_alpha_rho * rho_t + s1_alpha_v * inv_v;
     (void)observed_delay;   // no longer feeds sigma2 here — see s1_detect_packet()
+}
+
+// =========================================================================
+// s1_update_best_effort_baseline():
+// Sets δ_best(r,t) — mean best-effort packet delay for this cycle — from
+// the accumulator drained by the caller (mirrors s1_update_baseline()'s
+// obs_delay pattern). Call once per RSU per cycle, right after draining
+// s1_best_obs_sum/count, matching δ̄_r(t)'s own update cadence.
+// =========================================================================
+inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t)
+{
+    if (rsu_idx >= (uint32_t)N_RSUs) return;
+    s1_delta_best[rsu_idx] = delta_best_t;
 }
 
 // =========================================================================
@@ -123,8 +154,19 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 {
     if (rsu_idx >= (uint32_t)N_RSUs) return false;
 
-    // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4)
-    if (!is_safety_crit) return false;
+    // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4).
+    // Best-effort packets can never trigger S1 themselves, but their delay
+    // still feeds δ_best(r,t) (the selectivity conjunct below) — accumulate
+    // before returning.
+    if (!is_safety_crit)
+    {
+        if (packet_delay_s > 0.0)
+        {
+            s1_best_obs_sum[rsu_idx]   += packet_delay_s;
+            s1_best_obs_count[rsu_idx] += 1;
+        }
+        return false;
+    }
 
     double delta_bar = s1_delta_bar[rsu_idx];
     double sigma     = std::sqrt(s1_sigma2[rsu_idx]);
@@ -162,6 +204,15 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     s1_sigma2[rsu_idx] = s1_beta * s1_sigma2[rsu_idx]
                        + (1.0 - s1_beta) * deviation * deviation;
 
+    // Condition 3 (selectivity, eq:rule_s1): δ_best(r,t) ≤ δ̄_r(t)+k·σ_r(t).
+    // Under genuine congestion, best-effort traffic is delayed alongside
+    // high-priority traffic, so δ_best exceeds the same threshold and this
+    // conjunct evaluates false — S1 must not fire. Under Attack 1, only
+    // high-priority packets are delayed, so δ_best stays low and this
+    // conjunct passes.
+    double delta_best   = s1_delta_best[rsu_idx];
+    bool   selective_ok  = (delta_best <= threshold);
+
     cout << "[S1] RSU_idx=" << rsu_idx
          << " node=" << current_hop
          << " flow=" << flow_id
@@ -170,10 +221,12 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
          << " baseline=" << delta_bar * 1000.0 << "ms"
          << " sigma=" << sigma * 1000.0 << "ms"
          << " threshold=" << threshold * 1000.0 << "ms"
+         << " delta_best=" << delta_best * 1000.0 << "ms"
          << " [SAFETY-CRITICAL]" << endl;
 
     // Condition 1: δ_p > δ̄_r(t) + k·σ_r(t)  (Eq. 3.14)
-    if (packet_delay_s > threshold)
+    // Condition 3: δ_best(r,t) ≤ δ̄_r(t) + k·σ_r(t)  (selectivity, eq:rule_s1)
+    if (packet_delay_s > threshold && selective_ok)
     {
         cout << "[S1] ⚠️ SIGNATURE S1 TRIGGERED!"
              << " Delay " << packet_delay_s * 1000.0
@@ -214,8 +267,18 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         return true;
     }
 
-    cout << "[S1] No violation: delay " << packet_delay_s * 1000.0
-         << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
+    if (packet_delay_s > threshold && !selective_ok)
+    {
+        cout << "[S1] Threshold exceeded but selectivity conjunct failed: "
+             << "delta_best=" << delta_best * 1000.0 << "ms > threshold "
+             << threshold * 1000.0 << "ms — best-effort traffic also delayed, "
+             << "treating as genuine congestion, not Attack 1." << endl;
+    }
+    else
+    {
+        cout << "[S1] No violation: delay " << packet_delay_s * 1000.0
+             << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
+    }
     return false;
 }
 
@@ -246,6 +309,13 @@ inline void s1_init_state(uint32_t n_rsus)
     s1_sigma2.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
+    // δ_best(r,t) seeded to 0.0 (fail-open — see s1_best_obs_sum/count
+    // declaration comment): the first cycle has no prior best-effort
+    // observation, and 0.0 ≤ any threshold keeps the selectivity conjunct
+    // from spuriously blocking a genuine first-cycle S1 detection.
+    s1_best_obs_sum.assign(n_rsus, 0.0);
+    s1_best_obs_count.assign(n_rsus, 0);
+    s1_delta_best.assign(n_rsus, 0.0);
     cout << "[S1] S1 per-RSU state initialised for " << n_rsus << " RSUs "
          << "(delta_bar seeded to delta_0=" << s1_delta0 * 1000.0 << "ms)." << endl;
 }
@@ -262,6 +332,9 @@ inline void s1_reset_state()
     std::fill(s1_sigma2.begin(),        s1_sigma2.end(),        0.0);
     std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
     std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
+    std::fill(s1_best_obs_sum.begin(),   s1_best_obs_sum.end(),   0.0);
+    std::fill(s1_best_obs_count.begin(), s1_best_obs_count.end(), 0u);
+    std::fill(s1_delta_best.begin(),     s1_delta_best.end(),     0.0);
     cout << "[S1] All S1 per-RSU baseline/variance state reset "
          << "(delta_bar seeded to delta_0=" << s1_delta0 * 1000.0 << "ms)." << endl;
 }
