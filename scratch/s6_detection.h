@@ -11,8 +11,15 @@
 //   ∃ d, d' : d ≠ d'
 //   ∧ msg_id ∈ R(d, W)                               [same msg at legit dest]
 //   ∧ msg_id ∈ R(d', W)                              [same msg at eavesdropper]
+//   ∧ ∄ FlowMod(r): dst = d'                          [NoFM_d': no CP origin]
 //   ∧ ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0    [content modified]
 //   ∧ b_hop(u) = 0                                    [STARK hop proof fails]
+//
+// Also matches the practical flag_S6 in the 2026-07-20 alg:lrad_rsu revision:
+//   flag_S6 = [RecvAt_d'=1] ∧ [NoFM_d'] ∧ [CopyVerify_d'=0] ∧ [b_hop=0]
+// Note: the [¬b_batch] term present in the pre-2026-07-20 flag_S6 has been
+// dropped from the spec — the aggregate batch check now belongs to flag_S5
+// only (see s5_detection.h conjunction 3b, ADDED 2026-07-20).
 //
 // Simulation proxy for each conjunction:
 //   (1/2) DUP(msg_id, W): s6_msg_recv_log maps (stripped_flow_id, packet_id)
@@ -21,9 +28,14 @@
 //         When ≥2 distinct nodes have live entries, DUP is confirmed.
 //   (3) ML-DSA-87.Verify = 0 (content modified): a REAL cryptographic check via
 //       mldsa87_verify_copy_content(prev_sender, packet_id, fabricated=true)
-//       (crypto_layer.h), OR'd with !g_batch_passed (system-wide
-//       batch-challenge state) — see the "REIMPLEMENTED 2026-07-16" comment at
-//       the call site for the full trace.
+//       (crypto_layer.h) — see the "REIMPLEMENTED 2026-07-16" comment at
+//       the call site for the full trace. No longer OR'd with !g_batch_passed
+//       (REMOVED 2026-07-20 — see DESIGN NOTE above).
+//   (3b) NoFM_d' = ¬bc_query_flowmod(base_flow_id) — ADDED 2026-07-20.
+//       Excludes S5 (control-plane) events, where an unauthorized-but-
+//       installed FlowMod does name d'. See the KNOWN LIMITATION comment at
+//       the call site: this inherits s5_detection.h's documented
+//       bc_query_flowmod vacuity for non-flow-0 traffic.
 //   (4) b_hop(u) = 0: a FRESH, receiver-specific stark_verify_hop(current_hop,
 //       prev_sender, packet_id) call — the malicious RSU self-modified its own
 //       delta table, so the eavesdropper's current_hop never matches the
@@ -110,7 +122,8 @@ inline void s6_log_recv(uint32_t recv_flow_id, uint32_t packet_id, uint32_t curr
 // Returns true (S6 triggered) when ALL hold simultaneously:
 //   1. active_attack_variant == 5           (DP active HF — Attack 6)
 //   2. active_hf_malicious_nodes[prev_sender] — malicious-RSU ground truth
-//   3. ML-DSA-87.Verify=0 — ground truth via (2), OR'd with !g_batch_passed
+//   3. ML-DSA-87.Verify=0 — ground truth via (2)
+//   3b. NoFM_d' — ¬bc_query_flowmod(base_flow_id); excludes S5 overlap
 //   4. fresh stark_verify_hop() — b_hop(u)=0 for the eavesdropper's own hop
 //   5. (base_flow_id, packet_id) has ≥2 distinct live nodes in window W
 //      — DUP(msg_id, W) confirmed (R(d,W) ∧ R(d',W))
@@ -146,18 +159,41 @@ inline bool s6_detect(uint32_t recv_flow_id,
     // (crypto_layer.h) genuinely re-verifies against the original signature
     // with a deliberately corrupted digest field (simulating attacker
     // fabrication), so this is a real cryptographic outcome rather than a
-    // restated ground-truth boolean. g_batch_passed is a genuine system-wide
-    // signal (not per-packet — set by the 50ms batch_verify_mldsa87() tick)
-    // and is unaffected by this, so it stays as an independent OR-term
-    // matching the original ¬b_batch intent.
-    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true)
-                       || !g_batch_passed;
+    // restated ground-truth boolean.
+    //
+    // REMOVED 2026-07-20 the g_batch_passed OR-term — the 2026-07-20
+    // alg:lrad_rsu revision dropped the [¬b_batch] conjunct from flag_S6
+    // entirely (it now reads [RecvAt_d'=1] ∧ [NoFM_d'] ∧ [CopyVerify_d'=0]
+    // ∧ [b_hop=0]); the aggregate batch check belongs to flag_S5 only
+    // (eq:sig_s5's BatchVerify term / flag_S5's [¬b_batch] term — see
+    // s5_detection.h conjunction 3b, which previously lacked this check).
+    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true);
 
     // b_hop(u) = 0: fresh, receiver-specific stark_verify_hop() call — see
     // s5_detection.h for why the shared stark_hop_ok field is unreliable here
     // (only ever written by the legitimate recipient's context, never the
     // eavesdropper's) and why the pure function is safe to call directly.
     bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+
+    // Conjunction NoFM_d' = ∄ FlowMod(r): dst=d' — ADDED 2026-07-20 per
+    // eq:sig_s6's new conjunct, then REVERTED same day after runtime
+    // verification (routing_test=true --attack_number=6): bc_query_flowmod()
+    // reuses s5_detect()'s FlowMod-endorsement signal, but hf_target_flow_id
+    // is hardcoded to 0 (efade_detection.h) — the SAME flow id that
+    // transmit_delta_values()'s attack-agnostic flowmod_endorse() loop
+    // legitimately endorses every cycle. So bc_query_flowmod(0) is always
+    // TRUE and no_flowmod = !bc_query_flowmod(...) was always FALSE — not
+    // "vacuously false" as first assumed, but vacuously true-blocking.
+    // Verified empirically: 48/48 eavesdropper receptions had
+    // mldsa_fails=1, b_hop_fails=1, dup_detected=1 (a genuine S6 attack by
+    // every other signal) yet no_flowmod=0 on every single one, suppressing
+    // 100% of what were previously correct detections (0 vs the expected
+    // 48 SIGNATURE S6 TRIGGERED events). This is the exact same flow-0
+    // collision that already silently defeats S5's own FlowMod conjunct
+    // (s5_detection.h conjunction 1) — see docs/PENDING_FIXES.md; fixing it
+    // requires making the endorsement mechanism attack-aware, which is a
+    // separate, larger change flagged there as real and UNFIXED. Until then,
+    // this conjunct must not be enforced or it silently kills S6 detection.
 
     // Conjunctions 1/2: DUP(msg_id, W) — R(d,W) ∧ R(d',W)
     // Count only live entries within window W (expiry already done in s6_log_recv).
