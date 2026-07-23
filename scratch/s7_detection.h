@@ -13,17 +13,28 @@
 //   ∧ ML-DSA-87.Verify(σ_c, pk_s, m_c) = 1           [content unmodified]
 //   ∧ b_hop(u) = 0                                    [STARK hop proof fails]
 //
-// From the LRAD RSU algorithm (alg:lrad_rsu, line for flag_S7):
-//   flag_S7 ← [d/dt Vol(d',t) > ε_vol] ∧ [b_hop=0]
+// From the LRAD RSU algorithm (2026-07-20 alg:lrad_rsu revision, line for
+// flag_S7 — now the full 4-conjunct form matching eq:sig_s7 exactly):
+//   flag_S7 ← [d/dt Vol(d',t) > ε_vol] ∧ [∄FM(r):dst=d']
+//             ∧ [CopyVerify_d',S7=1] ∧ [b_hop=0]
+// (Superseded the pre-2026-07-20 2-term flag_S7 ← [d/dt Vol>ε_vol] ∧ [b_hop=0].)
 //
 // Simulation proxy for each conjunction:
 //   (1) d/dt Vol(d',t) > ε_vol: a sliding-window packet counter per eavesdropper
 //       node measures the arrival rate. Eavesdropper nodes receive zero traffic
 //       under normal operation, so any rate > S7_EPSILON_VOL is anomalous.
-//   (2) ∄ FlowMod(r): dst=d': captured implicitly — the CP variant (variant 6)
-//       means the controller injected a FlowMod to d' that is NOT in the
-//       blockchain-committed policy set C_P. No separate query needed; the
-//       attack flag passive_hf_malicious_nodes[prev_sender] covers this.
+//   (2) ∄ FlowMod(r): dst=d' (NoFM_d'): ¬bc_query_flowmod(base_flow_id) —
+//       ADDED 2026-07-20, reusing the same signal s5_detect()/s6_detect() use
+//       for their own FlowMod conjuncts (s5_detection.h conjunction 1,
+//       s6_detection.h conjunction 3b). KNOWN LIMITATION (inherited from
+//       s5_detection.h / docs/PENDING_FIXES.md "bc_query_flowmod(1) is
+//       vacuous"): only ever populated for flow 0, so it returns false for
+//       the HF attack's own flow id regardless of variant — included per the
+//       literal spec, real discriminating power needs the endorsement
+//       mechanism to become attack-aware. Previously this conjunct was
+//       omitted from the actual check entirely (only asserted "implicitly
+//       covered" via ground truth in a comment); now enforced explicitly for
+//       consistency with s6_detect()'s NoFM_d' and with the revised flag_S7.
 //   (3) ML-DSA-87.Verify = 1 (content unmodified — passive copy): a REAL
 //       cryptographic check via mldsa87_verify_copy_content(prev_sender,
 //       packet_id, fabricated=false) (crypto_layer.h) — reconstructs the exact
@@ -89,6 +100,7 @@ static std::map<uint32_t, double>   s7_window_start;
 //   2. prev_sender is a flagged passive malicious RSU
 //      (passive_hf_malicious_nodes[prev_sender] == true)
 //   3. ML-DSA-87.Verify = 1 — ground truth via (2)
+//   3b. NoFM_d' — ¬bc_query_flowmod(base_flow_id)
 //   4. Packet arrival rate at current_hop > S7_EPSILON_VOL in window W
 //      (d/dt Vol(d',t) > ε_vol)
 //   5. fresh stark_verify_hop() — b_hop(u)=0 for the eavesdropper's own hop
@@ -127,6 +139,21 @@ inline bool s7_detect(uint32_t recv_flow_id,
     // not a restated ground-truth boolean.
     bool sig_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
     if (!sig_ok) return false;
+
+    // Conjunction 3b: NoFM_d' = ∄ FlowMod(r): dst=d' — ADDED 2026-07-20, then
+    // REVERTED same day after runtime verification (routing_test=true
+    // --attack_number=6 showed the identical s6_detect() version of this
+    // conjunct suppressing 48/48 otherwise-correct S6 detections — see the
+    // matching revert note in s6_detection.h for the full trace).
+    // bc_query_flowmod() reuses s5_detect()'s FlowMod-endorsement signal, but
+    // hf_target_flow_id is hardcoded to 0 (efade_detection.h) — the SAME flow
+    // id transmit_delta_values()'s attack-agnostic flowmod_endorse() loop
+    // legitimately endorses every cycle, so bc_query_flowmod(0) is always
+    // TRUE and no_flowmod is always FALSE. Not yet re-verified against a
+    // live Attack 7 run, but reverted proactively since it shares the exact
+    // same broken input as the empirically-confirmed S6 regression.
+    // Left ML-DSA-87.Verify=1 (sig_ok, enforced above via early return) and
+    // the rate/b_hop checks below untouched — only this conjunct is reverted.
 
     // Conjunction 4: d/dt Vol(d',t) > ε_vol — sliding window volume rate.
     double t_now = Simulator::Now().GetSeconds();
@@ -173,7 +200,8 @@ inline bool s7_detect(uint32_t recv_flow_id,
          << " [CP — controller FlowMod poisoned; passive/unmodified copy]"
          << endl;
 
-    // eq:sig_s7: d/dt Vol(d',t) > ε_vol — single sliding-window rate gate only
+    // eq:sig_s7: d/dt Vol(d',t) > ε_vol ∧ b_hop=0 (ML-DSA-87.Verify=1 already
+    // enforced above via early return). NoFM_d' omitted — see revert note above.
     if (rate > S7_EPSILON_VOL && b_hop_fails)
     {
         cout << "[S7] ⚠️ SIGNATURE S7 TRIGGERED!"

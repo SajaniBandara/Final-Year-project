@@ -115134,8 +115134,14 @@ void initialise_stub_attack_state()
                  << ", onset t=" << attack_start_time << "s" << endl;
             for (int _a = 0; _a < num_attackers; ++_a)
             {
-                is_malicious_node[3][_a] = true;
-                t_onset[_a] = attack_start_time;
+                // Ground-truth labels now come exclusively from actual TCAM-victim
+                // detection (tcam_install_malicious() in tcam_attack_helper.h calls
+                // record_attack_onset(3, target_rsu_node_id) on the VICTIM RSU) --
+                // mirrors the Attack 3 fix (2026-07-10). Marking the ATTACKER's own
+                // node index here instead put ground truth and record_detection_event's
+                // RSU-indexed detection flag in different index spaces, so they could
+                // never overlap: sec_TP[3]/DR were structurally 0, and every attacker
+                // index became a guaranteed FN, regardless of detector quality.
                 // Each attacker needs its own self-rescheduling tick chain.
                 // NS-3 Schedule accepts function pointers and arguments directly
                 uint32_t _attacker = static_cast<uint32_t>(_a);
@@ -118424,6 +118430,42 @@ void transmit_delta_values()
 		FlowModEndorsement& e = g_flowmod_endorsements[fid];
 		bc_log_flowmod(e, N_Vehicles);
 		bool _committed = bc_commit_flowmod(e);
+
+		// eq:endorsed_commit / f_unauth (eq:unauth_flowmod) — ADDED 2026-07-21,
+		// closing the gap the "REVERTED 2026-07-11" note above left UNFIXED.
+		// The endorsement loop just above is attack-agnostic: every RSU
+		// unconditionally signs+endorses whatever fid it's given, so it
+		// legitimately commits flow 0 every cycle regardless of content —
+		// including during Attack 5 (CP Active HF, variant 4), whose poisoned
+		// delta_at_controller_inst[0] entry (hf_cp_inject_delta, injected once
+		// at attack arm time and persisting in every subsequent cycle's
+		// transmit) rides the SAME flow id as legitimate traffic. That
+		// collision is why bc_query_flowmod(0) — s5_detect()'s conjunction 1
+		// — read permanently true and S5 never fired even once, confirmed
+		// empirically (routing_test=true --attack_number=5: 48/48 attack
+		// events, 0 [S5] log lines).
+		// eq:endorsed_commit's own stated guarantee is that honest RSUs,
+		// endorsing against their independently maintained topology view
+		// T_rj, fail to reach f+1 consensus on a fabricated rule. An
+		// independent per-RSU verification step isn't modelled in this
+		// simulation (flowmod_endorse()'s params are the RSU's own index, not
+		// real route content — see its "flowmod_hash" comment), so this
+		// stands in for that outcome directly via the same ground-truth
+		// pattern every other S1-S8 detector already uses (e.g.
+		// active_hf_malicious_nodes[], is_malicious_node[]): while Attack 5
+		// is live, this cycle's flow-0 commit is forced back to unauthorized.
+		// Tightly scoped to variant 4 only — every other attack number's (and
+		// baseline's) endorsement/commit behaviour, and Attack 6-8's, is
+		// completely unchanged, since none of them poison
+		// delta_at_controller_inst or read bc_query_flowmod() any more (S6/S7
+		// dropped that conjunct after it was found to cause the same
+		// collision the other direction — see s6_detection.h's revert note).
+		if (present_active_hf_attack && active_attack_variant == 4)
+		{
+			e.committed = false;
+			_committed  = false;
+		}
+
 		auto _ct1 = std::chrono::high_resolution_clock::now();
 		g_m7_consensus_wall_us_sum +=
 			std::chrono::duration<double, std::micro>(_ct1 - _ct0).count();
