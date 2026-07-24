@@ -92,6 +92,14 @@ def sync_files() -> None:
             dest = routing_dir / src.name
         else:
             dest = SCRATCH_DIR / src.name
+
+        # Avoid SameFileError for symlinked/hardlinked setups where the ns-3
+        # scratch file already IS the project scratch file (same inode).
+        # Mirrors the guard in run_std_attacks.py's sync_files().
+        if dest.exists() and os.path.samefile(src, dest):
+            print(f"  already synced  {src.name}")
+            continue
+
         shutil.copy2(src, dest)
         print(f"  copied  {src.name}  →  {dest.relative_to(SCRATCH_DIR.parent)}")
 
