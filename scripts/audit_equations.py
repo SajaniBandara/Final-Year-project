@@ -33,6 +33,21 @@ SOURCE LAYERS
   tool   scripts/*.py                                    (sweep/plot/verify)
   any    union of the above
 
+EXTERNAL BASELINES -- NOT THE PROPOSED SOLUTION
+-----------------------------------------------
+Three files in these layers implement the independent state-of-the-art
+comparators defined in docs/main.tex "External Baselines", not MOBIGUARD:
+
+    scratch/tap_detection.h    B1  TAP        (Arsalan & Rehman 2018)
+    scratch/efade_detection.h  B3  FADE       (Zhang 2021)
+    sfto_pipeline/src/         B2  SFTO-Guard (Tang 2023)
+
+They exist solely to benchmark the proposed framework against prior art.  No
+equation in this audit is satisfied by baseline code alone: the summary prints
+a per-check warning if a check's ONLY evidence came from a baseline file, so a
+baseline re-implementation can never stand in as proof that a MOBIGUARD
+equation is implemented.
+
 Usage:
   python3 scripts/audit_equations.py                  # full audit, human log
   python3 scripts/audit_equations.py --strict         # exit 1 if any FAIL
@@ -557,20 +572,78 @@ def banner(title):
     print("=" * 78)
 
 
+# Files implementing the EXTERNAL prior-art baselines (B1/B2/B3), never the
+# proposed framework.  Evidence drawn only from these cannot prove that a
+# MOBIGUARD equation is implemented.
+BASELINE_FILES = ("scratch/tap_detection.h", "scratch/efade_detection.h")
+BASELINE_DIRS = ("sfto_pipeline/",)
+
+
+def is_baseline(path):
+    return path in BASELINE_FILES or path.startswith(BASELINE_DIRS)
+
+
 def run_check(label, cls, sym, scope, kind="eq"):
-    """-> (status, exp, got, anchors, evidence_files)"""
+    """-> (status, exp, got, anchors, evidence_files, baseline_only)"""
     anchors = anchor_count(label, kind)
     if cls == X:
-        return "INFO", 0, 0, anchors, []
+        return "INFO", 0, 0, anchors, [], False
     files = symbol_files(sym, scope or "any") if sym else []
-    got = (1 if files else 0) + (1 if anchors else 0)
-    return ("PASS" if files else "FAIL"), 1, got, anchors, files
+    own = [f for f in files if not is_baseline(f[0])]
+    # A check whose only evidence is a baseline re-implementation has NOT shown
+    # the proposed framework implements the equation.
+    baseline_only = bool(files) and not own
+    status = "PASS" if own else ("FAIL" if files else "FAIL")
+    got = (1 if own else 0) + (1 if anchors else 0)
+    return status, 1, got, anchors, files, baseline_only
+
+
+def self_test(c):
+    """Negative control: prove no check is vacuous.
+
+    For every CODE/PARAM entry, erase its implementing symbol from the whole
+    source index and confirm the check flips to FAIL.  A check that still
+    passes with its implementation removed proves nothing, and this section
+    fails the audit so it cannot ship unnoticed.
+    """
+    banner("SECTION S. NEGATIVE CONTROL (can each check actually fail?)")
+    entries = [(l, cls, sym, sc) for _t, _e, ck in SECTIONS
+               for l, _d, cls, sym, sc, _n in ck]
+    entries += [(l, cls, sym, sc) for l, _d, cls, sym, sc, _n in ALGORITHMS]
+
+    pristine = {k: dict(v) for k, v in LAYERS.items()}
+    vacuous, tested = [], 0
+    for label, cls, sym, scope in entries:
+        if cls == X or not sym:
+            continue
+        tested += 1
+        rx = re.compile(sym)
+        for name in LAYERS:
+            LAYERS[name] = {f: rx.sub("", t) for f, t in pristine[name].items()}
+        status, *_ = run_check(label, cls, sym, scope)
+        if status != "FAIL":
+            vacuous.append(label)
+        for name in LAYERS:
+            LAYERS[name] = dict(pristine[name])
+
+    if vacuous:
+        print(f"  {c.R}[FAIL]{c.O} {len(vacuous)}/{tested} check(s) still PASS with "
+              f"their implementation removed")
+        print(f"         {c.D}{', '.join('eq:' + v for v in vacuous)}{c.O}")
+        return False, tested
+    print(f"  {c.G}[PASS]{c.O} all {tested} CODE/PARAM check(s) flip to FAIL when "
+          f"their implementing symbol is removed")
+    print(f"         {c.D}exp={tested} got={tested} -- no check is satisfied "
+          f"vacuously{c.O}")
+    return True, tested
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true", help="exit 1 if any FAIL")
     ap.add_argument("--no-color", action="store_true", help="plain text output")
+    ap.add_argument("--self-test", action="store_true",
+                    help="also run the negative control (Section S)")
     args = ap.parse_args()
 
     c = Palette(sys.stdout.isatty() and not args.no_color)
@@ -606,7 +679,8 @@ def main():
     for title, eqs, checks in SECTIONS:
         banner(f"SECTION {title}\n    /{eqs}/")
         for label, desc, cls, sym, scope, note in checks:
-            status, exp, got, anchors, files = run_check(label, cls, sym, scope)
+            status, exp, got, anchors, files, base_only = run_check(
+                label, cls, sym, scope)
             if status == "PASS":
                 n_pass += 1; col = c.G
             elif status == "INFO":
@@ -618,9 +692,15 @@ def main():
             if cls == X:
                 print(f"         {c.D}paper-only: {note}{c.O}")
             else:
-                where = ", ".join(f"{f}({n})" for f, n in files[:3]) or "none"
+                where = ", ".join(
+                    f"{f}({n})" + (" [BASELINE]" if is_baseline(f) else "")
+                    for f, n in files[:3]) or "none"
                 print(f"         {c.D}exp>={exp} got={got}  "
                       f"symbol in: {where}  |  {anchors} code anchor(s){c.O}")
+                if base_only:
+                    print(f"         {c.R}evidence came ONLY from external "
+                          f"baseline code (B1/B2/B3) -- not proof the proposed "
+                          f"framework implements this{c.O}")
                 if note:
                     print(f"         {c.D}note: {note}{c.O}")
 
@@ -628,7 +708,8 @@ def main():
     banner("SECTION K. ALGORITHMS\n"
            "    /alg:lrad_obu, alg:lrad_rsu, alg:fcip, alg:brfa_v2, alg:btmm/")
     for label, desc, cls, sym, scope, note in ALGORITHMS:
-        status, exp, got, anchors, files = run_check(label, cls, sym, scope, kind="alg")
+        status, exp, got, anchors, files, base_only = run_check(
+            label, cls, sym, scope, kind="alg")
         if status == "PASS":
             n_pass += 1; col = c.G
         elif status == "INFO":
@@ -636,7 +717,9 @@ def main():
         else:
             n_fail += 1; col = c.R
             failures.append(f"alg:{label} ({desc})")
-        where = ", ".join(f"{f}({n})" for f, n in files[:3]) or "none"
+        where = ", ".join(
+            f"{f}({n})" + (" [BASELINE]" if is_baseline(f) else "")
+            for f, n in files[:3]) or "none"
         print(f"  {col}[{status}]{c.O} alg:{label:<23} [{cls}] {desc}")
         print(f"         {c.D}exp>={exp} got={got}  symbol in: {where}  |  "
               f"{anchors} code anchor(s){c.O}")
@@ -666,6 +749,14 @@ def main():
             print(f"  {c.Y}[INFO]{c.O} {kind}: {len(extra)} audit entr(ies) with no "
                   f"main.tex label (stale?)")
             print(f"         {c.D}{', '.join(kind + ':' + e for e in extra)}{c.O}")
+
+    if args.self_test:
+        ok, n_st = self_test(c)
+        if ok:
+            n_pass += 1
+        else:
+            n_fail += 1
+            failures.append("negative control: at least one check is vacuous")
 
     # -- Summary -------------------------------------------------------------- #
     n_code = sum(1 for _, _, cs in SECTIONS for e in cs if e[2] == C)

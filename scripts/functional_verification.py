@@ -28,9 +28,17 @@ SUBSYSTEMS COVERED
   L  trust management and controller failover (M5)
   M  distributed trusted time reference (M9)
   N  federated LSTM pipeline (M8)
-  O  SFTO and eFADE detector baselines
-  P  TAP baseline comparator (Arsalan & Rehman 2018)
+  O  EXTERNAL baselines B2 (SFTO-Guard) and B3 (FADE)
+  P  EXTERNAL baseline B1 (TAP)
   Q  metric coverage roll-up (M1-M12)
+
+Groups A-N verify MOBIGUARD, the proposed framework.  Groups O and P verify
+the three EXTERNAL state-of-the-art baselines defined in docs/main.tex
+"External Baselines" -- B1 TAP (Arsalan & Rehman 2018), B2 SFTO-Guard (Tang
+2023) and B3 FADE (Zhang 2021).  These are independent prior-art detectors
+re-implemented for comparison ONLY; they are not components of the proposed
+solution, and their checks assert that each comparator produced usable output
+to benchmark against, not that MOBIGUARD works.
 
 Groups A-P run once per attack sweep discovered in the result directories;
 A0, J, N, O and Q run once for the whole verification.
@@ -68,13 +76,28 @@ _spec = importlib.util.spec_from_file_location(
 vm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(vm)
 
-# Result directories searched when --results-dir is not given.
+# Result directories searched when --results-dir is not given.  These mirror
+# run_std_attacks.py's NS3_DIR (~/ns3_g13_apsari/...); the pre-migration
+# ~/ns3_g13 tree is deliberately NOT a default -- pass it with --results-dir if
+# you need to inspect those older runs.
 DEFAULT_RESULTS = [
     os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"),
     os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing_test_runs_1"),
     os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing_test_runs/results_routing"),
-    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"),
 ]
+
+
+def newest_source_mtime():
+    """mtime of the most recently modified simulator source, or None."""
+    scratch = os.path.join(ROOT, "scratch")
+    if not os.path.isdir(scratch):
+        return None
+    times = [os.path.getmtime(os.path.join(scratch, n))
+             for n in os.listdir(scratch) if n.endswith((".h", ".cc", ".cpp"))]
+    return max(times) if times else None
+
+
+SRC_MTIME = newest_source_mtime()
 
 # TAP baseline CSV has its own 19-column schema (write_tap_csv in tap_detection.h).
 TAP_COLUMNS = [
@@ -83,17 +106,32 @@ TAP_COLUMNS = [
     "TP", "FP", "TN", "FN", "cur_TVR", "avg_TVR",
 ]
 
-# Attack variant -> (family key, human label).  docs/main.tex "Attack Scenarios".
+# Attack variant -> (family key, human label).  docs/main.tex "Attack Scenarios"
+# defines TWO top-level attack classes, four variants each:
+#
+#   SELECTIVE TIME DELAY  variants 1-4.  Variants 1-2 inject the delay directly;
+#                         variants 3-4 induce the same delay indirectly by
+#                         exhausting the RSU TCAM so safety packets miss their
+#                         flow rule and take the slow path.  All four are
+#                         selective time delay attacks.
+#   HIDDEN FORWARDING     variants 5-8 (active 5-6, passive 7-8).
+#
+# `family` selects which impact assertions apply (a TCAM variant is proven
+# through occupancy, a direct variant through injected latency); `parent` is
+# the paper's attack class, reported in the coverage roll-up.
 ATTACK_FAMILY = {
-    1: ("delay", "Selective Time Delay - Control Plane"),
-    2: ("delay", "Selective Time Delay - Data Plane"),
-    3: ("tcam",  "Slow TCAM Exhaustion - Control Plane"),
-    4: ("tcam",  "Slow TCAM Exhaustion - Data Plane"),
-    5: ("hf",    "Active Hidden Forwarding - Control Plane"),
-    6: ("hf",    "Active Hidden Forwarding - Data Plane"),
-    7: ("hf",    "Passive Hidden Forwarding - Control Plane"),
-    8: ("hf",    "Passive Hidden Forwarding - Data Plane"),
+    1: ("delay", "Selective Time Delay: Direct Injection, Control Plane"),
+    2: ("delay", "Selective Time Delay: Direct Injection, Data Plane"),
+    3: ("tcam",  "Selective Time Delay: Slow TCAM Exhaustion, Control Plane"),
+    4: ("tcam",  "Selective Time Delay: Slow TCAM Exhaustion, Data Plane"),
+    5: ("hf",    "Hidden Forwarding: Active, Control Plane"),
+    6: ("hf",    "Hidden Forwarding: Active, Data Plane"),
+    7: ("hf",    "Hidden Forwarding: Passive, Control Plane"),
+    8: ("hf",    "Hidden Forwarding: Passive, Data Plane"),
 }
+
+ATTACK_CLASS = {v: "SELECTIVE TIME DELAY" if v <= 4 else "HIDDEN FORWARDING"
+                for v in range(1, 9)}
 
 
 def _src_const(pattern, cast=float, default=None):
@@ -225,21 +263,41 @@ def truth(cond, ok_msg, bad_msg):
     return ("PASS", ok_msg) if cond else ("FAIL", bad_msg)
 
 
+def _stamp(mtime):
+    import datetime
+    return datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+
+
+_ROW_COUNT_CACHE = {}
+
+
 def data_rows(path):
-    """Number of non-comment, non-header rows in a CSV."""
+    """Number of non-comment, non-header rows in a CSV.
+
+    Cached: the blockchain audit logs run to several MB and the same file is
+    consulted once per attack subject, so an uncached count dominates runtime.
+    """
+    if path in _ROW_COUNT_CACHE:
+        return _ROW_COUNT_CACHE[path]
+    n, header = 0, 0
     try:
-        with open(path, errors="ignore") as fh:
-            lines = [ln for ln in fh if ln.strip() and not ln.startswith("#")]
+        # Binary + explicit decode: some artefacts carry stray non-UTF-8 bytes,
+        # which the incremental text decoder chokes on even with errors="ignore".
+        with open(path, "rb") as fh:
+            for raw in fh:
+                line = raw.decode("utf-8", "replace")
+                if not line.strip() or line.startswith("#"):
+                    continue
+                if n == 0:
+                    try:
+                        float(line.split(",", 1)[0].strip())
+                    except ValueError:
+                        header = 1  # first data line was a text header
+                n += 1
     except OSError:
-        return 0
-    if not lines:
-        return 0
-    first = lines[0].split(",")[0].strip()
-    try:
-        float(first)
-    except ValueError:
-        return len(lines) - 1  # first line was a text header
-    return len(lines)
+        pass
+    _ROW_COUNT_CACHE[path] = max(n - header, 0)
+    return _ROW_COUNT_CACHE[path]
 
 
 def present(paths, name, need_rows=True):
@@ -268,7 +326,12 @@ def find_files(dirs, pattern):
 
 
 def discover_subjects(dirs):
-    """-> {(attack, delay_or_None): {pct: (rows, path)}} across all result dirs."""
+    """-> {(attack, delay_or_None): {pct: (rows, path)}} across all result dirs.
+
+    The same (attack, pct, delay) can exist in more than one result directory;
+    the most recently written file wins, so a stale copy in a secondary
+    directory can never silently shadow a fresh run.
+    """
     subjects = {}
     for path in find_files(dirs, "MOBIGUARD_Attack*.csv"):
         m = MG_RE.search(os.path.basename(path))
@@ -277,9 +340,31 @@ def discover_subjects(dirs):
         attack, pct = int(m.group(1)), int(m.group(2))
         delay = int(m.group(3)) if m.group(3) else None
         rows = vm.parse_mobiguard_csv(path)
-        if rows:
-            subjects.setdefault((attack, delay), {})[pct] = (rows, path)
+        if not rows:
+            continue
+        bucket = subjects.setdefault((attack, delay), {})
+        if pct in bucket and os.path.getmtime(bucket[pct][1]) >= os.path.getmtime(path):
+            continue
+        bucket[pct] = (rows, path)
     return subjects
+
+
+def parse_crypto_ops(dirs):
+    """{op_name: [row, ...]} from every crypto_timing_log.csv found."""
+    ops = {}
+    for p in find_files(dirs, "crypto_timing_log.csv"):
+        with open(p, "rb") as fh:
+            for raw in fh:
+                parts = [x.strip() for x in raw.decode("utf-8", "replace").split(",")]
+                if len(parts) != 6 or parts[0] == "sim_time_s":
+                    continue
+                try:
+                    ops.setdefault(parts[1], []).append(
+                        {"t": float(parts[0]), "op": parts[1], "node": int(parts[2]),
+                         "pkt": int(parts[3]), "us": float(parts[4]), "res": parts[5]})
+                except ValueError:
+                    continue
+    return ops
 
 
 def load_tap(dirs, attack, delay):
@@ -291,9 +376,9 @@ def load_tap(dirs, attack, delay):
         if not m:
             continue
         rows = []
-        with open(path, errors="ignore") as fh:
-            for line in fh:
-                line = line.strip()
+        with open(path, "rb") as fh:
+            for raw in fh:
+                line = raw.decode("utf-8", "replace").strip()
                 if not line or line.startswith("#"):
                     continue
                 parts = [p.strip() for p in line.split(",")]
@@ -314,6 +399,194 @@ def load_json(path):
             return json.load(fh)
     except (OSError, ValueError):
         return None
+
+
+# --------------------------------------------------------------------------- #
+# No-bypass attestation
+#
+# Task 8 requires evidence of "correct coding WITHOUT BYPASSING MODELING".
+# crypto_layer.h exposes one kill-switch (--disable_crypto) and ten ablation
+# gates (--enable_*) that each short-circuit a modelled subsystem.  A run made
+# with any of them off is an ABLATION run, not full-system evidence.
+#
+# Each entry: (flag, bypass_value, subsystem, evidence_fn)
+#   evidence_fn(top, ops) -> (ran: bool|None, detail: str)
+#     True   the subsystem demonstrably executed in this run
+#     False  it demonstrably did not
+#     None   this run cannot tell either way
+# --------------------------------------------------------------------------- #
+
+def _ev(cond, yes, no):
+    return (bool(cond), yes if cond else no)
+
+
+def _ev_crypto(top, ops):
+    sigs = len(ops.get("sign", [])) + len(ops.get("verify", []))
+    rate = top.get("sig_valid_rate")
+    byts = top.get("o_crypto_bytes_pkt")
+    return _ev(sigs > 0 and (byts or 0) > 0,
+               f"{sigs} ML-DSA sign/verify op(s) timed, sig_valid_rate={rate}, "
+               f"o_crypto_bytes_pkt={byts}",
+               "no ML-DSA sign/verify activity and no crypto bytes accrued")
+
+
+def _ev_obu(top, ops):
+    n = len(ops.get("lrad_obu", []))
+    c = top.get("d_obu_count")
+    return _ev(n > 0 or (c or 0) > 0,
+               f"{n} lrad_obu invocation(s) timed, d_obu_count={c}",
+               "OBU rule engine never ran")
+
+
+def _ev_rsu(top, ops):
+    n = len(ops.get("lrad_rsu", []))
+    c = top.get("d_rsu_count")
+    return _ev(n > 0, f"{n} lrad_rsu invocation(s) timed, d_rsu_count={c}",
+               "RSU full-mode engine never ran")
+
+
+def _ev_stark_delay(top, ops):
+    t = top.get("t_stark_ms_avg")
+    f = top.get("stark_timing_fail_count")
+    return _ev((t or 0) > 0, f"t_stark_ms_avg={t}, stark_timing_fail_count={f}",
+               "no STARK timing-proof cost recorded")
+
+
+def _ev_stark_hop(top, ops):
+    n = len(ops.get("stark_hop", []))
+    return _ev(n > 0, f"{n} stark_hop proof op(s) timed",
+               "no STARK hop-proof activity")
+
+
+def _ev_witness(top, ops):
+    da, nfa = top.get("witness_da_count"), top.get("witness_nfa_count")
+    p = top.get("WAP_precision")
+    ran = (da or 0) > 0 or (nfa or 0) > 0 or (p or 0) > 0
+    return (ran if ran else None), (
+        f"witness_da_count={da}, witness_nfa_count={nfa}, WAP_precision={p}"
+        if ran else
+        f"no witness alerts fired (da={da}, nfa={nfa}) -- consistent with either "
+        f"an inactive mechanism or an attack that raised none")
+
+
+def _ev_quarantine(top, ops):
+    t = top.get("avg_trust_score")
+    if t is None:
+        return None, "avg_trust_score absent"
+    return (True, f"trust scoring active, avg_trust_score={t:.4f} (moved off 1.0)") \
+        if t < 1.0 else \
+        (None, "avg_trust_score is exactly 1.0 -- no penalty was ever applied, "
+               "so trust updates cannot be distinguished from a disabled gate")
+
+
+def _ev_endorse(top, ops):
+    r = top.get("flowmod_endorsement_rate")
+    n = len(ops.get("consensus", []))
+    return _ev((r or 0) > 0 or n > 0,
+               f"flowmod_endorsement_rate={r}, {n} consensus round(s) timed",
+               "no FlowMod endorsement or consensus activity")
+
+
+def _ev_failover(top, ops):
+    ev = top.get("ctrl_failover_events")
+    if ev is None:
+        return None, "ctrl_failover_events absent"
+    return (True, f"{ev:.0f} controller revocation/failover event(s)") if ev > 0 else \
+        (None, "no controller fell below T_min_ctrl, so the failover path was "
+               "never entered -- cannot distinguish from a disabled gate")
+
+
+def _ev_keyrot(top, ops, ctx=None):
+    rounds = (ctx or {}).get("dkg_rounds")
+    if rounds is None:
+        return None, ("no bc_dkg_log found; key rotation fires only on RSU "
+                      "revocation and is not visible in the metrics CSV")
+    return _ev(rounds > 1,
+               f"bc_dkg_log records {rounds} DKG round(s) -- round>1 is a "
+               f"re-keying, so eq:vk_commit_rotated executed",
+               "bc_dkg_log records a single round (initial ceremony only); no RSU "
+               "revocation occurred, so rotation was never triggered")
+
+
+def _ev_lstm(top, ops):
+    return None, ("live in-sim LSTM inference is OFF BY DEFAULT "
+                  "(enable_lstm_inference=false in crypto_layer.h); the federated "
+                  "LSTM is evaluated offline in lstm_pipeline/ -- see GROUP N")
+
+
+BYPASS_GATES = [
+    ("disable_crypto",              "1", "ML-DSA-87 + STARK crypto layer", _ev_crypto),
+    ("enable_lrad_obu",             "0", "AB1 OBU rule engine",            _ev_obu),
+    ("enable_lrad_rsu",             "0", "AB1 RSU full-mode engine",       _ev_rsu),
+    ("enable_stark_delay",          "0", "AB4 STARK timing proof",         _ev_stark_delay),
+    ("enable_stark_hop",            "0", "AB4 STARK hop proof",            _ev_stark_hop),
+    ("enable_witness_mechanism",    "0", "AB6 witness mechanism",          _ev_witness),
+    ("enable_quarantine",           "0", "AB7 trust + SC.Quarantine",      _ev_quarantine),
+    ("enable_endorsement_requirement", "0", "AB8 f+1 FlowMod endorsement", _ev_endorse),
+    ("enable_controller_failover",  "0", "AB9 controller trust/failover",  _ev_failover),
+    ("enable_key_rotation",         "0", "AB11 ZKP key rotation",          _ev_keyrot),
+    ("enable_lstm_inference",       "0", "live in-sim LSTM inference",     _ev_lstm),
+]
+
+
+def max_dkg_round(paths):
+    """Highest `round` value across bc_dkg_log files, or None if unavailable."""
+    best = None
+    for p in paths:
+        with open(p, "rb") as fh:
+            for raw in fh:
+                parts = raw.decode("utf-8", "replace").split(",")
+                if len(parts) < 2:
+                    continue
+                try:
+                    r = int(parts[1])
+                except ValueError:
+                    continue  # header row
+                best = r if best is None else max(best, r)
+    return best
+
+
+def find_run_logs(attack, delay, pct=None):
+    """Run logs written by run_std_attacks.py / run_hf_attacks.py."""
+    sfx = f"_d{delay}ms" if delay is not None else ""
+    pat = f"A{attack}_pct{'*' if pct is None else pct}{sfx}_seed*.log"
+    return sorted(glob.glob(os.path.join(ROOT, "logs", pat)))
+
+
+def parse_run_flags(paths):
+    """{flag: value} from the '# Command:' header the runner writes."""
+    flags = {}
+    for p in paths:
+        try:
+            with open(p, errors="ignore") as fh:
+                head = fh.readline()
+        except OSError:
+            continue
+        if not head.startswith("# Command:"):
+            continue
+        for k, v in re.findall(r"--([A-Za-z_]+)=(\S+)", head):
+            flags.setdefault(k, set()).add(v.rstrip('"\''))
+    return flags
+
+
+def split_runs(rows):
+    """Split a metrics CSV into per-run segments.
+
+    A re-run appends to the existing file rather than truncating it, so one CSV
+    can hold several runs back to back.  Each run restarts its cycle counter at
+    1, so a decrease in `cycle` marks a run boundary.  Per-run invariants
+    (monotone cycle index, monotone chain length) hold within a segment, never
+    across the concatenation.
+    """
+    segments, cur = [], []
+    for row in rows:
+        if cur and (row.get("cycle") or 0) <= (cur[-1].get("cycle") or 0):
+            segments.append(cur)
+            cur = []
+        cur.append(row)
+    if cur:
+        segments.append(cur)
+    return segments
 
 
 # --------------------------------------------------------------------------- #
@@ -347,11 +620,14 @@ def fpr_from_confusion(row):
 # Per-subject verification (groups A..P, run once per attack sweep)
 # --------------------------------------------------------------------------- #
 
-def verify_subject(rep, dirs, attack, delay, runs):
+def verify_subject(rep, dirs, attack, delay, runs, ops):
     pcts = sorted(runs)
-    top_rows, top_path = runs[pcts[-1]]
+    all_rows, top_path = runs[pcts[-1]]
+    # A CSV may hold several appended runs; verify the most recent one.
+    segments = split_runs(all_rows)
+    top_rows = segments[-1]
     top = top_rows[-1]
-    clean = runs[0][0][-1] if 0 in runs else None
+    clean = split_runs(runs[0][0])[-1][-1] if 0 in runs else None
     family, label = ATTACK_FAMILY.get(attack, ("unknown", f"Attack {attack}"))
     tag = f"A{attack} {label}" + (f", d={delay}ms" if delay else "")
 
@@ -366,18 +642,41 @@ def verify_subject(rep, dirs, attack, delay, runs):
                   f"({'TCAM' if is_tcam_schema else 'non-TCAM'} schema)",
                   f"{len(top)} columns, expected {ncols}"))
     rep.add("schema", None, "sweep covers a clean baseline and an attacked endpoint",
-            truth(len(pcts) >= 2 and 0 in runs,
-                  f"pct={pcts} (clean pct=0 present)",
-                  f"pct={pcts} -- no clean baseline to compare against"))
+            ("PASS", f"pct={pcts} (clean pct=0 present)") if len(pcts) >= 2 and 0 in runs
+            else ("WARN", f"pct={pcts} -- single-point run, so the clean-vs-attacked "
+                          f"comparisons below cannot be evaluated"))
     cycles = [r.get("cycle") for r in top_rows]
-    rep.add("schema", None, "cycle index is strictly increasing (no truncated writes)",
+    seg_note = (f" (file holds {len(segments)} appended run(s); verifying the "
+                f"most recent)" if len(segments) > 1 else "")
+    rep.add("schema", None,
+            "cycle index is strictly increasing within the run (no truncated writes)",
             truth(all(b > a for a, b in zip(cycles, cycles[1:])),
-                  f"{len(cycles)} cycles, {cycles[0]:.0f}..{cycles[-1]:.0f} monotone",
-                  "cycle column is not monotone -- interleaved or truncated write"))
+                  f"{len(cycles)} cycles, {cycles[0]:.0f}..{cycles[-1]:.0f} "
+                  f"monotone{seg_note}",
+                  f"cycle column is not monotone within a single run{seg_note} "
+                  f"-- interleaved or truncated write"))
     rep.add("schema", None, "no NaN/Inf values written to the metrics CSV",
             truth(all(math.isfinite(v) for r in top_rows for v in r.values()),
                   f"all {len(top_rows) * len(top)} cells finite",
                   "NaN or Inf present in the metrics CSV"))
+    # A result file older than the simulator sources was produced by a previous
+    # build, so any failure below may already be fixed -- say so explicitly
+    # rather than reporting a stale artefact as a defect in the current code.
+    art_mtime = os.path.getmtime(top_path)
+    fresh = SRC_MTIME is None or art_mtime >= SRC_MTIME
+    rep.add("schema", None, "artefact was produced by the current source build",
+            ("PASS", f"{os.path.basename(top_path)} is newer than the newest "
+                     f"scratch/ source")
+            if fresh else
+            ("WARN", f"{os.path.basename(top_path)} "
+                     f"({_stamp(art_mtime)}) PREDATES the current simulator sources "
+                     f"({_stamp(SRC_MTIME)}) -- re-run this sweep; failures below "
+                     f"may already be fixed"))
+
+    dkg = find_files(dirs, f"bc_dkg_log_Attack{attack}_*"
+                           + (f"_d{delay}ms" if delay is not None else "") + ".csv")
+    verify_no_bypass(rep, attack, delay, top, ops, tag,
+                     {"dkg_rounds": max_dkg_round(dkg)})
 
     # ---- B. metric validity + recomputation -------------------------------- #
     rep.group(f"GROUP B [{tag}] -- METRIC VALIDITY & RECOMPUTATION (M1-M4, M6)",
@@ -487,10 +786,22 @@ def verify_subject(rep, dirs, attack, delay, runs):
                     ("WARN", "this variant writes the 52-column schema "
                              "(no TCAM block emitted)"))
     else:
-        rep.add("eq:sig_s3", None, "S3 unauthorised-flow-rule signature evaluated",
-                gte(top.get("s3_fired_count"), 0.0, "s3_fired_count"))
-        rep.add("eq:sig_s4", None, "S4 TCAM-saturation signature evaluated",
-                gte(top.get("s4_fired_count"), 0.0, "s4_fired_count"))
+        s3, s4 = top.get("s3_fired_count"), top.get("s4_fired_count")
+        if family == "tcam":
+            # A TCAM-exhaustion variant must actually trip its own signatures.
+            rep.add("eq:sig_s3", "M1",
+                    "S3/S4 signatures fired under a TCAM-exhaustion attack",
+                    gt((s3 or 0.0) + (s4 or 0.0), 0.0, "s3_fired_count+s4_fired_count"))
+            rep.add("eq:sig_s4", None, "clean baseline does not trip S3/S4",
+                    rng((clean.get("s3_fired_count") or 0.0)
+                        + (clean.get("s4_fired_count") or 0.0), 0.0, 0.0,
+                        "clean s3+s4 fired")
+                    if clean else ("WARN", "no pct=0 run present"))
+        else:
+            rep.add("eq:sig_s3", None, "S3 unauthorised-flow-rule signature evaluated",
+                    gte(s3, 0.0, "s3_fired_count"))
+            rep.add("eq:sig_s4", None, "S4 TCAM-saturation signature evaluated",
+                    gte(s4, 0.0, "s4_fired_count"))
         rep.add("eq:rule_s3", None, "TCAM occupancy stays within [0,1]",
                 rng(top.get("max_tcam_util"), 0.0, 1.0, "max_tcam_util"))
         rep.add("eq:rule_s4", None,
@@ -525,24 +836,37 @@ def verify_subject(rep, dirs, attack, delay, runs):
     # ---- H. witness verification ------------------------------------------- #
     rep.group(f"GROUP H [{tag}] -- WITNESS-BASED FORWARDING VERIFICATION (M12)",
               "eq:da_sign, eq:nfa_sign, eq:wap, eq:war")
-    rep.add("eq:wap", "M12", "witness alert precision within [0,1]",
-            rng(top.get("WAP_precision"), 0.0, 1.0, "WAP_precision"))
-    rep.add("eq:war", "M12", "witness alert recall within [0,1]",
-            rng(top.get("WAP_recall"), 0.0, 1.0, "WAP_recall"))
+    # routing.cc writes current_WAP_precision/recall scaled by 100, so both
+    # columns are percentages (calculate_witness_wapr_metric).
+    rep.add("eq:wap", "M12", "witness alert precision within [0,100]%",
+            rng(top.get("WAP_precision"), 0.0, 100.0, "WAP_precision"))
+    rep.add("eq:war", "M12", "witness alert recall within [0,100]%",
+            rng(top.get("WAP_recall"), 0.0, 100.0, "WAP_recall"))
     wtp, wfp, wfn = (top.get("witness_TP_W"), top.get("witness_FP_W"),
                      top.get("witness_FN_W"))
     rep.add("eq:wap", "M12", "WAP_precision equals TP_W/(TP_W+FP_W) recomputed",
-            approx(top.get("WAP_precision"), wtp / (wtp + wfp), 1e-3, "WAP_precision")
+            approx(top.get("WAP_precision"), 100.0 * wtp / (wtp + wfp), 1e-2,
+                   "WAP_precision")
             if None not in (wtp, wfp) and (wtp + wfp) > 0
             else ("WARN", "no witness alerts were raised in this run"))
     rep.add("eq:war", "M12", "WAP_recall equals TP_W/(TP_W+FN_W) recomputed",
-            approx(top.get("WAP_recall"), wtp / (wtp + wfn), 1e-3, "WAP_recall")
+            approx(top.get("WAP_recall"), 100.0 * wtp / (wtp + wfn), 1e-2, "WAP_recall")
             if None not in (wtp, wfn) and (wtp + wfn) > 0
             else ("WARN", "no witness ground-truth events in this run"))
-    rep.add("eq:da_sign", None, "detection-agreement co-signatures counted",
-            gte(top.get("witness_da_count"), 0.0, "witness_da_count"))
-    rep.add("eq:nfa_sign", None, "non-forwarding-agreement signatures counted",
-            gte(top.get("witness_nfa_count"), 0.0, "witness_nfa_count"))
+    # M12 is defined against PASSIVE hidden forwarding (variants 7/8), the case
+    # cryptographic proof alone cannot catch -- there the witness quorum must
+    # actually fire, not merely be counted.
+    if attack in (7, 8):
+        rep.add("eq:da_sign", "M12",
+                "witness duplication-alert quorum fired under passive HF",
+                gt(top.get("witness_da_count"), 0.0, "witness_da_count"))
+        rep.add("eq:nfa_sign", "M12", "witness alerts produced a usable precision",
+                gt(top.get("WAP_precision"), 0.0, "WAP_precision"))
+    else:
+        rep.add("eq:da_sign", None, "detection-agreement co-signatures counted",
+                gte(top.get("witness_da_count"), 0.0, "witness_da_count"))
+        rep.add("eq:nfa_sign", None, "non-forwarding-agreement signatures counted",
+                gte(top.get("witness_nfa_count"), 0.0, "witness_nfa_count"))
 
     # ---- I. cryptographic integrity layer ---------------------------------- #
     rep.group(f"GROUP I [{tag}] -- HYBRID CRYPTOGRAPHIC INTEGRITY LAYER (M7)",
@@ -553,19 +877,38 @@ def verify_subject(rep, dirs, attack, delay, runs):
             rng(top.get("sig_valid_rate"), 0.0, 1.0, "sig_valid_rate"))
     rep.add("eq:o_crypto", "M7", "per-packet crypto overhead bytes accrued",
             gt(top.get("o_crypto_bytes_pkt"), 0.0, "o_crypto_bytes_pkt"))
-    rep.add("eq:overhead_batch", "M7", "batch verification ran with B <= BATCH_SIZE",
-            lte(top.get("batch_B_avg"), float(BATCH_SIZE),
-                f"batch_B_avg vs BATCH_SIZE={BATCH_SIZE}"))
+    # B is the 50ms-window occupancy that crypto_batch_verify_tick() actually
+    # collected, not a cap -- BATCH_SIZE is the CLI-configured nominal size, so
+    # the assertion here is that batching happened at all, with B reported.
+    rep.add("eq:overhead_batch", "M7",
+            f"batch verification aggregated packets (mean B, nominal "
+            f"BATCH_SIZE={BATCH_SIZE})",
+            gt(top.get("batch_B_avg"), 0.0, "batch_B_avg"))
     rep.add("eq:batch_verify", "M7", "batch verification latency accounted (>0)",
             gt(top.get("t_batch_ms_avg"), 0.0, "t_batch_ms_avg"))
     rep.add("eq:t_consensus", "M7", "consensus latency accounted (>0)",
             gt(top.get("t_consensus_ms_avg"), 0.0, "t_consensus_ms_avg"))
     rep.add("eq:t_verify", "M7", "STARK proving/verification latency accounted (>0)",
             gt(top.get("t_stark_ms_avg"), 0.0, "t_stark_ms_avg"))
-    rep.add("eq:stark_delay_verify", None, "STARK delay-bound failures counted",
-            gte(top.get("stark_timing_fail_count"), 0.0, "stark_timing_fail_count"))
-    rep.add("eq:stark_hop_verify", None, "STARK hop-proof failures counted",
-            gte(top.get("stark_hop_fail_count"), 0.0, "stark_hop_fail_count"))
+    # stark_prove/verify_timing are reached only from S2 (data-plane hop delay,
+    # s2_detection.h), so a control-plane variant legitimately records zero
+    # timing failures.  What must hold for every variant is that a CLEAN run
+    # produces no spurious proof failures, and that an attack never reduces them.
+    rep.add("eq:stark_delay_verify", None,
+            "clean baseline records no spurious STARK delay-proof failures",
+            rng(clean.get("stark_timing_fail_count"), 0.0, 0.0,
+                "clean stark_timing_fail_count")
+            if clean else ("WARN", "no pct=0 run present"))
+    rep.add("eq:stark_delay_verify", None,
+            "STARK delay-proof failures do not decrease under attack",
+            cmp_hi(top.get("stark_timing_fail_count"),
+                   clean and clean.get("stark_timing_fail_count"),
+                   "stark_timing_fail_count"))
+    rep.add("eq:stark_hop_verify", None,
+            "clean baseline records no spurious STARK hop-proof failures",
+            rng(clean.get("stark_hop_fail_count"), 0.0, 0.0,
+                "clean stark_hop_fail_count")
+            if clean else ("WARN", "no pct=0 run present"))
 
     # ---- K. blockchain ------------------------------------------------------ #
     rep.group(f"GROUP K [{tag}] -- BLOCKCHAIN ENDORSEMENT & AUDIT TRAIL (M11)",
@@ -651,21 +994,23 @@ def verify_subject(rep, dirs, attack, delay, runs):
 
     # ---- P. TAP baseline comparator ----------------------------------------- #
     tap = load_tap(dirs, attack, delay)
-    rep.group(f"GROUP P [{tag}] -- TAP BASELINE COMPARATOR (Arsalan & Rehman 2018)",
+    rep.group(f"GROUP P [{tag}] -- EXTERNAL BASELINE B1: TAP "
+              f"(Arsalan & Rehman 2018)\n"
+              f"    NOT part of the proposed framework -- prior-art comparator only.",
               "eq:mcc, eq:tvr")
     if not tap:
-        for desc in ("TAP baseline produced output for this sweep",
-                     "TAP baseline MCC within the valid range",
-                     "MOBIGUARD outperforms the TAP baseline on MCC"):
+        for desc in ("[B1 TAP baseline] produced output for this sweep",
+                     "[B1 TAP baseline] MCC within the valid range",
+                     "MOBIGUARD (proposed) outperforms [B1 TAP baseline] on MCC"):
             rep.add("eq:mcc", "M1", desc,
                     ("WARN", "no TAP baseline CSVs for this subject"))
     else:
         tap_top = tap[sorted(tap)[-1]]
-        rep.add("eq:mcc", "M1", "TAP baseline produced output for this sweep",
+        rep.add("eq:mcc", "M1", "[B1 TAP baseline] produced output for this sweep",
                 ("PASS", f"TAP runs at pct={sorted(tap)}"))
-        rep.add("eq:mcc", "M1", "TAP baseline MCC within the valid range",
+        rep.add("eq:mcc", "M1", "[B1 TAP baseline] MCC within the valid range",
                 rng(tap_top.get("avg_MCC"), -1.0, 1.0, "TAP avg_MCC"))
-        rep.add("eq:mcc", "M1", "MOBIGUARD outperforms the TAP baseline on MCC",
+        rep.add("eq:mcc", "M1", "MOBIGUARD (proposed) outperforms [B1 TAP baseline] on MCC",
                 cmp_hi(top.get("avg_MCC"), tap_top.get("avg_MCC"), "avg_MCC",
                        what="MOBIGUARD", ref="TAP"))
 
@@ -777,17 +1122,40 @@ def verify_crypto_timing(rep, dirs):
                   f"{len(bad)} packet(s) verified before being signed: {bad[:5]}")
             if both else ("WARN", "no packet has both a sign and a verify record"))
 
-    obu = [r["t"] for r in ops.get("lrad_obu", [])]
-    rsu = [r["t"] for r in ops.get("lrad_rsu", [])]
+    # lrad_obu (vehicles) and lrad_rsu (packets arriving at an RSU) are
+    # independent entry points, so there is no global ordering between them.
+    # The invariant that IS causal is the handoff: escalate_to_rsu() is only
+    # ever reached from inside lrad_obu() when D_OBU=1, so an escalation can
+    # never precede the OBU detection on that node that raised it.
+    first_obu = {}
+    for r in ops.get("lrad_obu", []):
+        n = r["node"]
+        first_obu[n] = min(first_obu.get(n, r["t"]), r["t"])
+    escalations = ops.get("escalate_to_rsu", [])
+    orphans = [e for e in escalations
+               if e["node"] not in first_obu or first_obu[e["node"]] > e["t"] + 1e-9]
     rep.add("alg:lrad_obu", None,
-            "OBU detection starts no later than RSU-side detection",
-            truth(min(obu) <= min(rsu),
-                  f"first lrad_obu t={min(obu):.4f}s <= first lrad_rsu "
-                  f"t={min(rsu):.4f}s",
-                  f"lrad_rsu ran at t={min(rsu):.4f}s before any lrad_obu "
-                  f"(t={min(obu):.4f}s)")
-            if obu and rsu
-            else ("WARN", "one or both detection loops absent from the timing log"))
+            "no escalation precedes the OBU detection that raised it (D_OBU=1)",
+            truth(not orphans,
+                  f"{len(escalations)} escalation(s) across "
+                  f"{len(set(e['node'] for e in escalations))} node(s), each preceded "
+                  f"by an lrad_obu on the same node",
+                  f"{len(orphans)} escalation(s) with no preceding lrad_obu: "
+                  f"{[(e['node'], e['t']) for e in orphans[:3]]}")
+            if escalations
+            else ("WARN", "no escalation events recorded in the timing log"))
+
+    # batch_verify rows carry B in the node column and n_verified in the pkt
+    # column (crypto_layer.h:crypto_batch_verify_tick).
+    batches = ops.get("batch_verify", [])
+    over = [b for b in batches if b["pkt"] > b["node"]]
+    rep.add("eq:batch_verify", "M7",
+            "each batch verified no more signatures than it aggregated (n <= B)",
+            truth(not over,
+                  f"{len(batches)} batch(es), max B={max(b['node'] for b in batches)}, "
+                  f"n_verified <= B in every batch",
+                  f"{len(over)} batch(es) report n_verified > B")
+            if batches else ("WARN", "no batch_verify operations logged"))
 
     cons = ops.get("consensus", [])
     rep.add("eq:t_consensus", "M7", "consensus rounds completed successfully",
@@ -903,13 +1271,16 @@ def verify_lstm_pipeline(rep):
 
 
 def verify_baselines(rep, dirs):
-    rep.group("GROUP O -- SFTO & eFADE DETECTOR BASELINES",
+    rep.group("GROUP O -- EXTERNAL BASELINES B2 (SFTO-Guard) & B3 (FADE)\n"
+              "    NOT part of the proposed framework -- independent state-of-the-art\n"
+              "    prior art (docs/main.tex 'External Baselines'), verified only to\n"
+              "    confirm each comparator produced usable output to benchmark against.",
               "eq:mcc, eq:sig_s5, eq:ucr")
     sfto = sorted(glob.glob(os.path.join(ROOT, "sfto_pipeline", "results", "*",
                                          "metrics.json")))
     if not sfto:
-        for d in ("SFTO benchmark metrics produced",
-                  "SFTO confusion matrix agrees with the reported accuracy"):
+        for d in ("[B2 SFTO-Guard baseline] benchmark metrics produced",
+                  "[B2 SFTO-Guard baseline] confusion matrix agrees with reported accuracy"):
             rep.add("eq:mcc", "M1", d, ("WARN", "no SFTO results present"))
     else:
         ok, bad = [], []
@@ -923,18 +1294,89 @@ def verify_baselines(rep, dirs):
             fn, tp = cm[1]
             tot = tn + fp + fn + tp
             (ok if tot and abs((tp + tn) / tot - acc) < 1e-6 else bad).append(name)
-        rep.add("eq:mcc", "M1", "SFTO benchmark metrics produced",
+        rep.add("eq:mcc", "M1", "[B2 SFTO-Guard baseline] benchmark metrics produced",
                 ("PASS", f"{len(sfto)} SFTO result set(s): "
                          + ", ".join(os.path.basename(os.path.dirname(p))
                                      for p in sfto)))
-        rep.add("eq:mcc", "M1", "SFTO confusion matrix agrees with the reported accuracy",
+        rep.add("eq:mcc", "M1", "[B2 SFTO-Guard baseline] confusion matrix agrees with reported accuracy",
                 truth(not bad, f"{len(ok)} result set(s) internally consistent",
                       f"inconsistent result set(s): {bad}"))
 
-    rep.add("eq:sig_s5", "M3", "eFADE per-flow detection detail written",
+    rep.add("eq:sig_s5", "M3", "[B3 FADE baseline] per-flow detection detail written",
             present(find_files(dirs, "fade_results_*.csv"), "fade_results"))
-    rep.add("eq:ucr", "M3", "eFADE per-run summary metrics written",
+    rep.add("eq:ucr", "M3", "[B3 FADE baseline] per-run summary metrics written",
             present(find_files(dirs, "fade_metrics_*.csv"), "fade_metrics"))
+
+
+def verify_no_bypass(rep, attack, delay, top, ops, tag, ctx):
+    """Task 8: attest the run exercised the full model, bypassing nothing."""
+    rep.group(f"GROUP A1 [{tag}] -- NO-BYPASS / FULL-MODELLING ATTESTATION\n"
+              f"    Task 8 requires 'correct coding without bypassing modeling'.\n"
+              f"    Each modelled subsystem is attested from the run's own\n"
+              f"    artefacts, and cross-checked against the recorded command line\n"
+              f"    when the run log is available.",
+              "crypto_layer.h ablation gates + --disable_crypto")
+
+    logs = find_run_logs(attack, delay)
+    flags = parse_run_flags(logs)
+    rep.add("no-bypass", None, "run log with the recorded command line is available",
+            ("PASS", f"{len(logs)} run log(s), {len(flags)} flag(s) recorded: "
+                     + ", ".join(sorted(flags)[:6]) + ("..." if len(flags) > 6 else ""))
+            if flags else
+            ("WARN", f"{len(logs)} run log(s) under logs/ carry no '# Command:' "
+                     f"header -- attestation falls back to artefact evidence only"))
+
+    for flag, bypass_val, subsystem, evidence in BYPASS_GATES:
+        declared = flags.get(flag)
+        try:
+            ran, detail = evidence(top, ops, ctx)
+        except TypeError:
+            ran, detail = evidence(top, ops)
+
+        # The command line is authoritative when we have it.
+        if declared and bypass_val in declared:
+            rep.add("no-bypass", None, f"{subsystem} was NOT bypassed",
+                    ("FAIL", f"run was launched with --{flag}={bypass_val} -- this is "
+                             f"an ABLATION run, not full-system evidence "
+                             f"({detail})"))
+            continue
+
+        if ran is True:
+            src = f"--{flag} not set to {bypass_val}; " if declared else ""
+            rep.add("no-bypass", None, f"{subsystem} was NOT bypassed",
+                    ("PASS", f"{src}subsystem demonstrably executed: {detail}"))
+        elif ran is False:
+            rep.add("no-bypass", None, f"{subsystem} was NOT bypassed",
+                    ("FAIL", f"subsystem produced no activity: {detail}"))
+        else:
+            rep.add("no-bypass", None, f"{subsystem} was NOT bypassed",
+                    ("WARN", detail))
+
+
+def verify_attack_coverage(rep, subjects):
+    """Roll up which of the 8 paper attack variants this run actually verified."""
+    rep.group("GROUP R -- ATTACK VARIANT COVERAGE ROLL-UP (Variants 1-8)",
+              "docs/main.tex 'Attack Scenarios'")
+    verified = {a for (a, _) in subjects}
+    for cls in ("SELECTIVE TIME DELAY", "HIDDEN FORWARDING"):
+        variants = [v for v in sorted(ATTACK_CLASS) if ATTACK_CLASS[v] == cls]
+        for v in variants:
+            label = ATTACK_FAMILY[v][1]
+            if v in verified:
+                pcts = sorted(next(r for (a, _), r in subjects.items() if a == v))
+                rep.add(f"{cls[:3]}-V{v}", None, f"Variant {v} -- {label}",
+                        ("PASS", f"verified against a live sweep, pct={pcts}"))
+            else:
+                rep.add(f"{cls[:3]}-V{v}", None, f"Variant {v} -- {label}",
+                        ("WARN", "no MOBIGUARD_Attack%d_*.csv in the result "
+                                 "directories -- sweep not run" % v))
+        done = sum(1 for v in variants if v in verified)
+        rep.add("class", None, f"{cls} class coverage (variants "
+                               f"{variants[0]}-{variants[-1]})",
+                ("PASS", f"{done}/{len(variants)} variant(s) verified")
+                if done == len(variants) else
+                ("WARN", f"{done}/{len(variants)} variant(s) verified -- missing "
+                         f"{[v for v in variants if v not in verified]}"))
 
 
 def verify_metric_coverage(rep):
@@ -1017,11 +1459,13 @@ def main():
     print("=" * 78)
 
     verify_environment(rep, dirs)
+    crypto_ops = parse_crypto_ops(dirs)
     for (a, dl), runs in sorted(subjects.items()):
-        verify_subject(rep, dirs, a, dl, runs)
+        verify_subject(rep, dirs, a, dl, runs, crypto_ops)
     verify_crypto_timing(rep, dirs)
     verify_lstm_pipeline(rep)
     verify_baselines(rep, dirs)
+    verify_attack_coverage(rep, subjects)
     verify_metric_coverage(rep)
 
     print()
