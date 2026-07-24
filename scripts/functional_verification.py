@@ -315,7 +315,19 @@ def present(paths, name, need_rows=True):
 # Loaders
 # --------------------------------------------------------------------------- #
 
-MG_RE = re.compile(r"MOBIGUARD_Attack(\d+)_(\d+)(?:_d(\d+)ms)?\.csv$")
+# Result filenames differ per runner, and every form must be discovered:
+#   run_std_attacks.py       MOBIGUARD_Attack1_100_d80ms.csv
+#   run_hf_attacks.py        MOBIGUARD_Attack5_100.csv
+#   run_rule_based_sweep.py  MOBIGUARD_Attack3_100_seed1.csv
+#
+# The rule-based sweep ALWAYS renames its output to embed the seed (even for a
+# single seed), because write_security_metrics_csv() has no seed in its
+# filename and opens with ios::app -- two concurrent seeds of the same
+# (attack, pct) would otherwise interleave into one file.  It is also the only
+# runner that produces attacks 3 and 4, so a pattern that rejected the _seed
+# suffix would silently drop every TCAM result and report "sweep not run".
+MG_RE = re.compile(
+    r"MOBIGUARD_Attack(\d+)_(\d+)(?:_d(\d+)ms)?(?:_seed(\d+))?\.csv$")
 
 
 def find_files(dirs, pattern):
@@ -326,27 +338,34 @@ def find_files(dirs, pattern):
 
 
 def discover_subjects(dirs):
-    """-> {(attack, delay_or_None): {pct: (rows, path)}} across all result dirs.
+    """-> ({(attack, delay): {pct: (rows, path)}}, {(attack, delay): {pct: {seeds}}})
 
-    The same (attack, pct, delay) can exist in more than one result directory;
-    the most recently written file wins, so a stale copy in a secondary
-    directory can never silently shadow a fresh run.
+    One (attack, pct, delay) can appear several times: once per result
+    directory, and once per RNG seed when the rule-based sweep ran multiple
+    seeds.  The most recently written file is the one verified, so a stale copy
+    in a secondary directory can never silently shadow a fresh run -- and the
+    seeds seen are returned alongside, so the log can state how many were
+    available rather than quietly verifying one of them.
     """
-    subjects = {}
+    subjects, seeds = {}, {}
     for path in find_files(dirs, "MOBIGUARD_Attack*.csv"):
         m = MG_RE.search(os.path.basename(path))
         if not m:
             continue
         attack, pct = int(m.group(1)), int(m.group(2))
         delay = int(m.group(3)) if m.group(3) else None
+        seed = int(m.group(4)) if m.group(4) else None
         rows = vm.parse_mobiguard_csv(path)
         if not rows:
             continue
-        bucket = subjects.setdefault((attack, delay), {})
+        key = (attack, delay)
+        if seed is not None:
+            seeds.setdefault(key, {}).setdefault(pct, set()).add(seed)
+        bucket = subjects.setdefault(key, {})
         if pct in bucket and os.path.getmtime(bucket[pct][1]) >= os.path.getmtime(path):
             continue
         bucket[pct] = (rows, path)
-    return subjects
+    return subjects, seeds
 
 
 def parse_crypto_ops(dirs):
@@ -792,11 +811,17 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
             rep.add("eq:sig_s3", "M1",
                     "S3/S4 signatures fired under a TCAM-exhaustion attack",
                     gt((s3 or 0.0) + (s4 or 0.0), 0.0, "s3_fired_count+s4_fired_count"))
-            rep.add("eq:sig_s4", None, "clean baseline does not trip S3/S4",
-                    rng((clean.get("s3_fired_count") or 0.0)
-                        + (clean.get("s4_fired_count") or 0.0), 0.0, 0.0,
-                        "clean s3+s4 fired")
-                    if clean else ("WARN", "no pct=0 run present"))
+            # NOT "clean must be exactly zero": the rule engine is calibrated to
+            # a ~1% false-positive target (lstm_pipeline/rule_calibrator.py), so
+            # occasional clean-traffic fires are expected and are precisely what
+            # avg_FPR measures.  The meaningful property is separation.
+            _clean_s34 = ((clean.get("s3_fired_count") or 0.0)
+                          + (clean.get("s4_fired_count") or 0.0)) if clean else None
+            rep.add("eq:sig_s4", None,
+                    "S3/S4 fire strictly more under attack than on clean traffic",
+                    gt((s3 or 0.0) + (s4 or 0.0), _clean_s34,
+                       "attacked s3+s4 fired vs clean")
+                    if _clean_s34 is not None else ("WARN", "no pct=0 run present"))
         else:
             rep.add("eq:sig_s3", None, "S3 unauthorised-flow-rule signature evaluated",
                     gte(s3, 0.0, "s3_fired_count"))
