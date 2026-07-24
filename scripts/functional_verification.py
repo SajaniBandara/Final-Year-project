@@ -566,10 +566,17 @@ def max_dkg_round(paths):
 
 
 def find_run_logs(attack, delay, pct=None):
-    """Run logs written by run_std_attacks.py / run_hf_attacks.py."""
+    """Run logs written by the sweep runners.
+
+    Filename is A<attack>_pct<pct>[_d<X>ms]_seed<N>.log, but the directory
+    differs by runner: run_std_attacks.py / run_hf_attacks.py write straight to
+    logs/, while run_rule_based_sweep.py nests them under logs/rule_based_sweep/.
+    Search recursively so the no-bypass attestation finds the authoritative
+    '# Command:' header wherever a runner chose to put it.
+    """
     sfx = f"_d{delay}ms" if delay is not None else ""
     pat = f"A{attack}_pct{'*' if pct is None else pct}{sfx}_seed*.log"
-    return sorted(glob.glob(os.path.join(ROOT, "logs", pat)))
+    return sorted(glob.glob(os.path.join(ROOT, "logs", "**", pat), recursive=True))
 
 
 def parse_run_flags(paths):
@@ -1460,11 +1467,12 @@ def main():
               "(scripts/run_std_attacks.py or scripts/run_hf_attacks.py).")
         sys.exit(2)
 
-    subjects = discover_subjects(dirs)
+    subjects, seed_map = discover_subjects(dirs)
     if args.attack is not None:
         subjects = {k: v for k, v in subjects.items() if k[0] == args.attack}
     if args.delay is not None:
         subjects = {k: v for k, v in subjects.items() if k[1] == args.delay}
+    seed_map = {k: v for k, v in seed_map.items() if k in subjects}
 
     print("=" * 78)
     print("MOBIGUARD -- FULL-SYSTEM FUNCTIONAL VERIFICATION")
@@ -1478,9 +1486,12 @@ def main():
         sys.exit(2)
     for (a, dl), runs in sorted(subjects.items()):
         fam = ATTACK_FAMILY.get(a, ("?", "unknown"))[1]
+        allseeds = sorted({s for pcts in seed_map.get((a, dl), {}).values()
+                           for s in pcts})
         print(f"subject   : Attack {a} ({fam})"
               + (f", d={dl}ms" if dl else "")
-              + f", pct={sorted(runs)}")
+              + f", pct={sorted(runs)}"
+              + (f", seeds={allseeds} (newest per pct verified)" if allseeds else ""))
     print("=" * 78)
 
     verify_environment(rep, dirs)
