@@ -234,8 +234,30 @@ inline TcamCycleMetrics ComputeTcamDetection(
         metrics.total_lambda_fm += lambda_fm;
         metrics.total_lambda_pi += lambda_pi;
         metrics.total_malicious += malicious_count;
-        if (flag_s3) { ++metrics.s3_fired_count; record_detection_event(2, node_id); }
-        if (flag_s4) { ++metrics.s4_fired_count; record_detection_event(3, node_id); }
+        if (flag_s3) {
+            ++metrics.s3_fired_count; record_detection_event(2, node_id);
+            // S3 (eq:rule_s3): unauthorised-FlowMod rate anomaly — this RSU's
+            // FlowMod-install rate λ_FM exceeds the benign threshold with no
+            // matching active flow, the control-plane TCAM-exhaustion signature.
+            std::cout << "[S3] ⚠️ SIGNATURE S3 TRIGGERED!"
+                      << " unauthorised-FlowMod rate anomaly on RSU " << node_id
+                      << " λ_FM=" << lambda_fm << " rules/s"
+                      << " (malicious=" << malicious_count
+                      << ", TCAM util=" << tcam_util << ")"
+                      << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+        }
+        if (flag_s4) {
+            ++metrics.s4_fired_count; record_detection_event(3, node_id);
+            // S4 (eq:rule_s4): TCAM saturation — utilisation U_TCAM exceeds the
+            // threshold; the attacker is the vehicle with the highest packet-in
+            // rate (argmax λ_PI), the data-plane TCAM-exhaustion signature.
+            std::cout << "[S4] ⚠️ SIGNATURE S4 TRIGGERED!"
+                      << " TCAM-saturation on RSU " << node_id
+                      << " util=" << tcam_util
+                      << " (λ_PI=" << lambda_pi
+                      << ", malicious=" << malicious_count << ")"
+                      << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
+        }
     }
 
     ++g_s3_hist_count;   // advance the shared per-cycle window clock (Fix 3)
