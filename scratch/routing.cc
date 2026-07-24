@@ -114679,6 +114679,9 @@ double   g_tvr_cumulative  = 0.0;
 double   current_UCR       = 0.0;
 double   average_UCR       = 0.0;
 double   g_ucr_cumulative  = 0.0;
+// eq:ucr is a per-window ratio, so its numerator is the NEW copies this cycle,
+// not the cumulative total. Holds last cycle's count to take the delta.
+uint32_t g_ucr_prev_eavesdrop = 0;
 
 // M12: Witness Alert Precision and Recall (WAP-R) — Eq. wap, war [Ablation only]
 // Evaluated specifically against passive HF (Variants 7/8), which are
@@ -115414,6 +115417,7 @@ void hardcode_attack7_test_network()
     fade_cum_pdr = 0.0; fade_cum_pir = 0.0; fade_cum_mcc = 0.0;
     fade_cum_dr  = 0.0; fade_cum_fpr = 0.0;
     fade_prev_eavesdrop = 0; fade_prev_copies = 0;
+    g_ucr_prev_eavesdrop = 0;
 
     // Test network topology for Attack 7 (Passive Hidden Forwarding - Data Plane):
     // Node 0 = Vehicle A  (sender)          at (300, 150, 0)
@@ -117472,8 +117476,14 @@ void calculate_ucr_metric()
             total_pkts += f_size;
     }
 
-    uint64_t ucr_num = (uint64_t)fade_eavesdrop_counter;
+    // eq:ucr numerator: distinct packets copied to an unauthorized destination
+    // THIS window (the new copies since last cycle), over the same-window
+    // total_pkts denominator. Using the cumulative counter here mismatched the
+    // per-cycle denominator, pushing UCR past 100% and never returning to 0.
+    uint64_t ucr_num = (uint64_t)(fade_eavesdrop_counter - g_ucr_prev_eavesdrop);
+    g_ucr_prev_eavesdrop = fade_eavesdrop_counter;
     current_UCR = (total_pkts > 0) ? ((double)ucr_num / (double)total_pkts) : 0.0;
+    if (current_UCR > 1.0) current_UCR = 1.0;   // eq:ucr is a subset ratio, bounded to [0,1]
 
     g_ucr_cumulative += current_UCR;
     double cycle = data_gathering_cycle_number - 1.0;
