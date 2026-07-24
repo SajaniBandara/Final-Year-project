@@ -722,11 +722,11 @@ to populate the evaluation tables in Section 5.**
 ## Testing / Run Recipes (for later verification)
 
 Commands to run once each feature's build is confirmed clean. All paths assume the ns-3 tree at
-`/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35` — adjust `NS3_DIR` if different.
+`/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35` — adjust `NS3_DIR` if different.
 
 ### Build check (run after every code change in this doc)
 ```bash
-cd /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
+cd /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35
 ./waf build 2>&1 | grep -i error
 ```
 No output = clean build.

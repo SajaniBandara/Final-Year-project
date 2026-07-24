@@ -123,11 +123,11 @@ truth, not a heuristic.
 2. **COMMIT IT IMMEDIATELY.** This fix was already applied once (2026-07-08) but was
    never committed and a later git operation silently reverted it — the entire 90s
    A3/A4 dataset was collected with the old labels as a result.
-3. Rebuild: `cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35 && ./waf build`
+3. Rebuild: `cd ~/ns3_g13/ns-allinone-3.35/ns-3.35 && ./waf build`
    (NS-3 scratch files are **symlinks** into this repo's `scratch/` — edit here only.)
 4. **Delete old A3/A4 CSVs first** — the logger opens with `std::ios::app`, so
    re-runs would append onto stale data:
-   `find ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training -name "A[34]_*.csv" -delete`
+   `find ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training -name "A[34]_*.csv" -delete`
 5. Re-run only A3+A4 (60 runs ≈ 7 h at 25 workers):
    `python3 scripts/run_training_attacks.py --attack 3 4 --workers 25`
 6. Sanity-check labels: A3 labeled rows should scale with attack percentage;
@@ -676,7 +676,7 @@ mechanism.
 resolves the results output directory as:
 
 ```cpp
-std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
+std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 char* home_env = getenv("HOME");
 if (home_env != nullptr)
 {
@@ -724,7 +724,7 @@ variable, so it was never affected).
 ### Fix
 
 ```cpp
-results_dir = std::string(home_env) + "/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
+results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 ```
 
 Now matches the hardcoded fallback exactly. Rebuilt (`./waf build`,
@@ -737,7 +737,7 @@ A dedicated smoke-test run (Attack 7, `attack_percentage=60`, `seed=1`,
 `./waf --run` — see the note below on why) confirmed `FADE_Attack7_60.csv`
 and `routing_fade_per_cycle.csv` are now created and populated with the
 expected per-cycle rows in
-`~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/`.
+`~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/`.
 
 ### Note — unrelated process hygiene issue hit while diagnosing this
 

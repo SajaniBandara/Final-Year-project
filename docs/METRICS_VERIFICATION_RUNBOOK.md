@@ -15,7 +15,7 @@ PASS/WARN/FAIL per metric automatically. Run it after each stage below.
 ## Part 0 — Build check (run this first, every time code changes)
 
 ```bash
-cd /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
+cd /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35
 ./waf build 2>&1 | tee /tmp/waf_build.log | grep -i error
 echo "Exit code: $?"   # 0 with no output above = clean build
 ```

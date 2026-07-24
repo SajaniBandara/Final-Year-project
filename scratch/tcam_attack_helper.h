@@ -608,7 +608,7 @@ inline void tcam_snapshot_dump()
     }
 
     const std::string base_dir =
-        "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string snap_path = base_dir + "tcam_snapshots_" + mode + ".csv";
     std::string occ_path  = base_dir + "tcam_occupancy_"  + mode + ".csv";
 
@@ -733,7 +733,7 @@ inline void export_tcam_snapshot_baseline()
             mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     }
     std::string path =
-        "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
     std::ofstream fout(path, std::ios::trunc);
     fout << "flow_id,node_id,src_ip,dst_ip,src_port,dst_port,proto,install_time,packets,bytes\n";
     for (const auto& e : g_tcam_table)
