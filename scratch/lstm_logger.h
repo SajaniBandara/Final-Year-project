@@ -241,10 +241,10 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
-    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project/";
+    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13_apsari/g13_project_repo/Final-Year-project/";
     const char* home = std::getenv("HOME");
     if (home)
-        dir = std::string(home) + "/ns3_g13/g13_project_repo/Final-Year-project/";
+        dir = std::string(home) + "/ns3_g13_apsari/g13_project_repo/Final-Year-project/";
     return dir + "lstm_pipeline/lstm_weights_cpp.bin";
 }
 
