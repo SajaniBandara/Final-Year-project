@@ -53,11 +53,14 @@ inline void crypto_log_init()
     if (home)
         path = std::string(home) + "/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
 
-    g_crypto_log_file.open(path + "crypto_timing_log.csv",
+    // g_sim_tag (routing.cc) makes this filename unique per (variant, pct,
+    // seed, delay) so concurrent sweep lanes never truncate each other's file
+    // -- same convention already used for optimization_link_lifetime_data*.csv.
+    g_crypto_log_file.open(path + "crypto_timing_log" + g_sim_tag + ".csv",
                            std::ios::out | std::ios::trunc);
     if (!g_crypto_log_file.is_open()) {
-        std::cerr << "[CRYPTO-LOG] WARNING: could not open crypto_timing_log.csv at "
-                  << path << "\n";
+        std::cerr << "[CRYPTO-LOG] WARNING: could not open crypto_timing_log"
+                  << g_sim_tag << ".csv at " << path << "\n";
         return;
     }
     g_crypto_log_file << "sim_time_s,op,node_id,pkt_id,wall_us,result\n";

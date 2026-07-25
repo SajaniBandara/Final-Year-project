@@ -118018,8 +118018,12 @@ void calculate_performance_evaluation_metrics()
 	// [density-logging] LOGGING ONLY (2026-07-14): one-time truncate-open of
 	// rsu_density.csv so repeated runs do not pool; header written once. Rows
 	// appended inside the loop below. Does NOT touch rho_t/v_bar_t computation.
+	// g_sim_tag makes the filename unique per (variant, pct, seed, delay) so
+	// concurrent sweep lanes never truncate each other's file (same fix as
+	// crypto_timing_log.csv -- see crypto_event_log.h).
 	static std::ofstream g_rsu_density_csv(
-		"/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/rsu_density.csv",
+		"/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/rsu_density"
+		+ g_sim_tag + ".csv",
 		std::ios::trunc);
 	static bool g_rsu_density_hdr_done = [](){
 		g_rsu_density_csv << "t,rsu_id,rho_count,v_bar\n"; return true; }();

@@ -369,9 +369,13 @@ def discover_subjects(dirs):
 
 
 def parse_crypto_ops(dirs):
-    """{op_name: [row, ...]} from every crypto_timing_log.csv found."""
+    """{op_name: [row, ...]} from every crypto_timing_log*.csv found.
+
+    One file per (variant, pct, seed, delay) run since g_sim_tag was added to
+    its filename (crypto_event_log.h) -- glob to pick up all of them.
+    """
     ops = {}
-    for p in find_files(dirs, "crypto_timing_log.csv"):
+    for p in find_files(dirs, "crypto_timing_log*.csv"):
         with open(p, "rb") as fh:
             for raw in fh:
                 parts = [x.strip() for x in raw.decode("utf-8", "replace").split(",")]
@@ -1076,21 +1080,25 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
 def verify_environment(rep, dirs):
     rep.group("GROUP A0 -- MOBILITY & ENVIRONMENT INSTRUMENTATION",
               "eq:density_x, eq:speed_x, eq:density_normalized_rate")
-    dens = find_files(dirs, "rsu_density.csv")
+    # One file per (variant, pct, seed, delay) run since g_sim_tag was added to
+    # its filename (routing.cc) -- aggregate across all of them, not just the
+    # first match, so every completed run contributes its density samples.
+    dens = find_files(dirs, "rsu_density*.csv")
     rep.add("eq:density_x", None, "per-RSU vehicle density and mean speed logged",
             present(dens, "rsu_density"))
     if dens:
         rho, vb = [], []
-        with open(dens[0], errors="ignore") as fh:
-            for line in fh:
-                parts = [x.strip() for x in line.split(",")]
-                if len(parts) != 4 or parts[0] == "t":
-                    continue
-                try:
-                    rho.append(float(parts[2]))
-                    vb.append(float(parts[3]))
-                except ValueError:
-                    continue
+        for d in dens:
+            with open(d, errors="ignore") as fh:
+                for line in fh:
+                    parts = [x.strip() for x in line.split(",")]
+                    if len(parts) != 4 or parts[0] == "t":
+                        continue
+                    try:
+                        rho.append(float(parts[2]))
+                        vb.append(float(parts[3]))
+                    except ValueError:
+                        continue
         rep.add("eq:density_x", None, "logged vehicle densities are non-negative",
                 truth(rho and all(v >= 0 for v in rho),
                       f"{len(rho)} sample(s), rho in [{min(rho):.0f}, {max(rho):.0f}] veh",
@@ -1112,7 +1120,7 @@ def verify_environment(rep, dirs):
 def verify_crypto_timing(rep, dirs):
     rep.group("GROUP J -- CRYPTO OPERATION TIMING LOG & CAUSAL ORDERING",
               "eq:t_verify, eq:t_consensus, eq:mldsa_sign, alg:lrad_obu, alg:lrad_rsu")
-    paths = find_files(dirs, "crypto_timing_log.csv")
+    paths = find_files(dirs, "crypto_timing_log*.csv")
     if not paths:
         for eq, d in (("eq:t_verify", "crypto timing log produced and populated"),
                       ("eq:mldsa_sign", "every crypto/detection operation class exercised"),
@@ -1120,7 +1128,7 @@ def verify_crypto_timing(rep, dirs):
                       ("eq:mldsa_sign", "sign precedes verify for every packet"),
                       ("alg:lrad_obu", "OBU detection starts no later than RSU detection"),
                       ("eq:t_consensus", "consensus rounds completed successfully")):
-            rep.add(eq, "M7", d, ("WARN", "crypto_timing_log.csv absent"))
+            rep.add(eq, "M7", d, ("WARN", "crypto_timing_log*.csv absent"))
         return
 
     rows = []
