@@ -165,11 +165,11 @@ SECTIONS = [
 
         ("intensity_td", "Time-delay attack intensity I_TD (compromised fraction)",
          P, r"attack_percentage", "sim",
-         "swept 0/20/40/60/80/100% by scripts/run_std_attacks.py"),
+         "swept 0/20/40/60/80/100% by scripts/run_rule_based_sweep.py"),
 
         ("intensity_hf", "Hidden-forwarding attack intensity I_HF (eligible-flow fraction)",
          P, r"attack_percentage", "sim",
-         "swept by scripts/run_hf_attacks.py; consumed in hf_attack_helper.h"),
+         "swept by scripts/run_rule_based_sweep.py; consumed in hf_attack_helper.h"),
 
         ("density_normalized_rate", "Density-normalised injection rate (data plane)",
          C, r"rho_count|rsu_density|density_norm", "sim", None),

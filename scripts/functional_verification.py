@@ -77,7 +77,7 @@ vm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(vm)
 
 # Result directories searched when --results-dir is not given.  These mirror
-# run_std_attacks.py's NS3_DIR (~/ns3_g13_apsari/...); the pre-migration
+# run_rule_based_sweep.py's NS3_DIR (~/ns3_g13_apsari/...); the pre-migration
 # ~/ns3_g13_apsari tree is deliberately NOT a default -- pass it with --results-dir if
 # you need to inspect those older runs.
 DEFAULT_RESULTS = [
@@ -1529,7 +1529,7 @@ def main():
 
     if not dirs:
         print("No result directory found -- run a sweep first "
-              "(scripts/run_std_attacks.py or scripts/run_hf_attacks.py).")
+              "(scripts/run_rule_based_sweep.py).")
         sys.exit(2)
 
     subjects, seed_map = discover_subjects(dirs)
