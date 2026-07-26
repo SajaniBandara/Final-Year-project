@@ -779,8 +779,16 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
             cmp_hi(top.get("avg_MCC"), clean and clean.get("avg_MCC"), "avg_MCC"))
     rep.add("eq:rule_s1", "M1", "detection rate is non-zero under an active attack",
             gt(top.get("avg_DR"), 0.0, "avg_DR"))
-    rep.add("eq:rule_s1", "M1", "false-positive rate stays bounded (<40%)",
-            rng(top.get("avg_FPR"), 0.0, 40.0, "avg_FPR"))
+    # main.tex sec:metrics (M1): "hyperparameters are rejected if the resulting FPR
+    # exceeds 1% in either mode" -- this is the paper's explicit calibration target,
+    # not a loose sanity bound. A FAIL here under an active-attack sweep most likely
+    # reflects that s1_k/s1_beta/U_thresh/etc. are still running on their main.tex
+    # [tbd] initial-candidate values rather than the final calibrated sweep result
+    # (see the S3/S4 FPR discussion in GROUP F below for the same caveat) -- it is
+    # real evidence the calibration sweep is not yet complete, not necessarily a
+    # coding defect.
+    rep.add("eq:rule_s1", "M1", "false-positive rate meets the main.tex M1 calibration target (<=1%)",
+            rng(top.get("avg_FPR"), 0.0, 1.0, "avg_FPR"))
     rep.add("eq:sig_s2", "M1", "the detector fired at all (confusion matrix non-empty)",
             gt(sum(top.get(k) or 0.0 for k in ("TP", "FP", "FN")), 0.0, "TP+FP+FN"))
     if len(pcts) >= 3:
