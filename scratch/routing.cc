@@ -141727,13 +141727,21 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);
 
-    // Single deterministic attack delay for both CP (Attack 1) and DP (Attack 2).
-    // Original implementation drew from Uniform(60–300 ms); replaced with a fixed
-    // CLI value so delay is an explicit independent variable in sweep experiments.
+    // Attack delay anchor for both CP (Attack 1) and DP (Attack 2) — mobility
+    // amplification fix §4.3. Acts as the center of a bounded pseudo-random
+    // band by default (see attack_delay_pseudo_random below); pass one of
+    // ATTACK_DELAY_ANCHOR_{LOW,MED,HIGH}_MS (55/100/200) for Experiment 1/2's
+    // three intensity levels, or a custom value for other sweeps.
     cmd.AddValue("attack_delay_ms",
-                 "Fixed attack delay in ms for both CP and DP attacks (default 80ms; "
-                 "original range was Uniform(60–300ms))",
+                 "Attack delay anchor in ms for both CP and DP attacks (default 100ms "
+                 "= 2x Delta_max; see attack_delay_pseudo_random for band vs. exact use)",
                  attack_delay_ms);
+    cmd.AddValue("attack_delay_pseudo_random",
+                 "Draw each packet's attack delay from a +/-10% band around "
+                 "attack_delay_ms (default true). Set false for standalone/"
+                 "deterministic testing that needs an exact ms value (e.g. the "
+                 "S2-threshold sweep).",
+                 attack_delay_pseudo_random);
 
     cmd.Parse (argc, argv);
 

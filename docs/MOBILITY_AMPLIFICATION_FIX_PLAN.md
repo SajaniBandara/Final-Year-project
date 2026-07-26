@@ -250,10 +250,10 @@ same `traceExporter`/`ns2mobility` step, and add the two new cases to the
       tracking + handoff-event detection (§4.1).
 - [x] `scratch/s1_detection.h` — hook handoff events into the `δ_r(t)`
       accumulation as a transient jitter term (§4.2).
-- [ ] `scratch/attack_variables.h` — add the three ±10% bands anchored on
+- [x] `scratch/attack_variables.h` — add the three ±10% bands anchored on
       $1.1/2/4\times\Delta_{max}$ (55/100/200 ms), replacing the unused
       80 ms default (§4.3, resolved).
-- [ ] `scratch/selective_time_delay.h` — replace deterministic
+- [x] `scratch/selective_time_delay.h` — replace deterministic
       `attack_delay_ms` with a seeded pseudo-random draw from the active
       intensity level's band; keep CLI override for deterministic testing
       (§4.3, resolved).

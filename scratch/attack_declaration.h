@@ -297,16 +297,28 @@ inline void declare_attackers()
 // only fire when a poisoned (RSU,dst) pair happened to coincide with the traffic's
 // actual (forwarding-node,dst) pair — see cp_poisoned_flowmod_delay's declaration for
 // the measured effect (80 rules installed, delay applied 0 times in 447 forwards).
+//
+// sample_attack_injection_delay() is defined in selective_time_delay.h (§4.3),
+// included later in routing.cc — forward-declared here (same pattern as
+// routing.cc's own ad-hoc `extern void ufcr_attempt_unauthorized_flowmod();`)
+// so this recurring reinstall can draw from the same banded pseudo-random
+// delay as Attack 2's DP path, instead of Attack 1 staying on the raw
+// deterministic attack_delay_ms while DP alone got the §4.3 fix.
+double sample_attack_injection_delay();
+
 inline void reapply_cp_selective_delay()
 {
     if (active_attack_variant != 0) return;
     double now = Simulator::Now().GetSeconds();
     if (now >= simTime) return;
 
-    // Use the single CLI-controlled delay value (--attack_delay_ms).
-    // Original implementation drew from Uniform(60 ms, 300 ms); replaced
-    // with a fixed value so delay is an explicit independent variable.
-    double variable_delay = attack_delay_ms / 1000.0;
+    // §4.3: banded pseudo-random draw around the attack_delay_ms anchor
+    // (or the raw deterministic value in --attack_delay_pseudo_random=0
+    // mode) — see sample_attack_injection_delay() in selective_time_delay.h.
+    // Re-drawn every 1s reinstall cycle (this function's own cadence), so
+    // each refresh independently samples the band rather than freezing on
+    // whatever the first install happened to draw.
+    double variable_delay = sample_attack_injection_delay();
 
     for (uint32_t r = 0; r < RSU_Nodes.GetN(); r++)
     {

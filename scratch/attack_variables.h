@@ -44,18 +44,48 @@ bool present_selective_delay_attack_nodes = false;
 // present_selective_delay_attack_nodes must never both be true at once.
 bool present_selective_delay_cp_attack = false;
 
-// Single deterministic attack delay used by both CP (Attack 1) and DP (Attack 2).
-// Pass via --attack_delay_ms=<value> at runtime to treat delay as an independent
-// variable in threshold-validation experiments.
+// Attack delay used by both CP (Attack 1) and DP (Attack 2) — mobility
+// amplification fix §4.3 (docs/MOBILITY_AMPLIFICATION_FIX_PLAN.md).
 //
 // Both attacks use the same range per the proposal (§1319–1327): legitimate handoff
 // latencies in the SDVN are 50–300 ms (handoff jitter window at 80–120 km/h).
 // An adversary injects delays within this window so the attack is statistically
 // indistinguishable from legitimate jitter. The original implementation drew from
-// Uniform(50–300 ms) for both CP and DP. The thesis specifically uses 80 ms as the
-// DP example delay (§3817). This default (80 ms) is above S2_DELTA_MAX=50 ms, so
-// Signature S2 (Eq. 3.5) fires. Set via --attack_delay_ms at runtime.
-double attack_delay_ms = 80.0; // default 80 ms (thesis example value); set via --attack_delay_ms
+// Uniform(50–300 ms) for both CP and DP; that was later replaced with a single
+// fixed 80 ms value (never matching any of eq:intensity_td's three levels) so
+// delay could be an explicit independent variable in threshold-validation
+// experiments — that 80 ms default is what's being replaced here.
+//
+// eq:intensity_td (main.tex ~L5199) defines three discrete intensity levels as
+// multiples of Delta_max (50 ms): 1.1x (stealth, ~55ms), 2x (moderate, 100ms),
+// 4x (aggressive, 200ms). Supervisor guidance (2026-07-25): "You can make it
+// pseudo-random (you can control the randomness with defined bounds and
+// behavior). Not totally random." -> each level is now the ANCHOR of a bounded
+// band (default +/-10%) instead of a single deterministic value; see
+// sample_attack_injection_delay() in selective_time_delay.h, which draws from
+// [anchor*(1-ATTACK_DELAY_BAND_FRAC), anchor*(1+ATTACK_DELAY_BAND_FRAC)] using
+// a seeded ns-3 UniformRandomVariable (reproducible per sim_seed/sim_run, same
+// convention as GetBooleanWithProbability()/ShuffleNodeIndices() in routing.cc).
+//
+// attack_delay_ms is still set via --attack_delay_ms at runtime and still acts
+// as the band's anchor/center -- pass any of the three levels below, or a
+// custom value for other threshold-validation sweeps. Bands are non-overlapping
+// by construction at the three canonical anchors, so Experiment 1's three lines
+// stay distinguishable.
+const double ATTACK_DELAY_ANCHOR_LOW_MS  = 55.0;   // 1.1x Delta_max -- sub-threshold stealth
+const double ATTACK_DELAY_ANCHOR_MED_MS  = 100.0;  // 2x   Delta_max -- moderate injection
+const double ATTACK_DELAY_ANCHOR_HIGH_MS = 200.0;  // 4x   Delta_max -- aggressive injection
+const double ATTACK_DELAY_BAND_FRAC      = 0.10;   // +/-10% around the active anchor
+
+double attack_delay_ms = ATTACK_DELAY_ANCHOR_MED_MS; // default anchor (2x Delta_max); set via --attack_delay_ms
+
+// Selects deterministic vs. banded pseudo-random injection (§4.3). Default
+// true: the attack-percentage sweep path (Experiments 1/2) draws each
+// packet's delay from the band around attack_delay_ms. Set to false via
+// --attack_delay_pseudo_random=0 for standalone/deterministic testing that
+// needs an EXACT delay value -- e.g. the S2-threshold sweep (routing.cc
+// ~L141781) that probes whether a specific ms value crosses S2_DELTA_MAX.
+bool attack_delay_pseudo_random = true; // CLI: --attack_delay_pseudo_random
 
 // Top-level attack-type selector, mirroring the supervisor's reference
 // numbering convention (attack_number 1, 2, 3, ...). This is DISTINCT from
