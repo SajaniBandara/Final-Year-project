@@ -114992,6 +114992,8 @@ void dp_attack_tick();                                             // Change 5 (
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
 void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+void handoff_tracker_cycle_update(); // defined after lrad.h (needs lookup_vehicle_associated_rsu_local_idx); forward-declared so calculate_performance_evaluation_metrics() can schedule it
+#include "handoff_tracker.h"        // Per-vehicle serving-RSU handoff detection (mobility amplification fix §4.1)
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
 #include "crypto_layer.h"
 #include "dkg_setup.h"
@@ -115045,6 +115047,8 @@ void initialise_stub_attack_state()
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
+	// Initialize per-vehicle handoff-tracking state (mobility amplification fix §4.1)
+	handoff_tracker_init_state(N_Vehicles);
 	// lstm_logger_init is called from main() after cmd.Parse() so the training
 	// flag and N_RSUs are both resolved before the logger is set up.
 
@@ -118090,6 +118094,10 @@ void calculate_performance_evaluation_metrics()
 
 	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
 	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv, results_dir);
+
+	// Handoff detection (mobility amplification fix §4.1) — refresh each
+	// vehicle's serving-RSU state once per cycle.
+	Simulator::Schedule(Seconds(0.000098), handoff_tracker_cycle_update);
 }
 
 
@@ -121292,6 +121300,23 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 #include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
 #include "tcam_flow_generator.h" // k-NN concurrency flow generator (needs tcam_hit,
                                  // lookup_vehicle_associated_rsu_local_idx, s1_detect_packet)
+
+// =========================================================================
+// handoff_tracker_cycle_update() (mobility amplification fix §4.1)
+//
+// Per-cycle driver for handoff_tracker.h: refreshes every vehicle's
+// serving-RSU state using the same association logic lrad.h already uses
+// for packet escalation (lookup_vehicle_associated_rsu_local_idx()),
+// so "serving RSU" means the same thing here as it does for routing.
+// Scheduled once per cycle from calculate_performance_evaluation_metrics().
+// =========================================================================
+void handoff_tracker_cycle_update()
+{
+    for (uint32_t v = 0; v < (uint32_t)N_Vehicles; v++)
+    {
+        handoff_tracker_update(v, lookup_vehicle_associated_rsu_local_idx(v));
+    }
+}
 
 int simulated_tcam_counter[200] = {0};
 // TCAM_CAPACITY consolidated to the single definition at line ~117445

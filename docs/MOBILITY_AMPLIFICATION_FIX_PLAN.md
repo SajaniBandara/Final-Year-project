@@ -246,7 +246,7 @@ same `traceExporter`/`ns2mobility` step, and add the two new cases to the
 
 ## 5. Implementation checklist
 
-- [ ] `scratch/handoff_tracker.h` — new file: per-vehicle nearest-RSU
+- [x] `scratch/handoff_tracker.h` — new file: per-vehicle nearest-RSU
       tracking + handoff-event detection (§4.1).
 - [ ] `scratch/s1_detection.h` — hook handoff events into the `δ_r(t)`
       accumulation as a transient jitter term (§4.2).
