@@ -516,7 +516,7 @@ inline LRADOBUFlags lrad_obu(
     // directly — simulation shortcut documented in the LRAD plan.
     if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
         flags.flag_S1 = s1_detect_packet(
-            assoc_rsu_local_idx, delta_p, is_high_priority,
+            assoc_rsu_local_idx, vehicle, delta_p, is_high_priority,
             // sender_node_id → fed into record_detection_event. Must be the
             // associated RSU (matching alg:lrad_obu's ESCALATE(p,v,r,...)
             // and the ground-truth model, which marks RSUs malicious via

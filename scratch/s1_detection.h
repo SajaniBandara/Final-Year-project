@@ -132,6 +132,36 @@ inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t
 }
 
 // =========================================================================
+// Handoff-induced legitimate jitter (mobility amplification fix §4.2,
+// docs/MOBILITY_AMPLIFICATION_FIX_PLAN.md). A vehicle that just handed off
+// to a new serving RSU (handoff_tracker.h, §4.1) incurs a one-time
+// flow-rule recomputation/reinstallation cost before the new RSU's data
+// plane is fully set up — main.tex Mechanism 1, ~L1524, citing
+// Islam2021SDVN: "legitimate handoff latencies of 50-300 ms during
+// flow-rule recomputation and reinstallation". Reused directly as the
+// jitter band here rather than inventing a new number.
+//
+// Drawn from ns-3's own seeded UniformRandomVariable (governed by
+// RngSeedManager::SetSeed/SetRun in main(), same reproducibility
+// convention as GetBooleanWithProbability()/ShuffleNodeIndices() in
+// routing.cc) — NOT srand()/rand(), so results stay deterministic per
+// sim_seed + sim_run.
+// =========================================================================
+const double S1_HANDOFF_JITTER_MIN_S = 0.050;   // 50 ms, Islam2021SDVN lower bound
+const double S1_HANDOFF_JITTER_MAX_S = 0.300;   // 300 ms, Islam2021SDVN upper bound
+
+inline double s1_sample_handoff_jitter()
+{
+    static Ptr<UniformRandomVariable> rng = nullptr;
+    if (!rng) {
+        rng = CreateObject<UniformRandomVariable>();
+        rng->SetAttribute("Min", DoubleValue(S1_HANDOFF_JITTER_MIN_S));
+        rng->SetAttribute("Max", DoubleValue(S1_HANDOFF_JITTER_MAX_S));
+    }
+    return rng->GetValue();
+}
+
+// =========================================================================
 // s1_detect_packet():
 // Evaluates Signature S1 for one packet at one RSU (Eq. 3.4 / 3.14).
 //
@@ -140,6 +170,10 @@ inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t
 //   2. Priority(p) = HIGH                   [safety-critical packet only]
 //
 //   rsu_idx        — RSU index (0..N_RSUs-1), derived from current_hop
+//   vehicle_id     — originating vehicle's sim index (0..N_Vehicles-1).
+//                    Used solely to check handoff_just_occurred()
+//                    (handoff_tracker.h, §4.1) for the handoff-jitter term
+//                    below — not otherwise part of Eq. 3.4/3.14.
 //   packet_delay_s — t_recv - t_claimed_fwd for this hop (seconds)
 //   is_safety_crit — Priority(p) = HIGH
 //   sender_node_id — sim index of the node that SENT this packet (the RSU
@@ -150,6 +184,7 @@ inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t
 //   flow_id        — flow ID (for logging)
 // =========================================================================
 inline bool s1_detect_packet(uint32_t rsu_idx,
+                              uint32_t vehicle_id,
                               double   packet_delay_s,
                               bool     is_safety_crit,
                               uint32_t sender_node_id,
@@ -159,6 +194,27 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 {
     if (rsu_idx >= (uint32_t)N_RSUs) return false;
 
+    // §4.2: fold in handoff-induced jitter before this packet's delay feeds
+    // anything downstream (accumulation, EWMA variance, threshold test).
+    // handoff_just_occurred(vehicle_id) is true only for the cycle
+    // handoff_tracker_cycle_update() (routing.cc) detected this vehicle's
+    // serving-RSU change, so the jitter applies once, to whichever
+    // packet(s) from that vehicle land in that same cycle — not a
+    // hand-tuned function of ρ(t)/v̄(t). Handoffs simply happen more often
+    // as v̄ increases (zone residence time shrinks, eq:observation_window),
+    // so this term fires more often at higher mobility without needing a
+    // per-speed-point knob (see §7 overfitting risk).
+    double effective_delay_s = packet_delay_s;
+    if (packet_delay_s > 0.0 && handoff_just_occurred(vehicle_id))
+    {
+        double jitter_s = s1_sample_handoff_jitter();
+        effective_delay_s += jitter_s;
+        cout << "[S1] Handoff jitter: vehicle " << vehicle_id
+             << " handed off this cycle — adding " << jitter_s * 1000.0
+             << "ms (raw delay=" << packet_delay_s * 1000.0
+             << "ms, effective=" << effective_delay_s * 1000.0 << "ms)." << endl;
+    }
+
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4).
     // Best-effort packets can never trigger S1 themselves, but their delay
     // still feeds δ_best(r,t) (the selectivity conjunct below) — accumulate
@@ -167,7 +223,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     {
         if (packet_delay_s > 0.0)
         {
-            s1_best_obs_sum[rsu_idx]   += packet_delay_s;
+            s1_best_obs_sum[rsu_idx]   += effective_delay_s;
             s1_best_obs_count[rsu_idx] += 1;
         }
         return false;
@@ -183,13 +239,15 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // clause" reasoning as below.
     if (packet_delay_s > 0.0)
     {
-        s1_rsu_obs_sum[rsu_idx]   += packet_delay_s;
+        s1_rsu_obs_sum[rsu_idx]   += effective_delay_s;
         s1_rsu_obs_count[rsu_idx] += 1;
     }
 
     // Eq. 3.12/3.13: σ²_r(t) = β·σ²_r(t-1) + (1-β)·(δ_r(t)-δ̄_r(t))², updated
-    // from THIS packet's raw delay δ_p (packet_delay_s), not a cycle-averaged
-    // proxy. Eq. 3.14's own comparand is δ_p (per-packet), so σ_r(t) must be
+    // from THIS packet's raw delay δ_p (effective_delay_s, i.e. including
+    // §4.2's handoff jitter — the detector only ever observes the total
+    // delay, not a decomposition of it), not a cycle-averaged proxy. Eq.
+    // 3.14's own comparand is δ_p (per-packet), so σ_r(t) must be
     // estimated from the same per-packet population it is compared against.
     // The previous version fed σ² from the cycle-AVERAGED obs_delay once per
     // cycle (s1_update_baseline()) while s1_detect_packet() compared raw
@@ -205,7 +263,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // more packets, shrinking σ further with no floor — confirmed via FP
     // climbing continuously across an entire benign-only run rather than
     // plateauing after warmup.
-    double deviation = packet_delay_s - delta_bar;
+    double deviation = effective_delay_s - delta_bar;
     s1_sigma2[rsu_idx] = s1_beta * s1_sigma2[rsu_idx]
                        + (1.0 - s1_beta) * deviation * deviation;
 
@@ -222,7 +280,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
          << " node=" << current_hop
          << " flow=" << flow_id
          << " pkt=" << packet_id
-         << " delay=" << packet_delay_s * 1000.0 << "ms"
+         << " delay=" << effective_delay_s * 1000.0 << "ms"
          << " baseline=" << delta_bar * 1000.0 << "ms"
          << " sigma=" << sigma * 1000.0 << "ms"
          << " threshold=" << threshold * 1000.0 << "ms"
@@ -231,10 +289,10 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 
     // Condition 1: δ_p > δ̄_r(t) + k·σ_r(t)  (Eq. 3.14)
     // Condition 3: δ_best(r,t) ≤ δ̄_r(t) + k·σ_r(t)  (selectivity, eq:rule_s1)
-    if (packet_delay_s > threshold && selective_ok)
+    if (effective_delay_s > threshold && selective_ok)
     {
         cout << "[S1] ⚠️ SIGNATURE S1 TRIGGERED!"
-             << " Delay " << packet_delay_s * 1000.0
+             << " Delay " << effective_delay_s * 1000.0
              << "ms exceeds threshold " << threshold * 1000.0 << "ms"
              << " (baseline=" << delta_bar * 1000.0
              << "ms + " << s1_k << "σ=" << (s1_k * sigma * 1000.0) << "ms)"
@@ -272,7 +330,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         return true;
     }
 
-    if (packet_delay_s > threshold && !selective_ok)
+    if (effective_delay_s > threshold && !selective_ok)
     {
         cout << "[S1] Threshold exceeded but selectivity conjunct failed: "
              << "delta_best=" << delta_best * 1000.0 << "ms > threshold "
@@ -281,7 +339,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     }
     else
     {
-        cout << "[S1] No violation: delay " << packet_delay_s * 1000.0
+        cout << "[S1] No violation: delay " << effective_delay_s * 1000.0
              << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
     }
     return false;
