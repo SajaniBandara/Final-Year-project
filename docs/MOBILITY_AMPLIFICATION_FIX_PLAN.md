@@ -248,7 +248,7 @@ same `traceExporter`/`ns2mobility` step, and add the two new cases to the
 
 - [x] `scratch/handoff_tracker.h` — new file: per-vehicle nearest-RSU
       tracking + handoff-event detection (§4.1).
-- [ ] `scratch/s1_detection.h` — hook handoff events into the `δ_r(t)`
+- [x] `scratch/s1_detection.h` — hook handoff events into the `δ_r(t)`
       accumulation as a transient jitter term (§4.2).
 - [ ] `scratch/attack_variables.h` — add the three ±10% bands anchored on
       $1.1/2/4\times\Delta_{max}$ (55/100/200 ms), replacing the unused
