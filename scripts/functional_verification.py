@@ -376,6 +376,7 @@ def parse_crypto_ops(dirs):
     """
     ops = {}
     for p in find_files(dirs, "crypto_timing_log*.csv"):
+        run_tag = os.path.basename(p)
         with open(p, "rb") as fh:
             for raw in fh:
                 parts = [x.strip() for x in raw.decode("utf-8", "replace").split(",")]
@@ -384,7 +385,8 @@ def parse_crypto_ops(dirs):
                 try:
                     ops.setdefault(parts[1], []).append(
                         {"t": float(parts[0]), "op": parts[1], "node": int(parts[2]),
-                         "pkt": int(parts[3]), "us": float(parts[4]), "res": parts[5]})
+                         "pkt": int(parts[3]), "us": float(parts[4]), "res": parts[5],
+                         "run": run_tag})
                 except ValueError:
                     continue
     return ops
@@ -1133,6 +1135,7 @@ def verify_crypto_timing(rep, dirs):
 
     rows = []
     for p in paths:
+        run_tag = os.path.basename(p)
         with open(p, errors="ignore") as fh:
             for line in fh:
                 parts = [x.strip() for x in line.strip().split(",")]
@@ -1141,7 +1144,8 @@ def verify_crypto_timing(rep, dirs):
                 try:
                     rows.append({"t": float(parts[0]), "op": parts[1],
                                  "node": int(parts[2]), "pkt": int(parts[3]),
-                                 "us": float(parts[4]), "res": parts[5]})
+                                 "us": float(parts[4]), "res": parts[5],
+                                 "run": run_tag})
                 except ValueError:
                     continue
 
@@ -1169,43 +1173,74 @@ def verify_crypto_timing(rep, dirs):
                   f"max={max(r['us'] for r in rows):.3f}us",
                   "non-positive or non-finite duration recorded"))
 
-    # Causal ordering: no packet may be verified before it was signed.
-    sign_t, ver_t = {}, {}
+    # Both per-event-pairing checks below run PER FILE, not pooled across the
+    # sweep. pkt_id and node are small counters that restart in every run, so
+    # pooling first and then disambiguating with a composite key (an earlier
+    # version of this check did that) is solving a problem this design avoids
+    # outright: a sign in run A can never be paired with a verify in run B if
+    # run B's rows are never in scope when run A is checked. Checking each run
+    # in isolation also means a violation is reported against the specific run
+    # that has it, not lost in an aggregate "some packet somewhere" count.
+    by_run = {}
     for r in rows:
-        if r["op"] == "sign":
-            sign_t[r["pkt"]] = min(sign_t.get(r["pkt"], r["t"]), r["t"])
-        elif r["op"] == "verify":
-            ver_t[r["pkt"]] = max(ver_t.get(r["pkt"], r["t"]), r["t"])
-    both = sorted(set(sign_t) & set(ver_t))
-    bad = [p for p in both if ver_t[p] < sign_t[p]]
-    rep.add("eq:mldsa_sign", "M7", "sign precedes verify for every packet (causal order)",
-            truth(not bad,
-                  f"{len(both)} packet(s) with both events, 0 out of order",
-                  f"{len(bad)} packet(s) verified before being signed: {bad[:5]}")
-            if both else ("WARN", "no packet has both a sign and a verify record"))
+        by_run.setdefault(r["run"], []).append(r)
 
-    # lrad_obu (vehicles) and lrad_rsu (packets arriving at an RSU) are
-    # independent entry points, so there is no global ordering between them.
-    # The invariant that IS causal is the handoff: escalate_to_rsu() is only
-    # ever reached from inside lrad_obu() when D_OBU=1, so an escalation can
-    # never precede the OBU detection on that node that raised it.
-    first_obu = {}
-    for r in ops.get("lrad_obu", []):
-        n = r["node"]
-        first_obu[n] = min(first_obu.get(n, r["t"]), r["t"])
-    escalations = ops.get("escalate_to_rsu", [])
-    orphans = [e for e in escalations
-               if e["node"] not in first_obu or first_obu[e["node"]] > e["t"] + 1e-9]
+    sign_checked, sign_bad_runs = 0, []
+    obu_checked, obu_bad_runs = 0, []
+    for run_name, run_rows in sorted(by_run.items()):
+        run_ops = {}
+        for r in run_rows:
+            run_ops.setdefault(r["op"], []).append(r)
+
+        # sign precedes verify, for every (node, pkt) signed/verified in THIS run
+        sign_t, ver_t = {}, {}
+        for r in run_rows:
+            key = (r["node"], r["pkt"])
+            if r["op"] == "sign":
+                sign_t[key] = min(sign_t.get(key, r["t"]), r["t"])
+            elif r["op"] == "verify":
+                ver_t[key] = max(ver_t.get(key, r["t"]), r["t"])
+        both = set(sign_t) & set(ver_t)
+        if both:
+            sign_checked += 1
+            bad = [k for k in both if ver_t[k] < sign_t[k]]
+            if bad:
+                sign_bad_runs.append((run_name, bad))
+
+        # escalate_to_rsu() is only ever reached from inside lrad_obu() when
+        # D_OBU=1, so within one run an escalation can never precede the OBU
+        # detection on that node that raised it.
+        first_obu = {}
+        for r in run_ops.get("lrad_obu", []):
+            n = r["node"]
+            first_obu[n] = min(first_obu.get(n, r["t"]), r["t"])
+        escalations = run_ops.get("escalate_to_rsu", [])
+        if escalations:
+            obu_checked += 1
+            orphans = [e for e in escalations
+                       if e["node"] not in first_obu
+                       or first_obu[e["node"]] > e["t"] + 1e-9]
+            if orphans:
+                obu_bad_runs.append((run_name, orphans))
+
+    rep.add("eq:mldsa_sign", "M7", "sign precedes verify for every packet (causal order)",
+            truth(not sign_bad_runs,
+                  f"checked {sign_checked} run(s) independently, 0 out-of-order "
+                  f"events in any of them",
+                  f"{len(sign_bad_runs)} run(s) had an out-of-order event: "
+                  + ", ".join(f"{r}({len(b)})" for r, b in sign_bad_runs[:3]))
+            if sign_checked
+            else ("WARN", "no run has both a sign and a verify record"))
+
     rep.add("alg:lrad_obu", None,
             "no escalation precedes the OBU detection that raised it (D_OBU=1)",
-            truth(not orphans,
-                  f"{len(escalations)} escalation(s) across "
-                  f"{len(set(e['node'] for e in escalations))} node(s), each preceded "
-                  f"by an lrad_obu on the same node",
-                  f"{len(orphans)} escalation(s) with no preceding lrad_obu: "
-                  f"{[(e['node'], e['t']) for e in orphans[:3]]}")
-            if escalations
-            else ("WARN", "no escalation events recorded in the timing log"))
+            truth(not obu_bad_runs,
+                  f"checked {obu_checked} run(s) independently, every escalation "
+                  f"preceded by an lrad_obu on the same node within its own run",
+                  f"{len(obu_bad_runs)} run(s) had an escalation with no preceding "
+                  f"lrad_obu: " + ", ".join(f"{r}({len(o)})" for r, o in obu_bad_runs[:3]))
+            if obu_checked
+            else ("WARN", "no run has escalation events recorded"))
 
     # batch_verify rows carry B in the node column and n_verified in the pkt
     # column (crypto_layer.h:crypto_batch_verify_tick).
