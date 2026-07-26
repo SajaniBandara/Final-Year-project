@@ -118506,9 +118506,10 @@ void transmit_delta_values()
 		g_m7_consensus_wall_us_sum +=
 			std::chrono::duration<double, std::micro>(_ct1 - _ct0).count();
 		++g_m7_consensus_count;
-		// per-op row: node_id carries endorser count, pkt_id carries fid
+		// per-op row: node_id carries endorser count, pkt_id carries fid;
+		// not a single-flow packet event, so flow_id is UINT32_MAX (n/a).
 		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
-		                 _ct0, _committed);
+		                 UINT32_MAX, _ct0, _committed);
 		// NOTE: the eq:ctrl_trust_update reward/penalty is NO LONGER applied
 		// here. This honest per-cycle endorsement of fid=0 always commits, so it
 		// only ever exercised the reward branch, and it did so against
@@ -121134,7 +121135,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						{
 							auto _t_sign = crypto_log_start();
 							bool _sign_ok = mldsa87_sign(current_hop, packet_id, hop, flow_id);
-							crypto_log_event("sign", current_hop, packet_id, _t_sign, _sign_ok);
+							crypto_log_event("sign", current_hop, packet_id, flow_id, _t_sign, _sign_ok);
 						}
 
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
@@ -121670,10 +121671,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
 					auto _t_verify = crypto_log_start();
 					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
-					crypto_log_event("verify", prev_sender, packet_ID, _t_verify, sig_ok);
+					crypto_log_event("verify", prev_sender, packet_ID, fid, _t_verify, sig_ok);
 					auto _t_hop = crypto_log_start();
 					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
-					crypto_log_event("stark_hop", prev_sender, packet_ID, _t_hop, hop_ok);
+					crypto_log_event("stark_hop", prev_sender, packet_ID, fid, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;

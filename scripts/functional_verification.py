@@ -380,13 +380,13 @@ def parse_crypto_ops(dirs):
         with open(p, "rb") as fh:
             for raw in fh:
                 parts = [x.strip() for x in raw.decode("utf-8", "replace").split(",")]
-                if len(parts) != 6 or parts[0] == "sim_time_s":
+                if len(parts) != 7 or parts[0] == "sim_time_s":
                     continue
                 try:
                     ops.setdefault(parts[1], []).append(
                         {"t": float(parts[0]), "op": parts[1], "node": int(parts[2]),
-                         "pkt": int(parts[3]), "us": float(parts[4]), "res": parts[5],
-                         "run": run_tag})
+                         "pkt": int(parts[3]), "flow": int(parts[4]), "us": float(parts[5]),
+                         "res": parts[6], "run": run_tag})
                 except ValueError:
                     continue
     return ops
@@ -1147,13 +1147,13 @@ def verify_crypto_timing(rep, dirs):
         with open(p, errors="ignore") as fh:
             for line in fh:
                 parts = [x.strip() for x in line.strip().split(",")]
-                if len(parts) != 6 or parts[0] == "sim_time_s":
+                if len(parts) != 7 or parts[0] == "sim_time_s":
                     continue
                 try:
                     rows.append({"t": float(parts[0]), "op": parts[1],
                                  "node": int(parts[2]), "pkt": int(parts[3]),
-                                 "us": float(parts[4]), "res": parts[5],
-                                 "run": run_tag})
+                                 "flow": int(parts[4]), "us": float(parts[5]),
+                                 "res": parts[6], "run": run_tag})
                 except ValueError:
                     continue
 
@@ -1189,6 +1189,15 @@ def verify_crypto_timing(rep, dirs):
     # run B's rows are never in scope when run A is checked. Checking each run
     # in isolation also means a violation is reported against the specific run
     # that has it, not lost in an aggregate "some packet somewhere" count.
+    #
+    # pkt_id ALONE is also not unique WITHIN a single run: it is a per-flow
+    # counter that restarts at 1 for every flow (routing.cc: packet_id =
+    # total_packet_counter + 1), so the same (node, pkt_id) pair is shared by
+    # many unrelated packets from different flows through the same node.
+    # Joining on (node, pkt_id) alone previously caused false "verify before
+    # sign" flags by pairing one flow's quickly-verified packet with another
+    # flow's later-signed packet of the same pkt_id (see FV688 post-mortem).
+    # flow_id is now logged in crypto_timing_log*.csv and included in the key.
     by_run = {}
     for r in rows:
         by_run.setdefault(r["run"], []).append(r)
@@ -1200,10 +1209,10 @@ def verify_crypto_timing(rep, dirs):
         for r in run_rows:
             run_ops.setdefault(r["op"], []).append(r)
 
-        # sign precedes verify, for every (node, pkt) signed/verified in THIS run
+        # sign precedes verify, for every (node, pkt, flow) signed/verified in THIS run
         sign_t, ver_t = {}, {}
         for r in run_rows:
-            key = (r["node"], r["pkt"])
+            key = (r["node"], r["pkt"], r["flow"])
             if r["op"] == "sign":
                 sign_t[key] = min(sign_t.get(key, r["t"]), r["t"])
             elif r["op"] == "verify":

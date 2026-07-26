@@ -400,7 +400,7 @@ inline LRADRSUFlags lrad_rsu(
             bc_write_detection_event(rsu, obu_assoc_rsu_node_id, 4, t_now);
     }
 
-    crypto_log_event("lrad_rsu", prev_sender, pkt_id, _t0, flags.D_RSU);
+    crypto_log_event("lrad_rsu", prev_sender, pkt_id, fid, _t0, flags.D_RSU);
     return flags;
 }
 
@@ -458,7 +458,7 @@ inline void escalate_to_rsu(
     uint32_t rsu_local_idx = lookup_vehicle_associated_rsu_local_idx(vehicle);
     if (rsu_local_idx >= (uint32_t)N_RSUs) {
         // No RSU in DSRC range — drop gracefully.
-        crypto_log_event("escalate_to_rsu", vehicle, pkt_id, _t0, false);
+        crypto_log_event("escalate_to_rsu", vehicle, pkt_id, fid, _t0, false);
         return;
     }
     uint32_t rsu_id = N_Vehicles + rsu_local_idx;
@@ -476,7 +476,7 @@ inline void escalate_to_rsu(
     g_escalation_queue[rsu_id].push_back(ev);
     g_escalation_count++;
 
-    crypto_log_event("escalate_to_rsu", vehicle, pkt_id, _t0, true);
+    crypto_log_event("escalate_to_rsu", vehicle, pkt_id, fid, _t0, true);
 
     // Model 1 ms OBU→RSU escalation latency (upper bound — see plan note).
     ns3::Simulator::Schedule(ns3::Seconds(0.001),
@@ -549,7 +549,7 @@ inline LRADOBUFlags lrad_obu(
     flags.D_OBU = flags.flag_S1 || flags.flag_S2p ||
                   flags.flag_S3 || flags.flag_S4;
 
-    crypto_log_event("lrad_obu", vehicle, pkt_id, _t0, flags.D_OBU);
+    crypto_log_event("lrad_obu", vehicle, pkt_id, fid, _t0, flags.D_OBU);
 
     if (flags.D_OBU) {
         g_d_obu_count++;

@@ -47,7 +47,7 @@ inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
 // CryptoTimePoint alias must match crypto_event_log.h exactly (legal redeclaration).
 using CryptoTimePoint = std::chrono::high_resolution_clock::time_point;
 inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
-                             CryptoTimePoint t0, bool result);
+                             uint32_t flow_id, CryptoTimePoint t0, bool result);
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
@@ -1065,9 +1065,11 @@ inline void crypto_batch_verify_tick() {
         g_m7_batch_wall_us_sum += _b_us;
         ++g_m7_batch_calls;
         g_m7_batch_pkts += pending.size();
-        // per-op row: node_id column carries B (batch size), pkt_id carries n_verified
+        // per-op row: node_id column carries B (batch size), pkt_id carries
+        // n_verified; not a single-packet/single-flow event, so flow_id is
+        // UINT32_MAX (not applicable).
         crypto_log_event("batch_verify", (uint32_t)pending.size(),
-                         result.n_verified, _bt0, result.passed);
+                         result.n_verified, UINT32_MAX, _bt0, result.passed);
         g_batch_passed = result.passed; // feed b_batch into LRAD (eq:batch_challenge)
         if (!result.passed) {
             std::cerr << "[CRYPTO-ERROR] Batch verify tick FAILED:"
