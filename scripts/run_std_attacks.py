@@ -200,6 +200,13 @@ def build_waf_command(attack_number: int, attack_percentage: int,
     params["sim_run"]           = sim_run
     if delay_ms is not None:
         params["attack_delay_ms"] = delay_ms
+        # §4.3 (docs/MOBILITY_AMPLIFICATION_FIX_PLAN.md) — this script is the
+        # Experiment 1/2 run path; opt into the bounded pseudo-random band
+        # around delay_ms explicitly. The C++ default is deterministic/off
+        # (see attack_variables.h), so every OTHER caller of routing.cc
+        # (run_ablation_sweep.py, run_rule_based_sweep.py, etc.) that never
+        # passes this flag is unaffected and keeps exact deterministic delay.
+        params["attack_delay_pseudo_random"] = 1
     if extra_params:
         params.update(extra_params)
 
@@ -318,10 +325,13 @@ def main() -> None:
     parser.add_argument(
         "--delay", type=int, nargs="+", default=None, metavar="MS",
         help=(
-            "Fix the attack delay to one or more specific values in ms, treating "
-            "delay as an independent variable. Each value becomes a separate set of "
-            "runs with result files named MOBIGUARD_Attack1_<pct>_d<X>ms.csv etc. "
-            "Default: 80 ms (matches the C++ attack_delay_ms default)."
+            "Fix the attack delay ANCHOR to one or more specific values in ms. Each "
+            "value becomes a separate set of runs with result files named "
+            "MOBIGUARD_Attack1_<pct>_d<X>ms.csv etc. Default: 80 ms (matches the "
+            "C++ attack_delay_ms default). NOTE (§4.3, docs/MOBILITY_AMPLIFICATION_"
+            "FIX_PLAN.md): this script always passes --attack_delay_pseudo_random=1, "
+            "so the actual per-instance delay is drawn from a +/-10% band around "
+            "this anchor, not applied exactly — see attack_delay_band_fraction."
         ),
     )
     parser.add_argument(

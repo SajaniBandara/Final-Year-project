@@ -115070,8 +115070,12 @@ void initialise_stub_attack_state()
             // injecting the malicious delay.
             Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
-            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, fixed delay="
-                 << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
+            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, delay anchor="
+                 << attack_delay_ms << "ms, mode="
+                 << (attack_delay_pseudo_random
+                     ? "banded +/-" + std::to_string((int)(ATTACK_DELAY_BAND_FRAC * 100)) + "%"
+                     : "exact (pseudo-random disabled)")
+                 << endl;
             if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
         }
