@@ -494,6 +494,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
+                  << " flow=" << seq
                   << " next_hop=" << next_hop
                   << " sig_len=" << meta.sig_len  // expected 4627
                   << " zone=" << zone
@@ -543,7 +544,8 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) {
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
-                      << " pkt=" << pkt_id << " → no_record (not signed by this node)\n";
+                      << " pkt=" << pkt_id << " flow=" << seq
+                      << " → no_record (not signed by this node)\n";
         return false;
     }
 
@@ -554,7 +556,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     if (it->second.signed_next_hop != (uint32_t)-1 && next_hop != it->second.signed_next_hop) {
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
-                      << " pkt=" << pkt_id
+                      << " pkt=" << pkt_id << " flow=" << seq
                       << " → skip_broadcast (intended_hop=" << it->second.signed_next_hop
                       << " actual_hop=" << next_hop << ")\n";
         return false;
@@ -607,6 +609,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                   << " pkt=" << pkt_id
+                  << " flow=" << seq
                   << " ok=" << ok
                   << " sig_len=" << it->second.sig_len  // expected 4627
                   << " t_verify=" << ns3::Simulator::Now().GetSeconds()
@@ -784,6 +787,7 @@ inline void stark_update_meta(uint32_t signer, uint32_t pkt_id, uint32_t flow_id
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[STARK] signer=" << signer
                   << " pkt=" << pkt_id
+                  << " flow=" << flow_id
                   << " t=" << ns3::Simulator::Now().GetSeconds()
                   << " timing_ok=" << timing_ok
                   << " hop_ok=" << hop_ok
@@ -1219,6 +1223,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         std::cout << "[WITNESS-DA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " flow=" << flow_id
                   << " t_alert=" << ts_w
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
@@ -1305,6 +1310,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         std::cout << "[WITNESS-NFA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " flow=" << flow_id
                   << " t_alert=" << ts_w
                   << " T_fwd=" << T_fwd << "s"
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
