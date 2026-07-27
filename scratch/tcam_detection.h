@@ -137,12 +137,31 @@ inline TcamCycleMetrics ComputeTcamDetection(
         //    actually gates S3, eq:unauth_flowmod). unauth_count reads the blockchain
         //    endorsement outcome cached on each rule at install (tcam_flowmod_authorized),
         //    derived from the observable legitimate-flow registry, NOT from is_malicious.
-        int malicious_count = 0;
-        int unauth_count    = 0;
+        int malicious_count      = 0;
+        int unauth_count         = 0;  // f_unauth=1 term only (eq:unauth_flowmod)
+        int unauth_orphan_count  = 0;  // BOTH eq:rule_s3 conjuncts: f_unauth=1 AND
+                                        // no active flow backs it (eq:sig_s3's
+                                        // nexists v: flow(r) in F_active(v) term)
         for (const auto& entry : g_tcam_table) {
             if (entry.node_id != node_id) continue;
             if (entry.is_malicious) ++malicious_count;
-            if (entry.counts_capacity && !entry.authorized) ++unauth_count;
+            if (entry.counts_capacity && !entry.authorized) {
+                ++unauth_count;
+                // Second conjunct of eq:rule_s3. g_tcam_installed (tcam_attack_helper.h)
+                // is the F_active registry: populated only by tcam_install()'s legit
+                // path and erased on eviction, so membership means "a real vehicle
+                // flow is currently active for this (flow_id, node_id) pair" at this
+                // instant. tcam_install_malicious() deliberately never inserts into it
+                // (so attacker fids can be refreshed without dedup) -- see the NOTE at
+                // its call site -- so an entry absent from this set has no active flow
+                // behind it. Kept as an INDEPENDENT check from `authorized` (rather than
+                // assuming f_unauth already implies it) so the two conjuncts stay
+                // separately auditable even if the endorsement mechanism later becomes
+                // attack-aware (docs/PENDING_FIXES.md) and the two could diverge.
+                const bool no_active_flow =
+                    (g_tcam_installed.count(std::make_pair(entry.flow_id, entry.node_id)) == 0);
+                if (no_active_flow) ++unauth_orphan_count;
+            }
         }
 
         // 5. Windowed install count (new + reinstall) over the sliding window, and
@@ -184,8 +203,19 @@ inline TcamCycleMetrics ComputeTcamDetection(
         //    realistic use of the endorsement layer in an SDVN safety context — NOT a
         //    synchronous pre-install PBFT gate. *** DEVIATION from eq:rule_s3 (which
         //    ANDs the rate term); flagged, mirrors the S4 util-primary change. ***
+        //
+        //    2026-07-21: flag_s3 now ANDs the SECOND eq:rule_s3 conjunct too --
+        //    nexists v: flow(r) in F_active(v) -- via unauth_orphan_count (computed
+        //    above from g_tcam_installed membership), not just f_unauth alone. Under
+        //    the current attacker model these two conjuncts are always in lockstep
+        //    (an attacker fid is never in g_tcam_installed, so unauth_orphan_count ==
+        //    unauth_count here), so this is not expected to change any measured
+        //    TPR/FPR number -- it closes the gap between the code and the literal
+        //    two-conjunct equation, and gives real protection if the endorsement
+        //    mechanism later becomes attack-aware enough that an unauthorised entry
+        //    could correspond to a real (temporarily unendorsed) active flow.
         (void)lambda_fm_thresh;   // rate excess corroborating/reported only, no longer gates S3
-        const bool flag_s3 = (unauth_count > 0);
+        const bool flag_s3 = (unauth_orphan_count > 0);
 
         // Per-RSU per-cycle detector-signal trace. Emits for EVERY RSU (2026-07-17:
         // rho>0 gate removed so attacked RSUs with no vehicles are still logged), and
