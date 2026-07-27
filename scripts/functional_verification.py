@@ -1198,6 +1198,25 @@ def verify_crypto_timing(rep, dirs):
     # sign" flags by pairing one flow's quickly-verified packet with another
     # flow's later-signed packet of the same pkt_id (see FV688 post-mortem).
     # flow_id is now logged in crypto_timing_log*.csv and included in the key.
+    #
+    # 2026-07-27: only res=="ok" sign/verify rows feed sign_t/ver_t. A "fail"
+    # verify (no_record: claimed signer hasn't signed this exact (pkt,flow)
+    # yet; skip_broadcast: an overhearing node that isn't the intended next
+    # hop; or a genuine signature mismatch) never actually validates a
+    # signature, so it cannot be "accepted before it existed" -- there is
+    # nothing to violate. Confirmed empirically post-fix: after
+    # g_packet_crypto/msg_id were made flow-unique (crypto_layer.h, same
+    # date), the only remaining flagged keys were fail-only -- a node's own
+    # premature/overheard verify attempt, correctly rejected, has an earlier
+    # timestamp than the real later sign of that same (pkt,flow) and was
+    # flagging as an "out-of-order event" despite never having validated
+    # anything. (Some PRE-fix violations, e.g. the canonical 164/1/1 case,
+    # were genuinely res=="ok" -- a real cross-flow signature collision --
+    # so this filter alone would not have masked that bug; it only removes
+    # provably-inert fail rows.) res's meaning is op-specific -- it is NOT a
+    # generic success flag for lrad_obu/escalate_to_rsu below (there it
+    # encodes the D_OBU detection outcome), so this filter is scoped to
+    # sign/verify only.
     by_run = {}
     for r in rows:
         by_run.setdefault(r["run"], []).append(r)
@@ -1212,6 +1231,8 @@ def verify_crypto_timing(rep, dirs):
         # sign precedes verify, for every (node, pkt, flow) signed/verified in THIS run
         sign_t, ver_t = {}, {}
         for r in run_rows:
+            if r["res"] != "ok":
+                continue
             key = (r["node"], r["pkt"], r["flow"])
             if r["op"] == "sign":
                 sign_t[key] = min(sign_t.get(key, r["t"]), r["t"])

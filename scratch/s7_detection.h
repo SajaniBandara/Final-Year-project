@@ -137,7 +137,7 @@ inline bool s7_detect(uint32_t recv_flow_id,
     // OQS_SIG_verify() against the original signature — a real cryptographic
     // pass (the passive copy's content is bit-identical to the original),
     // not a restated ground-truth boolean.
-    bool sig_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
+    bool sig_ok = mldsa87_verify_copy_content(prev_sender, packet_id, base_flow_id, /*fabricated=*/false);
     if (!sig_ok) return false;
 
     // Conjunction 3b: NoFM_d' = ∄ FlowMod(r): dst=d' — ADDED 2026-07-20, then
@@ -186,7 +186,7 @@ inline bool s7_detect(uint32_t recv_flow_id,
     // legitimate recipient's context via stark_update_meta(), never the
     // eavesdropper's) and why calling the pure comparison function directly,
     // with THIS eavesdropper's own current_hop, is safe and correct.
-    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id, base_flow_id);
 
     cout << "[S7] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender

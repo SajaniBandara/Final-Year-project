@@ -121706,7 +121706,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
 					crypto_log_event("verify", prev_sender, packet_ID, fid, _t_verify, sig_ok);
 					auto _t_hop = crypto_log_start();
-					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID, fid);
 					crypto_log_event("stark_hop", prev_sender, packet_ID, fid, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
@@ -121743,11 +121743,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// already returns false for overheard packets (wrong next_hop in digest),
 					// so gate the STARK counters on sig_ok to avoid broadcast noise.
 					if (sig_ok) {
-						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+						stark_update_meta(prev_sender, packet_ID, fid, timing_ok, hop_ok);
 						// β_w NFA alert: valid sig but delay exceeded S2 threshold
 						if (t_fwd_claimed > 0.0 && !timing_ok) {
 							double t_fwd = Now().GetSeconds() - t_fwd_claimed_anchored;
-							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
+							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, fid, t_fwd);
 						}
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
 						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
@@ -121774,7 +121774,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					if ((present_active_hf_attack || present_passive_hf_attack) &&
 					    witness_check_duplication(current_hop, pkt_hash, destination)) {
 						witness_submit_duplication_alert(current_hop, _w_prev,
-						                                 packet_ID, destination, current_hop);
+						                                 packet_ID, fid, destination, current_hop);
 					}
 					check_msg_duplication(pkt_hash, destination);
 					volume_record_delivery(destination);
