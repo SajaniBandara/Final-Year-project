@@ -19,7 +19,7 @@ per machine/run):
     python realtime_detect.py \
         --model    ../results/routing_attack3/lgbm_detector.pkl \
         --metrics  ../results/routing_attack3/metrics.json \
-        --stream   /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/backup/tcam_snapshots_attack3.csv \
+        --stream   /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/backup/tcam_snapshots_attack3.csv \
         --attack_start_time 10 \
         --output   sfto_results_realtime_attack3/
 
@@ -27,7 +27,7 @@ per machine/run):
     python realtime_detect.py \
         --model    ../results/routing_attack3/lgbm_detector.pkl \
         --metrics  ../results/routing_attack3/metrics.json \
-        --stream   /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_baseline.csv \
+        --stream   /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_baseline.csv \
         --attack_start_time 999999 \
         --output   sfto_results_realtime_baseline/
 """
