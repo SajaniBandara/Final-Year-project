@@ -1,7 +1,26 @@
+import argparse
 import gurobipy as gp
 from gurobipy import GRB
 import csv
 import time
+
+# 2026-07-25: --tag added so concurrent attack runs (each with its own
+# g_sim_tag, e.g. _V4_pct100_s1) don't race on a single shared file. Uses
+# a "_subseq" marker (distinct from optimization_lifetime.py's own
+# "optimization_link_lifetime_data"/"link_lifetime_solution" basenames) so
+# this script's I/O can never collide with the OTHER, already-tagged
+# optimize_link_lifetime()/optimization_lifetime.py pipeline that
+# read_lifetime_from_csv() actually consumes -- reusing those exact
+# basenames here would create a NEW intra-process collision between the
+# two scripts. See routing.cc optimize_subsequent()/optimize_first_time().
+parser = argparse.ArgumentParser()
+parser.add_argument('--tag', default='', help='Run tag appended to CSV filenames')
+args = parser.parse_args()
+TAG = args.tag
+
+SCRATCH    = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/"
+INPUT_CSV  = SCRATCH + "optimization_link_lifetime_data_subseq" + TAG + ".csv"
+OUTPUT_CSV = SCRATCH + "link_lifetime_solution_subseq"          + TAG + ".csv"
 
 STATIONARY_LIFETIME = 100.0   # sentinel for nodes with zero relative motion
 EPSILON = 1e-9                # threshold for "effectively zero" velocity/accel
@@ -19,7 +38,7 @@ try:
     mobility_scenario = 1
     d_max = 270
 
-    with open("/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",
+    with open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_link_lifetime_data.csv",
               'r', encoding='UTF8') as csvfile:
         csvreader = csv.reader(csvfile, delimiter=',', quotechar='"',
                                quoting=csv.QUOTE_MINIMAL)
@@ -127,7 +146,7 @@ try:
                 lifetime.append(STATIONARY_LIFETIME)
 
     # ── Write solution CSV ────────────────────────────────────────────────────
-    with open("/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",
+    with open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/link_lifetime_solution.csv",
               'w', encoding='UTF8') as csvfile:
         writer = csv.writer(csvfile, delimiter=',', quotechar='"',
                             quoting=csv.QUOTE_MINIMAL)

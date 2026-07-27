@@ -296,7 +296,9 @@ inline LRADRSUFlags lrad_rsu(
     // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
     // s2_detect_packet() internally evaluates both the delay threshold AND
     // the STARK timing proof, covering the full eq:stark_delay_verify check.
-    flags.flag_S2f = s2_detect_packet(prev_sender, t_now,
+    // g_disable_s1_s2: diagnostic-only skip, see crypto_layer.h declaration.
+    flags.flag_S2f = g_disable_s1_s2 ? false :
+                      s2_detect_packet(prev_sender, t_now,
                                        is_safety_critical_flow[fid],
                                        rsu, pkt_id, fid);
 
@@ -514,7 +516,7 @@ inline LRADOBUFlags lrad_obu(
     // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────
     // Reads the associated RSU's existing EWMA baseline/variance state
     // directly — simulation shortcut documented in the LRAD plan.
-    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
+    if (!g_disable_s1_s2 && assoc_rsu_local_idx < (uint32_t)N_RSUs) {
         flags.flag_S1 = s1_detect_packet(
             assoc_rsu_local_idx, vehicle, delta_p, is_high_priority,
             // sender_node_id → fed into record_detection_event. Must be the
@@ -534,7 +536,7 @@ inline LRADOBUFlags lrad_obu(
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
     // Tag was stamped by the SENDER (prev_sender) not by the receiving vehicle.
-    flags.flag_S2p = lrad_s2_partial_check(prev_sender, pkt_id, t_now);
+    flags.flag_S2p = g_disable_s1_s2 ? false : lrad_s2_partial_check(prev_sender, pkt_id, t_now);
 
     // ── S3 / S4: TCAM flooding / injection (lightweight snapshot) ───────────
     uint32_t assoc_rsu_node_id = UINT32_MAX; // sentinel: no RSU in range

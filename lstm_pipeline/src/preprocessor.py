@@ -13,7 +13,8 @@ import pandas as pd
 from pathlib import Path
 
 FEATURES   = ["delta_t", "lambda_PI", "U_TCAM",
-              "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar"]
+              "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
+              "d_div", "a_tp", "r_anom"]
 WINDOW     = 10      # 10-second sliding window (1 Hz cycles)
 STRIDE     = 5       # 5-second stride = 50% overlap (spec §3)
 TRAIN_FRAC = 0.70
@@ -156,14 +157,24 @@ def main(args):
     # rule-based S1/S3 thresholds. delta_t carries the per-RSU signal for the
     # attacks the LSTM can see via timing (A1/A2); A3/A4 are excluded (label
     # fix pending). A5-A8 (hidden forwarding) perturb no delta_t signal, so
-    # they use zkp_delay_fail/zkp_hop_fail instead (see HF_VARIANTS comment
-    # above) — these are still ONLY windowing/ground-truth criteria, not new
-    # model features; eq:lstm_input is unchanged.
+    # they use zkp_delay_fail/zkp_hop_fail OR r_anom instead (see HF_VARIANTS
+    # comment above) — these are still ONLY windowing/ground-truth criteria,
+    # separate from the model's own input features (FEATURES above).
+    #
+    # r_anom added 2026-07-26: the baseline-controlled validation (benign
+    # A0 run vs. each HF attack run, same cycles) showed zkp_hop_fail alone
+    # only flags 11-29% of genuinely attack-active RSU-cycles across A5-A8,
+    # while r_anom>0 was clean and unambiguous in every variant (baseline
+    # r_anom exactly 0 at every cycle, no exceptions). Without this, windows
+    # where r_anom clearly shows an attack but zkp_hop_fail happens to be 0
+    # would be mislabeled benign, contaminating training the same way the
+    # original delta_t-only criterion did for A5-A8 before that fix.
     benign_delta = df.loc[df["attack_v"] == BENIGN_V, "delta_t"]
     spike_thr = float(benign_delta.quantile(SPIKE_QUANTILE))
     delta_spike = df["delta_t"] > spike_thr
     zkp_spike   = df["attack_v"].isin(HF_VARIANTS) & (
-                      (df["zkp_delay_fail"] > 0) | (df["zkp_hop_fail"] > 0))
+                      (df["zkp_delay_fail"] > 0) | (df["zkp_hop_fail"] > 0)
+                      | (df["r_anom"] > 0))
     df["is_spike"] = (delta_spike | zkp_spike).astype(np.int8)
     n_spike_atk = int(df.loc[df["attack_v"] != BENIGN_V, "is_spike"].sum())
     n_atk_rows  = int((df["attack_v"] != BENIGN_V).sum())
