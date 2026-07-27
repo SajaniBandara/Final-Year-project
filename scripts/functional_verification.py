@@ -77,13 +77,13 @@ vm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(vm)
 
 # Result directories searched when --results-dir is not given.  These mirror
-# run_rule_based_sweep.py's NS3_DIR (~/ns3_g13/...); the pre-migration
-# ~/ns3_g13 tree is deliberately NOT a default -- pass it with --results-dir if
+# run_rule_based_sweep.py's NS3_DIR (~/ns3_g13_apsari/...); the pre-migration
+# ~/ns3_g13_apsari tree is deliberately NOT a default -- pass it with --results-dir if
 # you need to inspect those older runs.
 DEFAULT_RESULTS = [
-    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"),
-    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing_test_runs_1"),
-    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing_test_runs/results_routing"),
+    os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"),
+    os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing_test_runs_1"),
+    os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing_test_runs/results_routing"),
 ]
 
 
