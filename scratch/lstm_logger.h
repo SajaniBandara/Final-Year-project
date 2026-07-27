@@ -53,6 +53,10 @@
 // must already exist); 0/0 otherwise, including during the per-RSU
 // LSTM_WINDOW-cycle bootstrap before the sliding window first fills. See
 // lstm_inference.h and PENDING_FIXES.md Fix 17 for the live inference path.
+// `d_lstm` (as flag_LSTM) is also read live by lrad.h and OR'd into D_RSU —
+// these columns are not just an offline-training export, they mirror what
+// actually drove the live detection decision that cycle (see
+// docs/LSTM_LIVE_INTEGRATION_STATUS.md, 2026-07-27).
 //
 // Inclusion rule (same as s1_detection.h):
 //   Include inside routing.cc AFTER all global variable declarations,
@@ -559,12 +563,10 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     // Once the window has LSTM_WINDOW entries (bootstrap complete, main.tex
     // §5039's "initial 10s window"), runs the forward pass every cycle
     // ("continuous re-evaluation... buffer shifts by one step each 1s
-    // cycle"). Deliberately LOGGING-ONLY in this pass — does NOT feed
-    // D_LSTM into is_detected_node[]/mitigation/quarantine. Wiring D_LSTM
-    // into the live detection/response path is a separate, much bigger
-    // integration decision (it would change TP/FP/mitigation-latency for
-    // every existing rule-based result) — flagged in PENDING_FIXES.md
-    // Fix 17, not silently done here.
+    // cycle"). g_lstm_last_dlstm[]/g_lstm_last_score[] set here ARE read
+    // live by lrad.h (flag_LSTM, OR'd into D_RSU per alg:lrad_rsu) — this
+    // is not logging-only (see docs/LSTM_LIVE_INTEGRATION_STATUS.md,
+    // 2026-07-27, correcting this comment's previous claim otherwise).
     if (do_inference)
     {
         std::vector<float> raw_feat = {

@@ -365,18 +365,19 @@ inline LRADRSUFlags lrad_rsu(
         // detection, so it must be recorded here or it never reaches the
         // TP/FP confusion-matrix counters (is_detected_node[][], read by
         // write_security_metrics_csv()'s cur_DR/cur_FPR/cur_MCC every
-        // cycle) — the exact gap that made D_LSTM "logging-only" before
-        // this change. Attributed to prev_sender, matching S5-S8's own
+        // cycle). Attributed to prev_sender, matching S5-S8's own
         // attribution (same variable, no separate suspect concept exists
-        // for a per-RSU rather than per-packet signal) — a judgment call;
-        // main.tex's plane-based attribution (DEV_MERGE_SPEC_CHANGES.md
-        // #11, c_atk vs v_atk routing) is not yet implemented, so this is
-        // provisional pending that work. bc_write_detection_event() is
-        // deliberately NOT called for flag_LSTM: it hard-rejects
-        // signal_idx outside [1,8] (bc_blockchain_helper.h) and signal 9
-        // (LSTM) hasn't been added to that range — blockchain audit-trail
-        // logging for LSTM-attributed detections is deferred, not silently
-        // dropped by oversight.
+        // for a per-RSU rather than per-packet signal). This is the
+        // spec-correct attribution, not a placeholder: main.tex:2579-2581's
+        // composite-decision Else branch literally reads "Data-plane or
+        // LSTM: attacker is vehicle/RSU" — the paper itself buckets
+        // LSTM-only detections into the same data-plane (v/prev_sender)
+        // attribution path used here, not the control-plane c_atk path
+        // used by S3/S5/S7 (DEV_MERGE_SPEC_CHANGES.md #11's restructure is
+        // about THAT path and doesn't add scope for LSTM). signal 9 (LSTM)
+        // is a valid bc_write_detection_event() signal_idx as of
+        // 2026-07-27 (see docs/LSTM_LIVE_INTEGRATION_STATUS.md) so the
+        // blockchain audit trail now covers LSTM detections too.
         if (flags.flag_LSTM &&
             active_attack_variant >= 0 &&
             active_attack_variant < NUM_ATTACK_VARIANTS &&
@@ -385,6 +386,7 @@ inline LRADRSUFlags lrad_rsu(
         {
             record_detection_event(active_attack_variant, prev_sender);
         }
+        if (flags.flag_LSTM) bc_write_detection_event(rsu, prev_sender, 9, t_now);
         if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);
     }
 

@@ -490,7 +490,10 @@ inline void bc_write_detection_event(uint32_t rsu_idx, uint32_t suspect_node,
                                       int signal_idx, double ts)
 {
     if (rsu_idx >= (uint32_t)total_size) return;
-    if (signal_idx < 1 || signal_idx > 8) return;
+    // 9 = flag_LSTM (D_LSTM^(k), eq:lstm_detection) — added 2026-07-27 so
+    // LSTM-triggered detections get the same blockchain audit trail as
+    // S1-S8 (see docs/LSTM_LIVE_INTEGRATION_STATUS.md).
+    if (signal_idx < 1 || signal_idx > 9) return;
     if (!g_node_keys[rsu_idx].keys_generated) mldsa87_keygen(rsu_idx);
     OQS_SIG* oqs = get_oqs_ctx();
     if (!oqs) return;

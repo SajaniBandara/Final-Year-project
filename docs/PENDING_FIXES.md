@@ -1799,6 +1799,103 @@ yet estimated.
 
 ---
 
+## Fix 22 — Correction: Fix 17's "not yet done: wiring D_LSTM into the live
+detection path" is stale; that wiring already happened (found 2026-07-27,
+docs-only correction)
+
+A later re-audit against `main.tex`'s `alg:lrad_rsu` found that Fix 17's
+"Not yet done" bullet ("wiring `D_LSTM` into the live detection/mitigation/
+response path... flagged above, deliberate") is **no longer true** and was
+misleading a fresh read of this file (including an LLM assistant summarizing
+LSTM integration status, which repeated the stale claim verbatim before this
+was caught). The actual wiring was done in a later change (`docs/
+DEV_MERGE_SPEC_CHANGES.md` item #10, "D_RSU composite — LSTM formally
+integrated"): `scratch/lrad.h` computes `flag_LSTM = g_lstm_last_dlstm[...]`
+and ORs it into `D_RSU` (`lrad.h:314-328`), and calls
+`record_detection_event()` for `flag_LSTM`-only detections so it reaches the
+live TP/FP/MCC counters. That commit never circled back to update Fix 17's
+text or `lstm_logger.h`'s header comments, which is the actual bug here —
+a documentation staleness bug, not a code bug.
+
+**Also corrected in the same pass** (see `docs/
+LSTM_LIVE_INTEGRATION_STATUS.md` for full detail):
+- `bc_write_detection_event()` (`bc_blockchain_helper.h`) hard-rejected
+  `signal_idx` outside `[1,8]`, so LSTM detections got no blockchain audit
+  trail entry unlike every other signal. Extended to `[1,9]`, signal 9 =
+  LSTM; `lrad.h` now calls it for `flag_LSTM`.
+- `lrad.h`'s comment calling LSTM's attribution "provisional pending [item]
+  #11" was overcautious — `main.tex:2579-2581` literally buckets LSTM-only
+  detections into the same data-plane attribution path already implemented,
+  independent of item #11's (real, separate) control-plane restructure for
+  S3/S5/S7. Comment corrected, no behavior change.
+- `lstm_logger.h`'s "Deliberately LOGGING-ONLY" comments corrected to
+  reflect that `g_lstm_last_dlstm`/`g_lstm_last_score` are read live by
+  `lrad.h`.
+
+**Still accurate from Fix 17**: `lstm_pipeline/src/preprocessor.py` still
+does not consume the `escalated`/`lstm_anomaly_score`/`d_lstm` CSV columns —
+that part of the "not yet done" bullet was correct and remains open.
+
+---
+
+## Fix 23 — `lstm_weights_cpp.bin`/`validation_case*.bin` are stale: still the
+old 7-feature model, never retrained after the 10-feature (`D_div`/`A_tp`/
+`R_anom`) expansion (found 2026-07-27, NOT YET FIXED — needs HPC)
+
+The "N8" commit (`ca5c6f2`) extended the federated LSTM input from 7 to 10
+features (`D_div`, `A_tp`, `R_anom` — added specifically to fix weak Hidden
+Forwarding/A5-A8 detection, ~0.2 MCC baseline) and updated `lstm_model.py`,
+`preprocessor.py`, and `lstm_logger.h` (which now builds and normalizes a
+10-value `raw_feat` vector every cycle, live). **But the checked-in trained
+artifacts were never regenerated against the retrained 10-feature model.**
+
+**Confirmed empirically, locally, no HPC/torch needed**: `scratch/
+lstm_inference_test.cpp` is deliberately dependency-free (see its own header
+comment), so it was compiled directly with the MinGW `g++` already present on
+this machine (`g++ -O2 -std=c++17 lstm_inference_test.cpp -o lstm_test.exe`)
+and run against the committed `lstm_pipeline/lstm_weights_cpp.bin` +
+`validation_case.bin`/`validation_case2.bin`:
+
+```
+Loaded weights: n_features=7 hidden1=64 hidden2=32 n_rsus_theta=64 global_theta=0.477884
+...
+PASS (tolerance=1e-003)
+```
+
+`n_features=7` — confirming the weight file's header (`export_weights_cpp.py`'s
+format) still encodes the OLD 7-feature architecture. Both validation cases
+are the same stale format (same byte size, same result). The forward-pass
+math itself is still numerically exact vs. PyTorch (both PASS, diffs ~1e-7)
+— `lstm_inference.h` is not the problem; the exported artifact is stale.
+
+**Live-simulation consequence**: `lstm_logger.h`'s `lstm_normalize_features()`
+loops `min(raw.size(), feat_mu.size())` and `lstm_layer_forward()`'s `enc1`
+only reads `input_size` (=7, from the stale file) columns of its input — so
+right now, with `--enable_lstm_inference=1`, the live LSTM silently ignores
+`D_div`/`A_tp`/`R_anom` on every single inference call. The exact features
+the N8 work added to fix HF detection are computed, normalized into
+`norm_feat`, and then never read by the model. No crash, no error — just a
+silent no-op on the new columns.
+
+**Why not fixed now**: retraining needs `torch` (not installed in any local
+conda env or venv on this machine — checked `base`/`faceid_env`/`tf_env` and
+two on-disk venvs, none have it) and the 240 run-instance training CSVs
+(`results_routing/lstm_training/RSU_*/*.csv`), which don't exist locally
+either — no `ns-3` install found on this machine, confirming those CSVs only
+exist wherever the NS-3 sweeps actually ran. Matches main.tex's own note
+(~L6355) that HPC resources are required to train the federated LSTM.
+
+**To fix, once HPC access is available**: re-run `local_trainer.py`/
+`fed_aggregator.py` (or the full `pipeline.py`) against 10-feature training
+CSVs, re-run `export_weights_cpp.py` to regenerate `lstm_weights_cpp.bin`,
+and re-run `gen_cpp_validation_case.py` to regenerate both
+`validation_case*.bin` files against the new model. Re-running
+`lstm_inference_test.cpp` locally afterward (no HPC needed for this step)
+would confirm `n_features=10` and re-verify C++/PyTorch parity on the new
+architecture before trusting any live-sim results collected with it.
+
+---
+
 ## Optional / nice-to-have
 
 - **λ_FM benign logging:** add FlowMod-rate to the per-cycle logger so
