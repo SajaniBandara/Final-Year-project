@@ -1400,6 +1400,32 @@ frameworks.
                         after \textsc{BatchVerify} failure; the specific
                         node whose signature fails in the multi-hop chain. \\
                           \hline
+                                                
+                        $D_{div}(v,r,t)$ &
+                        Per-flow destination diversity ratio: number of
+                        distinct destinations receiving traffic from source
+                        $v$ at \ac{RSU} $r$ in window $W$, normalized by
+                        the authorized policy count
+                        (Eq.~\ref{eq:feat_ddiv}); \ac{LSTM} input feature
+                        for hidden forwarding detection. \\
+                        \hline
+                        $A_{tp}(v,r,t)$ &
+                        Per-flow throughput asymmetry: ratio of throughput
+                        reaching the authorized destination to total
+                        attributed throughput from source $v$ at \ac{RSU}
+                        $r$ (Eq.~\ref{eq:feat_atp}); drops below 1 under
+                        active \ac{HF}, rises above 1 under passive
+                        \ac{HF}. \\
+                        \hline
+                        $R_{anom}(r,t)$ &
+                        Reception log anomaly score: rate of distinct packet
+                        hashes received at unauthorized destinations per
+                        unit time, queried from the blockchain receipt log
+                        (Eq.~\ref{eq:feat_ranom}); the only \ac{LSTM} input
+                        feature providing direct signal for passive hidden
+                        forwarding variants S7 and S8. \\
+                          \hline
+
                           $U_{thresh}$ &
                           TCAM utilisation detection threshold for
                           Signature~S4 (Eq.~\ref{eq:rule_s4}); calibrated
@@ -3185,23 +3211,106 @@ Each RSU $r_k$ trains a local LSTM model on its observed packet
 sequences. The input feature vector at timestep $t$ for flow $f$
 is formally defined in Equation~\eqref{eq:lstm_input}:
 \begin{equation}
-\mathbf{x}_t^{(f)} = \left[\delta_t,\, \lambda_{PI,t},\,
-U_{TCAM,t},\, \mathbb{1}[\pi_{delay}=\bot],\,
-\mathbb{1}[\pi_{hop}=\bot],\, \rho_t,\, \bar{v}_t \right]^T
+\mathbf{x}_t^{(f)} = \left[
+\delta_t,\;
+\lambda_{PI,t},\;
+U_{TCAM,t},\;
+\mathbb{1}[\pi_{delay}{=}\bot],\;
+\mathbb{1}[\pi_{hop}{=}\bot],\;
+\rho_t,\;
+\bar{v}_t,\;
+D_{div,t},\;
+A_{tp,t},\;
+R_{anom,t}
+\right]^T
 \label{eq:lstm_input}
 \end{equation}
-As shown in Equation~\eqref{eq:lstm_input}, the feature vector
-combines three network-level observables---the per-hop forwarding
-delay $\delta_t$, the PACKET\_IN flood rate $\lambda_{PI,t}$, and the
-TCAM utilisation $U_{TCAM,t}$---with two novel mobility-cryptographic
-binary indicators encoding ZKP timing compliance failure
-$\mathbb{1}[\pi_{delay}=\bot]$ and hop-legitimacy failure
-$\mathbb{1}[\pi_{hop}=\bot]$, augmented by the current vehicle density
-$\rho_t$ and mean speed $\bar{v}_t$ to provide the LSTM with explicit
-mobility context at each timestep.
-where the ZKP failure indicators $\mathbb{1}[\pi=\bot]$ are novel
-mobility-cryptographic features that encode cryptographic evidence
-of attacks directly into the LSTM input. The hidden state evolves
+
+As given in Equation~\eqref{eq:lstm_input}, the
+10-dimensional feature vector spans three detection
+layers. The first seven features provide
+timing/volume signal for selective time delay
+detection: per-hop delay $\delta_t$,
+\texttt{PACKET\_IN} flood rate $\lambda_{PI,t}$,
+\ac{TCAM} utilisation $U_{TCAM,t}$, \ac{ZKP} timing
+failure $\mathbb{1}[\pi_{delay}{=}\bot]$,
+hop-legitimacy failure $\mathbb{1}[\pi_{hop}{=}\bot]$,
+vehicle density $\rho_t$, and mean speed $\bar{v}_t$.
+The three new features provide dedicated hidden
+forwarding signal: destination diversity ratio
+$D_{div,t}$ (Eq.~\ref{eq:feat_ddiv}), which captures
+traffic arriving at unauthorized destinations;
+throughput asymmetry $A_{tp,t}$
+(Eq.~\ref{eq:feat_atp}), which captures traffic
+diversion away from the authorized path; and
+reception log anomaly score $R_{anom,t}$
+(Eq.~\ref{eq:feat_ranom}), which directly observes
+unauthorized packet receptions via the blockchain
+receipt log and is the only feature providing
+direct signal for passive hidden forwarding variants
+S7 and S8.
+
+The three hidden-forwarding-specific features appended
+to the input vector are defined below. The per-flow
+destination diversity ratio is given in
+Equation~\eqref{eq:feat_ddiv}.
+\begin{equation}
+D_{div}(v,r,t) =
+\frac{\left|\left\{
+d' : H(p) \in \mathcal{R}(d',W),\;
+s_p = v
+\right\}\right|}{|\mathcal{P}(v,\cdot)|}
+\label{eq:feat_ddiv}
+\end{equation}
+As given in Equation~\eqref{eq:feat_ddiv},
+$D_{div}$ measures the number of distinct
+destinations receiving traffic from source vehicle
+$v$ within window $W$, normalized by the number of
+authorized destinations in $v$'s forwarding policy.
+Under benign operation $D_{div}{\approx}1$; under any
+hidden forwarding variant it exceeds 1 because packets
+reach unauthorized destinations. The per-flow
+throughput asymmetry is given in
+Equation~\eqref{eq:feat_atp}.
+\begin{equation}
+A_{tp}(v,r,t) =
+\frac{\lambda_{bytes}(v,d,W)}
+{\lambda_{bytes}(v,\cdot,W)}
+\label{eq:feat_atp}
+\end{equation}
+As given in Equation~\eqref{eq:feat_atp},
+$A_{tp}$ is the ratio of throughput reaching the
+authorized destination $d$ to the total throughput
+attributed to source $v$ at \ac{RSU} $r$. Under
+benign operation $A_{tp}{\approx}1$; under active
+hidden forwarding (S5, S6) it drops below 1 because
+traffic is diverted; under passive hidden forwarding
+(S7, S8) total attributed throughput rises above the
+authorized path capacity. The reception log anomaly
+score is given in Equation~\eqref{eq:feat_ranom}.
+\begin{equation}
+R_{anom}(r,t) =
+\frac{1}{W}\left|\left\{
+H(p) :
+\textsc{BC.QueryReceipt}(H(p),d',W) = 1,\;
+d' \notin \mathcal{P}(s_p, d_p)
+\right\}\right|
+\label{eq:feat_ranom}
+\end{equation}
+As given in Equation~\eqref{eq:feat_ranom},
+$R_{anom}$ counts distinct packet hashes per unit
+time received at unauthorized destinations, queried
+from the blockchain receipt log
+(Eq.~\ref{eq:packet_receipt_log}). Under no attack
+$R_{anom}{=}0$ exactly; under any hidden forwarding
+variant it rises immediately, including passive S7
+and S8 where all cryptographic verifications pass
+and the \ac{ZKP} failure indicators provide no
+signal. $R_{anom}$ is therefore the only feature in
+the input vector that provides direct LSTM signal
+for passive hidden forwarding independently of the
+cryptographic layer.
+The hidden state evolves
 according to Equation\eqref{eq:lstm_hidden}:
 \begin{equation}
 \mathbf{h}_t = \textsc{LSTM}\!\left(\mathbf{x}_t, \mathbf{h}_{t-1};\,
@@ -4737,31 +4846,53 @@ centralisation directly.
 \label{sec:ab3}
 
 \textbf{Component isolated:}
-The two novel binary \ac{ZKP} failure indicators
-$\mathbb{1}[\pi_{delay}{=}\bot]$ and
-$\mathbb{1}[\pi_{hop}{=}\bot]$ in the \ac{LSTM} input
-vector (Eq.~\ref{eq:lstm_input}), which feed cryptographic
-evidence of attacks directly into the detection layer.
+The progressive contribution of three feature groups
+added to the \ac{LSTM} input vector
+(Eq.~\ref{eq:lstm_input}): the two binary \ac{ZKP}
+failure indicators
+$(\mathbb{1}[\pi_{delay}{=}\bot],\,
+\mathbb{1}[\pi_{hop}{=}\bot])$ encoding cryptographic
+evidence from the timing layer, and the three
+hidden-forwarding-specific features
+$(D_{div,t},\, A_{tp,t},\, R_{anom,t})$
+(Eqs.~\ref{eq:feat_ddiv}--\ref{eq:feat_ranom})
+encoding traffic-level forwarding anomalies.
 
 \textbf{Configurations compared:}
 \begin{itemize}
     \item \textbf{AB3-A (5-feature baseline):}
-    Input vector contains $[\delta_t, \lambda_{PI},
-    U_{TCAM}, \rho_t, \bar{v}_t]$ only — no
-    cryptographic feedback.
-    \item \textbf{AB3-B (7-feature proposed):}
-    Full input vector including both \ac{ZKP}
-    failure indicators (Eq.~\ref{eq:lstm_input}).
+    Input vector $[\delta_t, \lambda_{PI},
+    U_{TCAM}, \rho_t, \bar{v}_t]$ only ---
+    no cryptographic or forwarding feedback.
+    \item \textbf{AB3-B (7-feature):}
+    Adds both \ac{ZKP} failure indicators to
+    AB3-A; isolates the cryptographic layer
+    contribution to detection quality.
+    \item \textbf{AB3-C (10-feature proposed):}
+    Full input vector additionally including
+    $D_{div,t}$, $A_{tp,t}$, $R_{anom,t}$;
+    isolates the hidden-forwarding feature
+    contribution, particularly for Variants~7--8
+    where \ac{ZKP} indicators provide no signal.
 \end{itemize}
 
 \textbf{x variable:} Feature configuration
-$\in \{\text{AB3-A}, \text{AB3-B}\}$ (categorical).
+$\in \{\text{AB3-A}, \text{AB3-B},
+\text{AB3-C}\}$ (categorical).
 
-\textbf{y metrics evaluated:} M1 (per-variant MCC,
-particularly for Variants~5--8 where ZKP failures are the
-primary cryptographic signal), M3 (UCR). The improvement
-from AB3-A to AB3-B isolates the contribution of linking
-the cryptographic layer to the learning layer.
+\textbf{y metrics evaluated:} M1 (per-variant
+\ac{MCC}, evaluated separately for S1--S4
+and S5--S8 to show which feature group drives
+improvement in each attack class), M3 (UCR ---
+expected to improve only from AB3-B to AB3-C,
+not from AB3-A to AB3-B, since \ac{ZKP}
+indicators fire only when cryptographic checks
+already catch the attack). The gap between AB3-B
+and AB3-C on S7--S8 directly quantifies the
+contribution of the reception log anomaly score
+$R_{anom,t}$ to passive hidden forwarding
+detection.
+
 
 
 % ----------------------------------------------------------------
@@ -5471,24 +5602,42 @@ that Experiments~1--4 aggregate away. This
 experiment produces no graph — results are
 presented as a table.
 
-\textbf{Setup:} Default settings throughout.
-All 8 attack variants evaluated independently
-in separate simulation runs (one variant active
-at a time) to produce per-variant scores.
+\textbf{Setup:} \textbf{Setup:} Default settings throughout. All 8
+attack variants evaluated independently in separate
+simulation runs (one variant active at a time) to
+produce per-variant scores. For hidden forwarding
+variants (S5--S8), each run reports two system-level
+\ac{FPR} figures: the \textbf{full-system \ac{FPR}}
+including all active signatures (S1--S8 simultaneously
+active as in real deployment), and the
+\textbf{isolated \ac{FPR}} with S1 and S2 disabled.
+This separation is necessary because compromised
+\ac{RSU}s executing active hidden forwarding attacks
+may also satisfy S1/S2 timing conditions due to
+processing overhead from the packet fabrication step,
+causing cross-signature firings. Reporting both
+figures honestly characterises the joint behavior of
+all signatures in deployment while also isolating the
+hidden forwarding detection mechanism's own
+contribution. Baselines B1--B3 are not subject to
+this decomposition since they implement only single
+attack-class detection.
 
-\textbf{Table structure:} One row per attack
-variant S1--S8. Columns: M1 (MCC per variant,
-all frameworks), M2 (TVR — reported for S1--S4
-only; N/A for S5--S8), M3 (UCR — reported for
-S5--S8 only; N/A for S1--S4), M4 ($L_{mit}$,
-all frameworks), M6 ($L_{e2e}$, all frameworks).
-Each baseline (B1--B3) reports values only for
-the attack variants it was designed to address;
-cells are marked \textit{not evaluated} for
-out-of-scope variants, directly exposing the
-coverage gaps that Gap~2 in the literature
-review identified.
-
+\textbf{Table structure:} One row per attack variant
+S1--S8. Columns: M1 (MCC per variant, all
+frameworks), M2 (TVR --- reported for S1--S4 only;
+N/A for S5--S8), M3 (UCR --- reported for S5--S8
+only; N/A for S1--S4), M4 ($L_{mit}$, all
+frameworks), M6 ($L_{e2e}$, all frameworks). For
+S5--S8 rows, the \ac{FPR} column reports both the
+full-system value (bracketed, all signatures active)
+and the isolated value (S1/S2 disabled), formatted
+as \textit{isolated [full-system]}. Each baseline
+reports values only for the attack variants it was
+designed to address; out-of-scope cells are marked
+\textit{not evaluated}, directly exposing the
+coverage gaps that Gap~2 in the literature review
+identified.
 
 
 
@@ -5619,22 +5768,31 @@ $p \geq 66\%$ assigns 3; $p = 100\%$ assigns all 4.
 The Federated LSTM parameters are structured as follows:
 
 \begin{itemize}
-   \item \textbf{Data collection:}
-    Per-packet features
-    $[\delta_t,\, \lambda_{PI,t},\, U_{TCAM,t},\,
-    \mathbb{1}[\pi_{delay}{=}\bot],\,
-    \mathbb{1}[\pi_{hop}{=}\bot],\,
-    \rho_t,\, \bar{v}_t]$
-    (Eq.~\ref{eq:lstm_input}) logged per \ac{RSU}
-    from NS-3 runs across all attack variants and
-    percentages, yielding $6 \times 8 \times 5 = 240$
-    labelled run-instances.
-    $\mathbb{1}[\pi_{delay}{=}\bot]$ and
-    $\mathbb{1}[\pi_{hop}{=}\bot]$ are derived from
-    \ac{STARK} proof verification outcomes
-    (Eqs.~\ref{eq:stark_delay_verify},
-    \ref{eq:stark_hop_verify}) logged by the
-    cryptographic layer during each run.
+  \item \textbf{Data collection:}
+The 10 features defined in
+Eq.~\ref{eq:lstm_input} are logged per \ac{RSU}
+from NS-3 runs across all attack variants and
+percentages, yielding $6 \times 8 \times 5 = 240$
+labelled run-instances.
+$\mathbb{1}[\pi_{delay}{=}\bot]$ and
+$\mathbb{1}[\pi_{hop}{=}\bot]$ are derived from
+\ac{STARK} proof verification outcomes
+(Eqs.~\ref{eq:stark_delay_verify},
+\ref{eq:stark_hop_verify}) logged by the
+cryptographic layer during each run.
+$D_{div,t}$ (Eq.~\ref{eq:feat_ddiv}) is computed
+from per-source per-destination byte counts logged
+at each \ac{RSU}.
+$A_{tp,t}$ (Eq.~\ref{eq:feat_atp}) is computed
+from per-flow directional byte rate logs.
+$R_{anom,t}$ (Eq.~\ref{eq:feat_ranom}) is computed
+from the blockchain receipt log
+(Eq.~\ref{eq:packet_receipt_log}) queried per
+\ac{RSU} at each timestep; it requires blockchain
+read access at the \ac{RSU} during feature
+extraction, which is already part of the \ac{RSU}
+operational model.
+
     \item \textbf{Preprocessing:} Z-score normalisation is applied per RSU using benign-only (0\% attack) statistics across a sliding window of 10\,s with a 5\,s stride.
     \item \textbf{Train/validation/test split:} A 70\% / 15\% / 15\% split is enforced, partitioned by seed and stratified by attack variant and percentage.
     \item \textbf{LSTM architecture:} The model consists of 2 stacked LSTM layers (64 and 32 units respectively) followed by a fully connected sigmoid output layer.

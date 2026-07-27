@@ -2,9 +2,13 @@
 lstm_model.py — MOBIGUARD LSTM autoencoder (eq:lstm_hidden, eq:anomaly_score)
 
 Architecture (§Simulation settings):
-  Encoder : LSTM(7→64) → LSTM(64→32)   — produces latent h at final step
-  Decoder : repeat latent W times → LSTM(32→64) → LSTM(64→7) → Linear(7)
+  Encoder : LSTM(10→64) → LSTM(64→32)   — produces latent h at final step
+  Decoder : repeat latent W times → LSTM(32→64) → LSTM(64→10) → Linear(10)
   Score   : A_t = ||x_t − x̂_t||²₂    (eq:anomaly_score, per time-step mean)
+
+N_FEATURES raised 7->10 2026-07-26: d_div, a_tp, r_anom added to
+eq:lstm_input (preprocessor.py's FEATURES list is the single source of
+truth for column order; this must always match its length).
 """
 
 import hashlib
@@ -12,7 +16,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-N_FEATURES = 7
+N_FEATURES = 10
 HIDDEN1    = 64
 HIDDEN2    = 32
 
