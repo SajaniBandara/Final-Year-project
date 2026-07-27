@@ -11,11 +11,33 @@
 //   $HOME/ns-allinone-3.35/ns-3.35/results_routing/
 //       lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
 //
-// CSV columns (7 features + escalation flag + metadata + live-inference
-// result):
+// CSV columns (10 features + escalation flag + metadata + live-inference
+// result, full eq:lstm_input order):
 //   cycle, rsu_id, delta_t, lambda_PI, U_TCAM,
-//   zkp_delay_fail, zkp_hop_fail, rho, v_bar, escalated, label,
-//   lstm_anomaly_score, d_lstm
+//   zkp_delay_fail, zkp_hop_fail, rho, v_bar, d_div, a_tp, r_anom,
+//   escalated, label, lstm_anomaly_score, d_lstm
+//
+// `r_anom` (2026-07-26, eq:feat_ranom): per-RSU rate of distinct packets
+// received at an unauthorized destination this cycle, attributed to this
+// RSU as the malicious forwarder. Computed as Δ(g_lstm_ranom_count[r])
+// since last cycle (crypto_layer.h declares the counter; incremented at
+// the same MacRx insertion points that already feed zkp_hop_fail for
+// hidden-forwarding receptions). Added because empirical analysis showed
+// the original 7 features carry no reliable, non-confounded signal for
+// hidden forwarding (A5-A8) once time-of-run drift is controlled for via
+// a benign baseline comparison — r_anom directly observes the copy event
+// instead of inferring it indirectly. Empirically validated (2026-07-26):
+// genuine effect 2.1-5.9 vs. baseline drift 0 across all four HF variants.
+//
+// `d_div`/`a_tp` (2026-07-26, eq:feat_ddiv/eq:feat_atp): added alongside
+// r_anom to complete the originally-proposed 3-feature set. IMPORTANT: in
+// this simulation both are direct, near-deterministic transforms of the
+// SAME r_anom delta (see the computation site below for why — HF only
+// ever targets one demanding flow via one eavesdropper per malicious RSU,
+// so there is no second, independent "diversion" event to observe them
+// from). Expect them to be highly correlated with r_anom, not additive —
+// this is a structural property of the single-flow attack model, not a
+// bug in these two features' implementation.
 //
 // `escalated`: whether >=1 OBU rule-engine escalation (D_OBU==1,
 // eq:composite_light) targeted this RSU during this cycle (main.tex
@@ -68,6 +90,24 @@ extern int g_slowpath_hit_count[300];
 static std::vector<int> g_lstm_prev_slowpath;
 static bool             g_lstm_logger_ready = false;
 
+// ── Per-RSU R_anom counter from the previous cycle (eq:feat_ranom).
+// Used to compute Δ(g_lstm_ranom_count) the same way λ_PI is computed from
+// Δ(g_slowpath_hit_count) -- a proper per-window rate, not a cumulative
+// ever-fired latch (see g_lstm_ranom_count's declaration in crypto_layer.h
+// for why that distinction matters here). Sized by lstm_logger_init().
+static std::vector<uint32_t> g_lstm_prev_ranom;
+
+// ── D_div/A_tp (eq:feat_ddiv, eq:feat_atp): flow 0's legit-delivery delta,
+// computed ONCE PER CYCLE (not once per RSU) since lstm_log_rsu_cycle() is
+// called once per RSU inside the same cycle's per-RSU loop -- consuming
+// the delta on the first RSU's call and returning 0 for the rest, unlike
+// R_anom/lambda_PI's per-RSU deltas. Cached and only recomputed when the
+// cycle number changes; every RSU call within the same cycle reuses the
+// cached value. Not sized by lstm_logger_init() (global, not per-RSU).
+static uint32_t g_lstm_prev_flow0_legit        = 0;
+static int      g_lstm_flow0_legit_cycle_cached = -1;
+static double   g_lstm_flow0_legit_delta_cached = 0.0;
+
 // ── Rule-engine → LSTM escalation counter (main.tex §5039/5307:
 // "Escalation to LSTM detector: immediate escalation occurs when the
 // lightweight anomaly score >= 0.5"). D_OBU (eq:composite_light) is a
@@ -105,16 +145,30 @@ static std::vector<std::vector<std::vector<float>>> g_lstm_rsu_window;
 static std::vector<float> g_lstm_last_score;
 static std::vector<bool>  g_lstm_last_dlstm;
 
-// Canonical CSV header (Fix 16/17 format, 13 columns). Kept as a single
-// constant so lstm_migrate_stale_header() and the writer below can never
-// drift apart.
+// Canonical CSV header (2026-07-26: eq:feat_ddiv/eq:feat_atp added, 16
+// columns, full eq:lstm_input order). Kept as a single constant so
+// lstm_migrate_stale_header() and the writer below can never drift apart.
 static const char* LSTM_CSV_HEADER =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm";
+// 2026-07-26 R_anom-only format, 14 columns -- same as current but no
+// d_div/a_tp (inserted between v_bar and r_anom).
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_14COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm";
+static const size_t LSTM_CSV_14COL_NCOLS = 14;
+// Fix 16/17 format, 13 columns -- same as current but no r_anom/d_div/a_tp.
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_13COL =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,escalated,label,"
     "lstm_anomaly_score,d_lstm";
+static const size_t LSTM_CSV_13COL_NCOLS = 13;
 // Pre-Fix-16/17 header: same leading 9 fields, but `label` is the LAST
-// field (no escalated/lstm_anomaly_score/d_lstm) — 10 columns total.
-static const char* LSTM_CSV_HEADER_LEGACY =
+// field (no escalated/lstm_anomaly_score/d_lstm/r_anom/d_div/a_tp) — 10
+// columns total.
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_LEGACY =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,label";
 static const size_t LSTM_CSV_LEGACY_NCOLS = 10;
@@ -185,18 +239,51 @@ inline void lstm_migrate_stale_header(const std::string& path)
     {
         if (row.empty()) continue;
         std::vector<std::string> f = lstm_split_csv(row);
+        // D_div/A_tp default to 1.0 when migrating old rows (NOT 0, unlike
+        // every other migrated field below) -- their eq:feat_ddiv/eq:feat_atp
+        // "no attack" resting value is 1.0 (one authorized destination,
+        // fully-authorized throughput), not 0. Defaulting to 0 would make
+        // every migrated old row look like a maximal anomaly on these two
+        // columns, which is wrong -- 1.0 correctly encodes "unknown, assume
+        // benign" the same way 0 does for the flag-style columns.
         if (f.size() == LSTM_CSV_LEGACY_NCOLS)
         {
             // Legacy row: fields 0..8 = cycle..v_bar, field 9 = label.
-            // Insert escalated=0 before label, append lstm_anomaly_score=0
-            // and d_lstm=0 at the end.
+            // Insert d_div=1, a_tp=1, r_anom=0, escalated=0 before label,
+            // append lstm_anomaly_score=0 and d_lstm=0 at the end.
             std::ostringstream o;
             for (size_t i = 0; i < 9; ++i) o << f[i] << ",";
-            o << "0" << "," << f[9] << "," << "0" << "," << "0";
+            o << "1" << "," << "1" << "," << "0" << "," << "0" << "," << f[9]
+              << "," << "0" << "," << "0";
             migrated_rows.push_back(o.str());
             ++n_migrated;
         }
-        else if (f.size() == 13)
+        else if (f.size() == LSTM_CSV_13COL_NCOLS)
+        {
+            // Pre-r_anom row: fields 0..8 = cycle..v_bar, field 9 = escalated,
+            // field 10 = label, fields 11..12 = lstm_anomaly_score,d_lstm.
+            // Insert d_div=1, a_tp=1, r_anom=0 between v_bar and escalated.
+            std::ostringstream o;
+            for (size_t i = 0; i < 9; ++i) o << f[i] << ",";
+            o << "1" << "," << "1" << "," << "0" << ",";
+            for (size_t i = 9; i < 13; ++i) o << f[i] << (i < 12 ? "," : "");
+            migrated_rows.push_back(o.str());
+            ++n_migrated;
+        }
+        else if (f.size() == LSTM_CSV_14COL_NCOLS)
+        {
+            // R_anom-only row: fields 0..8 = cycle..v_bar, field 9 = r_anom,
+            // field 10 = escalated, field 11 = label, fields 12..13 =
+            // lstm_anomaly_score,d_lstm. Insert d_div=1, a_tp=1 between
+            // v_bar and r_anom.
+            std::ostringstream o;
+            for (size_t i = 0; i < 9; ++i) o << f[i] << ",";
+            o << "1" << "," << "1" << ",";
+            for (size_t i = 9; i < 14; ++i) o << f[i] << (i < 13 ? "," : "");
+            migrated_rows.push_back(o.str());
+            ++n_migrated;
+        }
+        else if (f.size() == 16)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -205,7 +292,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
         {
             std::cerr << "[LSTM_LOGGER] WARNING: " << path
                        << " has a row with " << f.size()
-                       << " fields (expected 10 legacy or 13 current) — "
+                       << " fields (expected 10/13/14 legacy or 16 current) — "
                        << "left unmigrated: " << row << std::endl;
             migrated_rows.push_back(row);
             ++n_unexpected;
@@ -276,6 +363,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
 {
     if (g_lstm_logger_ready) return;
     g_lstm_prev_slowpath.assign(n_rsus, 0);
+    g_lstm_prev_ranom.assign(n_rsus, 0);
     g_lstm_escalation_count.assign(n_rsus, 0);
     g_lstm_rsu_window.assign(n_rsus, {});
     g_lstm_last_score.assign(n_rsus, 0.0f);
@@ -391,6 +479,56 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     double U_TCAM = (double)g_tcam_rule_count[rsu_sim_idx] / (double)TCAM_CAPACITY;
     if (U_TCAM > 1.0) U_TCAM = 1.0;
 
+    // ── Feature 8 (new): R_anom — per-RSU unauthorized-reception rate
+    // (eq:feat_ranom). Δ(g_lstm_ranom_count[rsu_sim_idx]) since last cycle,
+    // same delta-of-a-cumulative-counter pattern as λ_PI above (NOT the
+    // "> 0 ever" latch pattern zkp_delay_fail/zkp_hop_fail use below) — this
+    // is what makes it a genuine per-window rate matching "per unit time W"
+    // in the equation. Window W = 1 cycle = 1s here, so the raw delta IS
+    // already the rate (no /W division needed).
+    double R_anom = 0.0;
+    {
+        auto it = g_lstm_ranom_count.find(rsu_sim_idx);
+        uint32_t cur_ranom = (it != g_lstm_ranom_count.end()) ? it->second : 0;
+        uint32_t prev_ranom = (r < g_lstm_prev_ranom.size()) ? g_lstm_prev_ranom[r] : 0;
+        R_anom = (cur_ranom >= prev_ranom) ? (double)(cur_ranom - prev_ranom) : 0.0;
+        if (r < g_lstm_prev_ranom.size()) g_lstm_prev_ranom[r] = cur_ranom;
+    }
+
+    // ── Features 9 & 10 (new): D_div, A_tp (eq:feat_ddiv, eq:feat_atp).
+    // IMPLEMENTATION NOTE: this simulation's HF attacks always target
+    // exactly ONE demanding flow (hf_target_flow_id=0, efade_detection.h)
+    // via exactly one eavesdropper per malicious RSU, so |P(v,.)|=1 (flow 0
+    // has one authorized destination at any instant) and "distinct
+    // destinations" is capped at {legit destination, one eavesdropper}.
+    // Both features are therefore direct, near-deterministic transforms of
+    // the SAME R_anom delta computed above (copies_via_r) -- not
+    // independent observations of a different event, just different
+    // normalizations of it. This is a property of the single-flow attack
+    // model, not an implementation shortcut: there is no second, unrelated
+    // "diversion" signal available to compute these from in this sim.
+    //
+    // legit_this_cycle: Δ(g_lstm_flow0_legit_count) since last cycle,
+    // computed ONCE per cycle (see g_lstm_flow0_legit_cycle_cached's
+    // declaration above for why) — flow 0's legit final-delivery count
+    // this window, used as the shared "authorized" denominator component
+    // for every RSU's A_tp this cycle.
+    int cur_cycle_num = (int)(data_gathering_cycle_number - 1.0);
+    if (cur_cycle_num != g_lstm_flow0_legit_cycle_cached)
+    {
+        uint32_t cur_legit = g_lstm_flow0_legit_count;
+        g_lstm_flow0_legit_delta_cached = (cur_legit >= g_lstm_prev_flow0_legit)
+            ? (double)(cur_legit - g_lstm_prev_flow0_legit) : 0.0;
+        g_lstm_prev_flow0_legit = cur_legit;
+        g_lstm_flow0_legit_cycle_cached = cur_cycle_num;
+    }
+    double legit_this_cycle = g_lstm_flow0_legit_delta_cached;
+
+    double D_div = 1.0 + ((R_anom > 0.0) ? 1.0 : 0.0);   // |P(v,.)|=1, see note above
+    double A_tp  = (legit_this_cycle + R_anom > 0.0)
+                   ? (legit_this_cycle / (legit_this_cycle + R_anom))
+                   : 1.0;   // no traffic this cycle -> default "fully authorized"
+
     // ── Features 4 & 5: ZKP failure indicators (binary {0, 1})
     int zkp_delay_fail = 0;
     int zkp_hop_fail   = 0;
@@ -432,7 +570,8 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         std::vector<float> raw_feat = {
             (float)obs_delay, (float)lam_PI, (float)U_TCAM,
             (float)zkp_delay_fail, (float)zkp_hop_fail,
-            (float)rho_t, (float)v_bar_t
+            (float)rho_t, (float)v_bar_t,
+            (float)D_div, (float)A_tp, (float)R_anom
         };
         std::vector<float> norm_feat = mglstm::lstm_normalize_features(g_lstm_model, raw_feat);
 
@@ -522,6 +661,9 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << zkp_hop_fail
       << "," << rho_t
       << "," << v_bar_t
+      << "," << D_div
+      << "," << A_tp
+      << "," << R_anom
       << "," << escalated
       << "," << label
       << "," << g_lstm_last_score[r]

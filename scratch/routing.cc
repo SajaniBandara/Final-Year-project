@@ -111,7 +111,19 @@ const int total_size = 268; // must be >= N_Vehicles + N_RSUs + N_Controllers.
 uint32_t N_RSUs = 64;
 uint32_t N_Vehicles = 200;
 
-const int flows = 1;
+// 2026-07-25: raised 1 -> 4 to test whether multiple concurrent demanding
+// flows give the D_div/A_tp hidden-forwarding LSTM features real per-RSU
+// coverage (previously only the single flow-0 path ever had a live source
+// vehicle to compute them for; see LSTM_HF_DR_IMPROVEMENT_PLAN.md and the
+// flows-topology discussion). hf_target_flow_id (efade_detection.h) still
+// hardcodes flow 0 as the only HF-attacked flow -- flows 1-3 are additional
+// BENIGN concurrent traffic, used only to populate D_div/A_tp with genuine
+// (non-default) values on more RSUs per cycle. Known side effect: flips
+// zeta 14->18 in compute_path_delay()/compute_link_delay() call sites
+// (routing.cc, the four `if (flows == 1)` branches), which shifts the
+// delta_t/delay baseline -- any delay-threshold calibration or MOBIGUARD
+// baseline collected at flows=1 is not directly comparable after this change.
+const int flows = 4;
 
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
@@ -121548,6 +121560,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     // forwarder), which is the is_malicious_node-labelled RSU.
                     g_lstm_stark_counts[prev_sender].second++;
                     g_lstm_pkt_counts[prev_sender]++;
+                    // R_anom (eq:feat_ranom): this unauthorized reception is
+                    // exactly the "H(p) received at unauthorized destination"
+                    // event the equation counts -- attribute it to the
+                    // malicious forwarder, same as the hop-fail counter above.
+                    g_lstm_ranom_count[prev_sender]++;
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -121608,6 +121625,8 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         // for detecting A5/A6 via the federated LSTM.
                         g_lstm_stark_counts[prev_sender].second++;
                         g_lstm_pkt_counts[prev_sender]++;
+                        // R_anom (eq:feat_ranom) -- see passive-HF block above.
+                        g_lstm_ranom_count[prev_sender]++;
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {
@@ -121631,6 +121650,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 				// eFADE: count this as one inbound receive event at this node
 				fade_received_count[fid][current_hop]++;
+
+				// D_div/A_tp (eq:feat_ddiv, eq:feat_atp): flow 0's legit
+				// final-destination delivery event. See g_lstm_flow0_legit_count's
+				// declaration (crypto_layer.h) for why this dedicated counter
+				// exists instead of reusing fade_received_count directly.
+				if (fid == 0 && current_hop == destination)
+					g_lstm_flow0_legit_count++;
 
 				// S6: log this delivery for cross-destination duplication detection.
 				// Uses (fid & 0xFFFFu) as key so the legitimate copy (clean fid) and

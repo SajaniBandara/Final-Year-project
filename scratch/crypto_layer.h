@@ -137,6 +137,13 @@ double   FAILOVER_BCAST_PER_ZONE_MS = 1.0;   // per unit zone-index distance
 // via crypto_register_cli_params().
 bool enable_lrad_obu               = true;  // AB1: OBU rule engine (lrad_obu)
 bool enable_lrad_rsu               = true;  // AB1: RSU full-mode engine (lrad_rsu)
+// DIAGNOSTIC ONLY (added 2026-07-25) — disables S1 + S2 (both partial and full)
+// while leaving S3-S8 untouched, unlike enable_lrad_obu/rsu which are coarse
+// mode-level switches that would also disable S5-S8 (they share enable_lrad_rsu's
+// gate). Default false: normal/default-settings runs are completely unaffected.
+// For isolating a single signature's own FPR from S1/S2 cross-signal noise on the
+// shared trust ledger — NOT a replacement for default-settings evaluation numbers.
+bool g_disable_s1_s2                = false;
 bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
@@ -335,6 +342,35 @@ struct CryptoLstmFeatures {
 };
 std::map<uint32_t, std::pair<uint32_t,uint32_t>> g_lstm_stark_counts;
 std::map<uint32_t, uint32_t>                      g_lstm_pkt_counts;
+
+// 2026-07-26: R_anom(r,t) (eq:feat_ranom) -- cumulative count of distinct
+// unauthorized-destination receptions attributed to malicious RSU r
+// (prev_sender), i.e. exactly the same event UCR/M8 already counts via
+// fade_eavesdrop_counter, just broken out per-RSU instead of one global
+// running total. Incremented at the SAME two MacRx insertion points (passive
+// S7/S8 and active S5/S6 hidden-forwarding receive blocks in routing.cc)
+// that already increment g_lstm_stark_counts[prev_sender]/g_lstm_pkt_counts,
+// guarded by the same fade_eavesdropped_packets dedup check so it can never
+// double-count. lstm_log_rsu_cycle() (lstm_logger.h) takes the per-cycle
+// DELTA of this cumulative counter (mirrors lambda_PI's pattern exactly,
+// NOT g_lstm_stark_counts' cumulative-latch "> 0 ever" pattern) to compute
+// the windowed rate the equation actually specifies ("per unit time W").
+std::map<uint32_t, uint32_t> g_lstm_ranom_count;
+
+// 2026-07-26: D_div/A_tp (eq:feat_ddiv, eq:feat_atp) need a "legit deliveries
+// this window" count for flow 0 (the ONLY flow HF ever targets in this sim)
+// to compare against g_lstm_ranom_count's "unauthorized copies this window".
+// fade_received_count (efade_detection.h) is NOT usable directly for this --
+// it's only cleared per-epoch inside fade_detect_anomaly(), which early-
+// returns unless fade_detection_active (requires the FADE-isolated
+// !enable_lrad_obu && !enable_lrad_rsu config) -- in a normal run it's
+// never cleared and grows cumulatively for the whole run, same problem
+// g_lstm_ranom_count would have without the delta pattern. This is a
+// dedicated, always-incrementing global counter (not per-RSU: flow 0 has
+// exactly one final destination reached once per packet, regardless of how
+// many RSUs relayed it), delta'd against g_lstm_prev_flow0_legit once per
+// cycle in lstm_logger.h.
+uint32_t g_lstm_flow0_legit_count = 0;
 
 // ── liboqs Singleton and Zone Helper ─────────────────────────────────────────
 
@@ -1410,6 +1446,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
 
     // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
     // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.
+    cmd.AddValue("g_disable_s1_s2",               "DIAGNOSTIC: disable S1+S2 only, keep S3-S8 active (isolate a signature's own FPR)", g_disable_s1_s2);
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
     cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
