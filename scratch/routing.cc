@@ -118562,7 +118562,7 @@ void transmit_delta_values()
 void optimize_subsequent()
 {
 	//calculate entropy of the network and compare with threshold.
-	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
 	// 2026-07-25: --tag=g_sim_tag added so parallel attack runs don't race
 	// on optimization.py's I/O files (see optimization.py's own comment;
 	// tagged basenames there are "_subseq"-suffixed, distinct from the
@@ -118592,7 +118592,7 @@ void optimize_link_lifetime()
 
 void optimize_first_time()
 {
-	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
+	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
 	// 2026-07-25: --tag=g_sim_tag -- see optimize_subsequent() above.
     	std::string command = "python3 ";
     	command += filename;
