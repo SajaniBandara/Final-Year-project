@@ -116492,18 +116492,28 @@ void update_stable(uint32_t flow_id, uint32_t current_hop)
 			
 			else
 			{
-				if((proposed_algo2_output_inst[flow_id].met[i] == false)||(proposed_algo2_output_inst[flow_id].Y[i] >= ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
+				// Was `Y[i] >= Y[current_hop]+1`: re-triggered recursion on *ties*,
+				// not just improvements, with met[i] only ever marked for the node
+				// currently being entered (not for i before recursing) -- so nodes
+				// got re-explored without bound on dense graphs (combinatorial walk
+				// enumeration instead of shortest-path relaxation). Strict `>` makes
+				// this a standard monotonic Bellman-Ford-style relaxation (Y only
+				// decreases, each node's best Y is set at most once per improvement),
+				// and marking met[i] before recursing prevents re-scheduling the same
+				// node from multiple parents in one pass.
+				if((proposed_algo2_output_inst[flow_id].met[i] == false)||(proposed_algo2_output_inst[flow_id].Y[i] > ((proposed_algo2_output_inst[flow_id].Y[current_hop] + 1))))
 				{
+					proposed_algo2_output_inst[flow_id].met[i] = true;
 					proposed_algo2_output_inst[flow_id].Y[i] = proposed_algo2_output_inst[flow_id].Y[current_hop] + 1;
 					proposed_algo2_output_inst[flow_id].conn[i] = 1;
 					proposed_algo2_output_inst[flow_id].U[i] = minimum(linklifetimeMatrix_dsrc[current_hop][i], proposed_algo2_output_inst[flow_id].U[current_hop]);
 					update_stable(flow_id, i);
-					
-					
+
+
 					//cout<<"Flow ID "<<flow_id<<"Stable routing: updated values at node "<<i<<"stability "<<proposed_algo2_output_inst[flow_id].U[i]<<"connectivity "<< proposed_algo2_output_inst[flow_id].conn[i]<<"number of hops "<< proposed_algo2_output_inst[flow_id].Y[i]<<endl;
 
 				}
-			
+
 			}
 		
 		}
