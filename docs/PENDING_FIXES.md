@@ -1893,6 +1893,18 @@ and re-run `gen_cpp_validation_case.py` to regenerate both
 `lstm_inference_test.cpp` locally afterward (no HPC needed for this step)
 would confirm `n_features=10` and re-verify C++/PyTorch parity on the new
 architecture before trusting any live-sim results collected with it.
+Full step-by-step guide: `docs/LSTM_RETRAIN_GUIDE.md`.
+
+**2026-07-27 update**: 10-feature training CSVs became available (collected
+by a collaborator). While writing the retrain guide, found and fixed a real
+blocker bug that would have hit step 3 of it: `export_weights_cpp.py` had a
+hardcoded `assert scaler["features"] == [...]` checking against the OLD
+7-feature list — would throw `AssertionError` against any real 10-feature
+`scaler_params.json`. Fixed (list now includes `d_div`/`a_tp`/`r_anom`); the
+rest of the export/validation-case scripts already read `N_FEATURES`
+dynamically and needed no changes. Retraining itself still not run (still
+needs the env from step 1 of the guide and either CPU time or HPC/GPU
+access) — this is a code-readiness fix, not the retrain itself.
 
 ---
 
