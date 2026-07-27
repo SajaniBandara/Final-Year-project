@@ -77,7 +77,7 @@ vm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(vm)
 
 # Result directories searched when --results-dir is not given.  These mirror
-# run_std_attacks.py's NS3_DIR (~/ns3_g13/...); the pre-migration
+# run_rule_based_sweep.py's NS3_DIR (~/ns3_g13/...); the pre-migration
 # ~/ns3_g13 tree is deliberately NOT a default -- pass it with --results-dir if
 # you need to inspect those older runs.
 DEFAULT_RESULTS = [
@@ -369,18 +369,24 @@ def discover_subjects(dirs):
 
 
 def parse_crypto_ops(dirs):
-    """{op_name: [row, ...]} from every crypto_timing_log.csv found."""
+    """{op_name: [row, ...]} from every crypto_timing_log*.csv found.
+
+    One file per (variant, pct, seed, delay) run since g_sim_tag was added to
+    its filename (crypto_event_log.h) -- glob to pick up all of them.
+    """
     ops = {}
-    for p in find_files(dirs, "crypto_timing_log.csv"):
+    for p in find_files(dirs, "crypto_timing_log*.csv"):
+        run_tag = os.path.basename(p)
         with open(p, "rb") as fh:
             for raw in fh:
                 parts = [x.strip() for x in raw.decode("utf-8", "replace").split(",")]
-                if len(parts) != 6 or parts[0] == "sim_time_s":
+                if len(parts) != 7 or parts[0] == "sim_time_s":
                     continue
                 try:
                     ops.setdefault(parts[1], []).append(
                         {"t": float(parts[0]), "op": parts[1], "node": int(parts[2]),
-                         "pkt": int(parts[3]), "us": float(parts[4]), "res": parts[5]})
+                         "pkt": int(parts[3]), "flow": int(parts[4]), "us": float(parts[5]),
+                         "res": parts[6], "run": run_tag})
                 except ValueError:
                     continue
     return ops
@@ -773,8 +779,16 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
             cmp_hi(top.get("avg_MCC"), clean and clean.get("avg_MCC"), "avg_MCC"))
     rep.add("eq:rule_s1", "M1", "detection rate is non-zero under an active attack",
             gt(top.get("avg_DR"), 0.0, "avg_DR"))
-    rep.add("eq:rule_s1", "M1", "false-positive rate stays bounded (<40%)",
-            rng(top.get("avg_FPR"), 0.0, 40.0, "avg_FPR"))
+    # main.tex sec:metrics (M1): "hyperparameters are rejected if the resulting FPR
+    # exceeds 1% in either mode" -- this is the paper's explicit calibration target,
+    # not a loose sanity bound. A FAIL here under an active-attack sweep most likely
+    # reflects that s1_k/s1_beta/U_thresh/etc. are still running on their main.tex
+    # [tbd] initial-candidate values rather than the final calibrated sweep result
+    # (see the S3/S4 FPR discussion in GROUP F below for the same caveat) -- it is
+    # real evidence the calibration sweep is not yet complete, not necessarily a
+    # coding defect.
+    rep.add("eq:rule_s1", "M1", "false-positive rate meets the main.tex M1 calibration target (<=1%)",
+            rng(top.get("avg_FPR"), 0.0, 1.0, "avg_FPR"))
     rep.add("eq:sig_s2", "M1", "the detector fired at all (confusion matrix non-empty)",
             gt(sum(top.get(k) or 0.0 for k in ("TP", "FP", "FN")), 0.0, "TP+FP+FN"))
     if len(pcts) >= 3:
@@ -1076,21 +1090,25 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
 def verify_environment(rep, dirs):
     rep.group("GROUP A0 -- MOBILITY & ENVIRONMENT INSTRUMENTATION",
               "eq:density_x, eq:speed_x, eq:density_normalized_rate")
-    dens = find_files(dirs, "rsu_density.csv")
+    # One file per (variant, pct, seed, delay) run since g_sim_tag was added to
+    # its filename (routing.cc) -- aggregate across all of them, not just the
+    # first match, so every completed run contributes its density samples.
+    dens = find_files(dirs, "rsu_density*.csv")
     rep.add("eq:density_x", None, "per-RSU vehicle density and mean speed logged",
             present(dens, "rsu_density"))
     if dens:
         rho, vb = [], []
-        with open(dens[0], errors="ignore") as fh:
-            for line in fh:
-                parts = [x.strip() for x in line.split(",")]
-                if len(parts) != 4 or parts[0] == "t":
-                    continue
-                try:
-                    rho.append(float(parts[2]))
-                    vb.append(float(parts[3]))
-                except ValueError:
-                    continue
+        for d in dens:
+            with open(d, errors="ignore") as fh:
+                for line in fh:
+                    parts = [x.strip() for x in line.split(",")]
+                    if len(parts) != 4 or parts[0] == "t":
+                        continue
+                    try:
+                        rho.append(float(parts[2]))
+                        vb.append(float(parts[3]))
+                    except ValueError:
+                        continue
         rep.add("eq:density_x", None, "logged vehicle densities are non-negative",
                 truth(rho and all(v >= 0 for v in rho),
                       f"{len(rho)} sample(s), rho in [{min(rho):.0f}, {max(rho):.0f}] veh",
@@ -1112,7 +1130,7 @@ def verify_environment(rep, dirs):
 def verify_crypto_timing(rep, dirs):
     rep.group("GROUP J -- CRYPTO OPERATION TIMING LOG & CAUSAL ORDERING",
               "eq:t_verify, eq:t_consensus, eq:mldsa_sign, alg:lrad_obu, alg:lrad_rsu")
-    paths = find_files(dirs, "crypto_timing_log.csv")
+    paths = find_files(dirs, "crypto_timing_log*.csv")
     if not paths:
         for eq, d in (("eq:t_verify", "crypto timing log produced and populated"),
                       ("eq:mldsa_sign", "every crypto/detection operation class exercised"),
@@ -1120,20 +1138,22 @@ def verify_crypto_timing(rep, dirs):
                       ("eq:mldsa_sign", "sign precedes verify for every packet"),
                       ("alg:lrad_obu", "OBU detection starts no later than RSU detection"),
                       ("eq:t_consensus", "consensus rounds completed successfully")):
-            rep.add(eq, "M7", d, ("WARN", "crypto_timing_log.csv absent"))
+            rep.add(eq, "M7", d, ("WARN", "crypto_timing_log*.csv absent"))
         return
 
     rows = []
     for p in paths:
+        run_tag = os.path.basename(p)
         with open(p, errors="ignore") as fh:
             for line in fh:
                 parts = [x.strip() for x in line.strip().split(",")]
-                if len(parts) != 6 or parts[0] == "sim_time_s":
+                if len(parts) != 7 or parts[0] == "sim_time_s":
                     continue
                 try:
                     rows.append({"t": float(parts[0]), "op": parts[1],
                                  "node": int(parts[2]), "pkt": int(parts[3]),
-                                 "us": float(parts[4]), "res": parts[5]})
+                                 "flow": int(parts[4]), "us": float(parts[5]),
+                                 "res": parts[6], "run": run_tag})
                 except ValueError:
                     continue
 
@@ -1161,43 +1181,104 @@ def verify_crypto_timing(rep, dirs):
                   f"max={max(r['us'] for r in rows):.3f}us",
                   "non-positive or non-finite duration recorded"))
 
-    # Causal ordering: no packet may be verified before it was signed.
-    sign_t, ver_t = {}, {}
+    # Both per-event-pairing checks below run PER FILE, not pooled across the
+    # sweep. pkt_id and node are small counters that restart in every run, so
+    # pooling first and then disambiguating with a composite key (an earlier
+    # version of this check did that) is solving a problem this design avoids
+    # outright: a sign in run A can never be paired with a verify in run B if
+    # run B's rows are never in scope when run A is checked. Checking each run
+    # in isolation also means a violation is reported against the specific run
+    # that has it, not lost in an aggregate "some packet somewhere" count.
+    #
+    # pkt_id ALONE is also not unique WITHIN a single run: it is a per-flow
+    # counter that restarts at 1 for every flow (routing.cc: packet_id =
+    # total_packet_counter + 1), so the same (node, pkt_id) pair is shared by
+    # many unrelated packets from different flows through the same node.
+    # Joining on (node, pkt_id) alone previously caused false "verify before
+    # sign" flags by pairing one flow's quickly-verified packet with another
+    # flow's later-signed packet of the same pkt_id (see FV688 post-mortem).
+    # flow_id is now logged in crypto_timing_log*.csv and included in the key.
+    #
+    # 2026-07-27: only res=="ok" sign/verify rows feed sign_t/ver_t. A "fail"
+    # verify (no_record: claimed signer hasn't signed this exact (pkt,flow)
+    # yet; skip_broadcast: an overhearing node that isn't the intended next
+    # hop; or a genuine signature mismatch) never actually validates a
+    # signature, so it cannot be "accepted before it existed" -- there is
+    # nothing to violate. Confirmed empirically post-fix: after
+    # g_packet_crypto/msg_id were made flow-unique (crypto_layer.h, same
+    # date), the only remaining flagged keys were fail-only -- a node's own
+    # premature/overheard verify attempt, correctly rejected, has an earlier
+    # timestamp than the real later sign of that same (pkt,flow) and was
+    # flagging as an "out-of-order event" despite never having validated
+    # anything. (Some PRE-fix violations, e.g. the canonical 164/1/1 case,
+    # were genuinely res=="ok" -- a real cross-flow signature collision --
+    # so this filter alone would not have masked that bug; it only removes
+    # provably-inert fail rows.) res's meaning is op-specific -- it is NOT a
+    # generic success flag for lrad_obu/escalate_to_rsu below (there it
+    # encodes the D_OBU detection outcome), so this filter is scoped to
+    # sign/verify only.
+    by_run = {}
     for r in rows:
-        if r["op"] == "sign":
-            sign_t[r["pkt"]] = min(sign_t.get(r["pkt"], r["t"]), r["t"])
-        elif r["op"] == "verify":
-            ver_t[r["pkt"]] = max(ver_t.get(r["pkt"], r["t"]), r["t"])
-    both = sorted(set(sign_t) & set(ver_t))
-    bad = [p for p in both if ver_t[p] < sign_t[p]]
-    rep.add("eq:mldsa_sign", "M7", "sign precedes verify for every packet (causal order)",
-            truth(not bad,
-                  f"{len(both)} packet(s) with both events, 0 out of order",
-                  f"{len(bad)} packet(s) verified before being signed: {bad[:5]}")
-            if both else ("WARN", "no packet has both a sign and a verify record"))
+        by_run.setdefault(r["run"], []).append(r)
 
-    # lrad_obu (vehicles) and lrad_rsu (packets arriving at an RSU) are
-    # independent entry points, so there is no global ordering between them.
-    # The invariant that IS causal is the handoff: escalate_to_rsu() is only
-    # ever reached from inside lrad_obu() when D_OBU=1, so an escalation can
-    # never precede the OBU detection on that node that raised it.
-    first_obu = {}
-    for r in ops.get("lrad_obu", []):
-        n = r["node"]
-        first_obu[n] = min(first_obu.get(n, r["t"]), r["t"])
-    escalations = ops.get("escalate_to_rsu", [])
-    orphans = [e for e in escalations
-               if e["node"] not in first_obu or first_obu[e["node"]] > e["t"] + 1e-9]
+    sign_checked, sign_bad_runs = 0, []
+    obu_checked, obu_bad_runs = 0, []
+    for run_name, run_rows in sorted(by_run.items()):
+        run_ops = {}
+        for r in run_rows:
+            run_ops.setdefault(r["op"], []).append(r)
+
+        # sign precedes verify, for every (node, pkt, flow) signed/verified in THIS run
+        sign_t, ver_t = {}, {}
+        for r in run_rows:
+            if r["res"] != "ok":
+                continue
+            key = (r["node"], r["pkt"], r["flow"])
+            if r["op"] == "sign":
+                sign_t[key] = min(sign_t.get(key, r["t"]), r["t"])
+            elif r["op"] == "verify":
+                ver_t[key] = max(ver_t.get(key, r["t"]), r["t"])
+        both = set(sign_t) & set(ver_t)
+        if both:
+            sign_checked += 1
+            bad = [k for k in both if ver_t[k] < sign_t[k]]
+            if bad:
+                sign_bad_runs.append((run_name, bad))
+
+        # escalate_to_rsu() is only ever reached from inside lrad_obu() when
+        # D_OBU=1, so within one run an escalation can never precede the OBU
+        # detection on that node that raised it.
+        first_obu = {}
+        for r in run_ops.get("lrad_obu", []):
+            n = r["node"]
+            first_obu[n] = min(first_obu.get(n, r["t"]), r["t"])
+        escalations = run_ops.get("escalate_to_rsu", [])
+        if escalations:
+            obu_checked += 1
+            orphans = [e for e in escalations
+                       if e["node"] not in first_obu
+                       or first_obu[e["node"]] > e["t"] + 1e-9]
+            if orphans:
+                obu_bad_runs.append((run_name, orphans))
+
+    rep.add("eq:mldsa_sign", "M7", "sign precedes verify for every packet (causal order)",
+            truth(not sign_bad_runs,
+                  f"checked {sign_checked} run(s) independently, 0 out-of-order "
+                  f"events in any of them",
+                  f"{len(sign_bad_runs)} run(s) had an out-of-order event: "
+                  + ", ".join(f"{r}({len(b)})" for r, b in sign_bad_runs[:3]))
+            if sign_checked
+            else ("WARN", "no run has both a sign and a verify record"))
+
     rep.add("alg:lrad_obu", None,
             "no escalation precedes the OBU detection that raised it (D_OBU=1)",
-            truth(not orphans,
-                  f"{len(escalations)} escalation(s) across "
-                  f"{len(set(e['node'] for e in escalations))} node(s), each preceded "
-                  f"by an lrad_obu on the same node",
-                  f"{len(orphans)} escalation(s) with no preceding lrad_obu: "
-                  f"{[(e['node'], e['t']) for e in orphans[:3]]}")
-            if escalations
-            else ("WARN", "no escalation events recorded in the timing log"))
+            truth(not obu_bad_runs,
+                  f"checked {obu_checked} run(s) independently, every escalation "
+                  f"preceded by an lrad_obu on the same node within its own run",
+                  f"{len(obu_bad_runs)} run(s) had an escalation with no preceding "
+                  f"lrad_obu: " + ", ".join(f"{r}({len(o)})" for r, o in obu_bad_runs[:3]))
+            if obu_checked
+            else ("WARN", "no run has escalation events recorded"))
 
     # batch_verify rows carry B in the node column and n_verified in the pkt
     # column (crypto_layer.h:crypto_batch_verify_tick).
@@ -1486,7 +1567,7 @@ def main():
 
     if not dirs:
         print("No result directory found -- run a sweep first "
-              "(scripts/run_std_attacks.py or scripts/run_hf_attacks.py).")
+              "(scripts/run_rule_based_sweep.py).")
         sys.exit(2)
 
     subjects, seed_map = discover_subjects(dirs)

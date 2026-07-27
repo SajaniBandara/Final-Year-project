@@ -23,6 +23,9 @@ tcam_snapshots*.csv
 tcam_occupancy*.csv
 crypto_timing_log.csv
 
+# Evidence screenshots (Task 8 deliverables, local capture only)
+screenshots/
+
 # Simulation Output Files
 routing.xml
 

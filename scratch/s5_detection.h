@@ -148,7 +148,7 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // fabricated=true is passed here (this specific duplicate IS the
     // attacker-fabricated copy); the crypto call still does real work and
     // would genuinely fail even if invoked blind.
-    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true);
+    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, base_flow_id, /*fabricated=*/true);
 
     // Conjunction 4: b_hop(u) = 0 (STARK hop-legitimacy proof fails).
     //
@@ -164,7 +164,7 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // against the record's (immutable, set-once-at-signing) signed_next_hop.
     // Calling it fresh, here, with the EAVESDROPPER's own current_hop gives a
     // correct, deterministic, receiver-specific answer with zero race risk.
-    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id, base_flow_id);
 
     // Conjunction 3b: BatchVerify(σ, {pk_i}, {m_i}, r) = 0 — ADDED 2026-07-20,
     // then REVERTED 2026-07-21 after runtime verification. crypto_batch_verify_tick()

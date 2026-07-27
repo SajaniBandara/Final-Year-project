@@ -167,13 +167,13 @@ inline bool s6_detect(uint32_t recv_flow_id,
     // ∧ [b_hop=0]); the aggregate batch check belongs to flag_S5 only
     // (eq:sig_s5's BatchVerify term / flag_S5's [¬b_batch] term — see
     // s5_detection.h conjunction 3b, which previously lacked this check).
-    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/true);
+    bool mldsa_fails = !mldsa87_verify_copy_content(prev_sender, packet_id, base_flow_id, /*fabricated=*/true);
 
     // b_hop(u) = 0: fresh, receiver-specific stark_verify_hop() call — see
     // s5_detection.h for why the shared stark_hop_ok field is unreliable here
     // (only ever written by the legitimate recipient's context, never the
     // eavesdropper's) and why the pure function is safe to call directly.
-    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id, base_flow_id);
 
     // Conjunction NoFM_d' = ∄ FlowMod(r): dst=d' — ADDED 2026-07-20 per
     // eq:sig_s6's new conjunct, then REVERTED same day after runtime

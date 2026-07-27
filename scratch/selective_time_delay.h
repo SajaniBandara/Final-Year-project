@@ -11,10 +11,41 @@ using namespace std;
 extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 
+// sample_attack_injection_delay() (mobility amplification fix §4.3):
+// Returns the per-packet attack delay in seconds. In the default banded
+// mode (attack_delay_pseudo_random=true, attack_variables.h), draws from a
+// +/-10% band around attack_delay_ms (the active intensity level's anchor —
+// ATTACK_DELAY_ANCHOR_{LOW,MED,HIGH}_MS) using a seeded ns-3
+// UniformRandomVariable, reproducible per sim_seed/sim_run. In deterministic
+// mode (attack_delay_pseudo_random=false), returns attack_delay_ms unchanged
+// -- for standalone testing that needs an exact value (e.g. the S2-threshold
+// sweep, routing.cc ~L141781).
+//
+// Band bounds are captured once on first call (lazily, after cmd.Parse() has
+// already resolved attack_delay_ms from the CLI) since attack_delay_ms is
+// fixed for the remainder of the run.
+inline double sample_attack_injection_delay()
+{
+    if (!attack_delay_pseudo_random)
+        return attack_delay_ms / 1000.0;
+
+    static Ptr<UniformRandomVariable> rng = nullptr;
+    if (!rng) {
+        double lo = attack_delay_ms * (1.0 - ATTACK_DELAY_BAND_FRAC);
+        double hi = attack_delay_ms * (1.0 + ATTACK_DELAY_BAND_FRAC);
+        rng = CreateObject<UniformRandomVariable>();
+        rng->SetAttribute("Min", DoubleValue(lo));
+        rng->SetAttribute("Max", DoubleValue(hi));
+    }
+    return rng->GetValue() / 1000.0;
+}
+
 // Unified Receiver Delay Calculator
 //
-// attack_delay_ms (global, CLI: --attack_delay_ms) — single deterministic delay
-//   used by both CP and DP attacks. Default 80 ms; original range was 60–300 ms.
+// attack_delay_ms (global, CLI: --attack_delay_ms) — anchor delay (ms) used by
+//   both CP and DP attacks; actual_delay is drawn from a band around it via
+//   sample_attack_injection_delay() (§4.3) unless attack_delay_pseudo_random
+//   is disabled. Default anchor 100 ms (2x Delta_max).
 // is_safety_critical — both attacks only delay HIGH-priority safety-critical
 //   packets per S1 (Eq. 3.4) and S2 (Eq. 3.5). Best-effort falls through.
 inline double calculate_unified_selective_delay(
@@ -35,7 +66,7 @@ inline double calculate_unified_selective_delay(
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
-        double actual_delay = attack_delay_ms / 1000.0;
+        double actual_delay = sample_attack_injection_delay();
 
         cout << attack_tag() << " ③ "
              << (current_hop < (uint32_t)N_Vehicles ? "Malicious Vehicle" : "Malicious RSU")
@@ -91,7 +122,7 @@ inline bool schedule_unified_selective_delay_attack(
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
-        double actual_delay = attack_delay_ms / 1000.0;
+        double actual_delay = sample_attack_injection_delay();
 
         cout << attack_tag() << " ③ "
              << (source < (uint32_t)N_Vehicles ? "Malicious Vehicle" : "Malicious RSU")

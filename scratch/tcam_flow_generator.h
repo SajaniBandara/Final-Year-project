@@ -111,7 +111,7 @@ inline void tcam_gen_install_flow(uint32_t v, uint32_t nb, uint32_t gen_fid, boo
     tcam_hit(rsu_node, gen_fid, TCAM_GEN_PKT_BYTES); // RSU relay forwards (density-tracking)
 
     // (D2) real S1 sample for the relay RSU hop.
-    s1_detect_packet(rsu_local, TCAM_GEN_BENIGN_HOP_DELAY, sc,
+    s1_detect_packet(rsu_local, v, TCAM_GEN_BENIGN_HOP_DELAY, sc,
                      /*sender*/ v, /*current_hop*/ rsu_node,
                      /*packet_id*/ 0, /*flow_id*/ gen_fid & 0xFFFFu);
 

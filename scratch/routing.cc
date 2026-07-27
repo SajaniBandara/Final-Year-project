@@ -115004,6 +115004,8 @@ void dp_attack_tick();                                             // Change 5 (
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
 void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+void handoff_tracker_cycle_update(); // defined after lrad.h (needs lookup_vehicle_associated_rsu_local_idx); forward-declared so calculate_performance_evaluation_metrics() can schedule it
+#include "handoff_tracker.h"        // Per-vehicle serving-RSU handoff detection (mobility amplification fix §4.1)
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
 #include "crypto_layer.h"
 #include "dkg_setup.h"
@@ -115057,6 +115059,8 @@ void initialise_stub_attack_state()
 
 	// Initialize S1/S2 MOBIGUARD detection state for all attack variants
 	s1_init_state(N_RSUs);
+	// Initialize per-vehicle handoff-tracking state (mobility amplification fix §4.1)
+	handoff_tracker_init_state(N_Vehicles);
 	// lstm_logger_init is called from main() after cmd.Parse() so the training
 	// flag and N_RSUs are both resolved before the logger is set up.
 
@@ -115078,8 +115082,12 @@ void initialise_stub_attack_state()
             // injecting the malicious delay.
             Simulator::Schedule(Seconds(attack_start_time), &reapply_cp_selective_delay);
 
-            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, fixed delay="
-                 << attack_delay_ms << "ms (original range was 60–300ms random)" << endl;
+            cout << attack_tag() << " [INIT] Selective Time Delay CP attack armed, delay anchor="
+                 << attack_delay_ms << "ms, mode="
+                 << (attack_delay_pseudo_random
+                     ? "banded +/-" + std::to_string((int)(ATTACK_DELAY_BAND_FRAC * 100)) + "%"
+                     : "exact (pseudo-random disabled)")
+                 << endl;
             if (routing_test) Simulator::Schedule(Seconds(0.0), seed_attack8_links);
             break;
         }
@@ -118030,8 +118038,12 @@ void calculate_performance_evaluation_metrics()
 	// [density-logging] LOGGING ONLY (2026-07-14): one-time truncate-open of
 	// rsu_density.csv so repeated runs do not pool; header written once. Rows
 	// appended inside the loop below. Does NOT touch rho_t/v_bar_t computation.
+	// g_sim_tag makes the filename unique per (variant, pct, seed, delay) so
+	// concurrent sweep lanes never truncate each other's file (same fix as
+	// crypto_timing_log.csv -- see crypto_event_log.h).
 	static std::ofstream g_rsu_density_csv(
-		"/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/rsu_density.csv",
+		"/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/rsu_density"
+		+ g_sim_tag + ".csv",
 		std::ios::trunc);
 	static bool g_rsu_density_hdr_done = [](){
 		g_rsu_density_csv << "t,rsu_id,rho_count,v_bar\n"; return true; }();
@@ -118098,6 +118110,10 @@ void calculate_performance_evaluation_metrics()
 
 	// FADE per-cycle CSV (same per-scenario file + per-cycle row shape as MOBIGUARD).
 	Simulator::Schedule(Seconds(0.000097), fade_write_per_cycle_csv, results_dir);
+
+	// Handoff detection (mobility amplification fix §4.1) — refresh each
+	// vehicle's serving-RSU state once per cycle.
+	Simulator::Schedule(Seconds(0.000098), handoff_tracker_cycle_update);
 }
 
 
@@ -118502,9 +118518,10 @@ void transmit_delta_values()
 		g_m7_consensus_wall_us_sum +=
 			std::chrono::duration<double, std::micro>(_ct1 - _ct0).count();
 		++g_m7_consensus_count;
-		// per-op row: node_id carries endorser count, pkt_id carries fid
+		// per-op row: node_id carries endorser count, pkt_id carries fid;
+		// not a single-flow packet event, so flow_id is UINT32_MAX (n/a).
 		crypto_log_event("consensus", (uint32_t)e.endorsing_rsus.size(), fid,
-		                 _ct0, _committed);
+		                 UINT32_MAX, _ct0, _committed);
 		// NOTE: the eq:ctrl_trust_update reward/penalty is NO LONGER applied
 		// here. This honest per-cycle endorsement of fid=0 always commits, so it
 		// only ever exercised the reward branch, and it did so against
@@ -121137,7 +121154,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						{
 							auto _t_sign = crypto_log_start();
 							bool _sign_ok = mldsa87_sign(current_hop, packet_id, hop, flow_id);
-							crypto_log_event("sign", current_hop, packet_id, _t_sign, _sign_ok);
+							crypto_log_event("sign", current_hop, packet_id, flow_id, _t_sign, _sign_ok);
 						}
 
 						if(selective_delay_malicious_nodes[current_hop] == false && active_attack_variant == 1)
@@ -121307,6 +121324,23 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 #include "lrad.h"              // LRAD unified detection engine (alg:lrad_obu / alg:lrad_rsu)
 #include "tcam_flow_generator.h" // k-NN concurrency flow generator (needs tcam_hit,
                                  // lookup_vehicle_associated_rsu_local_idx, s1_detect_packet)
+
+// =========================================================================
+// handoff_tracker_cycle_update() (mobility amplification fix §4.1)
+//
+// Per-cycle driver for handoff_tracker.h: refreshes every vehicle's
+// serving-RSU state using the same association logic lrad.h already uses
+// for packet escalation (lookup_vehicle_associated_rsu_local_idx()),
+// so "serving RSU" means the same thing here as it does for routing.
+// Scheduled once per cycle from calculate_performance_evaluation_metrics().
+// =========================================================================
+void handoff_tracker_cycle_update()
+{
+    for (uint32_t v = 0; v < (uint32_t)N_Vehicles; v++)
+    {
+        handoff_tracker_update(v, lookup_vehicle_associated_rsu_local_idx(v));
+    }
+}
 
 int simulated_tcam_counter[200] = {0};
 // TCAM_CAPACITY consolidated to the single definition at line ~117445
@@ -121670,10 +121704,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
 					auto _t_verify = crypto_log_start();
 					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
-					crypto_log_event("verify", prev_sender, packet_ID, _t_verify, sig_ok);
+					crypto_log_event("verify", prev_sender, packet_ID, fid, _t_verify, sig_ok);
 					auto _t_hop = crypto_log_start();
-					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID);
-					crypto_log_event("stark_hop", prev_sender, packet_ID, _t_hop, hop_ok);
+					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID, fid);
+					crypto_log_event("stark_hop", prev_sender, packet_ID, fid, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
 					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
@@ -121709,11 +121743,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// already returns false for overheard packets (wrong next_hop in digest),
 					// so gate the STARK counters on sig_ok to avoid broadcast noise.
 					if (sig_ok) {
-						stark_update_meta(prev_sender, packet_ID, timing_ok, hop_ok);
+						stark_update_meta(prev_sender, packet_ID, fid, timing_ok, hop_ok);
 						// β_w NFA alert: valid sig but delay exceeded S2 threshold
 						if (t_fwd_claimed > 0.0 && !timing_ok) {
 							double t_fwd = Now().GetSeconds() - t_fwd_claimed_anchored;
-							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, t_fwd);
+							witness_submit_nfa_alert(current_hop, prev_sender, packet_ID, fid, t_fwd);
 						}
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
 						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
@@ -121740,7 +121774,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					if ((present_active_hf_attack || present_passive_hf_attack) &&
 					    witness_check_duplication(current_hop, pkt_hash, destination)) {
 						witness_submit_duplication_alert(current_hop, _w_prev,
-						                                 packet_ID, destination, current_hop);
+						                                 packet_ID, fid, destination, current_hop);
 					}
 					check_msg_duplication(pkt_hash, destination);
 					volume_record_delivery(destination);
@@ -141731,13 +141765,21 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);
 
-    // Single deterministic attack delay for both CP (Attack 1) and DP (Attack 2).
-    // Original implementation drew from Uniform(60–300 ms); replaced with a fixed
-    // CLI value so delay is an explicit independent variable in sweep experiments.
+    // Attack delay anchor for both CP (Attack 1) and DP (Attack 2) — mobility
+    // amplification fix §4.3. Acts as the center of a bounded pseudo-random
+    // band by default (see attack_delay_pseudo_random below); pass one of
+    // ATTACK_DELAY_ANCHOR_{LOW,MED,HIGH}_MS (55/100/200) for Experiment 1/2's
+    // three intensity levels, or a custom value for other sweeps.
     cmd.AddValue("attack_delay_ms",
-                 "Fixed attack delay in ms for both CP and DP attacks (default 80ms; "
-                 "original range was Uniform(60–300ms))",
+                 "Attack delay anchor in ms for both CP and DP attacks (default 100ms "
+                 "= 2x Delta_max; see attack_delay_pseudo_random for band vs. exact use)",
                  attack_delay_ms);
+    cmd.AddValue("attack_delay_pseudo_random",
+                 "Draw each packet's attack delay from a +/-10% band around "
+                 "attack_delay_ms (default true). Set false for standalone/"
+                 "deterministic testing that needs an exact ms value (e.g. the "
+                 "S2-threshold sweep).",
+                 attack_delay_pseudo_random);
 
     cmd.Parse (argc, argv);
 
