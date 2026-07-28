@@ -1210,8 +1210,7 @@ def verify_crypto_timing(rep, dirs):
     #
     # 2026-07-27: only res=="ok" sign/verify rows feed sign_t/ver_t. A "fail"
     # verify (no_record: claimed signer hasn't signed this exact (pkt,flow)
-    # yet; skip_broadcast: an overhearing node that isn't the intended next
-    # hop; or a genuine signature mismatch) never actually validates a
+    # yet; or a genuine signature mismatch) never actually validates a
     # signature, so it cannot be "accepted before it existed" -- there is
     # nothing to violate. Confirmed empirically post-fix: after
     # g_packet_crypto/msg_id were made flow-unique (crypto_layer.h, same
@@ -1226,6 +1225,13 @@ def verify_crypto_timing(rep, dirs):
     # generic success flag for lrad_obu/escalate_to_rsu below (there it
     # encodes the D_OBU detection outcome), so this filter is scoped to
     # sign/verify only.
+    #
+    # An overhearing node that isn't the intended next hop (broadcast MAC:
+    # every neighbour overhears every packet) used to log here too, as a
+    # "fail" verify indistinguishable from a real rejection. It no longer
+    # reaches this op at all -- routing.cc now logs that case under its own
+    # op, "verify_skip_broadcast", so every row seen under op=="verify" here
+    # is a genuine cryptographic verification attempt (pass or fail).
     by_run = {}
     for r in rows:
         by_run.setdefault(r["run"], []).append(r)
