@@ -88,6 +88,11 @@ int lambda = 1; //test
 const int Flow_size = 55;
 uint32_t flow_size = 55;
 
+// Normal runs: ROUTING_DEBUG_LOG = false -> zero per-node-pair terminal noise
+// from the delta/flow-scheduling table dump. Same gating convention as
+// CRYPTO_DEBUG_LOG (crypto_layer.h) / DETECTION_DEBUG_LOG (s1_detection.h).
+static bool ROUTING_DEBUG_LOG = false;
+
 // Set to true to run exactly one packet per flow — useful for isolating
 // a single attack cycle in the logs without noise from retransmissions.
 // Pass --single_cycle=1 on the command line, or it auto-enables when
@@ -124173,7 +124178,7 @@ void initialize_flow_counters()
 			{
 				uint32_t sub_flow_packets = ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j])*main_flow_packets;
 				innermost_sorted_delta_next_hop_flow_size.emplace_back((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j], j, sub_flow_packets);
-				if ((delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j] > 0.0) {
+				if (ROUTING_DEBUG_LOG && (delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j] > 0.0) {
 				    std::cout << "[DELTA TABLE] flow " << fid << " : node " << i
 				              << " -> node " << j << " delta="
 				              << (delta_at_nodes_inst+fid)->delta_fi_inst[i].delta_values[j]
