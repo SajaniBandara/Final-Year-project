@@ -1,6 +1,9 @@
 #ifndef S2_DETECTION_H
 #define S2_DETECTION_H
 
+// See s1_detection.h — same DETECTION_DEBUG_LOG gating convention.
+static bool DETECTION_DEBUG_LOG_S2 = false;
+
 // =========================================================================
 // s2_detection.h — MOBIGUARD Signature S2 Detection
 //
@@ -99,15 +102,16 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
                                                 (uint32_t)packet_id);
     bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_anchored, t_recv_now);
 
-    cout << "[S2] sender=" << sender_sim_index
-         << " receiver=" << current_hop
-         << " flow=" << flow_id
-         << " pkt=" << packet_id
-         << " hop_delay=" << hop_delay * 1000.0 << "ms"
-         << " Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms"
-         << " delay_exceeds=" << delay_exceeds
-         << " zkp_proof_fails=" << zkp_proof_fails
-         << " [SAFETY-CRITICAL]" << endl;
+    if (DETECTION_DEBUG_LOG_S2)
+        cout << "[S2] sender=" << sender_sim_index
+             << " receiver=" << current_hop
+             << " flow=" << flow_id
+             << " pkt=" << packet_id
+             << " hop_delay=" << hop_delay * 1000.0 << "ms"
+             << " Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms"
+             << " delay_exceeds=" << delay_exceeds
+             << " zkp_proof_fails=" << zkp_proof_fails
+             << " [SAFETY-CRITICAL]" << endl;
 
     if (delay_exceeds && zkp_proof_fails)
     {
@@ -134,8 +138,9 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
         return true;
     }
 
-    cout << "[S2] No violation: hop_delay=" << hop_delay * 1000.0
-         << "ms within Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms" << endl;
+    if (DETECTION_DEBUG_LOG_S2)
+        cout << "[S2] No violation: hop_delay=" << hop_delay * 1000.0
+             << "ms within Δ_max=" << S2_DELTA_MAX * 1000.0 << "ms" << endl;
     return false;
 }
 
