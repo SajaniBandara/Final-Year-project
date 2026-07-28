@@ -29,11 +29,13 @@ immediately after each run completes, before the next seed in that lane
 starts. Different (attack, percentage) lanes run fully in parallel.
 
 Usage:
+  # Sync headers + rebuild only, then exit (run again without --build to sweep):
   python3 scripts/run_rule_based_sweep.py --build
   python3 scripts/run_rule_based_sweep.py --seeds 1 2 3 --workers 28 --clean
 """
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -43,6 +45,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 NS3_DIR     = Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"
+SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs" / "rule_based_sweep"
 BINARY_PATH = NS3_DIR / "build" / "scratch" / "routing" / "routing"
@@ -60,6 +63,36 @@ FIXED_PARAMS = {
     "use_sumo_mobility": 1,
     "architecture":      3,
 }
+
+
+def sync_files() -> None:
+    """Copy project scratch files into ns-3.35/scratch/routing/ (subdirectory form)."""
+    print("-- Syncing project files to NS-3 scratch --")
+    routing_dir = SCRATCH_DIR / "routing"
+    routing_dir.mkdir(parents=True, exist_ok=True)
+
+    # A stale scratch/routing.cc from before the move to the subdirectory
+    # creates a second 'routing' program that collides with the subdir target.
+    stale = SCRATCH_DIR / "routing.cc"
+    if stale.exists():
+        stale.unlink()
+        print(f"  removed stale  scratch/routing.cc")
+
+    for src in sorted((PROJECT_DIR / "scratch").iterdir()):
+        if not src.is_file():
+            continue
+        if src.name == "routing.cc" or src.suffix == ".h":
+            dest = routing_dir / src.name
+        else:
+            dest = SCRATCH_DIR / src.name
+
+        # Avoid SameFileError for symlinked setups
+        if dest.exists() and os.path.samefile(src, dest):
+            print(f"  already synced  {src.name}")
+            continue
+
+        shutil.copy2(src, dest)
+        print(f"  copied  {src.name}  ->  {dest.relative_to(SCRATCH_DIR.parent)}")
 
 
 def build_simulation() -> bool:
@@ -167,6 +200,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.build:
+        sync_files()
         if not build_simulation():
             sys.exit(1)
         print("Build complete. Re-run without --build to launch the sweep.")
