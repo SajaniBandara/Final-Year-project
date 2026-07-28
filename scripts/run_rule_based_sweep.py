@@ -102,7 +102,12 @@ def build_waf_command(attack_number: int, pct: int, sim_time: int,
     params["sim_seed"]          = seed
     params["sim_run"]           = sim_run
     if attack_number in (1, 2):
+        # Exact 80ms (filename tags "_d80ms") -- must disable the banded
+        # pseudo-random draw (attack_delay_pseudo_random default=true as of
+        # the mobility amplification fix, scratch/attack_variables.h) or
+        # this sweep silently gets a random 72-88ms delay per packet instead.
         params["attack_delay_ms"] = 80
+        params["attack_delay_pseudo_random"] = 0
     param_str = " ".join(f"--{k}={v}" for k, v in params.items())
     return ["./waf", "--run-no-build", f"scratch/routing/routing {param_str}"]
 

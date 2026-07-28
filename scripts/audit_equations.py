@@ -158,18 +158,19 @@ SECTIONS = [
 
     ("A. ATTACK MODELS, INTENSITY & ENVIRONMENT",
      "eq:delay_updated, eq:intensity_td, eq:intensity_hf, eq:density_normalized_rate, "
-     "eq:observation_window, eq:evasion_probability, eq:delta_poison, eq:speed_x, eq:density_x", [
+     "eq:observation_window, eq:evasion_probability, eq:delta_poison, eq:speed_x, "
+     "eq:density_x, eq:aoei, eq:aoei_points", [
 
         ("delay_updated", "Selective time-delay injection updates forwarding delay",
          C, r"cp_poisoned_flowmod_delay|injected_delay", "sim", None),
 
         ("intensity_td", "Time-delay attack intensity I_TD (compromised fraction)",
          P, r"attack_percentage", "sim",
-         "swept 0/20/40/60/80/100% by scripts/run_std_attacks.py"),
+         "swept 0/20/40/60/80/100% by scripts/run_rule_based_sweep.py"),
 
         ("intensity_hf", "Hidden-forwarding attack intensity I_HF (eligible-flow fraction)",
          P, r"attack_percentage", "sim",
-         "swept by scripts/run_hf_attacks.py; consumed in hf_attack_helper.h"),
+         "swept by scripts/run_rule_based_sweep.py; consumed in hf_attack_helper.h"),
 
         ("density_normalized_rate", "Density-normalised injection rate (data plane)",
          C, r"rho_count|rsu_density|density_norm", "sim", None),
@@ -192,6 +193,20 @@ SECTIONS = [
         ("density_x", "Vehicle density rho(N_v) over the SUMO map area",
          P, r"rho_count|rsu_density", "sim",
          "emitted per RSU per second to results_routing/rsu_density.csv"),
+
+        ("aoei", "Attack Observable Evidence Index (Experiment 4 / RQ5 stealthiness "
+         "x-variable: selectivity ratio + copy-destination divergence)",
+         X, None, None,
+         "composite benchmarking x-variable combining n_targeted/n_eligible "
+         "(selectivity) and 1/(1+d_div/d_max) (copy-destination proximity); realised "
+         "by choosing attack_percentage/targeting and copy-destination placement per "
+         "run rather than computed as an in-simulator quantity"),
+
+        ("aoei_points", "AOEI scoring scale {0.25, 0.50, 0.75, 1.0}",
+         X, None, None,
+         "the four Experiment-4 operating points of eq:aoei, each realised by a fixed "
+         "(selectivity, d_div) pair per main.tex -- a benchmarking configuration, not "
+         "a computation"),
      ]),
 
     ("B. LRAD DETECTION SIGNATURES S1-S8 & DECISION RULES",
@@ -246,9 +261,9 @@ SECTIONS = [
          "quarantine path (eq:quarantine) rather than a local forwarding hold"),
      ]),
 
-    ("C. MOBILITY STATISTICS, TIME REFERENCE & EVIDENCE AGE",
+    ("C. MOBILITY STATISTICS & TIME REFERENCE",
      "eq:mobility_baseline, eq:ewma_variance, eq:bhattacharyya, eq:time_consensus, "
-     "eq:eps_ref, eq:aoei, eq:aoei_points", [
+     "eq:eps_ref", [
 
         ("mobility_baseline", "Mobility-aware delay baseline delta_bar_r(t)",
          C, r"mobility_baseline", "sim", None),
@@ -266,15 +281,6 @@ SECTIONS = [
 
         ("eps_ref", "Time-reference error epsilon_ref against consensus clock",
          C, r"eps_ref", "sim", None),
-
-        ("aoei", "Age-of-Evidence Index (M9 evidence-freshness score)",
-         X, None, None,
-         "discrete scoring rubric applied to the eps_ref / bc_tref_log evidence "
-         "that the simulator does emit; not itself computed in-simulator"),
-
-        ("aoei_points", "AOEI scoring scale {0.25, 0.50, 0.75, 1.0}",
-         X, None, None,
-         "the four rubric levels of eq:aoei -- a reporting scale, not a computation"),
      ]),
 
     ("D. HYBRID CRYPTOGRAPHIC INTEGRITY LAYER",
@@ -512,7 +518,12 @@ def numeric_checks():
     n_veh   = parse_const(r"uint32_t\s+N_Vehicles\s*=\s*(\d+)", int)
     s1_k    = parse_const(r"s1_k\s*=\s*([0-9.]+)")
     s1_beta = parse_const(r"s1_beta\s*=\s*([0-9.]+)")
-    delay   = parse_const(r"delay_ms\s*=\s*([0-9.]+)")
+    # attack_delay_ms's default anchor -- ATTACK_DELAY_ANCHOR_MED_MS, the "2x Delta_max
+    # moderate injection" level of eq:intensity_td (attack_variables.h). Replaces the
+    # old flat `delay_ms` constant, retired when the attack-delay mechanism was
+    # refactored onto the three eq:intensity_td anchors (LOW/MED/HIGH = 1.1/2/4x
+    # Delta_max = 55/100/200 ms).
+    delay   = parse_const(r"ATTACK_DELAY_ANCHOR_MED_MS\s*=\s*([0-9.]+)")
     t_min   = parse_const(r"TRUST_T_MIN\s*=\s*([0-9.]+)")
     t_minc  = parse_const(r"TRUST_T_MIN_CTRL\s*=\s*([0-9.]+)")
     d_r     = parse_const(r"TRUST_DELTA_R\s*=\s*([0-9.]+)")
@@ -535,16 +546,18 @@ def numeric_checks():
         ("ctrl_trust_update", "controller count N_Controllers", 4, n_ctrl),
         ("intensity_td", "vehicle count N_Vehicles", 200, n_veh),
         ("rule_s1", "S1 outlier multiplier k (mean + k*sigma)", 3.0, s1_k),
-        ("observation_window", "S1 EWMA window factor beta", 0.7, s1_beta),
-        ("delay_updated", "default injected control-plane delay (ms)", 80.0, delay),
+        ("ewma_variance", "S1 EWMA forgetting factor beta", 0.8, s1_beta),
+        ("intensity_td",
+         "default injected control-plane delay (ms) = ATTACK_DELAY_ANCHOR_MED_MS "
+         "(the 2x Delta_max moderate level)", 100.0, delay),
         ("quarantine", "node quarantine threshold T_min", 0.50, t_min),
-        ("trusted_ctrl_set", "controller revocation threshold T_min_ctrl", 0.50, t_minc),
+        ("sc_revoke", "controller revocation threshold T_min_ctrl", 0.50, t_minc),
         ("trust_update", "trust reward step Delta_R", 0.05, d_r),
-        ("bft_penalty", "trust penalty step Delta_P", 0.10, d_p),
-        ("batch_verify", "batch verification size B", 15, batch),
+        ("trust_update", "trust penalty step Delta_P", 0.10, d_p),
+        ("overhead_batch", "batch verification size B", 15, batch),
         ("stark_delay", "STARK delay bound Delta_max (s)", 0.050, stark_d),
-        ("da_sign", "witness quorum parameter f", 1, wit_f),
-        ("nfa_sign", "witness observation window (s)", 10.0, wit_w),
+        ("bft_penalty", "witness Byzantine fault parameter f", 1, wit_f),
+        ("dup_alert_cond", "witness observation window W (s)", 10.0, wit_w),
         ("time_consensus", "time-sync interval T_sync (s)", 1.0, t_sync),
         ("overhead_full", "modelled STARK proof size bound (KB per proof)",
          100.0, proof_kb),

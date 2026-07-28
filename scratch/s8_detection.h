@@ -118,7 +118,7 @@ inline bool s8_detect(uint32_t recv_flow_id,
     // reconstructs the exact digest the honest sender signed and genuinely
     // re-runs OQS_SIG_verify() against the original signature — a real
     // cryptographic pass, not a restated ground-truth boolean.
-    bool mldsa_verify_ok = mldsa87_verify_copy_content(prev_sender, packet_id, /*fabricated=*/false);
+    bool mldsa_verify_ok = mldsa87_verify_copy_content(prev_sender, packet_id, base_flow_id, /*fabricated=*/false);
 
     bool b_batch = batch_verify_ok && mldsa_verify_ok;
     if (!b_batch) return false;
@@ -127,7 +127,7 @@ inline bool s8_detect(uint32_t recv_flow_id,
     // function stark_verify_hop() — see s5_detection.h for why the shared
     // stark_hop_ok field on g_packet_crypto is unreliable here (only ever
     // written by the legitimate recipient's context, never the eavesdropper's).
-    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id);
+    bool b_hop_fails = !stark_verify_hop(current_hop, prev_sender, packet_id, base_flow_id);
 
     cout << "[S8] eavesdropper=" << current_hop
          << " sender_rsu=" << prev_sender

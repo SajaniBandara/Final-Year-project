@@ -63,11 +63,20 @@ def row(cols, widths):
 # ─── parse ────────────────────────────────────────────────────────────────────
 
 def parse(raw):
-    sign    = {}   # (node,pkt) → {t_sign, next_hop, zone}
-    verify  = {}   # (node,pkt) → {t_verify, t_sign_logged, delta, ok}
+    # Keys are (node, pkt, flow). flow_id is None for log lines from a build
+    # predating the 2026-07-27 flow-in-logging fix -- those still behave
+    # exactly as before (node,pkt) alone, no worse than the prior version,
+    # but WITHOUT flow_id a node signing/verifying the same pkt_id for two
+    # DIFFERENT concurrent flows (flows=4 -> 8 concurrent streams) collides
+    # onto the same key here, same root cause as the FV688 investigation in
+    # functional_verification.py / crypto_layer.h's g_packet_crypto. Logs
+    # generated after that fix carry flow= on every relevant line, making
+    # every key below genuinely collision-free.
+    sign    = {}   # (node,pkt,flow) → {t_sign, next_hop, zone}
+    verify  = {}   # (node,pkt,flow) → {t_verify, t_sign_logged, delta, ok}
     trust_p = []   # [{node, t}]
     trust_n = []
-    stark   = {}   # (node,pkt) → {t, timing_ok, hop_ok}
+    stark   = {}   # (node,pkt,flow) → {t, timing_ok, hop_ok}
     witness_nfa = []
     witness_da  = []
     batch_ticks = []
@@ -79,11 +88,12 @@ def parse(raw):
         if "[CRYPTO-SIGN]" in line:
             node = extract_int(line, "node")
             pkt  = extract_int(line, "pkt")
+            flow = extract_int(line, "flow")
             t    = extract(line, "t")
             nh   = extract_int(line, "next_hop")
             z    = extract_int(line, "zone")
             if node is not None and pkt is not None and t is not None:
-                key = (node, pkt)
+                key = (node, pkt, flow)
                 # pkt_id is reused across routing rounds; keep the earliest sign
                 # so that sign→verify pairs within the same round are correctly matched.
                 if key not in sign or t < sign[key]["t_sign"]:
@@ -92,6 +102,7 @@ def parse(raw):
         elif "[CRYPTO-VERIFY]" in line and "t_verify=" in line:
             node   = extract_int(line, "claimed")
             pkt    = extract_int(line, "pkt")
+            flow   = extract_int(line, "flow")
             tv     = extract(line, "t_verify")
             ts     = extract(line, "t_sign")
             d      = extract(line, "Δ")
@@ -100,7 +111,7 @@ def parse(raw):
             if node is not None and pkt is not None and tv is not None:
                 entry = {"t_verify": tv, "t_sign_logged": ts,
                          "delta": d, "ok": ok, "batch": is_bat}
-                key = (node, pkt)
+                key = (node, pkt, flow)
                 existing = verify.get(key)
                 # Prefer receive-time (batch=0) over batch-tick (batch=1).
                 # Among same-level entries keep the earliest t_verify so that pkt_id
@@ -125,27 +136,36 @@ def parse(raw):
         elif "[STARK]" in line and " t=" in line:
             node = extract_int(line, "signer")
             pkt  = extract_int(line, "pkt")
+            flow = extract_int(line, "flow")
             t    = extract(line, "t")
             tok  = extract_int(line, "timing_ok")
             hok  = extract_int(line, "hop_ok")
             if node is not None and pkt is not None and t is not None:
-                stark[(node, pkt)] = {"t": t, "timing_ok": tok, "hop_ok": hok}
+                key = (node, pkt, flow)
+                # Match sign/verify's earliest-wins rule (previously this dict
+                # was a bare overwrite, keeping whichever occurrence came LAST
+                # in the log -- inconsistent with sign/verify and able to pair
+                # a late STARK record against an early verify for the same key).
+                if key not in stark or t < stark[key]["t"]:
+                    stark[key] = {"t": t, "timing_ok": tok, "hop_ok": hok}
 
         elif "[WITNESS-NFA]" in line:
             t = extract(line, "t_alert")
             w = extract_int(line, "witness")
             tgt = extract_int(line, "target")
             pkt = extract_int(line, "pkt")
+            flow = extract_int(line, "flow")
             if t is not None:
-                witness_nfa.append({"t": t, "witness": w, "target": tgt, "pkt": pkt})
+                witness_nfa.append({"t": t, "witness": w, "target": tgt, "pkt": pkt, "flow": flow})
 
         elif "[WITNESS-DA]" in line:
             t = extract(line, "t_alert")
             w = extract_int(line, "witness")
             tgt = extract_int(line, "target")
             pkt = extract_int(line, "pkt")
+            flow = extract_int(line, "flow")
             if t is not None:
-                witness_da.append({"t": t, "witness": w, "target": tgt, "pkt": pkt})
+                witness_da.append({"t": t, "witness": w, "target": tgt, "pkt": pkt, "flow": flow})
 
         elif "[BATCH-TICK]" in line:
             t = extract(line, "t")
@@ -231,9 +251,15 @@ def report_per_packet(d, out):
         if key in verify:
             ts_sign = sign[key]["t_sign"]
             ts_logged = verify[key].get("t_sign_logged")
-            # Confirm the verify record matches this sign round (pkt_id is reused
-            # across routing seconds; a mismatch here means a later round's sign
-            # was paired with an earlier round's verify — skip it as ID collision).
+            # key is now (node,pkt,flow), so cross-flow collisions (the FV688
+            # root cause -- two concurrent flows sharing a pkt_id at the same
+            # node) can no longer alias onto the same entry here. What this
+            # check still catches is pkt_id reuse WITHIN one flow over time
+            # (routing.cc's packet_id counter cycles as a flow runs longer
+            # than its packet-slot range): a mismatch means a later cycle's
+            # sign got paired with an earlier cycle's verify for the same
+            # (node,pkt,flow) key — skip it as same-flow ID reuse, not a
+            # cross-flow collision.
             if ts_logged is None or abs(ts_logged - ts_sign) < 0.050:
                 matched.append(key)
             else:
@@ -241,12 +267,12 @@ def report_per_packet(d, out):
 
     out.write(f"\n  {len(matched)} packets with complete sign→verify records\n")
     if skipped_collision:
-        out.write(f"  ({skipped_collision} pkt_id reuse collisions excluded — different routing rounds sharing same pkt_id)\n")
+        out.write(f"  ({skipped_collision} same-flow pkt_id reuse cases excluded — different cycles of the same flow sharing a pkt_id)\n")
     out.write("\n")
 
     # Detailed table (first 20 packets for readability)
-    hdrs = ["node", "pkt", "t_sign (s)", "t_verify (s)", "Δ ver−sign (s)", "t_trust (s)", "ordering OK"]
-    ws   = [6, 5, 12, 14, 16, 13, 12]
+    hdrs = ["node", "pkt", "flow", "t_sign (s)", "t_verify (s)", "Δ ver−sign (s)", "t_trust (s)", "ordering OK"]
+    ws   = [6, 5, 5, 12, 14, 16, 13, 12]
     out.write(row(hdrs, ws) + "\n")
     out.write("  " + "  ".join("─"*w for w in ws) + "\n")
 
@@ -256,7 +282,7 @@ def report_per_packet(d, out):
     shown    = 0
 
     for key in sorted(matched, key=lambda k: sign[k]["t_sign"]):
-        node, pkt = key
+        node, pkt, flow = key
         ts   = sign[key]["t_sign"]
         tv   = verify[key]["t_verify"]
         delta= round(tv - ts, 4)
@@ -270,10 +296,10 @@ def report_per_packet(d, out):
         ordering = (ts <= tv) and (t_trust is None or t_trust >= tv - 0.001)
         if not ordering:
             all_ok = False
-            bad_rows.append((node, pkt, ts, tv, delta, t_trust))
+            bad_rows.append((node, pkt, flow, ts, tv, delta, t_trust))
 
         if shown < 20:
-            out.write(row([node, pkt, f"{ts:.3f}", f"{tv:.3f}",
+            out.write(row([node, pkt, flow, f"{ts:.3f}", f"{tv:.3f}",
                            f"{delta:.4f}", t_trust_s,
                            "✓" if ordering else "✗ VIOLATION"], ws) + "\n")
             shown += 1
@@ -310,25 +336,48 @@ def report_batch(d, out):
         check("Sufficient batch ticks to measure interval", False,
               f"only {len(ticks)} tick(s) observed", out); return False
 
+    # FIXED 2026-07-27 (was: classify iv<=0.20 as "burst" and demand exactly
+    # 50±10ms, discard iv>0.20 as an "inter-burst gap"). crypto_batch_verify_
+    # tick() only PRINTS [BATCH-TICK] when pending is non-empty -- a tick with
+    # zero pending packets still fires exactly on schedule but is silent. So a
+    # 150ms gap between two PRINTED lines is not the scheduler drifting; it's
+    # 2 silent, on-time, empty ticks in between (150ms / 50ms = exactly 3).
+    # The old 0.20s cutoff bucketed some of these clean multiples (e.g. 100ms,
+    # 150ms) into "burst" and flagged them as violations even though the
+    # underlying clock never moved off 50ms. The correct test is: every
+    # observed interval, printed or not, must be within tolerance of SOME
+    # whole multiple of the 50ms period -- not that every printed-line gap
+    # equals exactly one period.
+    TICK_PERIOD, TOL = 0.050, 0.010
     all_intervals = [round(ticks[i+1]-ticks[i], 4) for i in range(len(ticks)-1)]
-    burst_ivs = [iv for iv in all_intervals if iv <= 0.20]
+
+    def residual(iv):
+        n = max(1, round(iv / TICK_PERIOD))
+        return abs(iv - n * TICK_PERIOD), n
+
+    checked = [(iv,) + residual(iv) for iv in all_intervals]
+    ok_burst = bool(checked) and all(r <= TOL for _, r, _ in checked)
+    bad_ticks = [(iv, n) for iv, r, n in checked if r > TOL]
 
     out.write(f"  All intervals (s):   {all_intervals}\n")
-    out.write(f"  Burst intervals (s): {burst_ivs}  "
-              f"(inter-burst gaps excluded — normal when no packets pending)\n\n")
+    out.write(f"  Each interval checked against the nearest whole multiple of "
+              f"{TICK_PERIOD*1000:.0f} ms (silent empty ticks fire on-schedule "
+              f"but aren't printed, so N-period gaps between printed lines are expected)\n\n")
 
-    ok_burst = all(0.040 <= iv <= 0.060 for iv in burst_ivs) if burst_ivs else False
-
-    if burst_ivs:
-        mean_iv = statistics.mean(burst_ivs)
-        std_iv  = statistics.pstdev(burst_ivs)
-        out.write(f"  Burst interval stats:  mean={mean_iv*1000:.2f} ms  "
+    if all_intervals:
+        mean_iv = statistics.mean(all_intervals)
+        std_iv  = statistics.pstdev(all_intervals)
+        out.write(f"  Interval stats:  mean={mean_iv*1000:.2f} ms  "
                   f"std={std_iv*1000:.2f} ms  "
-                  f"min={min(burst_ivs)*1000:.2f} ms  "
-                  f"max={max(burst_ivs)*1000:.2f} ms\n\n")
+                  f"min={min(all_intervals)*1000:.2f} ms  "
+                  f"max={max(all_intervals)*1000:.2f} ms\n\n")
 
-    check("Every within-burst interval = 50 ms ± 10 ms",
-          ok_burst, f"burst intervals (s): {burst_ivs}", out)
+    check(f"Every interval is within {TOL*1000:.0f} ms of a whole multiple of "
+          f"{TICK_PERIOD*1000:.0f} ms",
+          ok_burst,
+          f"{len(checked)} interval(s) checked"
+          + (f"  VIOLATIONS (interval_s, nearest_n): {bad_ticks[:5]}" if bad_ticks else ""),
+          out)
 
     # Batch verify results
     pass_cnt = sum(1 for e in bv if e["passed"] == 1)
@@ -399,8 +448,8 @@ def report_stark(d, out):
     matched = [(k, stark[k], verify[k]) for k in stark if k in verify]
     out.write(f"\n  {len(matched)} packets with both STARK and VERIFY records\n\n")
 
-    hdrs = ["node", "pkt", "t_verify (s)", "t_stark (s)", "Δ (s)", "timing_ok", "hop_ok"]
-    ws   = [6, 5, 14, 13, 9, 10, 8]
+    hdrs = ["node", "pkt", "flow", "t_verify (s)", "t_stark (s)", "Δ (s)", "timing_ok", "hop_ok"]
+    ws   = [6, 5, 5, 14, 13, 9, 10, 8]
     out.write(row(hdrs, ws) + "\n")
     out.write("  " + "  ".join("─"*w for w in ws) + "\n")
 
@@ -408,7 +457,7 @@ def report_stark(d, out):
     deltas   = []
     shown    = 0
     for key, s, v in sorted(matched, key=lambda x: x[1]["t"])[:25]:
-        node, pkt = key
+        node, pkt, flow = key
         tv   = v["t_verify"]
         ts   = s["t"]
         d_   = round(ts - tv, 4)
@@ -416,7 +465,7 @@ def report_stark(d, out):
         ok   = abs(d_) < 0.005   # STARK evaluated within 5ms of receive-time verify
         if not ok: all_ok = False
         if shown < 20:
-            out.write(row([node, pkt, f"{tv:.3f}", f"{ts:.3f}", f"{d_:.4f}",
+            out.write(row([node, pkt, flow, f"{tv:.3f}", f"{ts:.3f}", f"{d_:.4f}",
                            "✓" if s["timing_ok"] else "✗",
                            "✓" if s["hop_ok"] else "✗"], ws) + "\n")
             shown += 1
@@ -471,7 +520,7 @@ def report_witness(d, out):
         tgt  = alert.get("target")
         ta   = alert["t"]
         if pkt is None or tgt is None: continue
-        vkey = (tgt, pkt)
+        vkey = (tgt, pkt, alert.get("flow"))
         if vkey in verify:
             tv = verify[vkey]["t_verify"]
             if ta < tv - 0.001:
@@ -518,7 +567,19 @@ def main():
     raw = raw_path.read_text()
     d   = parse(raw)
 
-    report_path = raw_path.parent / (raw_path.stem.replace("_raw", "_timing") + ".log")
+    # FIXED 2026-07-27 (was: `raw_path.stem.replace("_raw", "_timing") + ".log"`):
+    # that formula assumed input filenames contain "_raw" (e.g. foo_raw.log ->
+    # foo_timing.log). This project's actual run-log naming convention
+    # (A<attack>_pct<pct>_seed<seed>.log) never contains "_raw", so the
+    # replace() was a silent no-op and report_path came out IDENTICAL to
+    # raw_path -- the script overwrote its own multi-hundred-thousand-line
+    # input log with a ~100-line report in place. Always append a distinct
+    # suffix instead, and hard-fail rather than silently clobber if it can
+    # somehow still collide.
+    report_path = raw_path.parent / (raw_path.stem + "_timing_report.log")
+    if report_path == raw_path:
+        print(f"Error: refusing to write report over its own input file: {report_path}")
+        sys.exit(1)
 
     with open(report_path, "w") as out:
         header(

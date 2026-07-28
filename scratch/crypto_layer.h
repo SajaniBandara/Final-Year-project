@@ -47,7 +47,7 @@ inline void dkg_rotate_keys(uint32_t revoked_rsu_node_index);
 // CryptoTimePoint alias must match crypto_event_log.h exactly (legal redeclaration).
 using CryptoTimePoint = std::chrono::high_resolution_clock::time_point;
 inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
-                             CryptoTimePoint t0, bool result);
+                             uint32_t flow_id, CryptoTimePoint t0, bool result);
 
 // ── Evidence-quality debug logging ───────────────────────────────────────────
 // Normal runs: CRYPTO_DEBUG_LOG = false → zero terminal noise, CSV unaffected.
@@ -194,6 +194,26 @@ struct PacketCryptoMeta {
     bool     stark_hop_ok     = false;
 };
 std::map<std::pair<uint32_t,uint32_t>, PacketCryptoMeta> g_packet_crypto;
+
+// eq:mldsa_sign's msg_id must uniquely identify "a message"; pkt_id alone
+// does not, because it is a per-flow counter that restarts at 1 for every
+// flow (routing.cc: packet_id = total_packet_counter + 1). Two concurrent
+// flows relaying through the same node with the same pkt_id collide on the
+// same g_packet_crypto slot -- confirmed root cause of the FV688 causal-
+// order failures (a downstream verify silently validated against a
+// different flow's stale sign record; see docs/task8_verification/
+// FUNCTIONAL_VERIFICATION_GUIDE.md investigation, 2026-07-27). Composing
+// flow_id into msg_id fixes this without adding a field to eq:mldsa_sign --
+// main.tex never defines msg_id's exact contents, only that it identifies
+// the message. 12 bits per side comfortably covers 2*flows<=8 concurrent
+// streams and Flow_size<=55 packets/flow with zero collision risk.
+// Reversible so batch_verify_mldsa87() can recover the raw pair from the
+// map's own stored keys.
+inline uint32_t crypto_msg_key(uint32_t pkt_id, uint32_t flow_id) {
+    return ((flow_id & 0xFFFu) << 12) | (pkt_id & 0xFFFu);
+}
+inline uint32_t crypto_msg_key_pkt(uint32_t key)  { return key & 0xFFFu; }
+inline uint32_t crypto_msg_key_flow(uint32_t key) { return key >> 12; }
 
 // Sign buffer layout per eq:mldsa_sign: msg_id(4)|ts(8)|η(4)|nh(4)|z(4) = 24 bytes
 // No node_id, no padding — explicit memcpy, not struct cast.
@@ -432,10 +452,13 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     OQS_randombytes(reinterpret_cast<uint8_t*>(&fresh_nonce), sizeof(fresh_nonce));
 
     // eq:mldsa_sign: H_SHA3-512(msg_id ‖ ts_i ‖ η_i ‖ nh_i ‖ z_i) — 24-byte explicit buffer
+    // msg_id = crypto_msg_key(pkt_id, seq): seq is the caller's flow_id (see
+    // crypto_msg_key's declaration for why pkt_id alone is not unique).
+    uint32_t msg_id = crypto_msg_key(pkt_id, seq);
     double   ts   = ns3::Simulator::Now().GetSeconds();
     uint32_t zone = crypto_zone_id(signer);
     uint8_t sign_buf[MLDSA_SIGN_BUF] = {};
-    memcpy(sign_buf,    &pkt_id,      4);
+    memcpy(sign_buf,    &msg_id,      4);
     memcpy(sign_buf+4,  &ts,          8);
     memcpy(sign_buf+12, &fresh_nonce, 4);
     memcpy(sign_buf+16, &next_hop,    4);
@@ -448,7 +471,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
         return false;
     }
 
-    PacketCryptoMeta& meta = g_packet_crypto[{signer, pkt_id}];
+    PacketCryptoMeta& meta = g_packet_crypto[{signer, msg_id}];
     memcpy(meta.msg_digest, digest, 64);
     meta.sig_len = OQS_SIG_ml_dsa_87_length_signature;
     if (OQS_SIG_sign(sig, meta.sig, &meta.sig_len,
@@ -471,6 +494,7 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[CRYPTO-SIGN] node=" << signer
                   << " pkt=" << pkt_id
+                  << " flow=" << seq
                   << " next_hop=" << next_hop
                   << " sig_len=" << meta.sig_len  // expected 4627
                   << " zone=" << zone
@@ -480,13 +504,13 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
         // [PKT-CRYPTO] — human-readable field-level breakdown for manual inspection
         std::cout << "[PKT-CRYPTO] ── SIGN ─────────────────────────────────────────\n"
                   << "[PKT-CRYPTO]   node      = " << signer << "  (signer)\n"
-                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "  (flow=" << seq << ", msg_id=" << msg_id << ")\n"
                   << "[PKT-CRYPTO]   next_hop  = " << next_hop << "\n"
                   << "[PKT-CRYPTO]   zone      = " << zone << "\n"
                   << "[PKT-CRYPTO]   t_sign    = " << ts << " s  (NS-3 simulation time)\n"
                   << "[PKT-CRYPTO]   nonce(η)  = 0x" << _hex32(fresh_nonce) << "  (random per-packet)\n"
                   << "[PKT-CRYPTO]   -- Sign buffer (eq:mldsa_sign, 24 bytes) ----------\n"
-                  << "[PKT-CRYPTO]   buf[0..3]   msg_id   = " << pkt_id   << "  (4 B)\n"
+                  << "[PKT-CRYPTO]   buf[0..3]   msg_id   = " << msg_id   << "  (4 B; pkt_id|flow_id composite)\n"
                   << "[PKT-CRYPTO]   buf[4..11]  ts       = " << ts       << "  (8 B double)\n"
                   << "[PKT-CRYPTO]   buf[12..15] nonce    = 0x" << _hex32(fresh_nonce) << "  (4 B)\n"
                   << "[PKT-CRYPTO]   buf[16..19] next_hop = " << next_hop << "  (4 B)\n"
@@ -513,11 +537,15 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
                             bool is_batch_call = false) {
     if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     if (claimed_signer >= (uint32_t)total_size) return false;
-    auto it = g_packet_crypto.find({claimed_signer, pkt_id});
+    // msg_id = crypto_msg_key(pkt_id, seq): must match mldsa87_sign()'s key
+    // exactly, or a genuinely-signed packet would never be found.
+    uint32_t msg_id = crypto_msg_key(pkt_id, seq);
+    auto it = g_packet_crypto.find({claimed_signer, msg_id});
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) {
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
-                      << " pkt=" << pkt_id << " → no_record (not signed by this node)\n";
+                      << " pkt=" << pkt_id << " flow=" << seq
+                      << " → no_record (not signed by this node)\n";
         return false;
     }
 
@@ -528,7 +556,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     if (it->second.signed_next_hop != (uint32_t)-1 && next_hop != it->second.signed_next_hop) {
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
-                      << " pkt=" << pkt_id
+                      << " pkt=" << pkt_id << " flow=" << seq
                       << " → skip_broadcast (intended_hop=" << it->second.signed_next_hop
                       << " actual_hop=" << next_hop << ")\n";
         return false;
@@ -539,7 +567,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 
     // Reconstruct eq:mldsa_sign buffer identically to sign: msg_id|ts|η|nh|z (24 bytes)
     uint8_t sign_buf[MLDSA_SIGN_BUF] = {};
-    memcpy(sign_buf,    &pkt_id,                   4);
+    memcpy(sign_buf,    &msg_id,                   4);
     memcpy(sign_buf+4,  &it->second.sign_timestamp, 8);
     memcpy(sign_buf+12, &it->second.nonce,          4);
     memcpy(sign_buf+16, &next_hop,                  4);
@@ -560,10 +588,10 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
         // [PKT-CRYPTO] — human-readable field-level breakdown for manual inspection
         std::cout << "[PKT-CRYPTO] ── VERIFY ────────────────────────────────────────\n"
                   << "[PKT-CRYPTO]   claimed   = " << claimed_signer << "  (original signer)\n"
-                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "\n"
+                  << "[PKT-CRYPTO]   pkt_id    = " << pkt_id << "  (flow=" << seq << ", msg_id=" << msg_id << ")\n"
                   << "[PKT-CRYPTO]   verifier  = " << next_hop << "  (this hop)\n"
                   << "[PKT-CRYPTO]   -- Reconstructed sign buffer (must match signer) -\n"
-                  << "[PKT-CRYPTO]   msg_id    = " << pkt_id                        << "  ✓ (same as signed)\n"
+                  << "[PKT-CRYPTO]   msg_id    = " << msg_id                        << "  ✓ (same as signed)\n"
                   << "[PKT-CRYPTO]   ts_sign   = " << it->second.sign_timestamp     << " s  (from signed record)\n"
                   << "[PKT-CRYPTO]   nonce(η)  = 0x" << _hex32(it->second.nonce)   << "  (from signed record)\n"
                   << "[PKT-CRYPTO]   next_hop  = " << next_hop                      << "  (must equal signed_next_hop=" << it->second.signed_next_hop << ")\n"
@@ -581,6 +609,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                   << " pkt=" << pkt_id
+                  << " flow=" << seq
                   << " ok=" << ok
                   << " sig_len=" << it->second.sig_len  // expected 4627
                   << " t_verify=" << ns3::Simulator::Now().GetSeconds()
@@ -629,31 +658,25 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
 // legitimate recipient's own verify call and must not be perturbed by this
 // receiver-specific, out-of-band content check performed at the eavesdropper.
 //
-// KNOWN LIMITATION (inherited, not introduced here): g_packet_crypto is keyed
-// only by (signer, pkt_id), and pkt_id values are small and reused every
-// ~1s cycle across a flow's lifetime — the same limitation the pre-existing
-// ground-truth-proxy code (see s5-s8_detection.h history) was working around.
-// If the RSU signs a LATER packet that reuses the same pkt_id before this
-// duplicate's receive-side check runs, the shared record has already moved
-// on, and this function reads content that isn't the one the duplicate was
-// actually built from. Empirically ~5-6% of fabricated=false calls in a
-// pct60/13s smoke run (2026-07-16) hit this and read FAIL where the copy was
-// genuinely unmodified. Directionally safe (missed detection, never a false
-// positive), and a full fix would require per-instance (not per-key) crypto
-// records — out of scope for this change; documented rather than silently
-// left unexplained.
+// FIXED 2026-07-27 (was: "KNOWN LIMITATION (inherited, not introduced here):
+// g_packet_crypto is keyed only by (signer, pkt_id)..."): the map is now
+// keyed by (signer, crypto_msg_key(pkt_id, flow_id)) everywhere it is
+// touched, so pkt_id reuse across flows/cycles no longer aliases onto the
+// same slot. Caller must pass the packet's true flow_id (base_flow_id in
+// s5-s8_detection.h, i.e. the marker-stripped value, not recv_flow_id).
 inline bool mldsa87_verify_copy_content(uint32_t claimed_signer, uint32_t pkt_id,
-                                         bool fabricated) {
+                                         uint32_t flow_id, bool fabricated) {
     if (g_disable_crypto) return !fabricated; // crypto disabled: keep deterministic semantics
     if (claimed_signer >= (uint32_t)total_size) return false;
-    auto it = g_packet_crypto.find({claimed_signer, pkt_id});
+    uint32_t msg_id = crypto_msg_key(pkt_id, flow_id);
+    auto it = g_packet_crypto.find({claimed_signer, msg_id});
     if (it == g_packet_crypto.end() || it->second.sig_len == 0) return false;
 
     uint32_t nonce_for_digest = fabricated ? (it->second.nonce ^ 0xFFFFFFFFu)
                                             : it->second.nonce;
 
     uint8_t sign_buf[MLDSA_SIGN_BUF] = {};
-    memcpy(sign_buf,    &pkt_id,                     4);
+    memcpy(sign_buf,    &msg_id,                     4);
     memcpy(sign_buf+4,  &it->second.sign_timestamp,   8);
     memcpy(sign_buf+12, &nonce_for_digest,             4);
     memcpy(sign_buf+16, &it->second.signed_next_hop,   4);
@@ -727,10 +750,11 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
 // verification time is unreliable in a dynamic VANET because routing tables
 // change between send and receive. Using the signed_next_hop eliminates
 // false positives from routing churn while still catching misdirected packets.
-inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt_id) {
+inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt_id,
+                              uint32_t flow_id) {
     if (!enable_stark_hop) return true; // AB4: π_hop removed — vacuously passes
     if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
-    auto it = g_packet_crypto.find({signer, pkt_id});
+    auto it = g_packet_crypto.find({signer, crypto_msg_key(pkt_id, flow_id)});
     if (it == g_packet_crypto.end() || it->second.signed_next_hop == (uint32_t)-1)
         return true;  // no signing record — can't verify, assume valid
     auto _st0 = std::chrono::high_resolution_clock::now();
@@ -751,9 +775,9 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
     return hop_ok;
 }
 
-inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
+inline void stark_update_meta(uint32_t signer, uint32_t pkt_id, uint32_t flow_id,
                                bool timing_ok, bool hop_ok) {
-    auto it = g_packet_crypto.find({signer, pkt_id});
+    auto it = g_packet_crypto.find({signer, crypto_msg_key(pkt_id, flow_id)});
     if (it == g_packet_crypto.end()) return;
     it->second.stark_timing_ok = timing_ok;
     it->second.stark_hop_ok    = hop_ok;
@@ -763,6 +787,7 @@ inline void stark_update_meta(uint32_t signer, uint32_t pkt_id,
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[STARK] signer=" << signer
                   << " pkt=" << pkt_id
+                  << " flow=" << flow_id
                   << " t=" << ns3::Simulator::Now().GetSeconds()
                   << " timing_ok=" << timing_ok
                   << " hop_ok=" << hop_ok
@@ -806,7 +831,15 @@ inline BatchVerifyResult batch_verify_mldsa87(
         auto it_bv = g_packet_crypto.find({node, pkt});
         uint32_t nh = (it_bv != g_packet_crypto.end())
                       ? it_bv->second.signed_next_hop : 0;
-        if (!mldsa87_verify(node, pkt, nh, 0, /*is_batch_call=*/true)) res.passed = false;
+        // node_pkt_pairs' second element is a raw g_packet_crypto KEY (already
+        // crypto_msg_key(pkt_id,flow_id) — see crypto_batch_verify_tick(),
+        // which builds `pending` straight from the map's own keys). Decompose
+        // it back to the raw (pkt_id, flow_id) pair mldsa87_verify() expects,
+        // so its internal re-composition reproduces this exact `pkt` value
+        // instead of re-encoding an already-composite number.
+        if (!mldsa87_verify(node, crypto_msg_key_pkt(pkt), nh,
+                             crypto_msg_key_flow(pkt), /*is_batch_call=*/true))
+            res.passed = false;
         ++res.n_verified;
         res.elapsed_s += 0.001;
     }
@@ -1101,9 +1134,11 @@ inline void crypto_batch_verify_tick() {
         g_m7_batch_wall_us_sum += _b_us;
         ++g_m7_batch_calls;
         g_m7_batch_pkts += pending.size();
-        // per-op row: node_id column carries B (batch size), pkt_id carries n_verified
+        // per-op row: node_id column carries B (batch size), pkt_id carries
+        // n_verified; not a single-packet/single-flow event, so flow_id is
+        // UINT32_MAX (not applicable).
         crypto_log_event("batch_verify", (uint32_t)pending.size(),
-                         result.n_verified, _bt0, result.passed);
+                         result.n_verified, UINT32_MAX, _bt0, result.passed);
         g_batch_passed = result.passed; // feed b_batch into LRAD (eq:batch_challenge)
         if (!result.passed) {
             std::cerr << "[CRYPTO-ERROR] Batch verify tick FAILED:"
@@ -1150,8 +1185,8 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
 
 // α_w: duplication alert — same packet at two destinations (eq:da_sign)
 inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_node,
-                                              uint32_t pkt_id, uint32_t dst,
-                                              uint32_t dup_dst) {
+                                              uint32_t pkt_id, uint32_t flow_id,
+                                              uint32_t dst, uint32_t dup_dst) {
     if (!enable_witness_mechanism) return; // AB6-A: no alerts submitted or pooled
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
     OQS_SIG* oqs = get_oqs_ctx();
@@ -1159,7 +1194,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
 
     // H(p) = SHA3-512 of target's ML-DSA-87 signature on the packet (eq:da_sign)
     uint8_t h_p[64] = {};
-    auto it_pkt = g_packet_crypto.find({target_node, pkt_id});
+    auto it_pkt = g_packet_crypto.find({target_node, crypto_msg_key(pkt_id, flow_id)});
     if (it_pkt != g_packet_crypto.end() && it_pkt->second.sig_len > 0)
         sha3_512_hash(it_pkt->second.sig, it_pkt->second.sig_len, h_p);
 
@@ -1188,6 +1223,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         std::cout << "[WITNESS-DA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " flow=" << flow_id
                   << " t_alert=" << ts_w
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
@@ -1237,7 +1273,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
 
 // β_w: non-forwarding alert — packet received but not forwarded within T_fwd (eq:nfa_sign)
 inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
-                                      uint32_t pkt_id, double T_fwd) {
+                                      uint32_t pkt_id, uint32_t flow_id, double T_fwd) {
     if (!enable_witness_mechanism) return; // AB6-A: no alerts submitted or pooled
     if (!g_node_keys[witness].keys_generated && !mldsa87_keygen(witness)) return;
     OQS_SIG* oqs = get_oqs_ctx();
@@ -1245,7 +1281,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
 
     // H(p) = SHA3-512 of target's ML-DSA-87 signature on the packet (eq:nfa_sign)
     uint8_t h_p[64] = {};
-    auto it_pkt = g_packet_crypto.find({target_node, pkt_id});
+    auto it_pkt = g_packet_crypto.find({target_node, crypto_msg_key(pkt_id, flow_id)});
     if (it_pkt != g_packet_crypto.end() && it_pkt->second.sig_len > 0)
         sha3_512_hash(it_pkt->second.sig, it_pkt->second.sig_len, h_p);
 
@@ -1274,6 +1310,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         std::cout << "[WITNESS-NFA] witness=" << witness
                   << " → target=" << target_node
                   << " pkt=" << pkt_id
+                  << " flow=" << flow_id
                   << " t_alert=" << ts_w
                   << " T_fwd=" << T_fwd << "s"
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
