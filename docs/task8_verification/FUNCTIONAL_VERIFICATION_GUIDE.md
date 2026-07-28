@@ -164,13 +164,13 @@ No single runner covers all 8 attacks with baselines. Pick based on what you nee
 
 | Runner | Attacks | Also produces | Notes |
 |---|---|---|---|
-| `run_std_attacks.py` | 1, 2 | TAP baseline (B1) | **only runner with `sync_files()`** — use it to build |
+| `run_std_attacks.py` | 1, 2 | TAP baseline (B1) | `--build` syncs + compiles |
 | `run_hf_attacks.py` | 5–8 | FADE baseline (B3) | |
-| `run_rule_based_sweep.py` | **all 8** | none (MOBIGUARD only) | seeds default `[1,2,3]`; filenames get `_seed<S>` |
+| `run_rule_based_sweep.py` | **all 8** | none (MOBIGUARD only) | seeds default `[1,2,3]`; filenames get `_seed<S>`; `--build` syncs + compiles |
 
-- `run_rule_based_sweep.py` does **not** sync sources — it only runs `./waf build`
-  on whatever is already in the ns-3 tree. **Always build with
-  `run_std_attacks.py --build` first** so the current `scratch/` is synced in.
+- All three runners' `--build` now call the same `sync_files()` (project
+  `scratch/` → ns-3 tree) before `./waf build`, so any of them can be used to
+  refresh the binary — no need to build with `run_std_attacks.py` first.
 - The runners call the **same binary with identical `FIXED_PARAMS`** — they
   differ only in orchestration (which attacks, whether a baseline is paired,
   seed handling).
@@ -181,7 +181,7 @@ Your binary is stale if it predates the newest `scratch/` source. `--build`
 syncs project sources → ns-3 and compiles, then exits without simulating:
 
 ```bash
-python3 scripts/run_std_attacks.py --build
+python3 scripts/run_rule_based_sweep.py --build
 ```
 
 ### Step 2 — Run a sweep (survives terminal close)
