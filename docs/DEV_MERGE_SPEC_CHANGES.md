@@ -208,12 +208,20 @@ New: `D_RSU = f_S2f ∨ f_S3 ∨ f_S4 ∨ f_S5 ∨ f_S6 ∨ f_S7 ∨ f_S8 ∨ fl
 federated LSTM's per-RSU anomaly output is now an explicit OR'd term in the
 system-level detection decision, not a separate side-channel.
 
-- [ ] **Directly relevant to current work**: check whether `routing.cc`'s
-      Fix-16 escalation gate / `evaluator.py`'s M1-M3 should be recomputed
-      against this composite `D_RSU` (rule engine ∨ LSTM) rather than
-      LSTM-only, if we want a number that matches what main.tex now
-      specifies as *the* system detection decision.
-- [ ] Add S3/S4 flags into the RSU-side composite (depends on #3/#4).
+- [x] **LSTM half done** (2026-07-27 audit, `docs/
+      LSTM_LIVE_INTEGRATION_STATUS.md`): `scratch/lrad.h` computes
+      `flag_LSTM` and ORs it into `D_RSU`, counted in `is_detected_node[][]`
+      and now blockchain-logged (signal 9). Re: the "recompute evaluator.py
+      M1-M3 against composite D_RSU" sub-question below — resolved as
+      **not needed**: `sec:lstm_validation`'s Table `lstm_detection` is
+      explicitly "Federated LSTM Detection Quality" (standalone component
+      quality, matching ablation arm AB1-B), not the system-level composite
+      metric, so LSTM-only M1-M3 in `evaluator.py` is correct as-is. The
+      live sim's own `write_security_metrics_csv()` (via `is_detected_node`)
+      is the composite-`D_RSU` number, and already includes flag_LSTM's
+      contribution.
+- [ ] Add S3/S4 flags into the RSU-side composite (depends on #3/#4) — still
+      open, unrelated to LSTM.
 
 ## 11. New: plane-based attacker attribution & mitigation routing
 `main.tex` algorithm `alg:lrad_rsu`, `alg:btmm` (heavily rewritten)
