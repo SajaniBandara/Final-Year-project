@@ -732,6 +732,8 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
             rng(top.get("avg_UCR"), 0.0, 100.0, "avg_UCR"))
     rep.add("eq:l_mit", "M4", "mitigation latency is non-negative",
             gte(top.get("avg_mit_ms"), 0.0, "avg_mit_ms"))
+    rep.add("eq:l_mit", "M4", "mitigation latency meets the main.tex M4 target (<=100ms)",
+            lte(top.get("avg_mit_ms"), 100.0, "avg_mit_ms"))
     rep.add("eq:l_e2e", "M6", "avg end-to-end latency is positive",
             gt(top.get("avg_lat_ms"), 0.0, "avg_lat_ms"))
     rep.add("eq:l_e2e", "M6", "avg PDR is a valid percentage",
@@ -1036,6 +1038,8 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
     if ev:
         rep.add("eq:l_failover", "M5", "failover latency recorded for the revocation event",
                 gt(mx, 0.0, "ctrl_failover_max_ms"))
+        rep.add("eq:l_failover", "M5", "failover latency meets the main.tex M5 target (<=100ms)",
+                lte(mx, 100.0, "ctrl_failover_max_ms"))
         rep.add("eq:sc_revoke", "M5", "RSUs were reassigned after SC.Revoke",
                 gt(reas, 0.0, "ctrl_failover_reassigned"))
     else:
@@ -1055,9 +1059,14 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
             gte(top.get("avg_eps_ref_s"), 0.0, "avg_eps_ref_s"))
     rep.add("eq:eps_ref", "M9", "time-reference error stays sub-second",
             lte(top.get("avg_eps_ref_s"), 1.0, "avg_eps_ref_s"))
-    fmax = (N_RSUS - 1) // 3
+    # T_ref is a coordinate-wise median (eq:time_consensus), so it stays
+    # correct as long as fewer than half the RSU clocks are compromised.
+    # main.tex states this bound at 2209-2211/4456-4461, and its own M9 sweep
+    # design (4488-4494) targets floor(n_RSU/2)-1 as the last value expected
+    # to PASS and n_RSU/2 as the value expected to fail.
+    fmax = N_RSUS // 2 - 1
     rep.add("eq:time_consensus", "M9",
-            f"faulty time sources stay within the BFT bound f <= {fmax}",
+            f"faulty time sources stay within the main.tex median bound f < n_RSU/2 (f <= {fmax})",
             lte(top.get("time_ref_f_bad"), float(fmax), "time_ref_f_bad"))
 
     # ---- P. TAP baseline comparator ----------------------------------------- #
