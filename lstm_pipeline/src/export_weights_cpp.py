@@ -19,7 +19,7 @@ default dtype, no precision loss from the export):
   n_rsus      : uint32
   hidden1     : uint32   (= 64)
   hidden2     : uint32   (= 32)
-  n_features  : uint32   (= 7)
+  n_features  : uint32   (= 10, since the 2026-07-27 D_div/A_tp/R_anom expansion)
   -- then, in this fixed order, each tensor as raw float32 row-major --
   enc1.weight_ih_l0  (4*hidden1, n_features)
   enc1.weight_hh_l0  (4*hidden1, hidden1)
@@ -117,7 +117,8 @@ def main():
 
         scaler = json.load(open(SCALER_PATH))
         assert scaler["features"] == [
-            "delta_t", "lambda_PI", "U_TCAM", "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar"
+            "delta_t", "lambda_PI", "U_TCAM", "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
+            "d_div", "a_tp", "r_anom"
         ], "scaler_params.json feature order must match eq:lstm_input exactly"
         mu  = [scaler["mu"][k]  for k in scaler["features"]]
         std = [scaler["std"][k] for k in scaler["features"]]

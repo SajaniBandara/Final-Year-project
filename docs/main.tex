@@ -6178,12 +6178,19 @@ average mitigation latency of 50\,ms.
 \subsection{Federated LSTM Validation Results}
 \label{sec:lstm_validation}
 
-The federated LSTM detector (Section~\ref{sec:fed_lstm}) was trained and
-evaluated on the full $6\times8\times5=240$ run-instance dataset (1,399,040
-feature rows across 64 RSUs and all 8 attack variants plus benign baseline runs, following
-the 70/15/15 seed-partitioned split, 10\,s/5\,s windowing, and hyperparameter
-grid search specified above. Detection quality is reported on the held-out
-test split (seed 5, never used in training or validation).
+The federated LSTM detector (Section~\ref{sec:fed_lstm}) is evaluated per
+attack variant in Table~\ref{tab:lstm_detection}. For the Hidden Forwarding
+variants (A5--A8), the detector is trained on benign traffic only (seeds
+1--3) and calibrated/evaluated on the seed-partitioned validation and
+held-out test splits (seeds 4 and 5 respectively, attack percentage
+100\%), following the 10\,s/5\,s windowing and per-RSU threshold calibration
+(Eq.~\ref{eq:lstm_threshold}) specified above. Selective Time Delay and TCAM
+exhaustion values (A1--A4) are reported at the same attack percentage and
+split methodology. Extending Hidden Forwarding coverage to the full
+$\{0,20,40,60,80,100\}\%$ attack-percentage sweep across all five seeds, and
+collecting a matching sweep for A1--A4 under the current 10-feature input
+(Eq.~\ref{eq:lstm_input}), remains outstanding before the complete
+$6\times8\times5=240$ run-instance dataset described above is realised.
 
 \begin{table}[H]
 \centering
@@ -6201,19 +6208,18 @@ A2 DP-Selective Delay & 0.893 & 92.87 & 2.84 \\
 \hline
 A3 CP-TCAM & 0.259 & 90.85 & 52.95 \\
 \hline
-A4 DP-TCAM & 0.434 & 9HF-
-7.74 & 44.51 \\
+A4 DP-TCAM & 0.434 & 97.74 & 44.51 \\
 \hline
-A5 Active HF Attack (Control plane) & 0.544 & 70.10 & 6.22 \\
+A5 Active HF Attack (Control plane) & 0.861 & 88.80 & 0.80 \\
 \hline
-A6 Active HF Attack (Data Plane) & 0.505 & 63.99 & 6.65 \\
+A6 Active HF Attack (Data Plane) & 0.909 & 94.50 & 2.50 \\
 \hline
-A7 Passive HF Attack (Control plane) & 0.513 & 68.09 & 6.03 \\
+A7 Passive HF Attack (Control plane) & 0.829 & 85.50 & 0.80 \\
 \hline
-A8 Passive HF Attack (Data plane) & 0.487 & 64.71 & 6.08 \\
+A8 Passive HF Attack (Data plane) & 0.837 & 90.50 & 6.80 \\
 \hline
 
-\textbf{Overall (A1--A8)} & \textbf{0.526} & \textbf{84.52} & \textbf{15.84} \\
+\textbf{Mean (A1--A8)} & \textbf{0.718} & \textbf{90.50} & \textbf{14.54} \\
 \hline
 \end{tabular}
 \end{table}
@@ -6226,19 +6232,26 @@ A8 Passive HF Attack (Data plane) & 0.487 & 64.71 & 6.08 \\
 \end{figure}
 
 As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_detection},
-detection quality separates into two regimes: Selective Time Delay and
+detection quality separates into two regimes. Selective Time Delay and
 Hidden Forwarding attacks (A1, A2, A5--A8) combine moderate-to-high MCC
-(0.49--0.89) with a low false-positive rate (3--7\%), while the TCAM
+(0.72--0.91) with a low false-positive rate (1--7\%), while the TCAM
 exhaustion attacks (A3, A4) achieve very high detection rates (91--98\%) at
 a higher false-positive cost (45--53\%) -- a consequence of the ground-truth
 labelling any RSU holding even one malicious TCAM entry as attack-positive
-for its entire observation window, since installed entries persist. A
-consistent pattern holds within both attack families: the data-plane variant
-outperforms its control-plane sibling on MCC (A2: 0.893 vs.\ A1: 0.720; A4:
-0.434 vs.\ A3: 0.259), likely because data-plane attacks act more directly
-on observed traffic, leaving a cleaner per-RSU signal, whereas control-plane
-attacks act indirectly through a compromised controller or flow rules,
-potentially diluting the signal across additional intermediate steps.
+for its entire observation window, since installed entries persist; the same
+$U_{TCAM}$ signal also rises under organic, non-malicious traffic surges that
+saturate the table, which a utilisation threshold alone cannot distinguish
+from an attack as sharply as the timing- and reception-based signals used by
+the other six variants. Within the Selective Time Delay pair, the data-plane
+variant outperforms its control-plane sibling on MCC (A2: 0.893 vs.\ A1:
+0.720), consistent with a data-plane attacker acting more directly on
+observed traffic and leaving a cleaner per-RSU delay signal than a
+control-plane attacker acting indirectly through a compromised controller.
+Within Hidden Forwarding, passive variants (A7, A8 -- no packet content is
+modified) score within 0.03--0.08 MCC of their active counterparts (A5, A6),
+showing that the unauthorized-reception signal ($R_{anom}$, Eq.~\ref{eq:feat_ranom})
+remains discriminative even for attacks that leave no volume or content trace
+for conventional monitoring to observe.
 
 \begin{figure}[H]
     \centering
@@ -6266,39 +6279,51 @@ final loss.
 
 Figure~\ref{fig:lstm_poisoning} evaluates M8 ($\Delta_{poison}$,
 Eq.~\ref{eq:delta_poison}) as the malicious RSU fraction $\rho_{mal}$
-increases toward the PBFT bound $f<n/3$. At $\rho_{mal}=0.3$, BRFA-v2 holds
-$\Delta_{poison}=0.023$ versus naive FedAvg's $0.081$ -- a $3.5\times$
-improvement. Naive FedAvg shows a sharp degradation between $\rho_{mal}=0.1$
-and $0.2$ (0.014 $\to$ 0.069, a $5\times$ jump) that BRFA-v2 does not
-exhibit: FedAvg averages every submitted update unconditionally, so once
-enough poisoned gradients are present they begin to dominate the mean,
-producing a tipping point. BRFA-v2's Krum step instead rejects updates that
-are statistically distant from the coordinate-wise median \emph{before}
-aggregation, so poisoned updates are excluded rather than diluting the
-average, giving the smoother, near-linear degradation observed.
+increases toward the PBFT bound $f<n/3$, under a \texttt{sign\_flip}
+poisoning model (each poisoned RSU negates its submitted weight update).
+BRFA-v2 holds $\Delta_{poison} \leq 0.010$ across
+$\rho_{mal}\in\{0.1,0.2,0.3\}$ (MCC 0.800--0.811 against a clean-model MCC of
+0.809), meeting the target $\Delta_{poison}(\rho_{mal}<1/3)\approx0$
+(Eq.~\ref{eq:delta_poison}) at every swept point via BRFA-v2's Krum step,
+which rejects updates statistically distant from the coordinate-wise median
+\emph{before} aggregation (58--45 of 64 RSUs accepted as $\rho_{mal}$ rises
+from 0.1 to 0.3). The naive FedAvg baseline, evaluated over the same sweep,
+does \emph{not} show the expected monotonic degradation
+($\Delta_{poison}$ stays within $\pm0.011$ of zero, and mean MCC is
+slightly higher than BRFA-v2's at every $\rho_{mal}$ tested); with only 64
+sign-flipped local updates averaged unconditionally, this sweep does not yet
+separate BRFA-v2 from the undefended baseline, most likely because the
+evaluation is currently restricted to the Hidden Forwarding-only training
+distribution described above rather than the full attack-variant coverage --
+this comparison should be re-run once local training covers all eight
+variants before citing a BRFA-v2-vs-FedAvg advantage from this figure.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{Figure_LSTM_MobilityStratifiedMCC.eps}
-    \caption{Mobility-stratified MCC (Eq.~\ref{eq:mcc_mobility}) per attack variant, across vehicle density ($\rho$) and speed ($\bar{v}$) bins. Low-$\rho$/low-$\bar{v}$ and low-$\rho$/high-$\bar{v}$ cells are unpopulated in the evaluated trace (see text) and marked n/a.}
+    \caption{Mobility-stratified MCC (Eq.~\ref{eq:mcc_mobility}) for Hidden Forwarding variants A5--A8, across vehicle density ($\rho$, tertile bins) and speed ($\bar{v}$, median-split bins) derived from the evaluated SUMO trace. The low-$\rho$/low-$\bar{v}$ cell is unpopulated (n=0) for all variants; other n/a cells are constant-class strata (no attack-positive windows for that variant in that stratum) rather than missing data (see text).}
     \label{fig:lstm_mobility}
 \end{figure}
 
-Figure~\ref{fig:lstm_mobility} validates the mobility-adjusted threshold
-(Eq.~\ref{eq:mobility_baseline}): MCC holds or improves at higher density
-and speed for most attacks (e.g.\ A1: 0.65 $\to$ 0.82), with A5 and A6 as
-the two exceptions that degrade under denser, faster traffic. A plausible
-explanation is that for A1, denser and faster traffic increases the volume
-of legitimate high-priority packets the mobility-adjusted baseline is
-estimated from, sharpening the delay-anomaly signal the selective-delay
-attack has to hide within, while A5 and A6 (active hidden forwarding)
-degrade under the same conditions because denser traffic may give a hidden
-duplicate more legitimate concurrent forwarding activity to blend into,
-diluting the count-based duplication signal these signatures rely on. The
-low-density bins are unpopulated in the evaluated SUMO trace low density
-and low speed do not co-occur in this mobility model, and the
-low-density/high-speed stratum contains no attack-positive test windows 
-reflecting the evaluated scenario rather than a detection failure.
+Figure~\ref{fig:lstm_mobility} reports mobility-stratified MCC for the
+Hidden Forwarding variants (A5--A8); the same stratification for A1--A4
+requires per-window predictions not yet collected under the current
+10-feature input and is left for future work. The low-$\rho$/low-$\bar{v}$
+cell is unpopulated for all four variants (n=0) -- low density and low
+speed do not co-occur in the evaluated SUMO trace. Beyond that, the pattern
+is variant-specific rather than uniform: A5 (CP-ActiveHF) is strongest at
+low density/high speed (MCC=1.00, n=204) and falls to 0.58--0.71 at medium
+density, with no attack-positive windows at high density in this trace. A6
+(DP-ActiveHF) stays moderate (0.64--0.77) at low/medium density but
+collapses to MCC=0.00 at high-density/high-speed (n=32) -- a genuine,
+sample-backed detection gap rather than a data-sparsity artefact, and a
+concrete target for follow-up. A7 (CP-PassiveHF) only has attack-positive
+coverage at medium density (0.46 low-speed, 0.75 high-speed); its low- and
+high-density strata are constant-class in this trace (MCC undefined), i.e.\
+this reflects where the ZKP-failure-based ground truth places A7's
+detectable activity in the evaluated scenario, not a detection failure
+elsewhere. A8 (DP-PassiveHF) has the most complete coverage of the four and
+the best high-mobility result (MCC=0.88 at high density/high speed).
 
 
 \chapter{Timeline and Resource Required}
