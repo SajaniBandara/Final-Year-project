@@ -29,15 +29,22 @@
 // instead of inferring it indirectly. Empirically validated (2026-07-26):
 // genuine effect 2.1-5.9 vs. baseline drift 0 across all four HF variants.
 //
-// `d_div`/`a_tp` (2026-07-26, eq:feat_ddiv/eq:feat_atp): added alongside
-// r_anom to complete the originally-proposed 3-feature set. IMPORTANT: in
-// this simulation both are direct, near-deterministic transforms of the
-// SAME r_anom delta (see the computation site below for why — HF only
-// ever targets one demanding flow via one eavesdropper per malicious RSU,
-// so there is no second, independent "diversion" event to observe them
-// from). Expect them to be highly correlated with r_anom, not additive —
-// this is a structural property of the single-flow attack model, not a
-// bug in these two features' implementation.
+// `d_div`/`a_tp` (2026-07-26, eq:feat_ddiv/eq:feat_atp; corrected 2026-07-28
+// per main.tex:5783-5794): added alongside r_anom to complete the
+// originally-proposed 3-feature set. Computed from dedicated local delivery
+// counters (g_lstm_flow0_dest_set / g_lstm_flow0_total_delivery_count /
+// g_lstm_flow0_legit_count, all in crypto_layer.h, populated at the MacRx
+// receive sites in routing.cc) — genuinely independent of r_anom's
+// blockchain-receipt-log source, as main.tex requires ("D_div is computed
+// from per-source per-destination byte counts logged at each RSU"; "A_tp is
+// computed from per-flow directional byte rate logs"). The 2026-07-26
+// version derived both as deterministic transforms of r_anom's delta, which
+// was a spec deviation, not a harmless simplification — it collapsed three
+// features main.tex designs as independent defense-in-depth signals down to
+// one. |P(v,.)|=1 still holds in this sim (HF only ever targets one
+// demanding flow, flow 0, so it has exactly one authorized destination at
+// any instant) — that part of the original reasoning was correct and is
+// kept.
 //
 // `escalated`: whether >=1 OBU rule-engine escalation (D_OBU==1,
 // eq:composite_light) targeted this RSU during this cycle (main.tex
@@ -111,6 +118,17 @@ static std::vector<uint32_t> g_lstm_prev_ranom;
 static uint32_t g_lstm_prev_flow0_legit        = 0;
 static int      g_lstm_flow0_legit_cycle_cached = -1;
 static double   g_lstm_flow0_legit_delta_cached = 0.0;
+
+// ── D_div/A_tp numerator/denominator snapshots (eq:feat_ddiv, eq:feat_atp;
+// main.tex:5783-5794). g_lstm_flow0_dest_set/g_lstm_flow0_total_delivery_count
+// (crypto_layer.h) are global running-window accumulators, not per-RSU, so
+// (like g_lstm_flow0_legit_delta_cached above) they must be snapshotted then
+// reset exactly once per cycle — not once per RSU — even though
+// lstm_log_rsu_cycle() is called once per RSU inside the same cycle's
+// per-RSU loop. Refreshed in the same cache-refresh block as
+// g_lstm_flow0_legit_delta_cached below.
+static uint32_t g_lstm_ddiv_count_cached     = 0;
+static uint32_t g_lstm_total_delivery_cached = 0;
 
 // ── Rule-engine → LSTM escalation counter (main.tex §5039/5307:
 // "Escalation to LSTM detector: immediate escalation occurs when the
@@ -332,7 +350,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
-    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project/";
+    std::string dir = "/home/nipuni/g13_project_repo/Final-Year-project/";
     const char* home = std::getenv("HOME");
     if (home)
         dir = std::string(home) + "/ns3_g13/g13_project_repo/Final-Year-project/";
@@ -348,7 +366,7 @@ inline std::string lstm_weights_bin_path()
 inline std::string lstm_make_base_dir()
 {
     std::string dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = std::getenv("HOME");
     if (home)
         dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -499,24 +517,21 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if (r < g_lstm_prev_ranom.size()) g_lstm_prev_ranom[r] = cur_ranom;
     }
 
-    // ── Features 9 & 10 (new): D_div, A_tp (eq:feat_ddiv, eq:feat_atp).
-    // IMPLEMENTATION NOTE: this simulation's HF attacks always target
-    // exactly ONE demanding flow (hf_target_flow_id=0, efade_detection.h)
-    // via exactly one eavesdropper per malicious RSU, so |P(v,.)|=1 (flow 0
-    // has one authorized destination at any instant) and "distinct
-    // destinations" is capped at {legit destination, one eavesdropper}.
-    // Both features are therefore direct, near-deterministic transforms of
-    // the SAME R_anom delta computed above (copies_via_r) -- not
-    // independent observations of a different event, just different
-    // normalizations of it. This is a property of the single-flow attack
-    // model, not an implementation shortcut: there is no second, unrelated
-    // "diversion" signal available to compute these from in this sim.
+    // ── Features 9 & 10: D_div, A_tp (eq:feat_ddiv, eq:feat_atp; corrected
+    // 2026-07-28 per main.tex:5783-5794). Both are computed from dedicated
+    // local delivery counters populated at the MacRx receive sites in
+    // routing.cc (g_lstm_flow0_dest_set, g_lstm_flow0_total_delivery_count,
+    // g_lstm_flow0_legit_count — all crypto_layer.h) — independent of
+    // R_anom's blockchain-receipt-log source, as the spec requires.
     //
     // legit_this_cycle: Δ(g_lstm_flow0_legit_count) since last cycle,
     // computed ONCE per cycle (see g_lstm_flow0_legit_cycle_cached's
     // declaration above for why) — flow 0's legit final-delivery count
-    // this window, used as the shared "authorized" denominator component
-    // for every RSU's A_tp this cycle.
+    // this window, the A_tp "authorized" numerator.
+    //
+    // g_lstm_ddiv_count_cached/g_lstm_total_delivery_cached: snapshotted
+    // and reset in the same once-per-cycle block, for the same reason
+    // (global, not per-RSU, accumulators — see their declaration above).
     int cur_cycle_num = (int)(data_gathering_cycle_number - 1.0);
     if (cur_cycle_num != g_lstm_flow0_legit_cycle_cached)
     {
@@ -525,12 +540,27 @@ inline void lstm_log_rsu_cycle(uint32_t r,
             ? (double)(cur_legit - g_lstm_prev_flow0_legit) : 0.0;
         g_lstm_prev_flow0_legit = cur_legit;
         g_lstm_flow0_legit_cycle_cached = cur_cycle_num;
+
+        g_lstm_ddiv_count_cached     = (uint32_t)g_lstm_flow0_dest_set.size();
+        g_lstm_total_delivery_cached = g_lstm_flow0_total_delivery_count;
+        g_lstm_flow0_dest_set.clear();
+        g_lstm_flow0_total_delivery_count = 0;
     }
     double legit_this_cycle = g_lstm_flow0_legit_delta_cached;
 
-    double D_div = 1.0 + ((R_anom > 0.0) ? 1.0 : 0.0);   // |P(v,.)|=1, see note above
-    double A_tp  = (legit_this_cycle + R_anom > 0.0)
-                   ? (legit_this_cycle / (legit_this_cycle + R_anom))
+    // D_div = |{distinct destinations reached}| / |P(v,.)|, |P(v,.)|=1 in
+    // this sim (flow 0 has exactly one authorized destination at any
+    // instant — HF only ever targets this one demanding flow). No traffic
+    // this window -> default to the "no attack" resting value 1.0 (matches
+    // the historical CSV migration default for this column, see
+    // lstm_migrate_stale_header() above), not 0 (0 would misleadingly read
+    // as "zero distinct destinations reached", not "no traffic").
+    double D_div = (g_lstm_total_delivery_cached > 0)
+                   ? (double)g_lstm_ddiv_count_cached
+                   : 1.0;
+    // A_tp = authorized deliveries / total deliveries this window.
+    double A_tp  = (g_lstm_total_delivery_cached > 0)
+                   ? (legit_this_cycle / (double)g_lstm_total_delivery_cached)
                    : 1.0;   // no traffic this cycle -> default "fully authorized"
 
     // ── Features 4 & 5: ZKP failure indicators (binary {0, 1})

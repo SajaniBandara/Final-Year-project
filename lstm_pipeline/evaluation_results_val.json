@@ -1,0 +1,91 @@
+{
+  "A1 CP-SelectiveDelay": {
+    "TP": 462,
+    "TN": 656,
+    "FP": 13,
+    "FN": 21,
+    "M1_MCC": 0.9393,
+    "M2_DR": 0.9565,
+    "M3_FPR": 0.0194,
+    "sim_metrics": {}
+  },
+  "A2 DP-SelectiveDelay": {
+    "TP": 587,
+    "TN": 548,
+    "FP": 8,
+    "FN": 9,
+    "M1_MCC": 0.9705,
+    "M2_DR": 0.9849,
+    "M3_FPR": 0.0144,
+    "sim_metrics": {}
+  },
+  "A3 CP-TCAM": {
+    "TP": 363,
+    "TN": 566,
+    "FP": 202,
+    "FN": 21,
+    "M1_MCC": 0.6434,
+    "M2_DR": 0.9453,
+    "M3_FPR": 0.263,
+    "sim_metrics": {}
+  },
+  "A4 DP-TCAM": {
+    "TP": 402,
+    "TN": 632,
+    "FP": 108,
+    "FN": 10,
+    "M1_MCC": 0.8007,
+    "M2_DR": 0.9757,
+    "M3_FPR": 0.1459,
+    "sim_metrics": {}
+  },
+  "A5 CP-ActiveHF": {
+    "TP": 515,
+    "TN": 387,
+    "FP": 2,
+    "FN": 120,
+    "M1_MCC": 0.7823,
+    "M2_DR": 0.811,
+    "M3_FPR": 0.0051,
+    "sim_metrics": {}
+  },
+  "A6 DP-ActiveHF": {
+    "TP": 586,
+    "TN": 387,
+    "FP": 4,
+    "FN": 47,
+    "M1_MCC": 0.9001,
+    "M2_DR": 0.9258,
+    "M3_FPR": 0.0102,
+    "sim_metrics": {}
+  },
+  "A7 CP-PassiveHF": {
+    "TP": 555,
+    "TN": 380,
+    "FP": 2,
+    "FN": 87,
+    "M1_MCC": 0.8343,
+    "M2_DR": 0.8645,
+    "M3_FPR": 0.0052,
+    "sim_metrics": {}
+  },
+  "A8 DP-PassiveHF": {
+    "TP": 432,
+    "TN": 510,
+    "FP": 4,
+    "FN": 78,
+    "M1_MCC": 0.8487,
+    "M2_DR": 0.8471,
+    "M3_FPR": 0.0078,
+    "sim_metrics": {}
+  },
+  "Overall (attacks 1-8)": {
+    "TP": 3902,
+    "TN": 4066,
+    "FP": 343,
+    "FN": 393,
+    "M1_MCC": 0.8309,
+    "M2_DR": 0.9085,
+    "M3_FPR": 0.0778
+  }
+}
