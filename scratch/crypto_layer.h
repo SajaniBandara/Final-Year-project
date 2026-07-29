@@ -56,7 +56,7 @@ inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
 // High-frequency per-packet ops are gated on this flag.
 // Low-frequency high-importance events (DKG, quarantine, failures, blockchain
 // commits) fire unconditionally regardless of this flag.
-static bool CRYPTO_DEBUG_LOG = true;
+static bool CRYPTO_DEBUG_LOG = true;  // default true for dev/debug, false for normal runs
 
 // Formats first 4 bytes of buf as compact hex — evidence token in debug lines.
 static std::string _hex4(const uint8_t* b) {
