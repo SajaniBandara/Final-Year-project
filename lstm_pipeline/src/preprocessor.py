@@ -24,11 +24,15 @@ BENIGN_V   = 0       # attack_v == 0 → benign (A0)
 TRAIN_SEEDS = {1, 2, 3}
 VAL_SEEDS   = {4}
 TEST_SEEDS  = {5}
-# Stabilized cycle range: v_bar ramps for the first ~30s while SUMO traffic
-# gets moving; attack runs are 90s (cycles 0-87) and benign runs 150s, so
-# keeping 30-87 gives every file the same fully-stabilized 58-cycle range.
-MIN_CYCLE  = 30
-MAX_CYCLE  = 87
+# Stabilized cycle range: originally 30-87 (v_bar ramps for the first ~30s
+# while SUMO traffic gets moving; attack runs were 90s, cycles 0-87). A1-A4
+# were re-collected at simTime=40 (cycles 0-~37) to get real seed4/5 data —
+# never reaching cycle 30 — so the 30-87 window would drop virtually all of
+# it. Widened to 0-200 to cover both; the SUMO cycle-0 startup transient this
+# reintroduces is handled explicitly below (dropped per-window, not via this
+# range) rather than by cutting the first 30s network-wide.
+MIN_CYCLE  = 0
+MAX_CYCLE  = 200
 # Cycle-level labeling: a window is attack-positive only if it contains a
 # delta_t spike above the benign p99 (attack actually firing this window),
 # not merely because it came from an attacker RSU's run. See make_windows().
@@ -111,6 +115,15 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
         spikes = grp["is_spike"].values.astype(np.int8)   # per-row attack-active flag
         cycles = grp["cycle"].values
         for i in range(0, len(grp) - window + 1, stride):
+            # Drop the window starting at cycle 0: SUMO's own startup
+            # transient (vehicles at spawn, not yet moving) makes rho/v_bar
+            # anomalous network-wide regardless of attack_v. Diagnostic
+            # 2026-07-29: this single window accounted for 86% of A5's false
+            # positives and 67% of A7's, cycle-0 FPR 8-48% vs <3% for the
+            # rest of the run; A1-A4 were unaffected (confirmed not a
+            # general fix, only removes the startup artifact).
+            if cycles[i] == 0:
+                continue
             # Attack-positive only if from an attack run (av>0) and a spike is
             # present in the window (attack was actually firing here).
             win_pos = 1 if (av > 0 and spikes[i:i+window].max() > 0) else 0

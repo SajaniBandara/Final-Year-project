@@ -17,6 +17,7 @@
 #include <vector>
 #include <array>
 #include <map>
+#include <set>
 #include <algorithm>
 #include <chrono>   // M7: wall-clock timing of batch verification (eq:t_verify)
 #include <openssl/crypto.h>
@@ -56,7 +57,7 @@ inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
 // High-frequency per-packet ops are gated on this flag.
 // Low-frequency high-importance events (DKG, quarantine, failures, blockchain
 // commits) fire unconditionally regardless of this flag.
-static bool CRYPTO_DEBUG_LOG = true;  // default true for dev/debug, false for normal runs
+static bool CRYPTO_DEBUG_LOG = false;
 
 // Formats first 4 bytes of buf as compact hex — evidence token in debug lines.
 static std::string _hex4(const uint8_t* b) {
@@ -377,20 +378,52 @@ std::map<uint32_t, uint32_t>                      g_lstm_pkt_counts;
 // the windowed rate the equation actually specifies ("per unit time W").
 std::map<uint32_t, uint32_t> g_lstm_ranom_count;
 
-// 2026-07-26: D_div/A_tp (eq:feat_ddiv, eq:feat_atp) need a "legit deliveries
-// this window" count for flow 0 (the ONLY flow HF ever targets in this sim)
-// to compare against g_lstm_ranom_count's "unauthorized copies this window".
-// fade_received_count (efade_detection.h) is NOT usable directly for this --
-// it's only cleared per-epoch inside fade_detect_anomaly(), which early-
-// returns unless fade_detection_active (requires the FADE-isolated
-// !enable_lrad_obu && !enable_lrad_rsu config) -- in a normal run it's
-// never cleared and grows cumulatively for the whole run, same problem
-// g_lstm_ranom_count would have without the delta pattern. This is a
-// dedicated, always-incrementing global counter (not per-RSU: flow 0 has
-// exactly one final destination reached once per packet, regardless of how
-// many RSUs relayed it), delta'd against g_lstm_prev_flow0_legit once per
-// cycle in lstm_logger.h.
+// 2026-07-28 (main.tex:5783-5794 spec correction): D_div/A_tp (eq:feat_ddiv,
+// eq:feat_atp) must be computed from "per-source per-destination byte counts"
+// and "per-flow directional byte rate logs" respectively -- genuinely
+// independent local delivery counters, NOT derived from R_anom/the
+// blockchain receipt log (that separation is the whole point of the
+// three-feature design: R_anom is the only one requiring blockchain read
+// access, so D_div/A_tp must keep working from purely local RSU state).
+// The previous implementation (2026-07-26) computed both as deterministic
+// transforms of R_anom's delta -- a real deviation from spec, not a
+// harmless simplification, since it collapsed three independent evidence
+// channels main.tex explicitly designs for down to one.
+//
+// g_lstm_flow0_legit_count: cumulative count of flow 0's genuine final
+// deliveries (packet reaches its authorized destination_f). This is the
+// A_tp "authorized" numerator. Not per-RSU: flow 0 has exactly one final
+// destination reached once per packet, regardless of how many RSUs relayed
+// it. Delta'd against g_lstm_prev_flow0_legit once per cycle in
+// lstm_logger.h. fade_received_count (efade_detection.h) is NOT usable
+// directly for this -- it's only cleared per-epoch inside
+// fade_detect_anomaly(), which early-returns unless fade_detection_active
+// (requires the FADE-isolated !enable_lrad_obu && !enable_lrad_rsu config)
+// -- in a normal run it's never cleared and grows cumulatively for the
+// whole run, same problem this dedicated counter avoids via the delta
+// pattern.
 uint32_t g_lstm_flow0_legit_count = 0;
+
+// g_lstm_flow0_dest_set: distinct destination node IDs that have received
+// >=1 flow-0 packet this window (both the authorized destination_f AND any
+// unauthorized eavesdropper/duplicate-recipient reached via hidden
+// forwarding). This is the eq:feat_ddiv numerator -- a genuine
+// per-destination delivery count populated directly at the MacRx receive
+// sites in routing.cc, independent of g_lstm_ranom_count. |P(v,.)|=1 in
+// this sim (flow 0 has exactly one authorized destination at any instant),
+// so D_div = |g_lstm_flow0_dest_set| directly, no further normalization
+// needed. Snapshotted then cleared once per cycle in lstm_logger.h (same
+// cadence as g_lstm_flow0_legit_count's delta).
+//
+// g_lstm_flow0_total_delivery_count: total flow-0 delivery events this
+// window (authorized + unauthorized) -- the eq:feat_atp denominator.
+// Packet-count based rather than raw-byte based: this sim already measures
+// every other per-cycle feature (R_anom, lambda_PI, escalation) at
+// packet/event granularity, not byte granularity, and packets on a given
+// flow are uniform size in this model, so a packet-count ratio equals the
+// byte-count ratio main.tex specifies.
+std::set<uint32_t> g_lstm_flow0_dest_set;
+uint32_t            g_lstm_flow0_total_delivery_count = 0;
 
 // ── liboqs Singleton and Zone Helper ─────────────────────────────────────────
 

@@ -1,11 +1,12 @@
 #ifndef S1_DETECTION_H
 #define S1_DETECTION_H
 
-// Normal runs: DETECTION_DEBUG_LOG = false -> zero per-packet terminal noise.
-// Mirrors crypto_layer.h's CRYPTO_DEBUG_LOG: high-frequency routine-outcome
-// prints are gated on this; rare/important events (TRIGGERED, detection
-// events recorded) still fire unconditionally regardless of this flag.
-static bool DETECTION_DEBUG_LOG = true;
+// Normal runs: DETECTION_DEBUG_LOG_S1 = false -> zero per-packet terminal
+// noise from the routine "no violation"/diagnostic lines below. The rare
+// "TRIGGERED"/record_detection_event lines stay unconditional regardless —
+// those are the ones that matter for verification. Same convention as
+// crypto_layer.h's CRYPTO_DEBUG_LOG / s2_detection.h's DETECTION_DEBUG_LOG_S2.
+static bool DETECTION_DEBUG_LOG_S1 = false;
 
 // =========================================================================
 // s1_detection.h — MOBIGUARD Signature S1 Detection
@@ -215,10 +216,11 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     {
         double jitter_s = s1_sample_handoff_jitter();
         effective_delay_s += jitter_s;
-        cout << "[S1] Handoff jitter: vehicle " << vehicle_id
-             << " handed off this cycle — adding " << jitter_s * 1000.0
-             << "ms (raw delay=" << packet_delay_s * 1000.0
-             << "ms, effective=" << effective_delay_s * 1000.0 << "ms)." << endl;
+        if (DETECTION_DEBUG_LOG_S1)
+            cout << "[S1] Handoff jitter: vehicle " << vehicle_id
+                 << " handed off this cycle — adding " << jitter_s * 1000.0
+                 << "ms (raw delay=" << packet_delay_s * 1000.0
+                 << "ms, effective=" << effective_delay_s * 1000.0 << "ms)." << endl;
     }
 
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4).
@@ -282,12 +284,12 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     double delta_best   = s1_delta_best[rsu_idx];
     bool   selective_ok  = (delta_best <= threshold);
 
-    if (DETECTION_DEBUG_LOG)
+    if (DETECTION_DEBUG_LOG_S1)
         cout << "[S1] RSU_idx=" << rsu_idx
              << " node=" << current_hop
              << " flow=" << flow_id
              << " pkt=" << packet_id
-             << " delay=" << packet_delay_s * 1000.0 << "ms"
+             << " delay=" << effective_delay_s * 1000.0 << "ms"
              << " baseline=" << delta_bar * 1000.0 << "ms"
              << " sigma=" << sigma * 1000.0 << "ms"
              << " threshold=" << threshold * 1000.0 << "ms"
@@ -339,15 +341,17 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 
     if (effective_delay_s > threshold && !selective_ok)
     {
-        cout << "[S1] Threshold exceeded but selectivity conjunct failed: "
-             << "delta_best=" << delta_best * 1000.0 << "ms > threshold "
-             << threshold * 1000.0 << "ms — best-effort traffic also delayed, "
-             << "treating as genuine congestion, not Attack 1." << endl;
+        if (DETECTION_DEBUG_LOG_S1)
+            cout << "[S1] Threshold exceeded but selectivity conjunct failed: "
+                 << "delta_best=" << delta_best * 1000.0 << "ms > threshold "
+                 << threshold * 1000.0 << "ms — best-effort traffic also delayed, "
+                 << "treating as genuine congestion, not Attack 1." << endl;
     }
-    else if (DETECTION_DEBUG_LOG)
+    else if (DETECTION_DEBUG_LOG_S1)
     {
-        cout << "[S1] No violation: delay " << effective_delay_s * 1000.0
-             << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
+        if (DETECTION_DEBUG_LOG_S1)
+            cout << "[S1] No violation: delay " << effective_delay_s * 1000.0
+                 << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
     }
     return false;
 }
