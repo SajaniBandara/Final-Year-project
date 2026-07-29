@@ -534,7 +534,18 @@ inline bool mldsa87_sign(uint32_t signer, uint32_t pkt_id,
 //                Logged as batch=0/1 so timing tools can distinguish the two call sites.
 inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
                             uint32_t next_hop, uint32_t seq,
-                            bool is_batch_call = false) {
+                            bool is_batch_call = false,
+                            bool* out_broadcast_skip = nullptr) {
+    // out_broadcast_skip distinguishes "this node was never the intended
+    // recipient of the broadcast, so verification was never attempted" from
+    // a genuine cryptographic rejection. Both paths return false below (the
+    // caller-facing pass/fail semantics are unchanged), but a caller that
+    // logs this outcome (e.g. crypto_timing_log*.csv) needs the distinction:
+    // without it, every one of the many neighbours that merely overheard a
+    // broadcast not addressed to them is indistinguishable from an actual
+    // ML-DSA-87 signature rejection, which silently inflates any "verify
+    // fail rate" computed from that log to mostly-meaningless noise.
+    if (out_broadcast_skip) *out_broadcast_skip = false;
     if (g_disable_crypto) return true; // crypto disabled via --disable_crypto
     if (claimed_signer >= (uint32_t)total_size) return false;
     // msg_id = crypto_msg_key(pkt_id, seq): must match mldsa87_sign()'s key
@@ -554,6 +565,7 @@ inline bool mldsa87_verify(uint32_t claimed_signer, uint32_t pkt_id,
     // in the signed message). Skip OQS_SIG_verify and don't count overheard
     // packets in sig_valid_rate — they would always fail and dilute the metric.
     if (it->second.signed_next_hop != (uint32_t)-1 && next_hop != it->second.signed_next_hop) {
+        if (out_broadcast_skip) *out_broadcast_skip = true;
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[CRYPTO-VERIFY] claimed=" << claimed_signer
                       << " pkt=" << pkt_id << " flow=" << seq
