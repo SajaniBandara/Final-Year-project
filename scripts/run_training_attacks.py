@@ -27,7 +27,7 @@ LIB_PATH    = str(NS3_DIR / "build/lib")
 LOGS_DIR    = Path(__file__).resolve().parent.parent / "logs" / "training"
 RESULTS_DIR = NS3_DIR / "results_routing"
 
-ATTACKS      = list(range(1, 9))          # 1–8
+ATTACKS      = list(range(0, 9))          # 0 (benign) + 1–8
 PERCENTAGES  = [0, 20, 40, 60, 80, 100]  # 6 percentages → 8×6×5 = 240 total
 SEEDS        = [1, 2, 3, 4, 5]
 SIM_TIME     = 90    # matches A1/A2's existing 90s data (88 cycles) for consistency
@@ -41,22 +41,27 @@ def build_env():
     return env
 
 
-def build_cmd(attack_number: int, pct: int, seed: int) -> list:
-    # active_attack_variant is synced automatically from attack_number inside routing.cc
-    return [
-        str(BINARY),
-        "--training=1",
-        f"--attack_number={attack_number}",
-        f"--attack_percentage={pct}",
-        f"--sim_seed={seed}",
-        f"--simTime={SIM_TIME}",
-    ]
+def build_cmd(attack_number: int, pct: int, seed: int, sim_time: int) -> list:
+    # active_attack_variant is synced automatically from attack_number inside routing.cc.
+    # attack_number=0 means benign: omit the flag entirely so routing.cc keeps its
+    # default active_attack_variant=-1 (no attack), matching run_training_sweep.py's
+    # convention. attack_percentage is meaningless without an attack, so it's forced
+    # to 0 regardless of what pct was requested for this job.
+    cmd = [str(BINARY), "--training=1"]
+    if attack_number > 0:
+        cmd.append(f"--attack_number={attack_number}")
+        cmd.append(f"--attack_percentage={pct}")
+    else:
+        cmd.append("--attack_percentage=0")
+    cmd.append(f"--sim_seed={seed}")
+    cmd.append(f"--simTime={sim_time}")
+    return cmd
 
 
 def run_one(attack_number: int, pct: int, seed: int,
-            dry_run: bool, env: dict) -> dict:
+            dry_run: bool, env: dict, sim_time: int) -> dict:
     label = f"A{attack_number}_pct{pct}_seed{seed}"
-    cmd   = build_cmd(attack_number, pct, seed)
+    cmd   = build_cmd(attack_number, pct, seed, sim_time)
 
     if dry_run:
         print(f"[DRY] {' '.join(cmd)}")
@@ -89,7 +94,7 @@ def main(args):
     print(f"  Jobs   : {len(jobs)} total  ({len(attacks)} attacks × "
           f"{len(pcts)} pcts × {len(seeds)} seeds)")
     print(f"  Workers: {args.workers}")
-    print(f"  simTime: {SIM_TIME}s")
+    print(f"  simTime: {args.sim_time}s")
     if args.dry_run:
         print("  Mode   : DRY RUN (no simulations launched)\n")
     else:
@@ -103,7 +108,7 @@ def main(args):
     failed   = []
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(run_one, a, p, s, args.dry_run, env): (a, p, s)
+        futures = {pool.submit(run_one, a, p, s, args.dry_run, env, args.sim_time): (a, p, s)
                    for (a, p, s) in jobs}
         for fut in as_completed(futures):
             result = fut.result()
@@ -132,6 +137,8 @@ if __name__ == "__main__":
                     help="RNG seeds (default: 1 2 3 4 5)")
     ap.add_argument("--workers", type=int, default=MAX_WORKERS,
                     help=f"Parallel jobs (default {MAX_WORKERS})")
+    ap.add_argument("--sim-time", type=int, default=SIM_TIME, dest="sim_time",
+                    help=f"Simulated seconds per run (default {SIM_TIME})")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print commands without running")
     main(ap.parse_args())

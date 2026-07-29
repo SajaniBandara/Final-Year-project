@@ -91,7 +91,7 @@ uint32_t flow_size = 55;
 // Normal runs: ROUTING_DEBUG_LOG = false -> zero per-node-pair terminal noise
 // from the delta/flow-scheduling table dump. Same gating convention as
 // CRYPTO_DEBUG_LOG (crypto_layer.h) / DETECTION_DEBUG_LOG (s1_detection.h).
-static bool ROUTING_DEBUG_LOG = true;
+static bool ROUTING_DEBUG_LOG = false;
 
 // Set to true to run exactly one packet per flow — useful for isolating
 // a single attack cycle in the logs without noise from retransmissions.

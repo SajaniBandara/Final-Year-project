@@ -5,7 +5,7 @@
 // Mirrors crypto_layer.h's CRYPTO_DEBUG_LOG: high-frequency routine-outcome
 // prints are gated on this; rare/important events (TRIGGERED, detection
 // events recorded) still fire unconditionally regardless of this flag.
-static bool DETECTION_DEBUG_LOG = true;
+static bool DETECTION_DEBUG_LOG = false;  // set true to log every S1 evaluation (spammy)
 
 // =========================================================================
 // s1_detection.h — MOBIGUARD Signature S1 Detection

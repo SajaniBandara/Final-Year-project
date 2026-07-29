@@ -2,7 +2,7 @@
 #define S2_DETECTION_H
 
 // See s1_detection.h — same DETECTION_DEBUG_LOG gating convention.
-static bool DETECTION_DEBUG_LOG_S2 = true;
+static bool DETECTION_DEBUG_LOG_S2 = false; // set true to log every S2 evaluation (spammy)
 
 // =========================================================================
 // s2_detection.h — MOBIGUARD Signature S2 Detection
