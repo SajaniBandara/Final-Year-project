@@ -1,0 +1,13 @@
+{
+  "n_windows_raw": 1728,
+  "n_blocks_dedup": 960,
+  "fp_raw": 162,
+  "fpr_raw": 0.09375,
+  "fp_dedup": 122,
+  "fpr_dedup": 0.127083,
+  "seeds": [
+    6,
+    7,
+    8
+  ]
+}

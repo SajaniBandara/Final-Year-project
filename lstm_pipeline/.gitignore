@@ -3,6 +3,7 @@
 
 # Trained models (per-RSU + global .pt weights, ~46 MB)
 models/
+models_backup_*/
 
 # Preprocessed windows / labels / meta (.npy arrays, ~35 MB)
 preprocessed/
