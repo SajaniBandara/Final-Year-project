@@ -77,6 +77,13 @@ ROUND_GRID       = [50, 100, 150]   # global aggregation rounds R (spec §4.2)
 CONVERGE_TOL     = 0.02             # accept R if global loss within 2% of loss at R_max
 MIN_BENIGN       = 20                # skip RSU if too few benign windows
 
+# Q27 (mobility-stratified calibration) was tried 2026-07-30: pool benign
+# calibration windows across RSUs by low/high density regime (rho vs.
+# population mean) instead of calibrating each RSU on its own ~27 windows.
+# Reverted -- regressed DR ~35 points across every variant for no FPR
+# benefit (see git history / session notes for the density_stratified_theta
+# implementation and numbers if revisiting with a finer-grained split).
+
 
 # ── Data / hparams loading ────────────────────────────────────────────────────
 
@@ -246,7 +253,15 @@ Z_ALPHA = 3.5   # raised from z_{0.99}=2.3263 (found 2026-07-29 diagnostic:
 # TCAM occupancy, not a calibration problem) — see U_TCAM congestion note.
 
 
-def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
+# Q30-narrow (2026-07-30): tried widening z to 5.0 for interior-grid RSUs
+# only (Q30 holdout showed interior RSUs averaging 14.2% FPR vs 3.2% edge,
+# uncorrelated with theta/n_train -- a narrower, per-RSU-position version of
+# Q27/Q28). Result: raw-window Q30 FPR only 9.38%->8.10%, while DR collapsed
+# 8-12pts across A1/A2/A5/A7 (e.g. A1 82.5%->70.3%) -- same bad trade-off
+# shape as Q27's pooled version, just milder, because ~40% of RSUs are
+# "interior" and all got more conservative, not just the actual outliers.
+# Reverted; flat per-RSU Z_ALPHA restored.
+def compute_theta(model, X_val_benign: np.ndarray, z_alpha: float = None) -> tuple:
     """eq:lstm_threshold: theta(k) = mu_A + z_alpha*sigma_A, computed from
     the RSU's own benign validation reconstruction errors.
 
@@ -272,7 +287,8 @@ def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
         errs = model.anomaly_score(xv).cpu().numpy()
     mu_a  = float(errs.mean())
     sig_a = float(errs.std())
-    theta = mu_a + Z_ALPHA * sig_a
+    z = Z_ALPHA if z_alpha is None else z_alpha
+    theta = mu_a + z * sig_a
     return theta, mu_a, sig_a
 
 
@@ -700,6 +716,14 @@ def main(args):
 
     # Per-RSU threshold calibration against the FINAL global model (eq:lstm_threshold),
     # with a joint >=95% precision / <=1% FPR check (spec §4.2).
+    # Q27 (2026-07-30): tried density_stratified_theta() (pooling calibration
+    # windows across RSUs in the same low/high density regime, per the
+    # supervisor's diagnostic). Empirically it REGRESSED every variant: DR
+    # roughly halved for A1/A2 (84%->51%, 87%->49%) with FPR barely moving,
+    # because the two pooled thetas (esp. the high-density one) were far more
+    # conservative than most RSUs' own individual thetas. Reverted -- each
+    # RSU's own ~27-window calibration outperforms the pooled version despite
+    # the small-sample concern that motivated trying this.
     per_rsu = {}
     for rsu_id in rsu_ids:
         theta, mu_a, sig_a = compute_theta(global_model, rsu_data[rsu_id]["X_va_benign"])

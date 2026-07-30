@@ -22,6 +22,7 @@ from pathlib import Path
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
 from lstm_model import LSTMAutoencoder, N_FEATURES
+from preprocessor import WINDOW
 
 REPO      = Path(__file__).resolve().parents[2]
 PRE       = REPO / "lstm_pipeline" / "preprocessed"
@@ -92,6 +93,36 @@ def predict_test(model: LSTMAutoencoder, per_rsu_theta: dict, global_theta: floa
     theta_arr = np.array([per_rsu_theta.get(r, global_theta) for r in rsu_ids])
     y_pred = (scores > theta_arr).astype(np.int8)
     return y, y_pred, scores, meta
+
+
+# ── Window deduplication (Q19) ───────────────────────────────────────────────
+
+def deduplicate_windows(y_true: np.ndarray, y_pred: np.ndarray,
+                         meta: np.ndarray) -> tuple:
+    """
+    W=10/stride=5 windows overlap 50%, so a single anomalous span can be
+    flagged by two consecutive windows and get double-counted as two
+    independent FP/TP events in a raw per-window confusion matrix (up to
+    ~2x FPR inflation). Apply non-maximum suppression: group windows by
+    (rsu, attack_v, pct, seed, non-overlapping 10s block) using meta's
+    start_cycle (col 4) // WINDOW, and collapse each block to a single
+    true/pred label via max() -- a block counts as positive if ANY window
+    inside it was flagged, matching "at most one FP per RSU per 10-second
+    non-overlapping block" from the diagnostic spec.
+    """
+    block = meta[:, 4] // WINDOW
+    keys  = np.stack([meta[:, 0], meta[:, 1], meta[:, 2], meta[:, 3], block], axis=1)
+    _, group_idx = np.unique(keys, axis=0, return_inverse=True)
+    n_groups = group_idx.max() + 1
+    yt = np.zeros(n_groups, dtype=np.int8)
+    yp = np.zeros(n_groups, dtype=np.int8)
+    np.maximum.at(yt, group_idx, y_true)
+    np.maximum.at(yp, group_idx, y_pred)
+    # meta collapsed to one row per group (first window's meta, block-truncated
+    # start_cycle) so callers can still slice by attack_v/pct/seed downstream.
+    group_meta = np.zeros((n_groups, meta.shape[1]), dtype=meta.dtype)
+    group_meta[group_idx] = meta
+    return yt, yp, group_meta
 
 
 # ── Metric computation ────────────────────────────────────────────────────────
@@ -168,6 +199,11 @@ def main(args):
 
     print("Running inference on test split …")
     y_true, y_pred, scores, meta = predict_test(model, per_rsu_theta, global_theta)
+
+    n_raw = len(y_true)
+    y_true, y_pred, meta = deduplicate_windows(y_true, y_pred, meta)
+    print(f"  Q19 dedup: {n_raw} overlapping windows -> {len(y_true)} "
+          f"non-overlapping 10s blocks ({100*(1-len(y_true)/n_raw):.1f}% collapsed)")
 
     all_results = {}
 

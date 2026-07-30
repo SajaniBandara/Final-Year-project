@@ -69,10 +69,16 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
     return total_loss / max(len(X_train) * local_epochs, 1)
 
 
-Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
-
-
-def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
+Z_ALPHA = 3.5   # raised from z_{0.99}=2.3263 -- must match fed_aggregator.py's
+# Z_ALPHA (2026-07-29 diagnostic: z=3.5 is the smallest value clearing <=1%
+# FPR on a genuinely held-out test split for five of eight variants; see
+# fed_aggregator.py's Z_ALPHA comment for the full rationale). This constant
+# was previously left at the old 2.3263 after fed_aggregator.py was bumped,
+# so grid search was selecting hyperparameters against a stricter threshold
+# than the one actually deployed at evaluation time -- fixed 2026-07-30.
+# Q30-narrow interior/edge z widening tried and reverted -- see
+# fed_aggregator.py's Z_ALPHA comment for the full rationale.
+def compute_theta(model, X_val_benign: np.ndarray, z_alpha: float = None) -> tuple:
     """eq:lstm_threshold: theta(k) = mu_A + z_alpha*sigma_A — see
     fed_aggregator.py's compute_theta() for the full rationale (reverted
     from the max(Gaussian,P99) hybrid: once the real calibration-population
@@ -86,7 +92,8 @@ def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
         errs = model.anomaly_score(xv).cpu().numpy()
     mu_a  = float(errs.mean())
     sig_a = float(errs.std())
-    theta = mu_a + Z_ALPHA * sig_a
+    z = Z_ALPHA if z_alpha is None else z_alpha
+    theta = mu_a + z * sig_a
     return theta, mu_a, sig_a
 
 
