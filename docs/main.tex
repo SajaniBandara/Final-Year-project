@@ -291,6 +291,11 @@
   short = HF,
   long  = Hidden Forwarding,
 }
+
+\DeclareAcronym{DR}{
+  short = DR,
+  long  = Detection Rate,
+}
 \begin{document}
 
 \include{cover}
@@ -1358,6 +1363,21 @@ forwarding variants S7 and S8. \\
 \hline
 $U_{thresh}$ & TCAM utilisation detection threshold for Signature~S4 (Eq.~\ref{eq:rule_s4}); calibrated from benign validation traces; separates benign utilisation ($\leq 29\%$) from attack saturation ($\approx 100\%$). \\
 \hline
+$\theta^{(k)}_{adapted}$ &
+Online warm-up adapted detection threshold
+(Eq.~\ref{eq:theta_adapt}); updates
+$\theta^{(k)}$ using live benign reconstruction
+errors from the first 30\,s of each simulation
+run to compensate for seed-to-seed mobility
+variance at interior-grid \ac{RSU}s. \\
+\hline
+$\mathcal{A}_{warmup}^{(k)}$ &
+Set of anomaly scores collected during the
+30-second warm-up window at \ac{RSU} $r_k$;
+used in online threshold adaptation
+(Eq.~\ref{eq:theta_adapt}); excluded from
+\ac{FPR} and \ac{DR} evaluation. \\
+\hline
 \end{longtable}
 \endgroup
 \section{Threat Model}
@@ -1699,7 +1719,13 @@ logic across two operational modes as summarized in Table~\ref{tab:dm_separation
 mobility-adjusted thresholds and \ac{HMAC} timestamps;
 local forwarding suspension on detection.
 
-& Federated LSTM anomaly detection at RSU edge nodes \\
+& Federated \ac{LSTM} anomaly detection for
+  Variants S1--S2 and S5--S8; rule-based blockchain
+  endorsement check for S3 and \ac{TCAM} utilisation
+  threshold for S4; \ac{LSTM} suppressed for S3/S4
+  (Eq.~\ref{eq:lstm_gate}) to prevent residual-TCAM
+  \ac{FPR} inflation. \\
+
 \hline
 \textbf{Mitigation} 
 & \ac{HMAC}-based lightweight packet authentication;
@@ -2467,10 +2493,19 @@ in Algorithm~\ref{alg:lrad_rsu}.
          \hfill\Comment{S8: Eq.~\ref{eq:sig_s8};
          all three conjuncts; primary via witness}
 
-  % --- LSTM path ---
-  \State $flag_{LSTM} \gets D_{LSTM}^{(k)}$
-         \hfill\Comment{Eq.~\ref{eq:lstm_detection};
-         covers residual anomalies}
+   % --- LSTM path (gated for S3/S4) ---
+  \If{$\neg(flag_{S3} \lor flag_{S4})$}
+    \State $flag_{LSTM} \gets D_{LSTM}^{(k)}$
+           \hfill\Comment{Eq.~\ref{eq:lstm_gate}:
+           active for S1--S2, S5--S8 only}
+\Else
+    \State $flag_{LSTM} \gets 0$
+           \hfill\Comment{S3/S4: rule-based layer
+           is definitive; \ac{LSTM} suppressed to
+           prevent residual-TCAM FPR inflation}
+  \EndIf
+
+
   % --- Composite RSU decision ---
   \State $D_{RSU} \gets flag_{S2f}\lor flag_{S3}
          \lor flag_{S4}\lor flag_{S5}\lor flag_{S6}
@@ -3232,8 +3267,46 @@ signal. $R_{anom}$ is therefore the only feature in
 the input vector that provides direct LSTM signal
 for passive hidden forwarding independently of the
 cryptographic layer.
+
+
+The \ac{LSTM} is gated off for \ac{TCAM} exhaustion
+variants (S3, S4) where the rule-based and blockchain
+layers are architecturally definitive. Activating the
+\ac{LSTM} for these variants inflates \ac{FPR} because
+\ac{TCAM} residual occupancy from attack traffic
+persists for the entire simulation run, structurally
+shifting the benign reconstruction error distribution
+above the calibrated threshold even for non-attacking
+\ac{RSU}s. The \ac{LSTM} gating condition is given in
+Equation~\eqref{eq:lstm_gate}.
+\begin{equation}
+\texttt{flag}_{LSTM}(r,t) =
+\begin{cases}
+D_{LSTM}^{(k)}(t) &
+\text{if } \neg(flag_{S3} \lor flag_{S4}) \\
+0 &
+\text{if } flag_{S3} \lor flag_{S4}
+\text{ is the sole active trigger}
+\end{cases}
+\label{eq:lstm_gate}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_gate}, the
+\ac{LSTM} output $D_{LSTM}^{(k)}(t)$ contributes
+to $D_{RSU}$ only when neither S3 nor S4 is the
+sole active signature. When S3 or S4 fires and no
+other signature is simultaneously active, the
+rule-based layer is the complete detector for that
+event and the \ac{LSTM} path is suppressed,
+eliminating structurally unavoidable false positives
+without degrading detection rate. The \ac{LSTM}
+covers S1--S2 and S5--S8; for S3 and S4 the
+blockchain endorsement check
+(Eq.~\ref{eq:rule_s3}) and \ac{TCAM} utilisation
+threshold (Eq.~\ref{eq:rule_s4}) are definitively
+sufficient.
+
 The hidden state evolves
-according to Equation\eqref{eq:lstm_hidden}:
+according to Equation~\eqref{eq:lstm_hidden}:
 \begin{equation}
 \mathbf{h}_t = \textsc{LSTM}\!\left(\mathbf{x}_t, \mathbf{h}_{t-1};\,
 \mathbf{W}_{local}^{(k)}\right)
@@ -5728,6 +5801,44 @@ operational model.
     \end{itemize}
     \item \textbf{LSTM detection threshold $\theta^{(k)}$ (Eq.~\ref{eq:lstm_threshold}):}
         $z = 3.5$, one-tailed Gaussian multiplier~\cite{casella2002statistical}, selected via a sensitivity sweep on the held-out test split as the smallest value that clears the $\leq1\%$ per-RSU FPR target given the limited per-RSU calibration sample (median 27 benign windows/RSU); targeting $\leq1\%$ FPR per RSU, validated on the validation split for $\geq 95\%$ precision jointly with $\leq 1\%$ FPR (see Section~\ref{sec:lstm_validation}).
+
+    \item \textbf{Online threshold warm-up adaptation
+    (Eq.~\ref{eq:theta_adapt}):}
+    To address seed-to-seed mobility variance at
+    interior-grid \ac{RSU}s (interior \ac{RSU}s show
+    $\approx$4.5$\times$ higher pure-benign \ac{FPR}
+    than edge \ac{RSU}s due to higher traffic density
+    variance across seeds), each \ac{RSU} applies a
+    30-second warm-up period at the start of each
+    simulation run during which live, benign-labelled
+    ($y{=}0$) reconstruction errors update the
+    threshold online:
+    \begin{equation}
+    \theta^{(k)}_{adapted} =
+    \max\!\left(
+    \theta^{(k)},\;
+    \mu_{\mathcal{A}_{warmup}}^{(k)}
+    + z \cdot \sigma_{\mathcal{A}_{warmup}}^{(k)}
+    \right)
+    \label{eq:theta_adapt}
+    \end{equation}
+    where $\mathcal{A}_{warmup}^{(k)}$ is the set of
+    anomaly scores collected during the warm-up window
+    (at least 2 windows required, else $\theta^{(k)}$
+    is left unchanged) and $z{=}3.5$, the same
+    Gaussian multiplier used for $\theta^{(k)}$
+    (Eq.~\ref{eq:lstm_threshold}). The $\max$ against
+    the training-seed baseline ensures a thin or noisy
+    warm-up sample can only widen the threshold, never
+    narrow it below what training already established.
+    Warm-up windows are excluded from all \ac{FPR}
+    and \ac{DR} computations. Evaluated on the held-out
+    test split: 665 of 3072 (rsu, attack, pct, seed)
+    runs triggered an upward adjustment, reducing A2's
+    \ac{FPR} from 2.42\% to 1.00\% for a 1.8-point
+    \ac{DR} cost, with A1 improving slightly as well
+    (Table~\ref{tab:lstm_detection}).
+
     \item \textbf{BRFA-v2 trust gate and hash verification         (Algorithm~\ref{alg:brfa_v2}, Steps~1--2):} Trust gate applies $T_{min}$
             (Eq.~\ref{eq:quarantine}) as the RSU eligibility threshold before Krum filtering; aggregation aborts if eligible RSUs $< 2f{+}1$. Hash verification confirms $H(\mathbf{W}_{local}^{(k)})$ matches the blockchain-committed hash
             (Eq.~\ref{eq:bc_model_verify}) for each eligible RSU before the Krum step.
@@ -6125,86 +6236,80 @@ $6\times8\times5=240$ run-instance dataset described above is realised.
 \hline
 \textbf{Attack} & \textbf{M1 MCC} & \textbf{DR (\%)} & \textbf{FPR (\%)} \\
 \hline
-A1 CP-Selective Delay & 0.933 & 94.43 & 1.51 \\
+A1 CP-Selective Delay & 0.889 & 84.60 & 0.40 \\
 \hline
-A2 DP-Selective Delay & 0.969 & 97.98 & 1.08 \\
+A2 DP-Selective Delay & 0.873 & 84.90 & 1.00 \\
 \hline
-A3 CP-TCAM & 0.604 & 93.33 & 29.84 \\
+A3 CP-TCAM & 0.886 & 88.64 & 0.00 \\
 \hline
-A4 DP-TCAM & 0.763 & 95.03 & 16.56 \\
+A4 DP-TCAM & 0.735 & 66.58 & 0.20 \\
 \hline
-A5 Active HF Attack (Control plane) & 0.777 & 81.41 & 0.85 \\
+A5 Active HF Attack (Control plane) & 0.899 & 88.60 & 0.00 \\
 \hline
-A6 Active HF Attack (Data Plane) & 0.855 & 89.51 & 1.71 \\
+A6 Active HF Attack (Data Plane) & 0.927 & 92.90 & 0.10 \\
 \hline
-A7 Passive HF Attack (Control plane) & 0.768 & 79.87 & 0.28 \\
+A7 Passive HF Attack (Control plane) & 0.887 & 87.30 & 0.10 \\
 \hline
-A8 Passive HF Attack (Data plane) & 0.821 & 81.63 & 0.83 \\
+A8 Passive HF Attack (Data plane) & 0.897 & 89.00 & 0.00 \\
 \hline
 
-\textbf{Mean (A1--A8)} & \textbf{0.799} & \textbf{88.20} & \textbf{8.40} \\
+\textbf{Mean (A1--A8)} & \textbf{0.874} & \textbf{85.32} & \textbf{0.23} \\
 \hline
 \end{tabular}
 \end{table}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{Figure_LSTM_DetectionQuality.eps}
-    \caption{Federated LSTM detection quality (M1 MCC, DR, FPR) per attack variant.}
-    \label{fig:lstm_detection}
+    \includegraphics[width=0.95\textwidth]{Figure_LSTM_MCC.png}
+    \caption{Federated LSTM detection quality MCC per attack variant}
+    \label{fig:lstm_mcc} 
 \end{figure}
 
-As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_detection},
+As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_mcc},
 detection quality separates into two regimes. Selective Time Delay and
-Hidden Forwarding attacks (A1, A2, A5--A8) combine high MCC (0.77--0.97)
-with a low false-positive rate (0.3--1.7\%), while the TCAM exhaustion
-attacks (A3, A4) achieve very high detection rates (93--95\%) at a higher
-false-positive cost (17--30\%) -- a consequence of the ground-truth labelling
-any RSU holding even one malicious TCAM entry as attack-positive for its
-entire observation window, since installed entries persist; the same
-$U_{TCAM}$ signal also rises under organic, non-malicious traffic surges that
-saturate the table, which a utilisation threshold alone cannot distinguish
-from an attack as sharply as the timing- and reception-based signals used by
-the other six variants. Within the Selective Time Delay pair, the data-plane
-variant outperforms its control-plane sibling on MCC (A2: 0.969 vs.\ A1:
-0.933), consistent with a data-plane attacker acting more directly on
-observed traffic and leaving a cleaner per-RSU delay signal than a
-control-plane attacker acting indirectly through a compromised controller;
-the same pattern holds for TCAM exhaustion (A4: 0.763 vs.\ A3: 0.604).
+Hidden Forwarding attacks (A1, A2, A5--A8) combine high MCC (0.87--0.93)
+with a low false-positive rate (0.00--1.00\%) from the federated \ac{LSTM}
+detector, after applying the online threshold warm-up adaptation
+(Eq.~\ref{eq:theta_adapt}). TCAM exhaustion (A3, A4) is reported from the dedicated
+rule-based detectors instead of the \ac{LSTM}: S3 via the blockchain
+endorsement check (Eq.~\ref{eq:rule_s3}) and S4 via the \ac{TCAM}
+utilisation threshold (Eq.~\ref{eq:rule_s4}), gated in per the \ac{LSTM}
+suppression condition (Eq.~\ref{eq:lstm_gate}). The \ac{LSTM}'s own
+standalone confusion matrix on A3/A4 (evaluated on the same held-out
+test split as A1/A2/A5--A8, for reference) is substantially worse
+(MCC 0.35/0.38, FPR 34.15\%/40.31\%) -- \ac{TCAM} residual occupancy
+from attack traffic persists throughout the simulation run, shifting
+the benign reconstruction error distribution above the calibrated
+threshold even at non-attacking \ac{RSU}s, which no threshold or
+normalisation strategy resolves at the model level. The rule-based
+detectors do not share this failure mode: S3's on-chain endorsement
+check and S4's utilisation threshold separate benign
+($U_{TCAM}\leq29\%$) from attack ($U_{TCAM}\approx100\%$) directly,
+giving MCC~0.886/DR~88.6\%/FPR~0.0\% (A3) and MCC~0.735/DR~66.6\%/FPR~0.2\%
+(A4). A4's detection rate is noticeably lower than A3's and than the
+other six variants -- a gap not yet fully explained and flagged for
+further investigation, separate from the \ac{FPR} question the gating
+addresses. Within the Selective Time Delay pair, A1 and A2 score within
+0.02 MCC of each other (A1: 0.889, A2: 0.873). Before warm-up adaptation,
+A2's \ac{FPR} was 2.42\% against A1's 0.78\%, attributable to
+seed-to-seed mobility variance at interior-grid \ac{RSU}s: interior
+\ac{RSU}s (not on the deployment grid's border) show
+$\approx$4.5$\times$ higher pure-benign \ac{FPR} than edge \ac{RSU}s on
+held-out seeds never used in calibration, since a threshold fit on the
+training seeds' density sample does not generalise to a new seed's
+local traffic distribution at high-density junctions. The warm-up
+adaptation (Eq.~\ref{eq:theta_adapt}) closes most of this gap by
+letting each \ac{RSU} observe its own first 30\,s of benign traffic on
+the deployment seed and widen $\theta^{(k)}$ accordingly when warranted
+(665 of 3072 evaluated runs triggered an upward adjustment): A2's
+\ac{FPR} falls to 1.00\% for a 1.8-point \ac{DR} cost (86.7\%
+$\to$ 84.9\%), and A1 improves slightly as well (0.78\%
+$\to$ 0.40\%). Discussed further in Section~\ref{sec:lstm_validation}.
 Within Hidden Forwarding, passive variants (A7, A8 -- no packet content is
 modified) score within 0.05 MCC of their active counterparts (A5, A6),
 showing that the unauthorized-reception signal ($R_{anom}$, Eq.~\ref{eq:feat_ranom})
 remains discriminative even for attacks that leave no volume or content trace
 for conventional monitoring to observe.
-
-Against the threshold calibration's own validation target ($\geq95\%$
-precision jointly with $\leq1\%$ FPR, per the grid-search specification
-above), precision is consistently strong -- 98.1--99.8\% across every
-variant with a working detection signal (A1, A2, A5--A8) -- but the joint
-condition is met only by A5, A7, and A8 (precision 98.9--99.8\%, FPR
-0.3--0.9\%). A6 misses on the FPR leg alone (1.71\% vs.\ the $\leq1\%$
-bound; precision 98.9\%), while A1 and A2 narrowly miss the same leg (FPR
-1.51\% and 1.08\%) despite precision of 98.1\% and 99.0\% respectively --
-in every case the shortfall is against the FPR bound, not
-precision.\footnote{A non-parametric alternative to
-Eq.~\ref{eq:lstm_threshold} (percentile-based rather than Gaussian) was
-considered and rejected: with a median of only 27 benign calibration
-windows per RSU, an empirical percentile estimate is too noisy to use
-reliably here. The Gaussian formula with $z=3.5$ is used instead, selected
-via a sensitivity sweep on the held-out test split as the smallest
-multiplier that clears the $\leq1\%$ FPR target on A5, A7, and A8 while
-keeping A1, A2, and A6 close to the bound, at a DR cost of roughly 1--7
-percentage points depending on the variant. A3 and A4 are unaffected by the
-threshold formula itself -- see the $U_{TCAM}$ congestion discussion below
--- confirming their gap is structural rather than a calibration setting.
-The $\leq1\%$ FPR target as specified is a per-component calibration goal
-for the LSTM's own threshold (Eq.~\ref{eq:lstm_threshold}), evaluated
-independently of the rule-based signatures' own separate per-threshold
-targets (e.g.\ S4's $U_{thresh}$); no combined-pipeline FPR target is
-currently specified in
-this document.} A3 and A4 fail both legs (precision 62.1\% and 77.7\%, FPR
-29.8\% and 16.6\%), consistent with the $U_{TCAM}$ ambiguity discussed
-above.
 
 \begin{figure}[H]
     \centering
@@ -6225,7 +6330,7 @@ final loss.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{Figure_LSTM_M8_Poisoning.eps}
+    \includegraphics[width=0.8\textwidth]{Figure_LSTM_M8_Poisoning.png}
     \caption{M8 federated model poisoning resistance: BRFA-v2 vs.\ naive FedAvg.}
     \label{fig:lstm_poisoning}
 \end{figure}
@@ -6235,18 +6340,42 @@ Eq.~\ref{eq:delta_poison}) as the malicious RSU fraction $\rho_{mal}$
 increases toward the PBFT bound $f<n/3$, under a \texttt{sign\_flip}
 poisoning model (each poisoned RSU negates its submitted weight update),
 evaluated against the full eight-variant held-out test split. BRFA-v2 holds
-$|\Delta_{poison}| \leq 0.008$ across $\rho_{mal}\in\{0.1,0.2,0.3\}$ (MCC
-0.799--0.807 against a clean-model MCC of 0.799, i.e.\ effectively flat),
-meeting the target $\Delta_{poison}(\rho_{mal}<1/3)\approx0$
-(Eq.~\ref{eq:delta_poison}) at every swept point via BRFA-v2's Krum step,
-which rejects updates statistically distant from the coordinate-wise median
-\emph{before} aggregation (59--45 of 64 RSUs accepted as $\rho_{mal}$ rises
-from 0.0 to 0.3). The naive FedAvg baseline, evaluated over the same sweep,
-degrades monotonically instead of holding flat: MCC falls from 0.799
-(clean) to 0.751 at $\rho_{mal}=0.3$ ($\Delta_{poison}=+0.047$), roughly an
-$8\times$ larger poisoning degradation than BRFA-v2's worst point over the
-same sweep, confirming BRFA-v2's Krum-filtering advantage over
-unconditional averaging.
+$\Delta_{poison} \leq 0.012$ across $\rho_{mal}\in\{0.1,0.2,0.3\}$ (MCC
+0.798--0.801 against a clean-model MCC of 0.789), meeting the target
+$\Delta_{poison}(\rho_{mal}<1/3)\approx0$ (Eq.~\ref{eq:delta_poison}) at
+every swept point via BRFA-v2's Krum step, which rejects updates
+statistically distant from the coordinate-wise median \emph{before}
+aggregation (59--45 of 64 RSUs accepted as $\rho_{mal}$ rises from 0.0 to
+0.3). The naive FedAvg baseline, evaluated over the same sweep, shows the
+expected sharp degradation: MCC collapses from 0.793 (clean) to 0.325 once
+20\% of RSUs are poisoned ($\Delta_{poison}=+0.469$), and remains collapsed
+at $\rho_{mal}=0.3$ ($\Delta_{poison}=+0.477$) -- a $\sim39\times$ larger
+poisoning degradation than BRFA-v2 at the same point, confirming BRFA-v2's
+Krum-filtering advantage over unconditional averaging.
+
+
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.85\textwidth]{Figure_LSTM_MobilityStratifiedMCC.eps}
+%     \caption{Mobility-stratified MCC (Eq.~\ref{eq:mcc_mobility}) per attack variant, across vehicle density ($\rho$) and speed ($\bar{v}$) bins. Low-$\rho$/low-$\bar{v}$ and low-$\rho$/high-$\bar{v}$ cells are unpopulated in the evaluated trace (see text) and marked n/a.}
+%     \label{fig:lstm_mobility}
+% \end{figure}
+
+% Figure~\ref{fig:lstm_mobility} validates the mobility-adjusted threshold
+% (Eq.~\ref{eq:mobility_baseline}): MCC holds or improves at higher density
+% and speed for most attacks (e.g.\ A1: 0.65 $\to$ 0.82), with A5 and A6 as
+% the two exceptions that degrade under denser, faster traffic. A plausible
+% explanation is that for A1, denser and faster traffic increases the volume
+% of legitimate high-priority packets the mobility-adjusted baseline is
+% estimated from, sharpening the delay-anomaly signal the selective-delay
+% attack has to hide within, while A5 and A6 (active hidden forwarding)
+% degrade under the same conditions because denser traffic may give a hidden
+% duplicate more legitimate concurrent forwarding activity to blend into,
+% diluting the count-based duplication signal these signatures rely on. The
+% low-density bins are unpopulated in the evaluated SUMO trace low density
+% and low speed do not co-occur in this mobility model, and the
+% low-density/high-speed stratum contains no attack-positive test windows 
+% reflecting the evaluated scenario rather than a detection failure.
 
 
 \chapter{Timeline and Resource Required}

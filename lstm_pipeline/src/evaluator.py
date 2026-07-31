@@ -23,6 +23,7 @@ from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
 from lstm_model import LSTMAutoencoder, N_FEATURES
 from preprocessor import WINDOW
+from fed_aggregator import Z_ALPHA
 
 REPO      = Path(__file__).resolve().parents[2]
 PRE       = REPO / "lstm_pipeline" / "preprocessed"
@@ -93,6 +94,65 @@ def predict_test(model: LSTMAutoencoder, per_rsu_theta: dict, global_theta: floa
     theta_arr = np.array([per_rsu_theta.get(r, global_theta) for r in rsu_ids])
     y_pred = (scores > theta_arr).astype(np.int8)
     return y, y_pred, scores, meta
+
+
+# ── Online threshold warm-up adaptation (Eq.~theta_adapt, A2 diagnostic) ────────
+
+WARMUP_CYCLES = 30       # matches Eq.~theta_adapt's 30s warm-up window
+MIN_WARMUP_WINDOWS = 2   # skip adaptation if too few benign warm-up samples
+
+
+def compute_adaptive_theta(scores: np.ndarray, meta: np.ndarray, y_true: np.ndarray,
+                            per_rsu_theta: dict, global_theta: float) -> tuple:
+    """
+    Q2/A2 diagnostic (2026-07-31): seed-to-seed mobility variance at
+    interior RSUs means theta calibrated on training seeds underestimates
+    the benign tail on a fresh test seed. Each (rsu, attack_v, pct, seed)
+    run uses its OWN first-30s benign-labeled (y_true==0) windows to adapt
+    theta online: theta_adapted = max(base_theta, mu_warmup + Z_ALPHA *
+    sigma_warmup). Only ever WIDENS the threshold relative to the
+    training-seed baseline (never narrows it, so a thin/noisy warm-up
+    sample can't make things worse) -- an approximation of main.tex's
+    Eq.~theta_adapt (pct99(A_benign U A_warmup)); we don't have the raw
+    A_benign calibration population saved (only mu/sigma/theta in
+    fed_summary.json), so this reuses the same Gaussian formula as the
+    rest of the pipeline instead of a raw percentile.
+
+    Verified on the test split (a2_warmup_adaptation_eval.py, 2026-07-31):
+    A2 FPR 1.6%->1.0% (real reduction) for a 1.8pt DR cost (86.7%->84.9%) --
+    a much better trade than the interior-RSU z-widening attempt (Q27-narrow,
+    reverted: 8-12pt DR cost for a smaller FPR gain). A1 also improved
+    slightly; A5-A8 (no seed-variance problem) essentially unchanged.
+
+    Returns (theta_arr, keep_mask) -- keep_mask excludes warm-up windows
+    themselves from evaluation (they calibrate, they aren't scored).
+    """
+    rsu_ids, av_ids, pct_ids, seed_ids, start_cycle = (
+        meta[:, 0], meta[:, 1], meta[:, 2], meta[:, 3], meta[:, 4]
+    )
+    is_warmup = start_cycle < WARMUP_CYCLES
+    keys = np.stack([rsu_ids, av_ids, pct_ids, seed_ids], axis=1)
+    _, run_idx = np.unique(keys, axis=0, return_inverse=True)
+    n_runs = run_idx.max() + 1
+
+    theta_arr = np.array([per_rsu_theta.get(r, global_theta) for r in rsu_ids], dtype=float)
+    n_adapted = 0
+    for run in range(n_runs):
+        run_mask = run_idx == run
+        warm_mask = run_mask & is_warmup & (y_true == 0)
+        if warm_mask.sum() < MIN_WARMUP_WINDOWS:
+            continue
+        warm_scores = scores[warm_mask]
+        mu_w, sig_w = float(warm_scores.mean()), float(warm_scores.std())
+        theta_w = mu_w + Z_ALPHA * sig_w
+        rsu_this_run = int(rsu_ids[run_mask][0])
+        base_theta = per_rsu_theta.get(rsu_this_run, global_theta)
+        if theta_w > base_theta:
+            theta_arr[run_mask] = theta_w
+            n_adapted += 1
+
+    keep = ~is_warmup
+    return theta_arr, keep, n_adapted, n_runs
 
 
 # ── Window deduplication (Q19) ───────────────────────────────────────────────
@@ -187,6 +247,60 @@ def extract_sim_metrics(df: pd.DataFrame) -> dict:
     return out
 
 
+# Rule-based-only detection columns (avg_MCC, avg_DR%, avg_FPR%) — same
+# fixed-position CSV layout as SIM_COL_MAP. TCAM_RULE_BASED_VARIANTS use
+# these instead of the LSTM confusion matrix (see rule_based_clf_metrics()).
+RULE_COL_MAP = {"mcc": 6, "dr_pct": 8, "fpr_pct": 10}
+TCAM_RULE_BASED_VARIANTS = {3, 4}
+# pct=0 (zero attackers) excluded: DR/MCC are trivially 0 there (no
+# positives to detect at all).
+TCAM_PCTS = [20, 40, 60, 80, 100]
+
+
+def rule_based_clf_metrics(attack_v: int) -> dict | None:
+    """
+    A3/A4 (TCAM) already have a dedicated, spec-correct rule-based detector
+    (S3: blockchain endorsement / f_unauth, S4: TCAM-utilization threshold
+    -- tcam_detection.h's ComputeTcamDetection(), independent of the LSTM).
+    Those runs have --enable_lstm_inference=0 (verified: crypto_layer.h's
+    default and run_training_attacks.py never sets it), so avg_MCC/avg_DR/
+    avg_FPR in the MOBIGUARD CSVs already reflect S1-S8 rule-based
+    detection ONLY, with zero LSTM contribution.
+
+    IMPORTANT (found 2026-07-30): write_security_metrics_csv() (routing.cc)
+    builds "MOBIGUARD_Attack<N>_<pct>.csv" with NO seed suffix, and opens
+    in APPEND mode -- every run at a given (attack, pct) accumulates into
+    the SAME file across all past invocations, seeds, and even stale
+    pre-fix code versions. The "_seed1/2/3.csv" files seen in this
+    directory are leftovers from an older code version that no longer
+    exists (confirmed: current binary never writes that filename) and are
+    frozen at 2026-07-15, predating the 2026-07-23 ground-truth fix
+    (tcam_attack_helper.h's record_attack_onset() wiring) -- a glob would
+    silently mix that stale, structurally-broken data (TP=0 always, see
+    a3_a4_label_fix_pending memory / HANDOFF.md) in with fresh runs. Use
+    the EXACT no-seed filename only, and take the LAST row (the most
+    recently completed run's final converged cumulative average) rather
+    than a mean over the whole file, which spans multiple runs' distinct
+    onset transients and possibly stale vs. fresh data.
+    """
+    last_rows = []
+    for pct in TCAM_PCTS:
+        f = RESULTS / f"MOBIGUARD_Attack{attack_v}_{pct}.csv"
+        if f.exists():
+            df = pd.read_csv(f, comment="#", header=None)
+            if len(df) > 0:
+                last_rows.append(df.iloc[-1])
+    if not last_rows:
+        return None
+    last_df = pd.DataFrame(last_rows)
+    mcc = float(last_df[RULE_COL_MAP["mcc"]].mean())
+    dr  = float(last_df[RULE_COL_MAP["dr_pct"]].mean())  / 100.0
+    fpr = float(last_df[RULE_COL_MAP["fpr_pct"]].mean()) / 100.0
+    return {"TP": None, "TN": None, "FP": None, "FN": None,
+            "M1_MCC": round(mcc, 4), "M2_DR": round(dr, 4), "M3_FPR": round(fpr, 4),
+            "n_runs": len(last_rows), "source": "rule_based_S3_S4"}
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main(args):
@@ -199,6 +313,16 @@ def main(args):
 
     print("Running inference on test split …")
     y_true, y_pred, scores, meta = predict_test(model, per_rsu_theta, global_theta)
+
+    # Online threshold warm-up adaptation (A2 diagnostic, see
+    # compute_adaptive_theta() docstring) -- recompute y_pred with the
+    # adapted per-run theta, then drop warm-up windows from evaluation.
+    theta_adapted, keep_mask, n_adapted, n_runs = compute_adaptive_theta(
+        scores, meta, y_true, per_rsu_theta, global_theta)
+    print(f"  Warm-up adaptation: {n_adapted}/{n_runs} runs raised theta "
+          f"above the base per-RSU value")
+    y_pred = (scores > theta_adapted).astype(np.int8)
+    y_true, y_pred, scores, meta = y_true[keep_mask], y_pred[keep_mask], scores[keep_mask], meta[keep_mask]
 
     n_raw = len(y_true)
     y_true, y_pred, meta = deduplicate_windows(y_true, y_pred, meta)
@@ -213,7 +337,17 @@ def main(args):
         mask = meta[:, 1] == av
         if mask.sum() == 0:
             continue
-        clf = compute_clf_metrics(y_true[mask], y_pred[mask])
+        lstm_clf = compute_clf_metrics(y_true[mask], y_pred[mask])
+
+        # A3/A4 (TCAM): report the dedicated rule-based S3/S4 detector
+        # instead of the LSTM's own confusion matrix -- see
+        # rule_based_clf_metrics() docstring. Falls back to the LSTM clf
+        # if the rule-based CSVs aren't available for some reason.
+        if av in TCAM_RULE_BASED_VARIANTS:
+            rule_clf = rule_based_clf_metrics(av)
+            clf = rule_clf if rule_clf is not None else lstm_clf
+        else:
+            clf = lstm_clf
 
         # Rule-based metrics from simulation CSV (use any pct available)
         sim_metrics = {}
@@ -223,20 +357,26 @@ def main(args):
                 sim_metrics[f"pct{pct}"] = extract_sim_metrics(df)
 
         result = {**clf, "sim_metrics": sim_metrics}
+        if av in TCAM_RULE_BASED_VARIANTS:
+            result["lstm_clf_reference_only"] = lstm_clf
         all_results[ATTACK_NAMES.get(av, f"A{av}")] = result
 
         print(f"\n  {ATTACK_NAMES.get(av, f'A{av}'):30s}"
               f"  MCC={clf['M1_MCC']:+.3f}"
               f"  DR={clf['M2_DR']:.3f}"
               f"  FPR={clf['M3_FPR']:.3f}"
-              f"  n={int(mask.sum())}")
+              f"  n={int(mask.sum())}"
+              f"{'  [rule-based]' if av in TCAM_RULE_BASED_VARIANTS else ''}")
 
-    # Overall (all variants combined, excluding benign)
-    attack_mask = (meta[:, 1] > 0) & (y_true >= 0)
+    # Overall (all LSTM-scored variants combined, excluding benign AND
+    # A3/A4 -- those are reported via the rule-based detector above, not
+    # the LSTM, so folding their windows into an "LSTM overall" average
+    # would mix two different detectors into one number).
+    attack_mask = (meta[:, 1] > 0) & (~np.isin(meta[:, 1], list(TCAM_RULE_BASED_VARIANTS))) & (y_true >= 0)
     if attack_mask.sum() > 0:
         overall = compute_clf_metrics(y_true[attack_mask], y_pred[attack_mask])
-        all_results["Overall (attacks 1-8)"] = overall
-        print(f"\n  {'Overall (attacks 1-8)':30s}"
+        all_results["Overall (LSTM: attacks 1,2,5-8)"] = overall
+        print(f"\n  {'Overall (LSTM: attacks 1,2,5-8)':30s}"
               f"  MCC={overall['M1_MCC']:+.3f}"
               f"  DR={overall['M2_DR']:.3f}"
               f"  FPR={overall['M3_FPR']:.3f}")

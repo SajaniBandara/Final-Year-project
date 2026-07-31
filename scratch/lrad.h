@@ -107,6 +107,10 @@ extern uint32_t g_d_obu_count;
 extern uint32_t g_d_rsu_count;
 extern uint32_t g_escalation_count;
 
+// Counts flag_LSTM firings actually suppressed by the S3/S4 gate below
+// (lrad_rsu()) -- diagnostic only, not written to the security-metrics CSV.
+static uint32_t g_lstm_gate_suppressed_count = 0;
+
 // =========================================================================
 // lrad_reset_state():
 // Clears all per-run LRAD state. Call from routing.cc's init sequence
@@ -311,17 +315,44 @@ inline LRADRSUFlags lrad_rsu(
     flags.flag_S7 = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
     flags.flag_S8 = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
 
-    // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection) ──────────────────────────
+    // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection), gated for S3/S4 ─────────
     // `rsu` is the sim node id (N_Vehicles + local RSU index, per
     // process_escalation_at_rsu()/every call site below); g_lstm_last_dlstm[]
     // is indexed by local index (lstm_logger.h convention). g_lstm_last_dlstm
     // is only populated once --enable_lstm_inference=1 AND the per-RSU
     // window has bootstrapped (LSTM_WINDOW cycles) — defaults to false
     // (fail-closed: no live LSTM signal available yet) otherwise.
+    //
+    // Gate (supervisor diagnosis, 2026-07-30): when this RSU's most recent
+    // TCAM cycle had S3 or S4 fire (g_tcam_flag_s3_last/s4_last,
+    // tcam_detection.h -- the RSU-side, spec-correct rule-based TCAM
+    // detector, independent of the LSTM), suppress flag_LSTM for this RSU.
+    // S3/S4 are architecturally definitive for TCAM exhaustion (blockchain
+    // endorsement / TCAM-utilisation threshold); the LSTM's reconstruction
+    // error is structurally elevated by residual TCAM occupancy during
+    // these events and adds false positives without adding coverage the
+    // rule-based layer doesn't already have. Deviation from alg:lrad_rsu's
+    // literal flat OR of flag_LSTM into D_RSU -- flagged as such.
     if (rsu >= (uint32_t)N_Vehicles) {
         uint32_t rsu_local_idx = rsu - (uint32_t)N_Vehicles;
-        if (rsu_local_idx < g_lstm_last_dlstm.size())
-            flags.flag_LSTM = g_lstm_last_dlstm[rsu_local_idx];
+        bool tcam_covers_this_rsu = (rsu < 300) &&
+            (g_tcam_flag_s3_last[rsu] || g_tcam_flag_s4_last[rsu]);
+        bool lstm_would_fire = rsu_local_idx < g_lstm_last_dlstm.size() &&
+            g_lstm_last_dlstm[rsu_local_idx];
+        if (tcam_covers_this_rsu && lstm_would_fire) {
+            // Gate actually suppressed a would-be flag_LSTM firing this
+            // cycle -- rare/high-importance event, printed unconditionally
+            // like TRIGGERED/detection-event lines elsewhere in this file.
+            ++g_lstm_gate_suppressed_count;
+            std::cout << "[LSTM-GATE] suppressed flag_LSTM at RSU " << rsu
+                      << " (S3=" << g_tcam_flag_s3_last[rsu]
+                      << " S4=" << g_tcam_flag_s4_last[rsu] << ")"
+                      << " t=" << Simulator::Now().GetSeconds() << "s"
+                      << " total_suppressed=" << g_lstm_gate_suppressed_count
+                      << std::endl;
+        } else if (!tcam_covers_this_rsu) {
+            flags.flag_LSTM = lstm_would_fire;
+        }
     }
 
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||

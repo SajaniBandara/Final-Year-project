@@ -59,6 +59,16 @@ static uint64_t g_s3_cum_hist[300][S3_HIST_MAX] = {{0}}; // per-node cum(new+rei
 static uint32_t g_s3_hist_count = 0;             // cycles recorded so far (shared clock)
 static bool     g_tcam_dbg_trace = true;         // print per-RSU (ρ,E,λ) validation tuples
 
+// Latest per-RSU S3/S4 detection state, indexed by sim node_id (same space
+// as g_tcam_rule_count[]) -- populated once per cycle by ComputeTcamDetection()
+// below. Read by lrad_rsu() (lrad.h) to gate flag_LSTM: per the supervisor's
+// LSTM/S3/S4 diagnosis, when S3 or S4 fires at an RSU the rule-based layer is
+// already the definitive detector there, so the LSTM's contribution to D_RSU
+// is suppressed for that RSU this cycle to avoid stacking a structurally
+// noisy signal (residual TCAM occupancy) on top of an already-covered event.
+static bool g_tcam_flag_s3_last[300] = {false};
+static bool g_tcam_flag_s4_last[300] = {false};
+
 // ── Structs ───────────────────────────────────────────────────────────────────
 
 struct TcamDetectionState {
@@ -257,6 +267,11 @@ inline TcamCycleMetrics ComputeTcamDetection(
         g_prev_rule_count[node_id]    = g_tcam_rule_count[node_id];
         g_prev_slowpath_hits[node_id] = g_slowpath_hit_count[node_id];
         g_prev_packetin[node_id]      = g_packetin_count[node_id];
+
+        // Publish this cycle's S3/S4 state for lrad_rsu()'s flag_LSTM gate
+        // (see g_tcam_flag_s3_last/g_tcam_flag_s4_last declaration above).
+        g_tcam_flag_s3_last[node_id] = flag_s3;
+        g_tcam_flag_s4_last[node_id] = flag_s4;
 
         // Accumulate into cycle-level aggregate
         util_sum                += tcam_util;
