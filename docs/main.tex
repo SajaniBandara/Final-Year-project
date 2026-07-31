@@ -6286,10 +6286,25 @@ detectors do not share this failure mode: S3's on-chain endorsement
 check and S4's utilisation threshold separate benign
 ($U_{TCAM}\leq29\%$) from attack ($U_{TCAM}\approx100\%$) directly,
 giving MCC~0.886/DR~88.6\%/FPR~0.0\% (A3) and MCC~0.735/DR~66.6\%/FPR~0.2\%
-(A4). A4's detection rate is noticeably lower than A3's and than the
-other six variants -- a gap not yet fully explained and flagged for
-further investigation, separate from the \ac{FPR} question the gating
-addresses. Within the Selective Time Delay pair, A1 and A2 score within
+(A4); these are whole-run averages that include the pre-attack
+($t{<}10$\,s) ramp, so both undercount steady-state performance --
+the final-cycle confusion matrix at $p{=}100\%$ reaches $DR{=}100\%$
+(A3) and $DR{=}93.2\%$ (A4). A4's residual gap (3 of 44 genuinely
+attacked \ac{RSU}s undetected even at the run's end, at $p{=}100\%$) is
+a known, explainable limitation rather than an unresolved anomaly: S4's
+ground truth marks an \ac{RSU} malicious on the attacker's first
+successful \ac{TCAM} install, while $flag_{S4}$ requires sustained
+saturation ($U_{TCAM}>U_{thresh}$). A4's attacker population is mobile
+(each of the $\lfloor 0.01p\cdot N_{Vehicles}\rfloor$ data-plane
+attackers targets whichever \ac{RSU} it currently associates with via
+live \ac{DSRC} range, unlike A3's static compromised-controller
+flooding of a fixed \ac{RSU} set), so a brief visit can register a
+single ground-truth-triggering install without dwelling long enough to
+saturate that \ac{RSU}'s table -- a structural asymmetry between the
+lenient ground-truth trigger and the stricter detection threshold, most
+pronounced at lower attack percentages where fewer attackers mean less
+dwell time per \ac{RSU} (final-cycle DR rises from 83.8\% at $p{=}20\%$
+to 93.2\% at $p{=}100\%$ as attacker density increases). Within the Selective Time Delay pair, A1 and A2 score within
 0.02 MCC of each other (A1: 0.889, A2: 0.873). Before warm-up adaptation,
 A2's \ac{FPR} was 2.42\% against A1's 0.78\%, attributable to
 seed-to-seed mobility variance at interior-grid \ac{RSU}s: interior
