@@ -31,8 +31,12 @@ TEST_SEEDS  = {5}
 # it. Widened to 0-200 to cover both; the SUMO cycle-0 startup transient this
 # reintroduces is handled explicitly below (dropped per-window, not via this
 # range) rather than by cutting the first 30s network-wide.
+# Issue 3 fix (2026-08-02): runs are now simTime=300 (~cycles 0-299), not
+# 90/40 — 200 would silently truncate the last ~1/3 of every re-collected
+# run. Raised with headroom; any run shorter than this is unaffected since
+# make_windows() only ever sees cycles that actually exist in that run's CSV.
 MIN_CYCLE  = 0
-MAX_CYCLE  = 200
+MAX_CYCLE  = 310
 # Cycle-level labeling: a window is attack-positive only if it contains a
 # delta_t spike above the benign p99 (attack actually firing this window),
 # not merely because it came from an attacker RSU's run. See make_windows().
@@ -74,7 +78,10 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
 
 
 def fit_scaler(df: pd.DataFrame):
-    benign = df[df["attack_v"] == BENIGN_V]
+    # Issue 7 fix (2026-08-02): must fit on TRAIN_SEEDS only. Fitting on all
+    # 5 seeds (including VAL_SEEDS/TEST_SEEDS) leaked their distribution into
+    # the frozen mu/std applied to val/test at apply_scaler() below.
+    benign = df[(df["attack_v"] == BENIGN_V) & (df["seed"].isin(TRAIN_SEEDS))]
     mu  = benign[FEATURES].mean().to_dict()
     std = benign[FEATURES].std().to_dict()
     # avoid zero-std for binary indicator features
@@ -174,20 +181,23 @@ def main(args):
     # comment above) — these are still ONLY windowing/ground-truth criteria,
     # separate from the model's own input features (FEATURES above).
     #
-    # r_anom added 2026-07-26: the baseline-controlled validation (benign
-    # A0 run vs. each HF attack run, same cycles) showed zkp_hop_fail alone
-    # only flags 11-29% of genuinely attack-active RSU-cycles across A5-A8,
-    # while r_anom>0 was clean and unambiguous in every variant (baseline
-    # r_anom exactly 0 at every cycle, no exceptions). Without this, windows
-    # where r_anom clearly shows an attack but zkp_hop_fail happens to be 0
-    # would be mislabeled benign, contaminating training the same way the
-    # original delta_t-only criterion did for A5-A8 before that fix.
+    # r_anom added 2026-07-26, REMOVED from this criterion 2026-08-02 (Issue 1
+    # fix): r_anom is also fed to the LSTM as raw input feature #10 (FEATURES
+    # above), so using it to define the ground-truth window label too let the
+    # model trivially recover the label from its own input for every HF
+    # window — inflating A5-A8 MCC without the model learning anything about
+    # weaker precursor signals. Replaced with hf_send_gt: a send-side counter
+    # (crypto_layer.h g_lstm_hf_sendgt_count, logged but deliberately
+    # excluded from FEATURES) that fires at attack-injection time, before any
+    # detection/receive logic runs — independent of every column the model
+    # actually sees. zkp_delay_fail/zkp_hop_fail stay in the OR: they are
+    # genuinely independent detection-side signals, not label-definitional.
     benign_delta = df.loc[df["attack_v"] == BENIGN_V, "delta_t"]
     spike_thr = float(benign_delta.quantile(SPIKE_QUANTILE))
     delta_spike = df["delta_t"] > spike_thr
     zkp_spike   = df["attack_v"].isin(HF_VARIANTS) & (
                       (df["zkp_delay_fail"] > 0) | (df["zkp_hop_fail"] > 0)
-                      | (df["r_anom"] > 0))
+                      | (df["hf_send_gt"] > 0))
     df["is_spike"] = (delta_spike | zkp_spike).astype(np.int8)
     n_spike_atk = int(df.loc[df["attack_v"] != BENIGN_V, "is_spike"].sum())
     n_atk_rows  = int((df["attack_v"] != BENIGN_V).sum())
@@ -200,7 +210,7 @@ def main(args):
     print(f"  HF (A5-A8) spike breakdown: {n_hf_spike:,}/{n_hf_rows:,} "
           f"({100*n_hf_spike/max(n_hf_rows,1):.1f}%) rows flagged via ZKP failure")
 
-    print("Fitting Z-score scaler on benign data …")
+    print(f"Fitting Z-score scaler on benign data from TRAIN_SEEDS={sorted(TRAIN_SEEDS)} only …")
     mu, std = fit_scaler(df)
     df = apply_scaler(df, mu, std)
 

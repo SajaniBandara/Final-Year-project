@@ -115,6 +115,10 @@ inline void calculate_tap_security_metrics()
 	for (int n = 0; n < total_size; n++)
 	{
 		bool malicious = (active_attack_variant >= 0 && active_attack_variant < 8) ? is_malicious_node[active_attack_variant][n] : false;
+		// Issue 5 fix (2026-08-02): TAP is Attack-2-only (CLAUDE.md) — apply
+		// the same event-gated ground truth as calculate_security_detection_metrics()
+		// (routing.cc) so pre-first-exceedance cycles aren't scored as FN here either.
+		if (active_attack_variant == 1) malicious = malicious && g_s2_gt_delay_exceeded[n];
 		bool detected = tap_detected_node[n];
 		if (malicious && detected) tap_TP++;
 		if (!malicious && detected) tap_FP++;

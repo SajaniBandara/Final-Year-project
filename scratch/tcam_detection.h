@@ -13,6 +13,39 @@ extern int                    g_tcam_rule_count[300];
 extern std::vector<TcamEntry> g_tcam_table;
 extern int                    g_slowpath_hit_count[300];
 extern int                    g_packetin_count[300];   // PACKET_IN (table-miss) rate source for S4 λ_PI
+// Issue 6 fix (2026-08-02): per-(RSU, source vehicle) companion to
+// g_packetin_count -- see its declaration in routing.cc. Consumed below by
+// s4_attribute_attacker() to compute v_atk = argmax_v λ_PI(v,r,t)
+// (eq:s4_attribution), replacing the RSU-only aggregate this file previously
+// had no way to disaggregate.
+extern std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
+// Previous-cycle cumulative snapshot per (rsu, vehicle), mirroring
+// g_prev_packetin's per-RSU delta pattern below.
+static std::map<uint32_t, std::map<uint32_t, uint32_t>> g_prev_packetin_by_source;
+
+// s4_attribute_attacker(): v_atk = argmax_v λ_PI(v,r,t) -- the source vehicle
+// with the highest windowed (this-cycle) PACKET_IN rate at RSU r. Advances
+// g_prev_packetin_by_source[r] as a side effect (call at most once per RSU
+// per cycle, matching every other per-RSU counter's advance-once discipline
+// in calculate_security_detection_metrics() below). Returns UINT32_MAX if
+// no PACKET_IN activity from any source this cycle (nothing to attribute).
+inline uint32_t s4_attribute_attacker(uint32_t rsu_node_id)
+{
+    uint32_t best_v = UINT32_MAX;
+    int      best_delta = 0;
+    auto&    cur_by_src  = g_packetin_by_source[rsu_node_id];
+    auto&    prev_by_src = g_prev_packetin_by_source[rsu_node_id];
+    for (const auto& kv : cur_by_src)
+    {
+        uint32_t src   = kv.first;
+        uint32_t cur   = kv.second;
+        uint32_t prev  = prev_by_src.count(src) ? prev_by_src[src] : 0;
+        int      delta = (cur >= prev) ? (int)(cur - prev) : 0;
+        if (delta > best_delta) { best_delta = delta; best_v = src; }
+    }
+    prev_by_src = cur_by_src;   // advance snapshot for next cycle
+    return best_v;
+}
 
 // Monotone cumulative install counters (defined in tcam_attack_helper.h, never
 // reset). S3 windows over (new + reinstall) — a slow-TCAM attacker refreshes
@@ -267,6 +300,12 @@ inline TcamCycleMetrics ComputeTcamDetection(
         g_prev_rule_count[node_id]    = g_tcam_rule_count[node_id];
         g_prev_slowpath_hits[node_id] = g_slowpath_hit_count[node_id];
         g_prev_packetin[node_id]      = g_packetin_count[node_id];
+        // Issue 6 fix: v_atk = argmax_v λ_PI(v,r,t) this cycle. Called
+        // unconditionally (not just when flag_s4 fires) so its snapshot
+        // advance stays in lockstep with every other per-RSU counter above —
+        // a strict per-cycle window, not a sparse one that silently spans
+        // multiple cycles whenever S4 didn't fire.
+        const uint32_t v_atk = s4_attribute_attacker(node_id);
 
         // Publish this cycle's S3/S4 state for lrad_rsu()'s flag_LSTM gate
         // (see g_tcam_flag_s3_last/g_tcam_flag_s4_last declaration above).
@@ -301,6 +340,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
                       << " util=" << tcam_util
                       << " (λ_PI=" << lambda_pi
                       << ", malicious=" << malicious_count << ")"
+                      << " v_atk=" << (v_atk == UINT32_MAX ? std::string("none")
+                                                             : std::to_string(v_atk))
                       << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
         }
     }

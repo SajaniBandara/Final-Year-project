@@ -92,6 +92,12 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
     bool delay_exceeds = (hop_delay > S2_DELTA_MAX);
 
+    // Issue 5 fix (2026-08-02) -- see g_s1_gt_delay_exceeded's comment
+    // (s1_detection.h) for the full rationale; same pattern here, latched
+    // independently of the ZKP conjunct below.
+    if (delay_exceeds && sender_sim_index < (uint32_t)total_size)
+        g_s2_gt_delay_exceeded[sender_sim_index] = true;
+
     // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥  (eq:stark_delay_verify)
     // Must use the same anchored timestamp as hop_delay above — otherwise a
     // compromised sender's offset would make delay_exceeds and zkp_proof_fails

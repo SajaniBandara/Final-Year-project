@@ -378,6 +378,21 @@ std::map<uint32_t, uint32_t>                      g_lstm_pkt_counts;
 // the windowed rate the equation actually specifies ("per unit time W").
 std::map<uint32_t, uint32_t> g_lstm_ranom_count;
 
+// 2026-08-02 (Issue 1 fix, HF ground-truth/feature separation): per-RSU
+// count of hidden-duplicate SEND events this malicious RSU has scheduled
+// (incremented at the same two call sites as g_total_copies_scheduled++ in
+// routing.cc, keyed by the sending RSU instead of one global total). This
+// exists ONLY to build an independent ground-truth label for A5-A8 windows
+// in preprocessor.py -- it fires at attack-injection time, before any
+// detection/receive logic runs, so it shares no computation path with
+// r_anom (a receive-side, detection-facing signal that IS fed to the LSTM
+// as input feature #10). Using r_anom>0 to both define the ground-truth
+// window label AND as a raw model input let the model trivially recover
+// the label from its own input for HF variants; this counter breaks that
+// overlap. Logged as a label-only CSV column (hf_send_gt), excluded from
+// FEATURES in preprocessor.py.
+std::map<uint32_t, uint32_t> g_lstm_hf_sendgt_count;
+
 // 2026-07-28 (main.tex:5783-5794 spec correction): D_div/A_tp (eq:feat_ddiv,
 // eq:feat_atp) must be computed from "per-source per-destination byte counts"
 // and "per-flow directional byte rate logs" respectively -- genuinely

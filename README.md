@@ -160,7 +160,9 @@ python3 scripts/run_std_attacks.py --build --delay 80
 
 ## 4. SUMO Mobility Trace Generation
 
-The SUMO workflow produces a `.tcl` mobility file that NS-3 reads via `Ns2MobilityHelper`. Skip this section if `mobility/mobility_urban_150.tcl` already exists.
+The SUMO workflow produces a `.tcl` mobility file that NS-3 reads via `Ns2MobilityHelper`. Skip this section if `mobility/mobility_urban_150_seed{1..5}.tcl` already exist.
+
+> **Issue 4 fix (2026-08-02):** routing.cc previously loaded the single `mobility_urban_150.tcl` trace regardless of `--sim_seed`, so the thesis's "5 seeds" only varied the NS-3 RNG, not the SUMO mobility realisation. `--maxspeed=150` now loads `mobility_urban_150_seed{sim_seed}.tcl` for `sim_seed` 1–5 (falling back to the original single trace otherwise) — 5 independently-generated SUMO runs sharing the same road network (`osm.net.xml`) but with distinct `randomTrips.py`/`sumo` seeds. Steps 4.3–4.5 below show the single-trace recipe; to regenerate all 5, repeat 4.3–4.5 per seed `s` in `{1..5}` with every `--seed` value offset by `s*100000` (e.g. seed 3's car trips use `--seed 311111`, its `sumo --seed` is `300001`), and pass `--prefix <class>` to every `randomTrips.py` call (car/bus/lorry/van/truck) — combining un-prefixed trip files makes every class restart vehicle IDs at 0, which SUMO rejects as a duplicate ID. See `sumo_sim/seed{1..5}/` for the exact commands used.
 
 ### Step 4.1 — Generate the road network
 
@@ -191,29 +193,33 @@ Confirm `convBoundary` spans approximately 2061 m × 2137 m.
 ```bash
 cd sumo_sim/<timestamp>/
 
+# --prefix is required: without it every class's trip IDs restart at 0, and
+# loading all 5 files together in step 4.4 fails with "A vehicle with id '0'
+# already exists" (confirmed 2026-08-02).
+
 # 100 cars
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_car.trips.xml \
-  --vehicle-class passenger -b 0 -e 30 --period 0.3 \
+  --vehicle-class passenger -b 0 -e 30 --period 0.3 --prefix car \
   --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 11111
 
 # 25 buses
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_bus.trips.xml \
-  --vehicle-class bus -b 0 -e 28.9 --period 1.2 \
+  --vehicle-class bus -b 0 -e 28.9 --period 1.2 --prefix bus \
   --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 22222
 
 # 25 lorries
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_lorry.trips.xml \
-  --vehicle-class truck -b 0 -e 28.9 --period 1.2 \
+  --vehicle-class truck -b 0 -e 28.9 --period 1.2 --prefix lorry \
   --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 33333
 
 # 25 vans
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_van.trips.xml \
-  --vehicle-class delivery -b 0 -e 28.9 --period 1.2 \
+  --vehicle-class delivery -b 0 -e 28.9 --period 1.2 --prefix van \
   --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 44444
 
 # 25 trucks
 python3 $SUMO_HOME/tools/randomTrips.py -n osm.net.xml -o trips_truck.trips.xml \
-  --vehicle-class trailer -b 0 -e 28.9 --period 1.2 \
+  --vehicle-class trailer -b 0 -e 28.9 --period 1.2 --prefix truck \
   --min-distance 1000 --random-factor 20 --random-routing-factor 25 --random --seed 55555
 ```
 
@@ -231,8 +237,12 @@ done
 
 ```bash
 # Set max speed to 41.67 m/s (150 km/h) in all trip files
+# NOTE: leading space before maxSpeed is required -- randomTrips.py emits
+# <vType .../> with no trailing space before "/>", so omitting it produces
+# invalid XML (`vClass="passenger"maxSpeed="41.67"`, confirmed 2026-08-02:
+# SUMO rejects it with "Error: whitespace expected").
 for f in trips_car.trips.xml trips_bus.trips.xml trips_lorry.trips.xml trips_van.trips.xml trips_truck.trips.xml; do
-  sed -i '/<vType /s/\/>/maxSpeed="41.67"\/>/' "$f"
+  sed -i '/<vType /s/\/>/ maxSpeed="41.67"\/>/' "$f"
 done
 
 # Run SUMO, emit FCD (Floating Car Data) output needed by traceExporter (step 4.5)

@@ -114660,6 +114660,25 @@ bool is_malicious_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 // Set to true when your detection logic fires for that variant/node
 bool is_detected_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 
+// Issue 5 fix (2026-08-02): event-gated ground truth for A1/A2 only.
+// is_malicious_node[0]/[1] above are static per-run identity flags (true for
+// the whole run for a designated attacker RSU, set once in
+// declare_attackers() before Simulator::Run() even starts) — they do NOT
+// reflect whether that node's poisoned delay has actually manifested on any
+// packet yet. calculate_security_detection_metrics() previously used
+// is_malicious_node directly, so every cycle before the first genuine
+// Δ_max-exceeding delay (including the whole pre-attack_start_time warm-up)
+// was scored as a false negative rather than a true negative, understating
+// DR and overstating FN for early cycles.
+// Latched true (never reset) the first time s1_detect_packet()/
+// s2_detect_packet() observes a safety-critical packet's delay genuinely
+// exceed the signature's own threshold (S1: adaptive δ̄+kσ; S2: fixed
+// Δ_max=50ms) for that sender node — independent of whether the detector's
+// OTHER conjuncts (selectivity/ZKP) also fired, i.e. "did the attack
+// actually manifest," not "did the detector catch it."
+bool g_s1_gt_delay_exceeded[total_size] = {false};
+bool g_s2_gt_delay_exceeded[total_size] = {false};
+
 // Which variant is active for this run (set at simulation start)
 // -1 means no attack (baseline run)
 int active_attack_variant = -1;
@@ -117269,7 +117288,18 @@ void calculate_security_detection_metrics()
 
         for (int n = 0; n < active_topology_nodes; n++)
         {
+            // Issue 5 fix (2026-08-02): for A1 (v==0)/A2 (v==1), AND the
+            // static attacker-identity flag with the event-gated "has this
+            // node's delay actually exceeded the signature's threshold at
+            // least once" latch, so pre-first-exceedance cycles (including
+            // the whole pre-attack_start_time warm-up) score as true
+            // negatives rather than false negatives. Other variants (A3-A8)
+            // already have event-driven ground truth (FlowMod issuance /
+            // first attacker packet / unauthorized-FlowMod checks — see
+            // their own ground-truth wiring) and are unaffected.
             bool malicious = is_malicious_node[v][n];
+            if (v == 0) malicious = malicious && g_s1_gt_delay_exceeded[n];
+            else if (v == 1) malicious = malicious && g_s2_gt_delay_exceeded[n];
             bool detected  = is_detected_node[v][n];
 
             if (malicious  && detected)  sec_TP[v]++;
@@ -120913,6 +120943,14 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 extern int g_tcam_rule_count[300];
 int g_slowpath_hit_count[300] = {0}; // satisfies the extern in lstm_logger.h
 int g_packetin_count[300] = {0}; // satisfies the extern in tcam_detection.h (PACKET_IN/table-miss rate source for S4 λ_PI)
+// Issue 6 fix (2026-08-02): per-(RSU, source vehicle) PACKET_IN counts,
+// cumulative -- [rsu_node_id][src_vehicle_node_id] -> count. g_packetin_count
+// above only tracks the RSU-level total, which cannot support the paper's
+// v_atk = argmax_v λ_PI(v,r,t) attacker attribution (eq:s4_attribution) --
+// see tcam_detection.h for the windowed per-source rate and argmax that
+// consume this. Populated at every g_packetin_count[...]++ site (this file
+// and tcam_attack_helper.h) with the source vehicle available at that site.
+std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
 // (packet matched immediately), TCAM_SLOWPATH_S when the table is full
@@ -121146,6 +121184,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
 						    g_packetin_count[current_hop]++;  // full-table miss is also a PACKET_IN (eq:sig_s4 λ_PI)
+						    // Issue 6 fix: attribute this PACKET_IN to its source vehicle.
+						    g_packetin_by_source[current_hop][(delta_at_nodes_inst+flow_id)->source_f]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
 						              << "/" << TCAM_CAPACITY
@@ -121236,6 +121276,10 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // scheduled copy (matches the passive-HF block bookkeeping).
 						    g_hdup_intentional = true;
 						    g_total_copies_scheduled++;
+						    // HF ground-truth (Issue 1 fix): fires at send/scheduling time,
+						    // independent of r_anom's receive-side counter -- see
+						    // g_lstm_hf_sendgt_count's declaration (crypto_layer.h).
+						    g_lstm_hf_sendgt_count[current_hop]++;
 						    // eFADE: count the hidden duplicate as an extra forward event at
 						    // scheduling time so it lands in the same epoch as the legitimate
 						    // forward already counted above (~line 120833). Together that's
@@ -121285,6 +121329,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // MacRx can distinguish it from ambient Wi-Fi overhear.
                             g_hdup_intentional    = true;
                             g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
+                            // HF ground-truth (Issue 1 fix) -- see active-HF block above.
+                            g_lstm_hf_sendgt_count[current_hop]++;
                             // eFADE: count the hidden duplicate as an extra forward event
                             // (see the active-HF block above for the full explanation —
                             // count-based tracking no longer needs the marker-stripping or
@@ -121614,6 +121660,16 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     // event the equation counts -- attribute it to the
                     // malicious forwarder, same as the hop-fail counter above.
                     g_lstm_ranom_count[prev_sender]++;
+                    // D_div/A_tp (eq:feat_ddiv, eq:feat_atp): this is an
+                    // additional (unauthorized) delivery of flow 0's packet to
+                    // a destination beyond destination_f -- the counterpart to
+                    // g_lstm_flow0_legit_count's fid==0 gate below. Was never
+                    // wired up despite the counters existing (2026-07-28), so
+                    // D_div/A_tp silently defaulted to 1.0 every cycle.
+                    if (fid == 0) {
+                        g_lstm_flow0_dest_set.insert(current_hop);
+                        g_lstm_flow0_total_delivery_count++;
+                    }
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -121676,6 +121732,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         g_lstm_pkt_counts[prev_sender]++;
                         // R_anom (eq:feat_ranom) -- see passive-HF block above.
                         g_lstm_ranom_count[prev_sender]++;
+                        // D_div/A_tp -- see passive-HF block above.
+                        if (fid == 0) {
+                            g_lstm_flow0_dest_set.insert(current_hop);
+                            g_lstm_flow0_total_delivery_count++;
+                        }
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {
@@ -121704,8 +121765,15 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// final-destination delivery event. See g_lstm_flow0_legit_count's
 				// declaration (crypto_layer.h) for why this dedicated counter
 				// exists instead of reusing fade_received_count directly.
-				if (fid == 0 && current_hop == destination)
+				if (fid == 0 && current_hop == destination) {
 					g_lstm_flow0_legit_count++;
+					// D_div/A_tp: the legitimate final-destination delivery
+					// counts as one delivery event to one destination -- was
+					// never wired up (see the two HF receive blocks above),
+					// so both features silently defaulted to 1.0 every cycle.
+					g_lstm_flow0_dest_set.insert(current_hop);
+					g_lstm_flow0_total_delivery_count++;
+				}
 
 				// S6: log this delivery for cross-destination duplication detection.
 				// Uses (fid & 0xFFFFu) as key so the legitimate copy (clean fid) and
@@ -142339,7 +142407,20 @@ int main(int argc, char *argv[])
 	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_60.tcl";
 	  		break;
 	  	case (150):
-	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150.tcl";
+	  		// Issue 4 fix (2026-08-02): previously a single fixed trace file
+	  		// reused for every --sim_seed, so "5 seeds" only varied the NS-3
+	  		// RNG, not the SUMO mobility realisation the proposal's 5-seed
+	  		// methodology is meant to capture (main.tex: each seed produces
+	  		// a distinct SUMO trace). mobility_urban_150_seed{1..5}.tcl are 5
+	  		// independently-generated SUMO runs (distinct randomTrips.py seeds
+	  		// per vehicle class + distinct sumo --seed; same osm.net.xml road
+	  		// network) -- see sumo_sim/seed{1..5}/ for the generation record.
+	  		// sim_seed outside 1-5 falls back to the original single trace.
+	  		if (sim_seed >= 1 && sim_seed <= 5)
+	  			trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150_seed"
+	  			           + std::to_string(sim_seed) + ".tcl";
+	  		else
+	  			trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150.tcl";
 	  		break;
 	  	default:
 	  		break;

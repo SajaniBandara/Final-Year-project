@@ -30,7 +30,10 @@ RESULTS_DIR = NS3_DIR / "results_routing"
 ATTACKS      = list(range(0, 9))          # 0 (benign) + 1–8
 PERCENTAGES  = [0, 20, 40, 60, 80, 100]  # 6 percentages → 8×6×5 = 240 total
 SEEDS        = [1, 2, 3, 4, 5]
-SIM_TIME     = 90    # matches A1/A2's existing 90s data (88 cycles) for consistency
+SIM_TIME     = 300   # Issue 3 fix (2026-08-02): paper spec (main.tex) is 300s/run —
+                      # was 90s, which understated block counts (~9/run vs ~30 the
+                      # paper's arithmetic assumes) and inflated the warm-up-exclusion
+                      # proportion to ~33% of the run instead of the intended ~10%.
 MAX_WORKERS  = 25
 
 

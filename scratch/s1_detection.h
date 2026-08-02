@@ -284,6 +284,15 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     double delta_best   = s1_delta_best[rsu_idx];
     bool   selective_ok  = (delta_best <= threshold);
 
+    // Issue 5 fix (2026-08-02, ground truth vs detection decision): latch
+    // g_s1_gt_delay_exceeded independently of selective_ok/detection dedup —
+    // this is "did the packet's delay genuinely exceed Eq. 3.4's own
+    // threshold," not "did S1 fire." See its declaration (routing.cc) for
+    // why calculate_security_detection_metrics() needs this instead of the
+    // static is_malicious_node[0] identity flag.
+    if (effective_delay_s > threshold && sender_node_id < (uint32_t)total_size)
+        g_s1_gt_delay_exceeded[sender_node_id] = true;
+
     if (DETECTION_DEBUG_LOG_S1)
         cout << "[S1] RSU_idx=" << rsu_idx
              << " node=" << current_hop

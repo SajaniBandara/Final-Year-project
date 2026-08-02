@@ -130,6 +130,9 @@ int g_tcam_reject_count[300] = {0};
 // DEFINED in routing.cc (alongside g_slowpath_hit_count); externed here so the
 // install/malicious-install paths below can increment it.
 extern int g_packetin_count[300];
+// Issue 6 fix (2026-08-02): per-(RSU, source vehicle) companion to
+// g_packetin_count above -- see its declaration in routing.cc.
+extern std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
 
 // ── True install-rate instrumentation (2026-07-15, MEASUREMENT ONLY) ─────────
 // Per-node counters accumulated within each 1-s snapshot window, then flushed
@@ -440,6 +443,7 @@ inline void tcam_install(uint32_t node_id, uint32_t original_fid)
     g_tcam_table.push_back(e);
     g_tcam_rule_count[node_id]++;
     g_packetin_count[node_id]++;   // this install was triggered by a table miss -> PACKET_IN (eq:sig_s4 λ_PI)
+    g_packetin_by_source[node_id][src_node]++;   // Issue 6 fix: per-source attribution
 
     // TRUE lambda_l instrument (measurement only): a fresh key vs a churn refresh.
     if (g_tcam_ever_evicted.count(key)) { g_lambda_reinstall[node_id]++; g_lambda_reinstall_cum[node_id]++; }
@@ -791,6 +795,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
         // successful-install branch below zeroed λ_PI out during the exact
         // phase S4 must detect.
         g_packetin_count[target_rsu_node_id]++;
+        g_packetin_by_source[target_rsu_node_id][node_id]++;   // Issue 6 fix: per-source attribution
         std::cout << "[TCAM REJECT] TABLE_FULL node=" << target_rsu_node_id
                   << " fake_fid=" << fake_fid
                   << " count=" << g_tcam_rule_count[target_rsu_node_id]
@@ -851,6 +856,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     g_tcam_table.push_back(e);
     g_tcam_rule_count[target_rsu_node_id]++;
     g_packetin_count[target_rsu_node_id]++;  // attacker's unique-5-tuple packet missed -> PACKET_IN (eq:sig_s4 λ_PI)
+    g_packetin_by_source[target_rsu_node_id][node_id]++;   // Issue 6 fix: per-source attribution
 
     // A malicious FlowMod IS a FlowMod install, so it must count in λ_FM / λ_obs
     // (eq:sig_s3: λ_FM = FlowMod rate from the controller = legit + malicious).

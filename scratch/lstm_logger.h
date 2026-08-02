@@ -12,10 +12,17 @@
 //       lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
 //
 // CSV columns (10 features + escalation flag + metadata + live-inference
-// result, full eq:lstm_input order):
+// result + label-only HF ground-truth column, full eq:lstm_input order):
 //   cycle, rsu_id, delta_t, lambda_PI, U_TCAM,
 //   zkp_delay_fail, zkp_hop_fail, rho, v_bar, d_div, a_tp, r_anom,
-//   escalated, label, lstm_anomaly_score, d_lstm
+//   escalated, label, lstm_anomaly_score, d_lstm, hf_send_gt
+//
+// `hf_send_gt` (2026-08-02, Issue 1 fix): per-RSU count of hidden-duplicate
+// SEND events this cycle (Δ(g_lstm_hf_sendgt_count[r]), crypto_layer.h) —
+// fires at attack-injection time, independent of r_anom's receive-side
+// signal. NOT part of FEATURES in preprocessor.py; exists only so the A5-A8
+// ground-truth window label doesn't reuse a value also fed to the model as
+// input feature #10 (r_anom). See g_lstm_hf_sendgt_count's declaration.
 //
 // `r_anom` (2026-07-26, eq:feat_ranom): per-RSU rate of distinct packets
 // received at an unauthorized destination this cycle, attributed to this
@@ -108,6 +115,13 @@ static bool             g_lstm_logger_ready = false;
 // for why that distinction matters here). Sized by lstm_logger_init().
 static std::vector<uint32_t> g_lstm_prev_ranom;
 
+// ── Per-RSU HF send-side ground-truth counter from the previous cycle
+// (Issue 1 fix, 2026-08-02). Same delta pattern as g_lstm_prev_ranom above,
+// but tracks g_lstm_hf_sendgt_count (crypto_layer.h) -- a send-time signal
+// used ONLY to build preprocessor.py's ground-truth label, never fed to the
+// model. Sized by lstm_logger_init().
+static std::vector<uint32_t> g_lstm_prev_hf_sendgt;
+
 // ── D_div/A_tp (eq:feat_ddiv, eq:feat_atp): flow 0's legit-delivery delta,
 // computed ONCE PER CYCLE (not once per RSU) since lstm_log_rsu_cycle() is
 // called once per RSU inside the same cycle's per-RSU loop -- consuming
@@ -167,13 +181,23 @@ static std::vector<std::vector<std::vector<float>>> g_lstm_rsu_window;
 static std::vector<float> g_lstm_last_score;
 static std::vector<bool>  g_lstm_last_dlstm;
 
-// Canonical CSV header (2026-07-26: eq:feat_ddiv/eq:feat_atp added, 16
-// columns, full eq:lstm_input order). Kept as a single constant so
-// lstm_migrate_stale_header() and the writer below can never drift apart.
+// Canonical CSV header (2026-08-02: hf_send_gt appended, 17 columns, full
+// eq:lstm_input order plus the label-only HF ground-truth column). Kept as
+// a single constant so lstm_migrate_stale_header() and the writer below can
+// never drift apart. hf_send_gt is NOT part of FEATURES in preprocessor.py
+// -- see g_lstm_hf_sendgt_count's declaration (crypto_layer.h) for why it
+// must stay separate from r_anom.
 static const char* LSTM_CSV_HEADER =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm,hf_send_gt";
+// 2026-07-26..2026-08-02 format, 16 columns -- same as current but no
+// hf_send_gt (appended at the very end).
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_16COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
     "lstm_anomaly_score,d_lstm";
+static const size_t LSTM_CSV_16COL_NCOLS = 16;
 // 2026-07-26 R_anom-only format, 14 columns -- same as current but no
 // d_div/a_tp (inserted between v_bar and r_anom).
 [[maybe_unused]] static const char* LSTM_CSV_HEADER_14COL =
@@ -305,7 +329,17 @@ inline void lstm_migrate_stale_header(const std::string& path)
             migrated_rows.push_back(o.str());
             ++n_migrated;
         }
-        else if (f.size() == 16)
+        else if (f.size() == LSTM_CSV_16COL_NCOLS)
+        {
+            // Pre-hf_send_gt row (2026-07-26..2026-08-02): all 16 fields
+            // already in current order, just missing the trailing hf_send_gt
+            // column. Append 0 -- these rows predate the counter's existence,
+            // same "unknown, assume no attack activity" default the rest of
+            // this function uses for absent columns.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == 17)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -314,7 +348,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
         {
             std::cerr << "[LSTM_LOGGER] WARNING: " << path
                        << " has a row with " << f.size()
-                       << " fields (expected 10/13/14 legacy or 16 current) — "
+                       << " fields (expected 10/13/14/16 legacy or 17 current) — "
                        << "left unmigrated: " << row << std::endl;
             migrated_rows.push_back(row);
             ++n_unexpected;
@@ -386,6 +420,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
     if (g_lstm_logger_ready) return;
     g_lstm_prev_slowpath.assign(n_rsus, 0);
     g_lstm_prev_ranom.assign(n_rsus, 0);
+    g_lstm_prev_hf_sendgt.assign(n_rsus, 0);
     g_lstm_escalation_count.assign(n_rsus, 0);
     g_lstm_rsu_window.assign(n_rsus, {});
     g_lstm_last_score.assign(n_rsus, 0.0f);
@@ -515,6 +550,23 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         uint32_t prev_ranom = (r < g_lstm_prev_ranom.size()) ? g_lstm_prev_ranom[r] : 0;
         R_anom = (cur_ranom >= prev_ranom) ? (double)(cur_ranom - prev_ranom) : 0.0;
         if (r < g_lstm_prev_ranom.size()) g_lstm_prev_ranom[r] = cur_ranom;
+    }
+
+    // ── hf_send_gt (label-only, NOT a model feature — Issue 1 fix,
+    // 2026-08-02): Δ(g_lstm_hf_sendgt_count[rsu_sim_idx]) since last cycle,
+    // same delta pattern as R_anom above but from the send/scheduling-side
+    // counter (crypto_layer.h). Logged as a separate CSV column so
+    // preprocessor.py can build the A5-A8 ground-truth window label from
+    // this instead of from r_anom, which is also fed to the LSTM as input
+    // feature #10 — reusing r_anom for both let the model trivially recover
+    // the label from its own input.
+    double HF_SendGT = 0.0;
+    {
+        auto it = g_lstm_hf_sendgt_count.find(rsu_sim_idx);
+        uint32_t cur_sgt = (it != g_lstm_hf_sendgt_count.end()) ? it->second : 0;
+        uint32_t prev_sgt = (r < g_lstm_prev_hf_sendgt.size()) ? g_lstm_prev_hf_sendgt[r] : 0;
+        HF_SendGT = (cur_sgt >= prev_sgt) ? (double)(cur_sgt - prev_sgt) : 0.0;
+        if (r < g_lstm_prev_hf_sendgt.size()) g_lstm_prev_hf_sendgt[r] = cur_sgt;
     }
 
     // ── Features 9 & 10: D_div, A_tp (eq:feat_ddiv, eq:feat_atp; corrected
@@ -700,6 +752,7 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << label
       << "," << g_lstm_last_score[r]
       << "," << (g_lstm_last_dlstm[r] ? 1 : 0)
+      << "," << HF_SendGT
       << "\n";
     f.close();
 }
