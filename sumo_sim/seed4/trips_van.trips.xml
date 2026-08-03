@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-08-02 18:43:03.868476 by Eclipse SUMO randomTrips.py v1.27.0
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="trips_van.trips.xml"/>
+    <prefix value="van"/>
+    <vehicle-class value="delivery"/>
+    <random-factor value="20.0"/>
+    <seed value="444444"/>
+    <random value="True"/>
+    <min-distance value="1000.0"/>
+    <random-routing-factor value="25.0"/>
+    <end value="28.9"/>
+    <period value="1.2"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="van_delivery" vClass="delivery" maxSpeed="41.67"/>
+    <trip id="van0" depart="0.00" from="604086206#1" to="-1307603692#1" type="van_delivery"/>
+    <trip id="van1" depart="1.20" from="405170521#0" to="-1087231948#0" type="van_delivery"/>
+    <trip id="van2" depart="2.40" from="-382492647#3" to="382218111#1" type="van_delivery"/>
+    <trip id="van3" depart="3.60" from="715814691#1" to="-900886783#2" type="van_delivery"/>
+    <trip id="van4" depart="4.80" from="-715814698#1" to="185948955#0" type="van_delivery"/>
+    <trip id="van5" depart="6.00" from="-438274649#4" to="-13334660#2" type="van_delivery"/>
+    <trip id="van6" depart="7.20" from="45536815#3" to="405170518#2" type="van_delivery"/>
+    <trip id="van7" depart="8.40" from="648606651" to="-715783637#1" type="van_delivery"/>
+    <trip id="van8" depart="9.60" from="-185948996#1" to="326489606#2" type="van_delivery"/>
+    <trip id="van9" depart="10.80" from="-399243265#2" to="607576340#1" type="van_delivery"/>
+    <trip id="van10" depart="12.00" from="-1087140593#1" to="-678440787#0" type="van_delivery"/>
+    <trip id="van11" depart="13.20" from="185948939#1" to="-438274650#1" type="van_delivery"/>
+    <trip id="van12" depart="14.40" from="579105037#0" to="603568526#0" type="van_delivery"/>
+    <trip id="van13" depart="15.60" from="723326355#0" to="812632077#1" type="van_delivery"/>
+    <trip id="van14" depart="16.80" from="-1208774639#3" to="-206375351#1" type="van_delivery"/>
+    <trip id="van15" depart="18.00" from="-603942772#1" to="578679203#0" type="van_delivery"/>
+    <trip id="van16" depart="19.20" from="747511197#1" to="-316447515#0" type="van_delivery"/>
+    <trip id="van17" depart="20.40" from="-438255394#1" to="405180169#0" type="van_delivery"/>
+    <trip id="van18" depart="21.60" from="-381204957#1" to="-382248461#2" type="van_delivery"/>
+    <trip id="van19" depart="22.80" from="-715814699" to="-358727540#3" type="van_delivery"/>
+    <trip id="van20" depart="24.00" from="814058070#0" to="404983742" type="van_delivery"/>
+    <trip id="van21" depart="25.20" from="1423266770#0" to="382490910#1" type="van_delivery"/>
+    <trip id="van22" depart="26.40" from="185948955#1" to="-604086206#2" type="van_delivery"/>
+    <trip id="van23" depart="27.60" from="405168266#1" to="-1394546775#1" type="van_delivery"/>
+    <trip id="van24" depart="28.80" from="206375351#1" to="-398740654#1" type="van_delivery"/>
+</routes>

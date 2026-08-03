@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-08-02 18:43:02.458690 by Eclipse SUMO randomTrips.py v1.27.0
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="trips_lorry.trips.xml"/>
+    <prefix value="lorry"/>
+    <vehicle-class value="truck"/>
+    <random-factor value="20.0"/>
+    <seed value="433333"/>
+    <random value="True"/>
+    <min-distance value="1000.0"/>
+    <random-routing-factor value="25.0"/>
+    <end value="28.9"/>
+    <period value="1.2"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="lorry_truck" vClass="truck" maxSpeed="41.67"/>
+    <trip id="lorry0" depart="0.00" from="-382248461#2" to="604086206#1" type="lorry_truck"/>
+    <trip id="lorry1" depart="1.20" from="-1054312814" to="161687304#5" type="lorry_truck"/>
+    <trip id="lorry2" depart="2.40" from="-381458682#1" to="-399270707" type="lorry_truck"/>
+    <trip id="lorry3" depart="3.60" from="-438274649#3" to="358727540#4" type="lorry_truck"/>
+    <trip id="lorry4" depart="4.80" from="404995541#2" to="1254830070#2" type="lorry_truck"/>
+    <trip id="lorry5" depart="6.00" from="45536815#4" to="398738126#0" type="lorry_truck"/>
+    <trip id="lorry6" depart="7.20" from="-398815190#1" to="382242607#2" type="lorry_truck"/>
+    <trip id="lorry7" depart="8.40" from="604086206#2" to="-1046059234" type="lorry_truck"/>
+    <trip id="lorry8" depart="9.60" from="161688464#14" to="185948945#3" type="lorry_truck"/>
+    <trip id="lorry9" depart="10.80" from="-382238064#1" to="45536227#5" type="lorry_truck"/>
+    <trip id="lorry10" depart="12.00" from="161689967#1" to="-404983742" type="lorry_truck"/>
+    <trip id="lorry11" depart="13.20" from="-405169152#0" to="438274649#2" type="lorry_truck"/>
+    <trip id="lorry12" depart="14.40" from="-382492648#0" to="1254830072#1" type="lorry_truck"/>
+    <trip id="lorry13" depart="15.60" from="438274650#1" to="1435789972#0" type="lorry_truck"/>
+    <trip id="lorry14" depart="16.80" from="405162732#0" to="163050956#1" type="lorry_truck"/>
+    <trip id="lorry15" depart="18.00" from="161688464#13" to="399247033#0" type="lorry_truck"/>
+    <trip id="lorry16" depart="19.20" from="161809364#0" to="161688464#18" type="lorry_truck"/>
+    <trip id="lorry17" depart="20.40" from="-45536227#6" to="404995542#1" type="lorry_truck"/>
+    <trip id="lorry18" depart="21.60" from="344355078#0" to="-399243265#1" type="lorry_truck"/>
+    <trip id="lorry19" depart="22.80" from="381204957#0" to="45536811#1" type="lorry_truck"/>
+    <trip id="lorry20" depart="24.00" from="399243265#0" to="382210638#1" type="lorry_truck"/>
+    <trip id="lorry21" depart="25.20" from="-167700743#2" to="518201969#0" type="lorry_truck"/>
+    <trip id="lorry22" depart="26.40" from="-1046059233" to="-438274649#6" type="lorry_truck"/>
+    <trip id="lorry23" depart="27.60" from="-190478684" to="-294585476#0" type="lorry_truck"/>
+    <trip id="lorry24" depart="28.80" from="523623581#0" to="13279089#1" type="lorry_truck"/>
+</routes>
