@@ -4,7 +4,7 @@ rule_calibrator.py — Calibrate S1 detection parameters from benign SUMO traces
 
 Implements §Simulation settings calibration procedure:
   1. OLS regression: fit δ₀, α_ρ, α_v from benign CSVs
-  2. β sweep {0.7, 0.8, 0.9, 0.95}: select for fastest σ²(t) convergence in 9s window
+  2. β sweep {0.7, 0.8, 0.9, 0.95}: select for fastest σ²(t) convergence in 22s window
   3. k sweep {1, 2, 3}: select for best MCC at FPR ≤ 1%
   4. Robustness check: perturb each param by ±{10%, 20%, 30%}, record ΔFPR
 
@@ -44,7 +44,11 @@ OUTPUT_REPORT = PIPELINE_DIR / "calibration_report.txt"
 BETA_CANDIDATES = [0.7, 0.8, 0.9, 0.95]
 K_CANDIDATES    = [1.0, 2.0, 3.0]
 PERTURBATIONS   = [0.10, 0.20, 0.30]   # ±10%, ±20%, ±30%
-RSU_ZONE_WINDOW = 9                     # seconds — minimum RSU zone residence
+RSU_ZONE_WINDOW = 22                    # seconds — supervisor review (2026-08-03):
+                                         # select beta for fastest STABLE convergence
+                                         # of sigma_r^2(t) within the first 22s of
+                                         # each run (was 9s, calibrated for the old
+                                         # single fixed SUMO trace)
 
 
 # ---------------------------------------------------------------------------

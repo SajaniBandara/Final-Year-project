@@ -115052,6 +115052,33 @@ inline void hf_init_attack7_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_
 inline void hf_init_attack8_dp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
 inline bool hf_delta_entry_active(uint32_t flow_id, uint32_t rsu_node, uint32_t eavesdropper_node);
 inline uint32_t hf_resolve_eavesdropper(uint32_t rsu_node);
+// Forward declaration -- real definition in lrad.h (included after
+// check_delivery_and_retransmit, same "declare early / define via later
+// header" pattern as hf_resolve_eavesdropper above).
+inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
+
+// Supervisor review fix (2026-08-03): per-RSU HF ground-truth counters
+// (g_lstm_hf_sendgt_count, g_lstm_ranom_count) are only ever READ by
+// lstm_log_rsu_cycle() via RSU-indexed keys (map[N_Vehicles + r]). For A6/A8
+// (DP variants), the attacker chosen by hf_declare_malicious_rsus() can be a
+// VEHICLE relay, not an RSU (on_path_nodes includes "RSUs + intermediate
+// vehicle relays" for DP -- see hf_attack_helper.h). Incrementing these maps
+// under a vehicle's own node index silently orphans the entry -- never read
+// by any RSU's CSV row -- so A6/A8 ground truth was firing zero times
+// whenever the attacker happened to be a vehicle relay rather than an RSU.
+// Attributes to the RSU with the strongest current DSRC link to that
+// vehicle (the RSU whose zone currently observes/covers it), matching how a
+// real IDS would only see this evidence via the covering RSU's vantage
+// point. Returns UINT32_MAX if no RSU is currently in range -- correctly no
+// ground truth fires anywhere in that case, since no RSU actually observes
+// the attacking vehicle at that instant.
+inline uint32_t hf_gt_attribution_node(uint32_t node)
+{
+    if (node >= (uint32_t)N_Vehicles) return node; // already an RSU node id
+    uint32_t rsu_local = lookup_vehicle_associated_rsu_local_idx(node);
+    if (rsu_local >= (uint32_t)N_RSUs) return UINT32_MAX; // no RSU in range
+    return (uint32_t)N_Vehicles + rsu_local;
+}
 void initialise_stub_attack_state()
 {
     // Demonstration ground-truth for variant 4 (Active Hidden Forwarding
@@ -121279,7 +121306,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // HF ground-truth (Issue 1 fix): fires at send/scheduling time,
 						    // independent of r_anom's receive-side counter -- see
 						    // g_lstm_hf_sendgt_count's declaration (crypto_layer.h).
-						    g_lstm_hf_sendgt_count[current_hop]++;
+						    // current_hop can be a vehicle relay for A6 (DP) -- attribute to
+						    // its covering RSU (hf_gt_attribution_node), not the vehicle's
+						    // own index, which no RSU's CSV row ever reads (supervisor
+						    // review fix, 2026-08-03).
+						    {
+						        uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
+						        if (_hf_gt_node != UINT32_MAX)
+						            g_lstm_hf_sendgt_count[_hf_gt_node]++;
+						    }
 						    // eFADE: count the hidden duplicate as an extra forward event at
 						    // scheduling time so it lands in the same epoch as the legitimate
 						    // forward already counted above (~line 120833). Together that's
@@ -121330,7 +121365,13 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             g_hdup_intentional    = true;
                             g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
                             // HF ground-truth (Issue 1 fix) -- see active-HF block above.
-                            g_lstm_hf_sendgt_count[current_hop]++;
+                            // current_hop can be a vehicle relay for A8 (DP) -- same
+                            // covering-RSU attribution fix (supervisor review, 2026-08-03).
+                            {
+                                uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
+                                if (_hf_gt_node != UINT32_MAX)
+                                    g_lstm_hf_sendgt_count[_hf_gt_node]++;
+                            }
                             // eFADE: count the hidden duplicate as an extra forward event
                             // (see the active-HF block above for the full explanation —
                             // count-based tracking no longer needs the marker-stripping or
@@ -121653,13 +121694,30 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     // cycle — the intended signal for detecting A7/A8 via the
                     // federated LSTM. Attributed to prev_sender (the malicious
                     // forwarder), which is the is_malicious_node-labelled RSU.
-                    g_lstm_stark_counts[prev_sender].second++;
-                    g_lstm_pkt_counts[prev_sender]++;
-                    // R_anom (eq:feat_ranom): this unauthorized reception is
-                    // exactly the "H(p) received at unauthorized destination"
-                    // event the equation counts -- attribute it to the
-                    // malicious forwarder, same as the hop-fail counter above.
-                    g_lstm_ranom_count[prev_sender]++;
+                    //
+                    // Supervisor review fix (2026-08-03): prev_sender can be a
+                    // VEHICLE relay for A8 (DP) -- hf_declare_malicious_rsus()
+                    // includes vehicle relays in the DP compromise pool. All
+                    // three counters below are only ever read by
+                    // lstm_log_rsu_cycle() via RSU-indexed keys, so a
+                    // vehicle-indexed increment was silently orphaned (never
+                    // surfacing in any RSU's CSV row) for vehicle-attacker A8
+                    // runs -- same root cause as the hf_send_gt fix above.
+                    // Attribute to the covering RSU instead of prev_sender
+                    // directly; skip (UINT32_MAX) if no RSU is in range.
+                    {
+                    uint32_t _lstm_gt_node = hf_gt_attribution_node(prev_sender);
+                    if (_lstm_gt_node != UINT32_MAX)
+                    {
+                        g_lstm_stark_counts[_lstm_gt_node].second++;
+                        g_lstm_pkt_counts[_lstm_gt_node]++;
+                        // R_anom (eq:feat_ranom): this unauthorized reception is
+                        // exactly the "H(p) received at unauthorized destination"
+                        // event the equation counts -- attribute it to the
+                        // malicious forwarder's covering RSU, same as above.
+                        g_lstm_ranom_count[_lstm_gt_node]++;
+                    }
+                    }
                     // D_div/A_tp (eq:feat_ddiv, eq:feat_atp): this is an
                     // additional (unauthorized) delivery of flow 0's packet to
                     // a destination beyond destination_f -- the counterpart to
@@ -121728,10 +121786,19 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         // the malicious RSU. Populate its LSTM hop-fail counter so
                         // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal
                         // for detecting A5/A6 via the federated LSTM.
-                        g_lstm_stark_counts[prev_sender].second++;
-                        g_lstm_pkt_counts[prev_sender]++;
-                        // R_anom (eq:feat_ranom) -- see passive-HF block above.
-                        g_lstm_ranom_count[prev_sender]++;
+                        // Supervisor review fix (2026-08-03): prev_sender can be a
+                        // VEHICLE relay for A6 (DP) -- same covering-RSU
+                        // attribution as the passive-HF block above.
+                        {
+                        uint32_t _lstm_gt_node = hf_gt_attribution_node(prev_sender);
+                        if (_lstm_gt_node != UINT32_MAX)
+                        {
+                            g_lstm_stark_counts[_lstm_gt_node].second++;
+                            g_lstm_pkt_counts[_lstm_gt_node]++;
+                            // R_anom (eq:feat_ranom) -- see passive-HF block above.
+                            g_lstm_ranom_count[_lstm_gt_node]++;
+                        }
+                        }
                         // D_div/A_tp -- see passive-HF block above.
                         if (fid == 0) {
                             g_lstm_flow0_dest_set.insert(current_hop);

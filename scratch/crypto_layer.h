@@ -145,6 +145,30 @@ bool enable_lrad_rsu               = true;  // AB1: RSU full-mode engine (lrad_r
 // For isolating a single signature's own FPR from S1/S2 cross-signal noise on the
 // shared trust ledger — NOT a replacement for default-settings evaluation numbers.
 bool g_disable_s1_s2                = false;
+// DIAGNOSTIC ONLY (added 2026-08-03, supervisor ablation study Q1-Q6):
+// S3/S4 (tcam_detection.h) fire unconditionally in
+// calculate_security_detection_metrics() -- NOT gated by enable_lrad_obu/rsu
+// at all, since S3/S4 detection is architecturally independent of the
+// OBU/RSU LRAD wrapper. This flag gates ONLY the confusion-matrix
+// record_detection_event() calls for S3/S4, NOT flag_s3/flag_s4 themselves
+// -- g_tcam_flag_s3_last/g_tcam_flag_s4_last (which feed lrad_rsu()'s
+// flag_LSTM suppression gate) are computed and published exactly as before,
+// so disabling S3/S4's contribution to the confusion matrix does NOT also
+// disable their suppression of flag_LSTM during TCAM saturation windows.
+bool g_disable_s3_s4                = false;
+// DIAGNOSTIC ONLY (added 2026-08-03, supervisor ablation study Q1-Q6):
+// S7/S8 (s7_detection.h/s8_detection.h, called from lrad_rsu) are
+// structurally independent of the separate witness/BFT mechanism
+// (enable_witness_mechanism, eq:dup_alert_cond/eq:bft_penalty below) -- both
+// target A7/A8 but via genuinely different evidence (S7/S8: a fresh
+// stark_verify_hop() call + volume-rate check; witness: cross-node alert
+// pooling with its own independent ML-DSA-87 sign/verify, not gated by
+// g_disable_crypto). Isolating "witness only" (no S7/S8 rule contribution)
+// or "crypto only" (S5/S6, no S7/S8) needs S7/S8's OWN detection-recording
+// suppressed independent of crypto/STARK state. Gates ONLY the
+// record_detection_event() calls inside s7_detect()/s8_detect(), not the
+// underlying stark_verify_hop()/volume-rate computation itself.
+bool g_disable_s7_s8                = false;
 bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
@@ -1544,6 +1568,8 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
     // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.
     cmd.AddValue("g_disable_s1_s2",               "DIAGNOSTIC: disable S1+S2 only, keep S3-S8 active (isolate a signature's own FPR)", g_disable_s1_s2);
+    cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's LSTM-suppression-gate publishing intact", g_disable_s3_s4);
+    cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 confusion-matrix recording only, independent of crypto/STARK state", g_disable_s7_s8);
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
     cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);

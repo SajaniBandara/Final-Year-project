@@ -331,8 +331,10 @@ inline LRADRSUFlags lrad_rsu(
     // endorsement / TCAM-utilisation threshold); the LSTM's reconstruction
     // error is structurally elevated by residual TCAM occupancy during
     // these events and adds false positives without adding coverage the
-    // rule-based layer doesn't already have. Deviation from alg:lrad_rsu's
-    // literal flat OR of flag_LSTM into D_RSU -- flagged as such.
+    // rule-based layer doesn't already have. main.tex's alg:lrad_rsu was
+    // updated (2026-08-03) to match this gated behaviour exactly -- no
+    // longer a deviation from the paper's literal flat OR of flag_LSTM
+    // into D_RSU.
     if (rsu >= (uint32_t)N_Vehicles) {
         uint32_t rsu_local_idx = rsu - (uint32_t)N_Vehicles;
         bool tcam_covers_this_rsu = (rsu < 300) &&
