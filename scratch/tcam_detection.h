@@ -258,6 +258,17 @@ inline TcamCycleMetrics ComputeTcamDetection(
         //    mechanism later becomes attack-aware enough that an unauthorised entry
         //    could correspond to a real (temporarily unendorsed) active flow.
         (void)lambda_fm_thresh;   // rate excess corroborating/reported only, no longer gates S3
+        // NOTE (2026-08-03): g_disable_s3_s4 is deliberately NOT applied here, to
+        // flag_s3 itself — only to the record_detection_event() call below. Per
+        // eq:lstm_gate (main.tex:3317-3326) the LSTM suppression gate keys on
+        // flag_S3 ∨ flag_S4, and its stated rationale is STRUCTURAL: TCAM residual
+        // occupancy inflates reconstruction error at non-attacking RSUs "throughout
+        // the simulation run", independently of any co-firing signature. That
+        // physical condition is unchanged by a diagnostic ablation flag, so
+        // g_tcam_flag_s3_last/g_tcam_flag_s4_last (published below, read by
+        // lrad_rsu()) must keep tracking the RAW condition. Gating the flag here
+        // would silently un-suppress the LSTM during TCAM saturation windows and
+        // inflate FPR in exactly the ablation runs meant to isolate the LSTM.
         const bool flag_s3 = (unauth_orphan_count > 0);
 
         // Per-RSU per-cycle detector-signal trace. Emits for EVERY RSU (2026-07-17:
@@ -294,6 +305,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
         //    λ_PI is still computed and reported for the [S3-DBG] trace and for naming
         //    the flooding source (attribution), but no longer gates S4.
         (void)lambda_pi_thresh;   // retained in the signature; corroborating/attribution only, not an S4 conjunct
+        // g_disable_s3_s4 deliberately NOT applied to flag_s4 — see the flag_s3
+        // note above (eq:lstm_gate keys on the raw condition, not the ablation).
         const bool flag_s4 = (tcam_util > tcam_util_thresh);
 
         // 8. Advance per-RSU baseline counters for the next cycle

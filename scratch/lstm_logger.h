@@ -384,10 +384,11 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
+    // Fallback only — unreachable whenever HOME is set (overwritten just below).
     std::string dir = "/home/nipuni/g13_project_repo/Final-Year-project/";
     const char* home = std::getenv("HOME");
     if (home)
-        dir = std::string(home) + "/ns3_g13/g13_project_repo/Final-Year-project/";
+        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/";
     return dir + "lstm_pipeline/lstm_weights_cpp.bin";
 }
 
@@ -403,7 +404,7 @@ inline std::string lstm_make_base_dir()
         "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = std::getenv("HOME");
     if (home)
-        dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/results_routing/";
     if (!dir.empty() && dir.back() != '/')
         dir += '/';
     return dir;
@@ -700,6 +701,41 @@ inline void lstm_log_rsu_cycle(uint32_t r,
             for (const auto& entry : g_tcam_table)
             {
                 if (entry.node_id == rsu_sim_idx && entry.is_malicious)
+                {
+                    label = 1;
+                    break;
+                }
+            }
+        }
+        // A2 (Selective Time Delay, DP — variant 1): same root cause as the
+        // A3/A4 case above, missed when that fallback was added. Supervisor
+        // review fix (2026-08-03).
+        //
+        // declare_attackers() (attack_declaration.h) picks A2 attackers from the
+        // full var = N_Vehicles + N_RSUs candidate pool and sets
+        // is_malicious_node[1][idx] on the attacker's OWN node index. That is
+        // correct for the S1-S8 confusion matrix, which attributes detections to
+        // prev_sender (itself often the attacking vehicle) -- so it must NOT be
+        // changed at the declaration site. But this label indexes
+        // is_malicious_node[variant][rsu_sim_idx] by RSU, so whenever the A2
+        // attacker lands on a vehicle (200 of the 264 candidates) NO RSU row is
+        // ever labelled 1, and every A2 training row reads label=0 for the whole
+        // run even though the delay attack is firing. That is corrupted ground
+        // truth, not a weak feature.
+        //
+        // Fix mirrors the A3/A4 "victim RSU" idea using the covering-RSU
+        // attribution already used for the HF ground-truth counters: an RSU is
+        // attack-affected if it currently covers (strongest DSRC link to) at
+        // least one malicious A2 node. hf_gt_attribution_node() returns the node
+        // itself for RSU attackers, the covering RSU for vehicle attackers, and
+        // UINT32_MAX when no RSU is in range -- in which case no RSU observes
+        // that attacker at this instant and correctly no row is labelled for it.
+        if (!label && active_attack_variant == 1)
+        {
+            for (uint32_t n = 0; n < (uint32_t)var; ++n)
+            {
+                if (!selective_delay_malicious_nodes[n]) continue;
+                if (hf_gt_attribution_node(n) == rsu_sim_idx)
                 {
                     label = 1;
                     break;

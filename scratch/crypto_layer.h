@@ -145,29 +145,44 @@ bool enable_lrad_rsu               = true;  // AB1: RSU full-mode engine (lrad_r
 // For isolating a single signature's own FPR from S1/S2 cross-signal noise on the
 // shared trust ledger — NOT a replacement for default-settings evaluation numbers.
 bool g_disable_s1_s2                = false;
-// DIAGNOSTIC ONLY (added 2026-08-03, supervisor ablation study Q1-Q6):
-// S3/S4 (tcam_detection.h) fire unconditionally in
-// calculate_security_detection_metrics() -- NOT gated by enable_lrad_obu/rsu
-// at all, since S3/S4 detection is architecturally independent of the
-// OBU/RSU LRAD wrapper. This flag gates ONLY the confusion-matrix
-// record_detection_event() calls for S3/S4, NOT flag_s3/flag_s4 themselves
-// -- g_tcam_flag_s3_last/g_tcam_flag_s4_last (which feed lrad_rsu()'s
-// flag_LSTM suppression gate) are computed and published exactly as before,
-// so disabling S3/S4's contribution to the confusion matrix does NOT also
-// disable their suppression of flag_LSTM during TCAM saturation windows.
+// DIAGNOSTIC ONLY (added 2026-08-03, supervisor ablation study Q1-Q6) — three
+// per-signature-group companions to g_disable_s1_s2. All default false: normal/
+// default-settings runs are completely unaffected.
+//
+// NOTE the deliberate asymmetry in WHERE each flag is applied. It is not an
+// inconsistency — it follows from what each signature's flag feeds downstream:
+//
+//   g_disable_s3_s4 — gates ONLY the confusion-matrix record_detection_event()
+//     calls in tcam_detection.h, NOT flag_s3/flag_s4 themselves. S3/S4 fire in
+//     calculate_security_detection_metrics(), architecturally independent of the
+//     OBU/RSU LRAD wrapper (enable_lrad_obu/rsu do not gate them). flag_s3/flag_s4
+//     must keep being computed from the RAW condition because they are published
+//     as g_tcam_flag_s3_last/g_tcam_flag_s4_last and read by lrad_rsu() as the
+//     eq:lstm_gate (main.tex:3317-3326) LSTM suppression gate. That gate's stated
+//     rationale is STRUCTURAL — TCAM residual occupancy inflates reconstruction
+//     error at non-attacking RSUs "throughout the simulation run" — a physical
+//     condition a diagnostic flag does not change. Gating the flag itself would
+//     silently un-suppress the LSTM during TCAM saturation and inflate FPR in
+//     exactly the runs meant to isolate the LSTM (supervisor Q3 requires the
+//     gate stay live while S3/S4's own output is disabled).
+//
+//   g_disable_s5_s6 / g_disable_s7_s8 — gate the SIGNATURE COMPUTATION ITSELF at
+//     the lrad_rsu() call site (the s5_detect()..s8_detect() calls are skipped and
+//     the flags stay false). Unlike S3/S4 these have no structural consumer: per
+//     alg:lrad_rsu (main.tex:2544-2546) flag_S5..flag_S8 feed D_RSU, and through
+//     it the BTMM trust penalty and the BC.Write detection-event record. Gating
+//     only record_detection_event() would leave all three of those still firing,
+//     so a "witness only" (Q4) or "crypto only" (Q2) configuration would not
+//     actually isolate the component — the S7/S8 rule path would keep penalising
+//     trust and writing to the ledger while claiming to be off. S7/S8 are
+//     genuinely independent code from the witness/BFT mechanism
+//     (enable_witness_mechanism, eq:dup_alert_cond/eq:bft_penalty below): both
+//     target A7/A8 but on different evidence (S7/S8: fresh stark_verify_hop() +
+//     volume rate; witness: cross-node alert pooling with its own ML-DSA-87
+//     sign/verify), sharing only trust_update_negative() — which is precisely
+//     why S7/S8 must be switchable off for the witness path to be measured alone.
 bool g_disable_s3_s4                = false;
-// DIAGNOSTIC ONLY (added 2026-08-03, supervisor ablation study Q1-Q6):
-// S7/S8 (s7_detection.h/s8_detection.h, called from lrad_rsu) are
-// structurally independent of the separate witness/BFT mechanism
-// (enable_witness_mechanism, eq:dup_alert_cond/eq:bft_penalty below) -- both
-// target A7/A8 but via genuinely different evidence (S7/S8: a fresh
-// stark_verify_hop() call + volume-rate check; witness: cross-node alert
-// pooling with its own independent ML-DSA-87 sign/verify, not gated by
-// g_disable_crypto). Isolating "witness only" (no S7/S8 rule contribution)
-// or "crypto only" (S5/S6, no S7/S8) needs S7/S8's OWN detection-recording
-// suppressed independent of crypto/STARK state. Gates ONLY the
-// record_detection_event() calls inside s7_detect()/s8_detect(), not the
-// underlying stark_verify_hop()/volume-rate computation itself.
+bool g_disable_s5_s6                = false;
 bool g_disable_s7_s8                = false;
 bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
@@ -1568,8 +1583,9 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
     // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.
     cmd.AddValue("g_disable_s1_s2",               "DIAGNOSTIC: disable S1+S2 only, keep S3-S8 active (isolate a signature's own FPR)", g_disable_s1_s2);
-    cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's LSTM-suppression-gate publishing intact", g_disable_s3_s4);
-    cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 confusion-matrix recording only, independent of crypto/STARK state", g_disable_s7_s8);
+    cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's eq:lstm_gate LSTM-suppression publishing intact", g_disable_s3_s4);
+    cmd.AddValue("g_disable_s5_s6",               "DIAGNOSTIC: disable S5+S6 (active HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution", g_disable_s5_s6);
+    cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 (passive HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution (isolates the witness pipeline)", g_disable_s7_s8);
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
     cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
