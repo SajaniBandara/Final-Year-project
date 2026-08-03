@@ -121786,8 +121786,19 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				{
 					uint32_t prev_sender = tagmodified_routing.Getprevious_senderId();
 					auto _t_verify = crypto_log_start();
-					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid);
-					crypto_log_event("verify", prev_sender, packet_ID, fid, _t_verify, sig_ok);
+					bool broadcast_skip = false;
+					bool sig_ok  = mldsa87_verify(prev_sender, packet_ID, current_hop, fid,
+					                              /*is_batch_call=*/false, &broadcast_skip);
+					// Broadcast MAC: every neighbour overhears every packet, and only
+					// the intended next hop is meant to verify it -- the rest legitimately
+					// never attempt real cryptography. Logging that as op="verify" result=
+					// "fail" is indistinguishable from an actual ML-DSA-87 rejection and
+					// makes crypto_timing_log*.csv's verify fail-rate meaningless (mostly
+					// benign overhears, not real signature failures). Log it under its own
+					// op instead, so "verify" in the CSV only ever reflects a genuine
+					// cryptographic verification attempt (pass or fail).
+					crypto_log_event(broadcast_skip ? "verify_skip_broadcast" : "verify",
+					                  prev_sender, packet_ID, fid, _t_verify, sig_ok);
 					auto _t_hop = crypto_log_start();
 					bool hop_ok  = stark_verify_hop(current_hop, prev_sender, packet_ID, fid);
 					crypto_log_event("stark_hop", prev_sender, packet_ID, fid, _t_hop, hop_ok);

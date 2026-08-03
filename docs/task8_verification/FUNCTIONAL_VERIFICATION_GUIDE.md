@@ -164,13 +164,13 @@ No single runner covers all 8 attacks with baselines. Pick based on what you nee
 
 | Runner | Attacks | Also produces | Notes |
 |---|---|---|---|
-| `run_std_attacks.py` | 1, 2 | TAP baseline (B1) | **only runner with `sync_files()`** — use it to build |
+| `run_std_attacks.py` | 1, 2 | TAP baseline (B1) | `--build` syncs + compiles |
 | `run_hf_attacks.py` | 5–8 | FADE baseline (B3) | |
-| `run_rule_based_sweep.py` | **all 8** | none (MOBIGUARD only) | seeds default `[1,2,3]`; filenames get `_seed<S>` |
+| `run_rule_based_sweep.py` | **all 8** | none (MOBIGUARD only) | seeds default `[1,2,3]`; filenames get `_seed<S>`; `--build` syncs + compiles |
 
-- `run_rule_based_sweep.py` does **not** sync sources — it only runs `./waf build`
-  on whatever is already in the ns-3 tree. **Always build with
-  `run_std_attacks.py --build` first** so the current `scratch/` is synced in.
+- All three runners' `--build` now call the same `sync_files()` (project
+  `scratch/` → ns-3 tree) before `./waf build`, so any of them can be used to
+  refresh the binary — no need to build with `run_std_attacks.py` first.
 - The runners call the **same binary with identical `FIXED_PARAMS`** — they
   differ only in orchestration (which attacks, whether a baseline is paired,
   seed handling).
@@ -181,7 +181,7 @@ Your binary is stale if it predates the newest `scratch/` source. `--build`
 syncs project sources → ns-3 and compiles, then exits without simulating:
 
 ```bash
-python3 scripts/run_std_attacks.py --build
+python3 scripts/run_rule_based_sweep.py --build
 ```
 
 ### Step 2 — Run a sweep (survives terminal close)
@@ -191,7 +191,7 @@ full-coverage option (no baselines):
 
 ```bash
 nohup bash -c '
-  python3 scripts/run_std_attacks.py --build &&
+  python3 scripts/run_rule_based_sweep.py --build &&
   python3 scripts/run_rule_based_sweep.py --clean --sim-time 40 --seeds 1 --workers 8
 ' > logs/sweep_driver.log 2>&1 < /dev/null &
 
@@ -200,7 +200,8 @@ echo "driver PID $!"
 
 - `nohup … < /dev/null &` detaches it so it survives closing the terminal.
 - `&&` chains the build first — a build failure aborts before wasting 48 runs on
-  a stale binary.
+  a stale binary. `run_rule_based_sweep.py --build` now syncs `scratch/` and
+  compiles on its own, so no separate `run_std_attacks.py --build` call is needed.
 - `--seeds 1` → 48 runs (8 attacks × 6 pct × 1 seed). The default `[1,2,3]` would
   be 144 runs; one seed is enough for deliverables 2 and 5.
 - `--clean` removes prior `MOBIGUARD_Attack*` CSVs for the swept scope (it does
@@ -353,9 +354,9 @@ Final-Year-project/
 │   ├── audit_equations.py            # deliverable 1
 │   ├── functional_verification.py    # deliverable 2
 │   ├── verify_metrics.py             # shared CSV schema + parser (dependency)
-│   ├── run_std_attacks.py            # attacks 1,2 + TAP;  has sync_files()
-│   ├── run_hf_attacks.py             # attacks 5-8 + FADE
-│   ├── run_rule_based_sweep.py       # all 8, MOBIGUARD only
+│   ├── run_std_attacks.py            # attacks 1,2 + TAP;  --build syncs+compiles
+│   ├── run_hf_attacks.py             # attacks 5-8 + FADE;  --build syncs+compiles
+│   ├── run_rule_based_sweep.py       # all 8, MOBIGUARD only;  --build syncs+compiles
 │   └── crypto_scripts/timing_report.py   # deliverable 3 (deep timing)
 ├── logs/
 │   ├── A<N>_pct<pct>_...log          # std/hf run logs

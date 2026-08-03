@@ -211,7 +211,8 @@ SECTIONS = [
 
     ("B. LRAD DETECTION SIGNATURES S1-S8 & DECISION RULES",
      "eq:sig_s1..eq:sig_s8, eq:rule_s1, eq:rule_s3, eq:rule_s4, eq:composite_light, "
-     "eq:dup_alert_cond, eq:nfwd_detect, eq:local_quarantine", [
+     "eq:dup_alert_cond, eq:nfwd_detect, eq:local_quarantine, eq:feat_ddiv, "
+     "eq:feat_atp, eq:feat_ranom", [
 
         ("sig_s1", "S1 high-priority delay outlier > mean + k*sigma",
          C, r"s1_detection|s1_detect", "sim", None),
@@ -236,6 +237,22 @@ SECTIONS = [
 
         ("sig_s8", "S8 passive hidden-forwarding (eavesdrop tunnel) signature",
          C, r"s8_detection|s8_detect", "sim", None),
+
+        ("feat_ddiv", "D_div destination diversity ratio (LSTM feature 9, "
+         "hidden-forwarding signal)",
+         C, r"D_div", "sim",
+         "code proxy: D_div = 1.0 + [R_anom>0] (scratch/lstm_logger.h) rather "
+         "than the independent distinct-destination count |{d'}| / |P(v,.)| "
+         "in main.tex, since the sim's HF attacks always target a single flow "
+         "with one authorized destination -- see PENDING_FIXES.md"),
+
+        ("feat_atp", "A_tp throughput asymmetry ratio (LSTM feature 10, "
+         "hidden-forwarding signal)",
+         C, r"A_tp", "sim", None),
+
+        ("feat_ranom", "R_anom reception log anomaly score (LSTM feature 8, "
+         "hidden-forwarding signal)",
+         C, r"R_anom", "sim", None),
 
         ("rule_s1", "S1 EWMA outlier decision rule (mean + k*sigma)",
          C, r"s1_k|ewma", "sim", None),

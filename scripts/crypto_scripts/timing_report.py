@@ -19,10 +19,46 @@ What is proven
   F. Witness timing:       alert signed at detection instant, not deferred
 """
 
-import re, sys, statistics
+import re, sys, statistics, os
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
+
+# ─── source constants ─────────────────────────────────────────────────────────
+# Read design constants back out of scratch/ so the tolerances asserted here
+# stay tied to the build rather than to hard-coded copies of it (same pattern
+# as functional_verification.py's _src_const).
+
+SCRATCH_DIR = Path(__file__).resolve().parent.parent.parent / "scratch"
+
+def _src_const(pattern, cast=float, default=None):
+    if not SCRATCH_DIR.is_dir():
+        return default
+    for name in sorted(os.listdir(SCRATCH_DIR)):
+        if not name.endswith((".h", ".cc")):
+            continue
+        try:
+            text = (SCRATCH_DIR / name).read_text(errors="ignore")
+        except OSError:
+            continue
+        m = re.search(pattern, text)
+        if m:
+            return cast(m.group(1))
+    return default
+
+# crypto_batch_verify_tick()'s self-reschedule period (crypto_layer.h).
+TICK_PERIOD = _src_const(r"Simulator::Schedule\(ns3::Seconds\(([\d.]+)\),\s*&crypto_batch_verify_tick", default=0.050)
+
+# STARK_INSTRUMENTATION_TOL is NOT main.tex's STARK_DELTA_MAX (crypto_layer.h,
+# currently 50ms) -- that constant bounds the delay-proof's own (t_fwd -
+# t_recv) claim inside the STARK proof itself, an unrelated quantity. This
+# tolerance instead checks that the log's [STARK] and [CRYPTO-VERIFY] records
+# for the same packet were emitted at effectively the same simulation instant
+# (both fire at packet receipt per section E's design), so it only needs to
+# be small relative to NS-3's event-scheduling granularity. main.tex does not
+# cite a specific bound for this instrumentation check; 5ms is an engineering
+# tolerance, not a thesis-derived figure.
+STARK_INSTRUMENTATION_TOL = 0.005
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -348,7 +384,7 @@ def report_batch(d, out):
     # observed interval, printed or not, must be within tolerance of SOME
     # whole multiple of the 50ms period -- not that every printed-line gap
     # equals exactly one period.
-    TICK_PERIOD, TOL = 0.050, 0.010
+    TOL = 0.010
     all_intervals = [round(ticks[i+1]-ticks[i], 4) for i in range(len(ticks)-1)]
 
     def residual(iv):
@@ -433,8 +469,13 @@ def report_tref(d, out):
 
     if len(tref) >= 2:
         intervals = [round(tref[i+1]["t"]-tref[i]["t"], 3) for i in range(len(tref)-1)]
+        # main.tex:6062 -- T_sync (time-reference commit interval) is a swept
+        # experimental parameter in {0.5, 1.0, 2.0}s, not a fixed constant, so
+        # this is reported as observed-consistency evidence, not compared
+        # against a single hardcoded expectation.
         out.write(f"\n  T_ref update intervals (s): {intervals}  "
-                  f"(expected ≈ 1.0s per RSU beacon cycle)\n")
+                  f"(T_sync is swept per main.tex:6062 -- {{0.5, 1.0, 2.0}}s; "
+                  f"consistent spacing here is the pass condition, not a fixed value)\n")
 
     return all_ok
 
@@ -462,7 +503,7 @@ def report_stark(d, out):
         ts   = s["t"]
         d_   = round(ts - tv, 4)
         deltas.append(abs(d_))
-        ok   = abs(d_) < 0.005   # STARK evaluated within 5ms of receive-time verify
+        ok   = abs(d_) < STARK_INSTRUMENTATION_TOL   # STARK evaluated within tolerance of receive-time verify
         if not ok: all_ok = False
         if shown < 20:
             out.write(row([node, pkt, flow, f"{tv:.3f}", f"{ts:.3f}", f"{d_:.4f}",
@@ -480,7 +521,7 @@ def report_stark(d, out):
     t_ok_cnt  = sum(1 for _, s, _ in matched if s["timing_ok"])
     t_fail_cnt= len(matched) - t_ok_cnt
     h_ok_cnt  = sum(1 for _, s, _ in matched if s["hop_ok"])
-    check("STARK evaluated at receive-time verify (|Δ| < 5 ms) for all packets",
+    check(f"STARK evaluated at receive-time verify (|Δ| < {STARK_INSTRUMENTATION_TOL*1000:.0f} ms) for all packets",
           all_ok, f"{len(matched)} packets checked", out)
     # timing_ok=0 means the STARK proof correctly detected a delayed packet (proof works).
     # A small number of failures under an active attack is the expected, correct behaviour.
@@ -564,7 +605,7 @@ def main():
     if not raw_path.exists():
         print(f"Error: file not found: {raw_path}"); sys.exit(1)
 
-    raw = raw_path.read_text()
+    raw = raw_path.read_text(encoding="utf-8", errors="ignore")
     d   = parse(raw)
 
     # FIXED 2026-07-27 (was: `raw_path.stem.replace("_raw", "_timing") + ".log"`):
@@ -581,7 +622,7 @@ def main():
         print(f"Error: refusing to write report over its own input file: {report_path}")
         sys.exit(1)
 
-    with open(report_path, "w") as out:
+    with open(report_path, "w", encoding="utf-8") as out:
         header(
             f"MobiGuard — Cryptographic Operation Timing Evidence Report\n"
             f"  Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -606,8 +647,16 @@ def main():
 
         report_summary(results, out)
 
-    # Mirror to stdout
-    print(open(report_path).read())
+    # Mirror to stdout. Console encoding varies by platform (e.g. Windows
+    # terminals default to cp1252, which can't encode the box-drawing/arrow
+    # characters used in the report) -- fall back to a safe transliteration
+    # rather than crashing after the report file has already been written.
+    report_text = open(report_path, encoding="utf-8").read()
+    try:
+        print(report_text)
+    except UnicodeEncodeError:
+        enc = sys.stdout.encoding or "ascii"
+        print(report_text.encode(enc, errors="replace").decode(enc))
     print(f"\nReport saved: {report_path}")
 
 if __name__ == "__main__":
