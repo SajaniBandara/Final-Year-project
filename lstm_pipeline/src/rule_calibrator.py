@@ -35,7 +35,7 @@ from sklearn.metrics import matthews_corrcoef
 # ---------------------------------------------------------------------------
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
-NS3_DIR      = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
+NS3_DIR      = Path.home() / "ns-allinone-3.35/ns-3.35"
 DEFAULT_DATA = NS3_DIR / "results_routing" / "lstm_training"
 OUTPUT_JSON  = PIPELINE_DIR / "calibrated_params.json"
 OUTPUT_REPORT = PIPELINE_DIR / "calibration_report.txt"
@@ -44,11 +44,60 @@ OUTPUT_REPORT = PIPELINE_DIR / "calibration_report.txt"
 BETA_CANDIDATES = [0.7, 0.8, 0.9, 0.95]
 K_CANDIDATES    = [1.0, 2.0, 3.0]
 PERTURBATIONS   = [0.10, 0.20, 0.30]   # ±10%, ±20%, ±30%
-RSU_ZONE_WINDOW = 22                    # seconds — supervisor review (2026-08-03):
-                                         # select beta for fastest STABLE convergence
-                                         # of sigma_r^2(t) within the first 22s of
-                                         # each run (was 9s, calibrated for the old
-                                         # single fixed SUMO trace)
+# --- beta selection criterion (supervisor review, 2026-08-04) -------------
+# These two were previously ONE parameter (RSU_ZONE_WINDOW), which conflated a
+# stability test with an acceptance bound and produced the wrong answer.
+#
+# The old code passed a single `window` into ewma_convergence_time(), where it
+# served as BOTH the number of consecutive stable cycles required AND the start
+# offset of the search, with the result reported as (i - window). Raising it
+# from 9 to 22 therefore did not "look for convergence within 22 s" -- it made
+# the stability test three times stricter and pushed every beta's measured
+# convergence LATER. That is the "converges to a fixed 22 s" failure mode the
+# supervisor flagged, not faster genuine convergence.
+#
+# Correct criterion: fastest stable convergence of sigma_r^2(t) ANYWHERE inside
+# the 9-22 s band, with 22 s a hard rejection ceiling.
+#   STABILITY_WINDOW  - consecutive cycles that must sit within 1 % of the final
+#                       value before convergence is declared. This is a
+#                       smoothness test; it is NOT an acceptance bound.
+#   CONVERGENCE_CEILING - maximum acceptable convergence time. A beta that
+#                       cannot converge inside this is rejected outright: 22 s
+#                       is the maximum RSU zone residence time at highway speed
+#                       (main.tex: vehicles reside in a zone 10-30 s), so a beta
+#                       slower than this never stabilises before the vehicle has
+#                       already left the zone, and is useless in deployment.
+# Units: data transmission and routing run at 1 Hz (main.tex sec:simulation),
+# so one cycle == one second and these are directly comparable.
+STABILITY_WINDOW    = 9
+CONVERGENCE_CEILING = 22
+
+# Relative tolerance for "sigma^2 has settled": every cycle in the stability
+# window must be within this fraction of the final value.
+#
+# *** OPEN ISSUE — RAISE WITH SUPERVISOR BEFORE TRUSTING ANY BETA ***
+# This was hardcoded at 0.01 (1 %). On realistic noisy input that criterion
+# essentially NEVER latches: the EWMA variance of a fluctuating delay series is
+# itself a fluctuating series, so it does not sit within 1 % of its final value
+# for 9 consecutive cycles. Measured on synthetic stationary white noise, only
+# beta=0.99 converges at 1 %; every beta in BETA_CANDIDATES never does.
+#
+# The OLD code hid this. On failure it fell through to
+#     return float(len(sigma2_history))
+# i.e. the series length, so a beta that never converged was scored as if it
+# converged at the last cycle. Every non-converging beta then tied, and the
+# sweep's min() picked essentially arbitrarily. The beta currently compiled into
+# s1_detection.h (0.8) may have come from exactly such a degenerate sweep and
+# should not be assumed meaningful.
+#
+# This module now returns inf and REJECTS rather than silently ranking, so the
+# problem is visible instead of producing a confident wrong answer. If the real
+# benign baseline also yields "no beta converges", the criterion itself needs
+# rethinking -- the principled alternative is the EWMA effective window
+# N_eff = 1/(1-beta) (beta=0.9 -> 10 cycles, 0.95 -> 20), which is deterministic
+# and lands naturally inside the 9-22 s band. That is a spec decision, not an
+# implementation one: do not change it unilaterally.
+CONVERGENCE_TOL = 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -148,32 +197,45 @@ def fit_ols(df: pd.DataFrame) -> tuple[float, float, float, float]:
 
 def ewma_convergence_time(series: np.ndarray, beta: float,
                            delta_bar_series: np.ndarray,
-                           window: int = RSU_ZONE_WINDOW) -> float:
+                           stability_window: int = STABILITY_WINDOW,
+                           tol: float = CONVERGENCE_TOL) -> float:
     """
-    Run EWMA variance update for `series` and return the number of steps
-    until σ²(t) changes by < 1% of its final value within a window of `window`
-    steps. Lower = faster convergence.
+    Run the eq:ewma_variance update over `series` and return the CYCLE INDEX at
+    which sigma^2(t) is declared converged: the first cycle after which
+    `stability_window` consecutive values all sit within 1 % of the final value.
+
+    Returns the index of the first cycle OF THE STABLE RUN (not the end of it),
+    so the number means "sigma^2 had settled by cycle N". Lower = faster.
+
+    `stability_window` is a smoothness test only. The acceptance bound
+    (CONVERGENCE_CEILING) is applied by the caller, deliberately kept separate:
+    folding them together is what made every beta look like it converged at the
+    bound. Returns inf if it never stabilises, so the caller can reject rather
+    than silently ranking a non-converging beta.
     """
     sigma2 = 0.0
     sigma2_history = []
-    for i, (obs, db) in enumerate(zip(series, delta_bar_series)):
+    for obs, db in zip(series, delta_bar_series):
         dev     = obs - db
         sigma2  = beta * sigma2 + (1 - beta) * dev * dev
         sigma2_history.append(sigma2)
 
-    if len(sigma2_history) < window:
-        return float(len(sigma2_history))
+    n = len(sigma2_history)
+    if n < stability_window:
+        return float("inf")          # too short to judge — do not count as fast
 
     final = sigma2_history[-1]
     if final == 0:
-        return float(window)
+        return float("inf")          # degenerate (no variance signal at all)
 
-    for i in range(window, len(sigma2_history)):
-        window_vals = sigma2_history[i - window: i]
-        if max(abs(v - final) / (abs(final) + 1e-12) for v in window_vals) < 0.01:
-            return float(i - window)
+    # Earliest start index whose following `stability_window` cycles are all
+    # within 1 % of the final value.
+    for start in range(0, n - stability_window + 1):
+        chunk = sigma2_history[start: start + stability_window]
+        if max(abs(v - final) / (abs(final) + 1e-12) for v in chunk) < tol:
+            return float(start)
 
-    return float(len(sigma2_history))
+    return float("inf")              # never stabilised
 
 
 def sweep_beta(df: pd.DataFrame, delta0: float,
@@ -194,12 +256,38 @@ def sweep_beta(df: pd.DataFrame, delta0: float,
             ct = ewma_convergence_time(obs, beta, delta_bar)
             conv_times.append(ct)
 
-        mean_ct = float(np.mean(conv_times))
+        finite = [c for c in conv_times if np.isfinite(c)]
+        mean_ct = float(np.mean(finite)) if finite else float("inf")
+        n_fail  = len(conv_times) - len(finite)
         results[beta] = mean_ct
-        print(f"  β={beta}  mean convergence = {mean_ct:.1f} cycles")
+        note = f"  ({n_fail}/{len(conv_times)} series never stabilised)" if n_fail else ""
+        shown = f"{mean_ct:.1f}" if np.isfinite(mean_ct) else "never"
+        print(f"  β={beta}  mean convergence = {shown} cycles{note}")
 
-    best_beta = min(results, key=results.__getitem__)
-    print(f"  → Selected β = {best_beta}  (fastest: {results[best_beta]:.1f} cycles)")
+    # Acceptance bound applied HERE, separately from the stability test above.
+    # A beta that cannot converge within CONVERGENCE_CEILING is rejected: it
+    # never settles before the vehicle has left the RSU zone.
+    eligible = {b: c for b, c in results.items()
+                if np.isfinite(c) and c <= CONVERGENCE_CEILING}
+    rejected = {b: c for b, c in results.items() if b not in eligible}
+
+    for b, c in sorted(rejected.items()):
+        shown = f"{c:.1f}" if np.isfinite(c) else "never"
+        print(f"  β={b}: REJECTED — converges at {shown} cycles "
+              f"(> {CONVERGENCE_CEILING}s ceiling)")
+
+    if not eligible:
+        raise SystemExit(
+            f"No β in {BETA_CANDIDATES} converges within the "
+            f"{CONVERGENCE_CEILING}s ceiling (stability window "
+            f"{STABILITY_WINDOW} cycles). Widen BETA_CANDIDATES or re-examine "
+            f"the benign baseline — do NOT silently pick the least-bad β.")
+
+    best_beta = min(eligible, key=eligible.__getitem__)
+    print(f"  → Selected β = {best_beta}  "
+          f"(converges at {eligible[best_beta]:.1f} cycles ≈ {eligible[best_beta]:.1f}s; "
+          f"stability window {STABILITY_WINDOW}, ceiling {CONVERGENCE_CEILING}s)")
+    print(f"    eligible: {sorted(eligible.items())}")
     return best_beta
 
 
