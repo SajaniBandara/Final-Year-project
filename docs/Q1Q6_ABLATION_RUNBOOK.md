@@ -206,41 +206,56 @@ comparison (routing.cc:121884) with no crypto gate.
 
 ---
 
-## 7. Open issue found in the partial local Q4 run — READ THIS
+## 7. Q4 must be read from the witness counters, NOT the confusion matrix
 
-A partial Q4 run completed 4 of 8 lanes locally before being stopped:
+**This was found, diagnosed and resolved locally. The tooling already does the
+right thing — this section explains why, so the output is not misread.**
 
-| | TP | FP | FN | TN | cur_MCC |
-|---|---|---|---|---|---|
-| A3 | 0 | 0 | 32 | 236 | 0.000 |
-| A5 | 32 | 167 | 8 | 61 | +0.055 |
-| A7 | 27 | 173 | 12 | 56 | −0.051 |
-| A8 | 37 | 31 | 121 | 79 | −0.054 |
+A partial Q4 run completed 4 of 8 lanes locally. Read two ways:
 
-Two things to resolve when the full run is done:
+| Q4 | generic TP | generic FP | **witness TP_W** | **FP_W** | **FN_W** | precision % | recall % | dup alerts |
+|---|---|---|---|---|---|---|---|---|
+| A3 | 0 | 0 | **0** | 0 | 0 | – | – | 0 |
+| A5 | **32** | 167 | **0** | 0 | 0 | – | – | 16319 |
+| A7 | 27 | 173 | **37** | 202 | 2 | 15.48 | 94.87 | 14777 |
+| A8 | 37 | 31 | **102** | 70 | 56 | 59.30 | 64.56 | 3720 |
 
-1. **A7/A8 show TP > 0, so the witness stop-condition appears to pass.** Good —
-   but confirm on the complete run.
-2. **A5 shows TP = 32, where the expected pattern says TP = 0 on A1–A6.** This is
-   a pattern violation and must be reported.
+Read from the **generic confusion matrix**, A5 shows TP = 32 and looks like a
+violation of "TP = 0 on A1–A6". Read from the **witness's own counters**, A5 is
+`TP_W = 0` — the witness detected nothing there, and the expected pattern holds
+exactly: witness signal on A7/A8 only.
 
-**Likely explanation, needs confirming.** In Q4 every signature is disabled, and
-the witness path does **not** call `record_detection_event()` directly. It reaches
-the confusion matrix *indirectly*: witness → `trust_update_negative()` → trust
-falls below `TRUST_T_MIN` → quarantine → `record_detection_event()`
-(`crypto_layer.h:1070-1074`). So **Q4's TP/FP measure "did trust collapse far
-enough to quarantine", not "did the witness detect"**. That also explains the very
-high FP counts (167, 173 ⇒ FPR ≈ 73–75 %) and the near-zero/negative MCC:
-quarantine-based attribution is coarse and catches benign nodes that drift below
-the trust threshold.
+**Why the generic matrix is the wrong instrument here.** In Q4 every signature is
+disabled, and the witness path never calls `record_detection_event()` directly.
+It reaches the confusion matrix only indirectly:
 
-If confirmed, Q4 cannot be read as a clean witness-isolation measurement without
-either (a) reporting `witness_TP_W`/`witness_FP_W` (the witness's own M12/WAP-R
-counters, already in the CSV) instead of the generic confusion matrix, or
-(b) setting `--enable_quarantine=0`, which would cut the indirect path — and
-should then make Q4 show TP = 0 everywhere, confirming the mechanism.
+```
+witness -> trust_update_negative() -> trust < TRUST_T_MIN -> quarantine
+        -> record_detection_event()          (crypto_layer.h:1070-1074)
+```
 
-Raise this with the supervisor before treating Q4's MCC as meaningful.
+So the generic TP/FP in Q4 answer *"did trust collapse far enough to
+quarantine"*, not *"did the witness detect"*. Any node drifting below the trust
+threshold is recorded regardless of cause, which is also why FP is so high
+(167, 173 ⇒ FPR ≈ 73–75 %) and MCC is near zero or negative.
+
+A5's 16319 duplication alerts were logged but **none reached the 2f+1 BFT
+threshold**, so no witness detection was registered — correct, since the witness
+targets passive hidden forwarding, not active HF control-plane.
+
+**What to do:** `--analyse` prints a dedicated *WITNESS-NATIVE COUNTERS* block
+for Q4 and Q6. Use it for Q4. Report the generic matrix too, but state that in
+Q4 it reflects the quarantine path.
+
+**Still worth reporting to the supervisor:**
+
+* **A7 precision is poor (15.5 %) against excellent recall (94.9 %).** The
+  witness finds nearly everything and misattributes most of it. That is a BFT
+  threshold characteristic (`--witness_f`, threshold `2f+1`), not a detection
+  failure. A8 is better balanced (59.3 % / 64.6 %).
+* Optional confirmation of the mechanism: re-run Q4 with
+  `--enable_quarantine=0`. That cuts the indirect path, so the generic matrix
+  should go to TP = 0 everywhere while `TP_W` is unchanged.
 
 ---
 

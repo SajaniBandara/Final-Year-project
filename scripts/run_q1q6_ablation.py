@@ -236,6 +236,46 @@ def mcc(tp, fp, fn, tn):
 # NOTE the order is TP, FP, TN, FN -- TN precedes FN.
 COL_TP, COL_FP, COL_TN, COL_FN, COL_CUR_MCC = 13, 14, 15, 16, 5
 
+# The witness mechanism's OWN counters (M12 / WAP-R), further along the same
+# row. These matter because in Q4 the generic TP/FP above do NOT measure the
+# witness: the witness path never calls record_detection_event() directly, it
+# only reaches the confusion matrix indirectly via
+#   witness -> trust_update_negative() -> trust < TRUST_T_MIN -> quarantine
+#   -> record_detection_event()   (crypto_layer.h:1070-1074)
+# so the generic matrix in Q4 answers "did trust collapse far enough to
+# quarantine", not "did the witness detect". These counters answer the latter.
+#
+# Positions shift by the 9-column TCAM block that write_security_metrics_csv()
+# emits ONLY for active_attack_variant in {2, 3, -1}, i.e. attack numbers 3 and
+# 4 (variant = attack_number - 1). Everything else has no such block.
+_W_BASE = {"witness_da": 28, "TP_W": 41, "FP_W": 42, "FN_W": 43,
+           "precision": 44, "recall": 45}
+_TCAM_BLOCK_LEN = 9
+_TCAM_ATTACKS = (3, 4)
+
+
+def read_witness(path, attack_number: int):
+    """Witness-native counters for one run: (TP_W, FP_W, FN_W, precision, recall).
+
+    Returns None if the file is absent or the row is short.
+    """
+    if not path.exists():
+        return None
+    rows = [l for l in open(path) if l.strip() and not l.lstrip().startswith("#")]
+    if not rows:
+        return None
+    cells = [c.strip() for c in rows[-1].split(",")]
+    off = _TCAM_BLOCK_LEN if attack_number in _TCAM_ATTACKS else 0
+    idx = {k: v + off for k, v in _W_BASE.items()}
+    if len(cells) <= idx["recall"]:
+        return None
+    try:
+        return (int(float(cells[idx["TP_W"]])), int(float(cells[idx["FP_W"]])),
+                int(float(cells[idx["FN_W"]])), float(cells[idx["precision"]]),
+                float(cells[idx["recall"]]), int(float(cells[idx["witness_da"]])))
+    except (TypeError, ValueError):
+        return None
+
 
 def read_confusion(path):
     """Final-row (TP, FP, FN, TN) from one MOBIGUARD results CSV.
@@ -342,6 +382,32 @@ def analyse(params):
     print("\nA3/A4 should be NONZERO here: that is the gate firing, and it is why"
           "\nQ3 is expected to show TP = 0 on those two variants. A zero count on"
           "\nA3/A4 alongside TP = 0 would instead mean the LSTM never ran at all.")
+
+    # Witness-native metrics — the correct measurement for Q4, and useful in Q6.
+    print("\n" + "=" * 78)
+    print("WITNESS-NATIVE COUNTERS (M12 / WAP-R) — Q4 and Q6")
+    print("=" * 78)
+    print("Use THESE for Q4, not the confusion matrix above. In Q4 every signature")
+    print("is disabled and the witness never calls record_detection_event()")
+    print("directly -- it reaches the generic matrix only via")
+    print("  witness -> trust_update_negative() -> quarantine -> record_detection_event()")
+    print("so the generic TP/FP there measure quarantine, not witness detection.")
+    for q in ("Q4", "Q6"):
+        print(f"\n{q}:")
+        print(f"  {'variant':<9}{'TP_W':>7}{'FP_W':>7}{'FN_W':>7}"
+              f"{'precision%':>12}{'recall%':>10}{'dup_alerts':>12}")
+        for a in ATTACKS:
+            src = RESULTS_DIR / result_filename(a, pct).replace(".csv", f"_{q}.csv")
+            got = read_witness(src, a)
+            if got is None:
+                print(f"  A{a:<8}{'--':>7}{'--':>7}{'--':>7}{'--':>12}{'--':>10}{'--':>12}")
+                continue
+            tpw, fpw, fnw, prec, rec, da = got
+            print(f"  A{a:<8}{tpw:>7}{fpw:>7}{fnw:>7}{prec:>12.2f}{rec:>10.2f}{da:>12}")
+    print("\nExpected: A7/A8 carry the witness signal (passive HF is what the witness")
+    print("is for). Nonzero TP_W on A1-A6 means the witness is alerting on traffic it")
+    print("should not -- report it. Low precision with high recall means the BFT")
+    print("threshold (2f+1, --witness_f) is too permissive, not that detection failed.")
     print("\nREPORTING CAVEAT — state this with any Q3/Q6 figure:")
     print("  The LSTM used here is PRE-RETRAIN, trained on stale data. zkp_delay_fail")
     print("  was identically zero for A2 across all 1792 training rows, and A6/A8")
