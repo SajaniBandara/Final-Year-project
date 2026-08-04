@@ -874,25 +874,63 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
     return hop_ok;
 }
 
+// Defined in routing.cc (after this header is included) alongside the other HF
+// ground-truth attribution helpers; forward-declared here so stark_update_meta
+// can use it. Same pattern routing.cc itself uses for
+// lookup_vehicle_associated_rsu_local_idx (routing.cc:115058) -- both are inline
+// and defined later in this same translation unit.
+inline uint32_t hf_gt_attribution_node(uint32_t node);
+
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id, uint32_t flow_id,
                                bool timing_ok, bool hop_ok) {
     auto it = g_packet_crypto.find({signer, crypto_msg_key(pkt_id, flow_id)});
     if (it == g_packet_crypto.end()) return;
+    // Packet-level STARK state stays keyed by the SIGNER -- it is read back per
+    // packet by S5-S8 via g_packet_crypto, not by RSU, so it must not be
+    // re-attributed.
     it->second.stark_timing_ok = timing_ok;
     it->second.stark_hop_ok    = hop_ok;
-    g_lstm_pkt_counts[signer]++;
-    if (!timing_ok) g_lstm_stark_counts[signer].first++;
-    if (!hop_ok)    g_lstm_stark_counts[signer].second++;
+
+    // Supervisor review fix (2026-08-03): the LSTM counters below are only ever
+    // READ by lstm_log_rsu_cycle() (lstm_logger.h) and crypto_get_lstm_features()
+    // via RSU-indexed keys. For the DP variants (A2/A4/A6/A8) `signer` is very
+    // often a VEHICLE, so incrementing under the vehicle's own node index
+    // silently orphaned the entry -- never surfacing in any RSU's CSV row -- and
+    // zkp_hop_fail/zkp_delay_fail read a permanent 0 for every DP attacker.
+    // That is a systematically wrong input feature on four of the eight
+    // variants, so it must be fixed before the retrain, not after.
+    // Same covering-RSU attribution already applied to hf_send_gt/r_anom: the
+    // RSU with the strongest current DSRC link to that vehicle, i.e. the vantage
+    // point from which a real IDS would actually observe this failure.
+    // UINT32_MAX => no RSU currently in range, so no RSU observes it and
+    // correctly nothing is counted anywhere.
+    // Both counters are attributed together so crypto_get_lstm_features()'s
+    // fail/total ratio stays consistent.
+    // Measured A/B on A2 (p=60, 30s, seed 7, identical params): attributing to
+    // `signer` directly yielded zkp_delay_fail = 0 RSUs / 0 cycles -- the feature
+    // was dead across the ENTIRE training set. Via the covering RSU: 37 RSUs /
+    // 187 cycles. zkp_hop_fail stayed 0 in both, correctly: per eq:stark_hop
+    // (main.tex:2993-3010) pi_hop encodes next-hop policy compliance, which a
+    // delay attack never violates -- only the misrouting families A5-A8 exercise it.
+    uint32_t lstm_node = hf_gt_attribution_node(signer);
+    if (lstm_node != UINT32_MAX) {
+        g_lstm_pkt_counts[lstm_node]++;
+        if (!timing_ok) g_lstm_stark_counts[lstm_node].first++;
+        if (!hop_ok)    g_lstm_stark_counts[lstm_node].second++;
+    }
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[STARK] signer=" << signer
+                  << " lstm_attrib=" << (lstm_node == UINT32_MAX
+                                          ? std::string("none")
+                                          : std::to_string(lstm_node))
                   << " pkt=" << pkt_id
                   << " flow=" << flow_id
                   << " t=" << ns3::Simulator::Now().GetSeconds()
                   << " timing_ok=" << timing_ok
                   << " hop_ok=" << hop_ok
-                  << " | lstm_t_fails=" << g_lstm_stark_counts[signer].first
-                  << " lstm_h_fails=" << g_lstm_stark_counts[signer].second
-                  << " pkt_count=" << g_lstm_pkt_counts[signer] << "\n";
+                  << " | lstm_t_fails=" << (lstm_node == UINT32_MAX ? 0u : g_lstm_stark_counts[lstm_node].first)
+                  << " lstm_h_fails=" << (lstm_node == UINT32_MAX ? 0u : g_lstm_stark_counts[lstm_node].second)
+                  << " pkt_count="    << (lstm_node == UINT32_MAX ? 0u : g_lstm_pkt_counts[lstm_node]) << "\n";
 }
 
 // ── Randomised Batch Verification — eq:batch_challenge / eq:batch_verify ─────

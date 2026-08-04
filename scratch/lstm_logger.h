@@ -742,6 +742,61 @@ inline void lstm_log_rsu_cycle(uint32_t r,
                 }
             }
         }
+        // A6 (variant 5, active HF DP) and A8 (variant 7, passive HF DP):
+        // identical root cause to the A2 case above. Supervisor-approved
+        // 2026-08-04, scoped to these two variants ONLY.
+        //
+        // hf_declare_malicious_rsus() draws mal_node from a pool that for DP
+        // variants is "RSUs + intermediate vehicle relays" (hf_attack_helper.h
+        // :417) and sets is_malicious_node[variant][mal_node] on that node's own
+        // index (hf_attack_helper.h:653). When the draw lands on a vehicle, no
+        // RSU row is ever labelled 1 even though the attack is firing.
+        //
+        // This was structurally masked in earlier verification: at p=100% the
+        // entire on-path pool is compromised, so every RSU is directly malicious
+        // and the fallback is never needed. The bug only appears below 100%.
+        //
+        // NOT extended to A5 (variant 4) or A7 (variant 6): those are
+        // control-plane variants whose attacker pool is RSUs/controllers, never
+        // vehicles, so the vehicle-orphaning case cannot arise for them.
+        //
+        // Note this is the LABEL. The hf_gt_attribution_node() calls already
+        // present in routing.cc (~121709 / ~121793) fix the FEATURE counters
+        // (r_anom, hf_send_gt, the ZKP counters) and never touch the label.
+        if (!label && (active_attack_variant == 5 || active_attack_variant == 7))
+        {
+            const bool* mal = (active_attack_variant == 5)
+                                ? active_hf_malicious_nodes
+                                : passive_hf_malicious_nodes;
+            // MEASURED (2026-08-04, supervisor-confirmed scope call (a)): this
+            // fallback is CORRECT BUT INERT for A6/A8 in the current attacker
+            // model, and that is expected -- do not "fix" it by widening scope.
+            // Instrumented across two runs (p=40 %: 67 malicious vehicles;
+            // p=20 %: 24), the covering-RSU lookup resolved 91/91 with ZERO
+            // unmapped, but in every case the covering RSU was already directly
+            // malicious, so the fallback never changed a label.
+            // Cause: A6/A8 draw attackers from the ON-PATH pool
+            // (hf_attack_helper.h:417), which structurally places malicious
+            // vehicle relays inside on-path RSU zones -- and those RSUs are
+            // themselves in the draw. Lowering the attack percentage shrinks
+            // both sets together rather than decoupling them. Physically
+            // necessary: an off-path node never handles the traffic it would
+            // have to duplicate.
+            // Contrast A2 above, which draws from the full 264-node pool
+            // uniformly -- there the identical fallback moved 38 -> 54 RSUs.
+            // Kept as defensive code: it costs one pass over total_size per
+            // logged cycle and would matter immediately if attacker selection
+            // ever stops being on-path constrained.
+            for (uint32_t n = 0; n < (uint32_t)total_size; ++n)
+            {
+                if (!mal[n]) continue;
+                if (hf_gt_attribution_node(n) == rsu_sim_idx)
+                {
+                    label = 1;
+                    break;
+                }
+            }
+        }
     }
 
     // ── File path: lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv

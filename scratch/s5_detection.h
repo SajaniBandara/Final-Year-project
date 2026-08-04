@@ -211,6 +211,26 @@ inline bool s5_detect(uint32_t recv_flow_id,
          << " [CP — controller FlowMod poisoned before transmit_delta_values()]"
          << endl;
 
+    // ── SIMULATION MODELING NOTE (supervisor-approved, 2026-08-03) ────────────
+    // eq:sig_s5 states S5 = [¬b_batch] ∧ [f_unauth(r,t)=1] ∧ [CopyVerify_d'=0]
+    // ∧ [b_hop=0]. Two deliberate divergences, both accepted as modeling
+    // choices rather than gaps:
+    //
+    //   f_unauth — there is no variable of that name. The conjunct is
+    //   implemented by the FlowMod-endorsement proxy above (bc_query_flowmod()
+    //   early-return + d_prime_unauthorized), which captures the
+    //   architecturally correct behaviour: S5 fires when an unauthorised
+    //   FlowMod is present, which is exactly what f_unauth=1 encodes in
+    //   eq:unauth_flowmod.
+    //
+    //   ¬b_batch — unreachable in this simulation. Cryptographic operations are
+    //   modeled rather than computed end-to-end, and no attack path drives
+    //   g_batch_passed false, so the conjunct would make S5 dead code. It was
+    //   added 2026-07-20 and reverted 2026-07-21 for that reason. The remaining
+    //   conjuncts are strictly stronger than the paper's on the reachable
+    //   paths, so this does not weaken detection.
+    //
+    // Documented, not to be "fixed" -- changing either would break S5.
     if (mldsa_fails && b_hop_fails && d_prime_unauthorized)
     {
         cout << "[S5] ⚠️ SIGNATURE S5 TRIGGERED!"
