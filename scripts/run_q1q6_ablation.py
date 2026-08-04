@@ -180,9 +180,9 @@ def build_cmd(attack_number: int, extra: dict, params: dict) -> list:
     return ["./waf", "--run-no-build", f"scratch/routing/routing {param_str}"]
 
 
-def run_lane(attack_number: int, params: dict, dry_run: bool) -> list:
+def run_lane(attack_number: int, params: dict, dry_run: bool, configs=None) -> list:
     out = []
-    for tag, extra in Q_CONFIGS.items():
+    for tag, extra in (configs or Q_CONFIGS).items():
         label = f"A{attack_number}_{tag}"
         cmd = build_cmd(attack_number, extra, params)
         if dry_run:
@@ -224,33 +224,62 @@ def mcc(tp, fp, fn, tn):
     return 0.0 if den == 0 else num / den
 
 
+# Column indices in the security-metrics CSV. These are POSITIONAL by
+# necessity: write_security_metrics_csv() (routing.cc:117745-117760) emits the
+# header as SEVERAL '#'-prefixed lines, so csv.DictReader sees only the first
+# line's 7 names while data rows carry ~52 fields. Name-based lookup silently
+# returns the wrong columns. Layout of the leading block, which is emitted
+# unconditionally and is all we need:
+#   0 cycle      1 cur_PDR   2 avg_PDR   3 cur_lat_ms  4 avg_lat_ms
+#   5 cur_MCC    6 avg_MCC   7 cur_DR    8 avg_DR      9 cur_FPR
+#  10 avg_FPR   11 cur_mit  12 avg_mit  13 TP  14 FP  15 TN  16 FN
+# NOTE the order is TP, FP, TN, FN -- TN precedes FN.
+COL_TP, COL_FP, COL_TN, COL_FN, COL_CUR_MCC = 13, 14, 15, 16, 5
+
+
 def read_confusion(path):
-    """Pull the final-row TP/FP/FN/TN out of one MOBIGUARD results CSV.
-    Column names are matched case-insensitively and tolerate the TP/FP/FN/TN
-    vs true_positive/... spellings that appear across writer versions."""
-    import csv as _csv
+    """Final-row (TP, FP, FN, TN) from one MOBIGUARD results CSV.
+
+    Returns in TP/FP/FN/TN order for the caller, despite the on-disk order
+    being TP/FP/TN/FN.
+    """
     if not path.exists():
         return None
-    rows = list(_csv.DictReader(open(path)))
+    rows = [l for l in open(path) if l.strip() and not l.lstrip().startswith("#")]
     if not rows:
         return None
-    last = rows[-1]
-    keys = {k.lower().strip(): k for k in last if k}
-    def grab(*cands):
-        for c in cands:
-            if c in keys:
-                try:
-                    return int(float(last[keys[c]]))
-                except (TypeError, ValueError):
-                    return None
+    cells = [c.strip() for c in rows[-1].split(",")]
+    if len(cells) <= COL_FN:
         return None
-    tp = grab("tp", "true_positive", "true_positives")
-    fp = grab("fp", "false_positive", "false_positives")
-    fn = grab("fn", "false_negative", "false_negatives")
-    tn = grab("tn", "true_negative", "true_negatives")
-    if None in (tp, fp, fn, tn):
+    try:
+        tp = int(float(cells[COL_TP])); fp = int(float(cells[COL_FP]))
+        tn = int(float(cells[COL_TN])); fn = int(float(cells[COL_FN]))
+    except (TypeError, ValueError):
         return None
     return tp, fp, fn, tn
+
+
+def lstm_suppression_count(attack_number: int, tag: str):
+    """Final g_lstm_gate_suppressed_count for one run.
+
+    This lives in the run LOG, not the results CSV: lrad_rsu() prints
+    '[LSTM-GATE] ... total_suppressed=N' each time the eq:lstm_gate condition
+    suppresses a would-be flag_LSTM firing. The counter is cumulative, so the
+    LAST occurrence in the log is the run total. Returns None if the log is
+    absent, 0 if the log exists but the gate never fired.
+    """
+    import re
+    log_path = LOGS_DIR / f"A{attack_number}_{tag}.log"
+    if not log_path.exists():
+        return None
+    last = 0
+    with open(log_path, errors="ignore") as fh:
+        for line in fh:
+            if "total_suppressed=" in line:
+                m = re.search(r"total_suppressed=(\d+)", line)
+                if m:
+                    last = int(m.group(1))
+    return last
 
 
 def analyse(params):
@@ -292,6 +321,27 @@ def analyse(params):
         print(row)
     print("\nQ2 omitted from the cumulative table (expected all-zero: b_batch cannot"
           "\ngo false in simulation, so no crypto-only signature can fire).")
+
+    # LSTM suppression counts — required for Q3 and Q6 (the two configs with
+    # the LSTM enabled). eq:lstm_gate suppresses flag_LSTM whenever S3/S4's
+    # underlying condition holds at that RSU, so a NONZERO count on A3/A4 is
+    # the positive evidence that the gate is live -- it is what makes Q3's
+    # expected "TP = 0 on A3/A4" a gated result rather than a dead LSTM.
+    print("\n" + "=" * 78)
+    print("LSTM SUPPRESSION COUNT (eq:lstm_gate) — Q3 and Q6")
+    print("=" * 78)
+    hdr = f"{'variant':<9}{'Q3':>12}{'Q6':>12}"
+    print(hdr)
+    print("-" * len(hdr))
+    for a in ATTACKS:
+        row = f"A{a:<8}"
+        for q in ("Q3", "Q6"):
+            c = lstm_suppression_count(a, q)
+            row += f"{c:>12}" if c is not None else f"{'--':>12}"
+        print(row)
+    print("\nA3/A4 should be NONZERO here: that is the gate firing, and it is why"
+          "\nQ3 is expected to show TP = 0 on those two variants. A zero count on"
+          "\nA3/A4 alongside TP = 0 would instead mean the LSTM never ran at all.")
     print("\nREPORTING CAVEAT — state this with any Q3/Q6 figure:")
     print("  The LSTM used here is PRE-RETRAIN, trained on stale data. zkp_delay_fail")
     print("  was identically zero for A2 across all 1792 training rows, and A6/A8")
@@ -312,6 +362,13 @@ def main():
     ap.add_argument("--analyse", action="store_true",
                     help="skip running; read existing per-config CSVs and emit "
                          "the MCC + cumulative-addition tables")
+    ap.add_argument("--configs", default=None,
+                    help="comma-separated subset/order of configs to run, e.g. "
+                         "'Q4' or 'Q4,Q1,Q3'. Results are written per-config, so "
+                         "a later invocation with the remaining configs composes "
+                         "with these. Default: all six, Q1..Q6. Use this to get "
+                         "the Q4 witness-isolation answer (the single most "
+                         "load-bearing check) before committing hours to the rest.")
     args = ap.parse_args()
 
     params = fixed_params(args)
@@ -332,7 +389,18 @@ def main():
     elif not BINARY_PATH.exists():
         raise SystemExit(f"{BINARY_PATH} not found — build first, or set NS3_DIR.")
 
-    total = len(Q_CONFIGS) * len(ATTACKS)
+    if args.configs:
+        want = [c.strip() for c in args.configs.split(",") if c.strip()]
+        bad = [c for c in want if c not in Q_CONFIGS]
+        if bad:
+            raise SystemExit(f"unknown config(s): {bad}. valid: {list(Q_CONFIGS)}")
+        selected = {c: Q_CONFIGS[c] for c in want}
+        print(f"-- CONFIG SUBSET: {' '.join(want)} "
+              f"(remaining configs can be run later and will compose) --")
+    else:
+        selected = Q_CONFIGS
+
+    total = len(selected) * len(ATTACKS)
     print(f"-- {len(ATTACKS)} lane(s), {total} total runs, "
           f"workers={min(args.workers, len(ATTACKS))} --\n")
 
@@ -340,10 +408,10 @@ def main():
     results = []
     if args.dry_run:
         for a in ATTACKS:
-            results.extend(run_lane(a, params, True))
+            results.extend(run_lane(a, params, True, selected))
     else:
         with ThreadPoolExecutor(max_workers=min(args.workers, len(ATTACKS))) as pool:
-            futures = {pool.submit(run_lane, a, params, False): a for a in ATTACKS}
+            futures = {pool.submit(run_lane, a, params, False, selected): a for a in ATTACKS}
             for fut in as_completed(futures):
                 results.extend(fut.result())
 
