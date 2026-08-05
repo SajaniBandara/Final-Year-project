@@ -186,12 +186,19 @@ retrain. It is offline and cheap (no ns-3 runs), it just has to happen *after*.
 
 Blocked on β (Step 3) per the supervisor.
 
-### Step 7 — Paper edit
+### Step 7 — Paper edit ✅ DONE (2026-08-05)
 
 Supervisor agreed to add one sentence to the attacker-allocation paragraph
 (main.tex:5382-5388) documenting the **on-path spatial constraint** for A5–A8.
 The paragraph currently specifies attacker *count* and *plane* but no spatial
 rule; the on-path constraint exists only in code.
+
+Added, immediately after the existing paragraph (verified against
+`hf_attack_helper.h:383-386`'s on-path RSU/vehicle selection logic before
+writing it): *"For Hidden Forwarding (Variants~5--8), attacker candidates are
+additionally restricted to nodes lying on an active flow's routing path, since
+an off-path node can neither observe nor duplicate traffic it never relays."*
+Not yet committed — still a working-tree change in `docs/main.tex`.
 
 ---
 
