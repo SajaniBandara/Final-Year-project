@@ -61,7 +61,7 @@ inline void crypto_log_init()
     std::string path = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = getenv("HOME");
     if (home)
-        path = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+        path = std::string(home) + "/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
 
     // g_sim_tag (routing.cc) makes this filename unique per (variant, pct,
     // seed, delay) so concurrent sweep lanes never truncate each other's file

@@ -31,7 +31,7 @@ publishable performance numbers. See §6 for why that distinction matters.
 ## 1. Prerequisites on the cluster
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35        # NS3_DIR default matches this
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35        # NS3_DIR default matches this
 ./waf build                                   # or via the launcher, see below
 ```
 
@@ -72,7 +72,7 @@ python3 scripts/run_q1q6_ablation.py --dry-run    # all 48 commands, runs nothin
 python3 scripts/run_q1q6_ablation.py --workers 16 # execute
 ```
 
-`NS3_DIR` defaults to `~/ns3_g13/ns-allinone-3.35/ns-3.35`. Override without
+`NS3_DIR` defaults to `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35`. Override without
 editing the file:
 
 ```bash
