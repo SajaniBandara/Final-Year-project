@@ -329,12 +329,13 @@ produce nothing:
 Two specific run-length points that cut across many of them, worth putting to the
 supervisor now:
 
-- **Q14/Q24/Q19 (A4 TCAM saturation).** The supervisor's own arithmetic —
-  1500 rules ÷ 20 pps = 75 s — says a 30 s run **cannot** saturate TCAM. If that is right,
-  `f_S4` can never fire in Q1–Q6 and A4's rule-based numbers are structurally zero at this
-  run length. This needs confirming against the actual `TCAM_CAPACITY` and injection rate,
-  but if it holds, **the 30 s diagnostic length is invalid for A3/A4** and those rows should
-  be re-run longer or excluded.
+- **Q14/Q24/Q19 (A4 TCAM saturation) — the premise does not hold.** The supervisor's
+  arithmetic assumes `U_thresh = 80%`, giving 1500 ÷ 20 = 75 s. But the S4 occupancy gate is
+  **`tcam_util_thresh = 0.213`** (`routing.cc:117782`), calibrated as the benign 99th
+  percentile, not 0.80. The 0.80 figure is `BC_S4_UTIL_THRESH`, a separate *blockchain*
+  event-write gate (`bc_blockchain_helper.h:398`), not the signature threshold. S4 does fire
+  inside 30 s — confirmed in the logs at `t=11.998s` with `util=0.213–0.245`, 384 firings in
+  A4 and 64 in A3. **The 30 s length is adequate for A3/A4.**
 - **Q37 (LSTM suppression).** The ceiling at 30 s × 64 RSUs × 1 Hz is 1,920, against a
   full-run reference of 14,000+. Comparing the two directly will mislead; only the
   per-cycle rate is comparable.
