@@ -73,47 +73,54 @@ Q_CONFIGS = {
         "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 0,
         "disable_crypto": 1,
+        "g_disable_btmm_trust": 1,
     },
     "Q2": {  # cryptographic layer only
         "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
         "g_disable_s5_s6": 0, "g_disable_s7_s8": 0,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 0,
         "disable_crypto": 0,
+        "g_disable_btmm_trust": 1,
     },
     "Q3": {  # LSTM anomaly detector only (gate stays live -- see header)
         "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
         "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
         "enable_lstm_inference": 1, "enable_witness_mechanism": 0,
         "disable_crypto": 1,
+        "g_disable_btmm_trust": 1,
     },
     "Q4": {  # witness monitoring only
         "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
         "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 1,
         "disable_crypto": 1,
+        "g_disable_btmm_trust": 1,
     },
     "Q5": {  # rule + crypto combined
         "g_disable_s1_s2": 0, "g_disable_s3_s4": 0,
         "g_disable_s5_s6": 0, "g_disable_s7_s8": 0,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 0,
         "disable_crypto": 0,
+        "g_disable_btmm_trust": 1,
     },
     "Q6": {  # full system (deployed configuration)
         "g_disable_s1_s2": 0, "g_disable_s3_s4": 0,
         "g_disable_s5_s6": 0, "g_disable_s7_s8": 0,
         "enable_lstm_inference": 1, "enable_witness_mechanism": 1,
         "disable_crypto": 0,
+        "g_disable_btmm_trust": 0,
     },
 }
 
 FLAG_ORDER = ["g_disable_s1_s2", "g_disable_s3_s4", "g_disable_s5_s6",
               "g_disable_s7_s8", "enable_lstm_inference",
-              "enable_witness_mechanism", "disable_crypto"]
+              "enable_witness_mechanism", "disable_crypto",
+              "g_disable_btmm_trust"]
 
 SHORT = {"g_disable_s1_s2": "S1/S2", "g_disable_s3_s4": "S3/S4",
          "g_disable_s5_s6": "S5/S6", "g_disable_s7_s8": "S7/S8",
          "enable_lstm_inference": "LSTM", "enable_witness_mechanism": "witness",
-         "disable_crypto": "crypto"}
+         "disable_crypto": "crypto", "g_disable_btmm_trust": "BTMM"}
 
 
 def human(flag: str, value: int) -> str:

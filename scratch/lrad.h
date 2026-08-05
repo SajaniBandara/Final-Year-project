@@ -251,11 +251,16 @@ inline LRADRSUFlags lrad_rsu(
     // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
     // s2_detect_packet() internally evaluates both the delay threshold AND
     // the STARK timing proof, covering the full eq:stark_delay_verify check.
-    // g_disable_s1_s2: diagnostic-only skip, see crypto_layer.h declaration.
-    flags.flag_S2f = g_disable_s1_s2 ? false :
-                      s2_detect_packet(prev_sender, t_now,
+    // g_disable_s1_s2 is applied to the FLAG, not to the call — s2_detect_packet()
+    // latches g_s2_gt_delay_exceeded[], which is A2's ground truth at
+    // routing.cc:117329. Skipping the call zeroed that ground truth, so A2
+    // reported TP+FN=0 in every config with the flag set (Q2/Q3/Q4). The
+    // record_detection_event() inside is separately gated on the same flag.
+    // Same asymmetry as g_disable_s3_s4; see crypto_layer.h.
+    const bool _s2f = s2_detect_packet(prev_sender, t_now,
                                        is_safety_critical_flow[fid],
                                        rsu, pkt_id, fid);
+    flags.flag_S2f = g_disable_s1_s2 ? false : _s2f;
 
     // ── S5–S8 (lines 5–8 of alg:lrad_rsu) ──────────────────────────────────
     // recv_flow_id approximated as fid: these functions prefer g_packet_crypto
@@ -507,8 +512,13 @@ inline LRADOBUFlags lrad_obu(
     // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────
     // Reads the associated RSU's existing EWMA baseline/variance state
     // directly — simulation shortcut documented in the LRAD plan.
-    if (!g_disable_s1_s2 && assoc_rsu_local_idx < (uint32_t)N_RSUs) {
-        flags.flag_S1 = s1_detect_packet(
+    // g_disable_s1_s2 applied to the FLAG, not the call — s1_detect_packet()
+    // latches g_s1_gt_delay_exceeded[] (A1's ground truth, routing.cc:117328)
+    // and maintains the per-RSU EWMA baseline, both of which must stay live
+    // across every ablation config. Its record_detection_event() is gated on
+    // the same flag internally. See s1_detection.h.
+    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
+        const bool _s1 = s1_detect_packet(
             assoc_rsu_local_idx, vehicle, delta_p, is_high_priority,
             // sender_node_id → fed into record_detection_event. Must be the
             // associated RSU (matching alg:lrad_obu's ESCALATE(p,v,r,...)
@@ -523,6 +533,7 @@ inline LRADOBUFlags lrad_obu(
             N_Vehicles + assoc_rsu_local_idx,
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
+        flags.flag_S1 = g_disable_s1_s2 ? false : _s1;
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────

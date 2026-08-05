@@ -342,13 +342,56 @@ supervisor now:
 
 ---
 
+## 6a. Fixes applied 2026-08-05, and what they did NOT fix
+
+RC1–RC4 were all implemented and the tree builds clean. A7/Q4 was re-run to verify
+(30 s, 60 %, seed 1 — identical parameters to the original):
+
+| Measure | Before | After | |
+|---|---|---|---|
+| DA BFT crossings | 14,284 | **4,526** | −68 % |
+| Generic MCC | −0.051 | **+0.128** | now positive |
+| Detection rate | 69.2 % | **84.6 %** | |
+| TP / FN | 27 / 12 | **33 / 6** | FN halved |
+| Ground truth (TP+FN) | 39 | 39 | unchanged, as required |
+| Nodes quarantined | 200 / 268 | **189 / 268** | −6 % only |
+| FPR | 75.5 % | 68.1 % | |
+| **WAP-R precision** | **15.5 %** | **15.3 %** | **essentially unchanged** |
+| FP_W | 202 | 194 | |
+
+**Read this honestly: RC3/RC4 were genuine spec violations and are now fixed, but they were
+not the dominant cause of the false positives.** Requiring 2f+1 *distinct* witnesses within a
+pruned window removed two-thirds of the threshold crossings and flipped MCC positive — but
+witness precision moved 15.5 % → 15.3 %, and 189 of 268 nodes are still quarantined.
+
+The reason is that the false signal is not an artefact of *counting*; it is in the
+**duplication condition itself**. Because the alert is broadcast-observable, many witnesses
+independently observe the *same* spurious duplication, so a genuine 3-distinct-witness quorum
+is still trivially reached. Fixing the quorum cannot help when the underlying evidence is
+wrong at every witness simultaneously.
+
+**⇒ The dominant defect is the `eq:dup_alert_cond` implementation** (§5's "compounding FP
+source"), which we had listed as secondary and which the measurement now promotes to primary:
+the hash is `sha3_512({fid, packet_ID, current_hop})` compared against a *changing*
+`destination` field, so routing churn registers as duplication. This needs a design decision,
+not a patch — see §7 item 1a.
+
 ## 7. Recommended fixes, in order
 
-1. **RC3/RC4 — BFT quorum.** Deduplicate by `(witness_id, target, H(p))` before counting;
-   scope the pool to the `(v_i, p)` event; apply `WITNESS_WINDOW` pruning to
-   `g_witness_alert_pool` as it already is to `g_witness_log`; clear or mark the pool after
-   a crossing so one event penalises once. This is the spec-compliance fix and the single
-   highest-value change.
+1. ~~**RC3/RC4 — BFT quorum.**~~ **DONE 2026-08-05.** Distinct-witness cardinality via
+   `witness_bft_quorum_reached()`, `WITNESS_WINDOW` pruning of `g_witness_alert_pool`, and an
+   episode-clear after each crossing. Spec-compliant now; see §6a for the measured effect —
+   necessary, but not sufficient.
+
+1a. **`eq:dup_alert_cond` — now the top priority, and a design question.** The witness hash is
+   over `{fid, packet_ID, current_hop}` and is compared against a mutable `destination`, so a
+   routing update reads as duplication. `routing.cc:121932-121934` already concedes this and
+   works around it by gating the alert on HF-attack-present — which leaves it fully live in
+   exactly the runs that matter. **Ask the supervisor which the thesis intends:** (a) hash over
+   packet *content/payload* so a re-routed packet keeps one identity, or (b) key the witness
+   log on `(H(p), dst)` and require two *concurrent* live destinations rather than any two
+   observed within W. This is the difference between 15 % and usable precision, and it is not
+   ours to choose unilaterally.
 2. **RC2 — ablation isolation.** Either set `enable_quarantine=0` for Q1–Q5, or add a
    dedicated flag for the BTMM per-packet trust path. Until this lands, **no Q-config's
    confusion matrix isolates its named component.**

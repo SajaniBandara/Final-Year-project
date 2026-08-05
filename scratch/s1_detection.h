@@ -8,6 +8,12 @@
 // crypto_layer.h's CRYPTO_DEBUG_LOG / s2_detection.h's DETECTION_DEBUG_LOG_S2.
 static bool DETECTION_DEBUG_LOG_S1 = false;
 
+// Defined in crypto_layer.h, which routing.cc includes AFTER this header, so it
+// must be forward-declared here. Used below to gate S1's record_detection_event()
+// while leaving the g_s1_gt_delay_exceeded[] GROUND-TRUTH latch untouched — see
+// the note at that latch for why the two must be separable.
+extern bool g_disable_s1_s2;
+
 // =========================================================================
 // s1_detection.h — MOBIGUARD Signature S1 Detection
 //
@@ -290,6 +296,14 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // threshold," not "did S1 fire." See its declaration (routing.cc) for
     // why calculate_security_detection_metrics() needs this instead of the
     // static is_malicious_node[0] identity flag.
+    //
+    // 2026-08-05: this latch is also why g_disable_s1_s2 must NOT skip the
+    // call to this function (see lrad.h). It is A1's GROUND TRUTH, read at
+    // routing.cc:117328. When the ablation skipped the call, the latch never
+    // set, every A1 node scored benign, and A1 reported TP+FN=0 in Q2/Q3/Q4 —
+    // which reads as "the attack produced no detectable event" when the real
+    // meaning is "nothing was measuring whether it did." Ground truth must
+    // never depend on which detector a diagnostic flag switches off.
     if (effective_delay_s > threshold && sender_node_id < (uint32_t)total_size)
         g_s1_gt_delay_exceeded[sender_node_id] = true;
 
@@ -335,8 +349,12 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // whichever OTHER attack's confusion matrix was being measured —
         // confirmed 2026-07-14: S1 contributed 22 of 221 detection events
         // recorded into Attack 6's own bucket during an A6-only run.
+        // g_disable_s1_s2 gates the DETECTION RECORD only, never the ground-truth
+        // latch above — the same asymmetry, for the same reason, as
+        // g_disable_s3_s4 in tcam_detection.h.
         const int S1_HOME_VARIANT = 0;   // Attack 1, per main.tex Signature S1
-        if (sender_node_id < (uint32_t)total_size &&
+        if (!g_disable_s1_s2 &&
+            sender_node_id < (uint32_t)total_size &&
             !is_detected_node[S1_HOME_VARIANT][sender_node_id])
         {
             record_detection_event(S1_HOME_VARIANT, sender_node_id);

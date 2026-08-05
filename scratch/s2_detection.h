@@ -132,8 +132,11 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
         // Bucket is S2's OWN designated variant (1 = Attack 2, Selective Delay
         // DP), NOT active_attack_variant — same misattribution fix as S1
         // (see s1_detection.h). main.tex: "one primary signature per variant."
+        // g_disable_s1_s2 gates the DETECTION RECORD only, never the
+        // g_s2_gt_delay_exceeded ground-truth latch above — see s1_detection.h.
         const int S2_HOME_VARIANT = 1;   // Attack 2, per main.tex Signature S2
-        if (sender_sim_index < (uint32_t)total_size &&
+        if (!g_disable_s1_s2 &&
+            sender_sim_index < (uint32_t)total_size &&
             !is_detected_node[S2_HOME_VARIANT][sender_sim_index])
         {
             record_detection_event(S2_HOME_VARIANT, sender_sim_index);

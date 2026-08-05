@@ -121913,10 +121913,17 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
 						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
 						// sig_ok gate excludes overheard broadcast packets.
-						if (hop_ok && timing_ok && g_batch_passed)
-							trust_update_positive(prev_sender);
-						else
-							trust_update_negative(prev_sender);
+						// g_disable_btmm_trust: diagnostic ablation gate — see its
+						// declaration in crypto_layer.h for why this branch needed
+						// one of its own (it reached the confusion matrix in every
+						// Q1-Q6 config, including the ones claiming to isolate
+						// something else).
+						if (!g_disable_btmm_trust) {
+							if (hop_ok && timing_ok && g_batch_passed)
+								trust_update_positive(prev_sender);
+							else
+								trust_update_negative(prev_sender);
+						}
 					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
