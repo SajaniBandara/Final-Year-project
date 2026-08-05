@@ -49,7 +49,7 @@ Checklist — all four must hold or results are silently wrong:
    A plain `./waf build` does **not** copy the `.py` helpers and the sim will
    abort mid-run with "Solution not found".
 3. **Mobility traces present** at the paths compiled into `routing.cc`
-   (`/home/sdvn_hidden_attacks/ns3_g13/mobility/...`). On the cluster these are
+   (`/home/sdvn_hidden_attacks/ns3_g13_apsari/mobility/...`). On the cluster these are
    the real paths — no swapping needed. Seeds 1–5 use
    `mobility_urban_150_seed{N}.tcl`.
 4. **`lstm_pipeline/lstm_weights_cpp.bin` exists.** Q3 and Q6 set
@@ -262,7 +262,7 @@ Q4 it reflects the quarantine path.
 ## 8. Gotchas
 
 * **Do not commit local path swaps.** `routing.cc` stores cluster paths
-  (`/home/sdvn_hidden_attacks/ns3_g13/...`) intentionally. On a dev laptop use
+  (`/home/sdvn_hidden_attacks/ns3_g13_apsari/...`) intentionally. On a dev laptop use
   `scripts/local_path_swap.sh local` before running and `... hpc` before any
   `git add`. On the cluster no swapping is needed.
 * **Result files collide.** `write_security_metrics_csv()` names by

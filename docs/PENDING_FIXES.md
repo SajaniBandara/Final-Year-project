@@ -676,7 +676,7 @@ mechanism.
 resolves the results output directory as:
 
 ```cpp
-std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
 char* home_env = getenv("HOME");
 if (home_env != nullptr)
 {
