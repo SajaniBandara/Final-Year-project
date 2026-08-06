@@ -65,7 +65,7 @@ import scipy.stats as stats
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 RESULTS_DIR = os.path.expanduser(
-    "~/ms3_g13/ns-allinone-3.35/ns-3.35/results_routing")
+    "~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing")
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
