@@ -861,10 +861,10 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
                 "attacker attribution counters recorded (lambda_PI)",
                 gte(top.get("total_lambda_pi"), 0.0, "total_lambda_pi"))
     rep.add("eq:sig_s4", None, "per-RSU TCAM occupancy trace written",
-            present(find_files(dirs, f"tcam_occupancy_attack{attack}.csv"),
+            present(find_files(dirs, f"tcam_occupancy_Attack{attack}_*.csv"),
                     "tcam_occupancy"))
     rep.add("eq:rule_s4", None, "per-RSU TCAM rule snapshots written",
-            present(find_files(dirs, f"tcam_snapshots_attack{attack}*.csv"),
+            present(find_files(dirs, f"tcam_snapshots_Attack{attack}_*.csv"),
                     "tcam_snapshots"))
 
     # ---- G. hidden forwarding S5-S8 ---------------------------------------- #
@@ -1133,7 +1133,7 @@ def verify_environment(rep, dirs):
             rep.add(eq, None, d, ("WARN", "rsu_density.csv absent"))
     rep.add("eq:density_normalized_rate", None,
             "ground-truth injection-rate trace written",
-            present(find_files(dirs, "lambda_l_true_attack*.csv"), "lambda_l_true"))
+            present(find_files(dirs, "lambda_l_true_Attack*.csv"), "lambda_l_true"))
 
 
 def verify_crypto_timing(rep, dirs):

@@ -381,41 +381,47 @@ Prefix-specific filenames:
    `run_training_sweep.py`'s new patterns match/reject correctly against the same real
    file.
 
-7c. **Convert tcam/lambda and hf_events to the canonical shape** — Phase 1 #3/#4 only
-   patch the live collision (add seed, add pct where missing) while keeping each
-   file's own ad hoc `mode` string. This item replaces that scheme outright with the
-   canonical `Attack{N}_{pct}[_d{X}ms]_seed{S}` shape, same as everything else in
-   Phase 2. (`_d{X}ms` will in practice never appear here — the delay suffix is only
-   gated on for attack_number 1/2, and tcam is 3/4, hf is 5-8 — but keep the same
-   conditional logic rather than special-casing its absence.)
+7c. **DONE — Convert tcam/lambda and hf_events to the canonical shape.** Phase 1
+   #3/#4 only patched the live collision (add seed, add pct where missing) while
+   keeping each file's own ad hoc `mode` string. This item replaced that scheme
+   outright with the canonical `Attack{N}_{pct}_seed{S}` shape:
 
-   - `tcam_snapshots_*` / `tcam_occupancy_*` / `lambda_l_true_*` (tcam_attack_helper.h):
-     `mode` is currently `"attack" + (variant+1)` / `"baseline"`, with two *extra*,
-     attack-specific axes bolted on that are **not** part of the canonical format and
-     must be preserved as additional suffixes rather than folded into `{pct}`:
-     - Attack 3's `_pctN` is derived from `cp_attack_intensity`, not
-       `attack_percentage` (explicit code comment warns about this — see the "watch"
-       note at the bottom of this doc). The canonical `{pct}` field must be
-       `attack_percentage` per the target-format definition; `cp_attack_intensity`
-       needs its own distinct suffix segment (e.g. keep it as an explicit
-       `_cpintN` or similar) so it isn't misread as the report's attack percentage.
-     - Attack 4's `_nN` (attacker count) has no equivalent slot in the canonical
-       format either — keep it as its own trailing suffix.
-     So the realistic end shape here is `Attack{N}_{pct}_seed{S}[_cpintN|_nN].csv`,
-     not a bare drop-in of the canonical format — decide the exact extra-suffix
-     spelling at implementation time, but don't lose either axis in the conversion.
+   - `tcam_snapshots_*` / `tcam_occupancy_*` / `lambda_l_true_*` (tcam_attack_helper.h,
+     both `tcam_snapshot_dump()` and `export_tcam_snapshot_baseline()`): `mode` was
+     `"attack" + (variant+1)` / `"baseline"` lowercase, plus two extra axes that don't
+     fit the canonical format — preserved as trailing suffixes rather than lost or
+     folded into `{pct}`:
+     - Attack 3's suffix renamed from `_pctN` to `_cpintN` (still derived from
+       `cp_attack_intensity`, not `attack_percentage` — the rename makes that
+       explicit in the filename itself instead of relying on a code comment nobody
+       reads at 2am). The canonical `{pct}` field is always `attack_percentage` now.
+     - Attack 4's `_nN` (attacker count) kept as-is, still has no canonical slot.
+     Final shape: `Attack{N}_{pct}_seed{S}[_cpintN|_nN].csv`. Confirmed live:
+     `Attack3_40_seed1_cpint40.csv`, `Attack4_40_seed1_n80.csv` (the `_n80` isn't a
+     bug — `--num_attackers` is explicitly documented as a no-op CLI flag; the real
+     value is always recomputed from `attack_percentage`, and 40% of 200 vehicles is
+     genuinely 80).
 
-   - `hf_events_{mode}_{pct}.csv` (hf_attack_helper.h): `mode` comes from a
-     hardcoded `{4:"attack5", 5:"attack6", 6:"attack7", 7:"attack8"}` map (default
-     `"baseline"`). Replace with `Attack{N}_{pct}_seed{S}.csv` using the same
-     `variant + 1` conversion as everywhere else, rather than the hardcoded map.
+   - `hf_events_{mode}_{pct}.csv` (hf_attack_helper.h): `mode` came from a hardcoded
+     `{4:"attack5", 5:"attack6", 6:"attack7", 7:"attack8"}` map (default `"baseline"`,
+     covering only Attacks 5-8 and never baseline/Attacks-1-4 correctly). Replaced
+     with `Attack{N}_{pct}_seed{S}.csv` using the same `variant + 1` conversion as
+     everywhere else. Still dead code per Phase 1 #4's finding (never called, build
+     verified only — same caveat as before, unchanged by this item).
 
-   Confirmed consumer: `scripts/functional_verification.py` reads these by
-   constructed name — `tcam_occupancy_attack{attack}.csv` (line 864),
-   `tcam_snapshots_attack{attack}*.csv` (line 867), `lambda_l_true_attack*.csv`
-   (line 1136) — all lowercase `attack{N}`, no seed in the lookup pattern today.
-   Must be updated in lockstep with the writer change, same as its two `bc_*`
-   patterns already noted in item 8.
+   `scripts/functional_verification.py`'s three lookups fixed in the same change:
+   `tcam_occupancy_attack{attack}.csv` → `tcam_occupancy_Attack{attack}_*.csv`,
+   `tcam_snapshots_attack{attack}*.csv` → `tcam_snapshots_Attack{attack}_*.csv`,
+   `lambda_l_true_attack*.csv` → `lambda_l_true_Attack*.csv` (all via `find_files()`,
+   already glob-based internally — only the literal pattern strings needed updating).
+   Its two separate `bc_dkg_log`/`bc_trust_updates` patterns are a different family
+   entirely (not touched by this item) and remain item 8's job, as originally scoped.
+
+   Verified: build succeeds; `python3 -m py_compile` clean on
+   `functional_verification.py`; ran a real Attack3/pct40/seed1 sim and got
+   `tcam_snapshots_Attack3_40_seed1_cpint40.csv` (and matching
+   `tcam_occupancy_*`/`lambda_l_true_*`); ran a real Attack4 sim and confirmed the
+   `_nN` suffix path produces `tcam_snapshots_Attack4_40_seed1_n80.csv`.
 
 8. **Update downstream Python consumers** — once the C++ side changes:
    - `run_rule_based_sweep.py` — drop the sequential-lane "run then rename" workaround
