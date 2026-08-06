@@ -34,11 +34,23 @@ Prefix-specific filenames:
 
 ### Phase 1 — Live corruption bugs (fix first, independent of naming unification)
 
-1. **`AnimationInterface` hardcoded path** — routing.cc:144219 writes `routing.xml` to
-   one fixed global path with no tag. Every concurrent process overwrites the same file.
-   Fix: append the canonical suffix (or `g_sim_tag`, whichever lands first) to the path.
-   `g_sim_tag`/attack state is already resolved by this point in `main()` (assigned at
-   routing.cc:143846, used at 144219 — no reordering needed).
+1. **DONE — `AnimationInterface` hardcoded path.** routing.cc:144219 wrote `routing.xml`
+   to one fixed global path with no tag, so every concurrent process overwrote the same
+   file. Fixed by tagging the path with `g_sim_tag` (`routing<tag>.xml`).
+
+   While implementing this, testing surfaced a second problem the original writeup
+   didn't anticipate: NetAnim traces grow ~1.46 MB per simulated second (measured), so a
+   real `simTime=300` training run produces ~440 MB, and `run_training_attacks.py`'s
+   240-run sweep alone would produce ~105 GB — a large fraction of the 233 GB free on
+   this disk — once every run started keeping its own permanent tagged file instead of
+   all runs overwriting one shared (corrupted) file. Fixed by also gating construction
+   behind a new `--enable_netanim` CLI flag, default off — sweeps no longer produce any
+   trace file unless explicitly asked to.
+
+   Verified: build succeeds; a default run produces no `.xml`; `--enable_netanim=1`
+   produces a correctly-tagged trace; two concurrent runs with different attack/pct/seed
+   (`--enable_netanim=1` on both) produced two distinct, independently-growing files
+   with no collision.
 
 2. **`bc_run_suffix()` missing `_FADE` disambiguator** — bc_blockchain_helper.h:90-94.
    Has `enable_tap ? "_TAP" : ""` but no equivalent for FADE runs. `run_hf_attacks.py`

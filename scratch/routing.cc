@@ -114898,6 +114898,10 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 // explicitly requires "all eight attack variants operate simultaneously" —
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
+bool enable_netanim = false;   // master enable for NetAnim trace output (routing.xml) — off by
+                                // default since every run builds a full per-run trace file
+                                // (hundreds of MB for a real simTime); opt in only for the runs
+                                // that actually need a NetAnim video/screenshot.
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -141908,7 +141912,11 @@ int main(int argc, char *argv[])
                   "instead of MOBIGUARD S1-S8 (default 0=off). Pass alongside --enable_lrad_obu=0 "
                   "--enable_lrad_rsu=0 to disable MOBIGUARD's own signature detectors for a clean "
                   "TAP-only baseline run.", enable_tap);
-    
+    cmd.AddValue ("enable_netanim", "1 = write a NetAnim trace (routing<tag>.xml) for this run "
+                  "(default 0=off). Every run builds the full trace unconditionally when on -- "
+                  "hundreds of MB for a real simTime -- so leave off for sweeps and only enable "
+                  "for the specific single run you want to visualize.", enable_netanim);
+
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
@@ -144216,14 +144224,22 @@ if (architecture == 3 && N_Vehicles > 0)
   Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/routing.xml");  
+  // NetAnim trace is opt-in (enable_netanim, default off): it's a full per-run
+  // trace file that grows unbounded with simTime, so leaving it on for every
+  // sweep run would silently fill the disk. The path is tagged with g_sim_tag
+  // so that when it IS enabled, concurrent runs each get their own file instead
+  // of racing to write the same one.
+  if (enable_netanim)
+  {
+  std::string anim_path = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/routing" + g_sim_tag + ".xml";
+  AnimationInterface anim(anim_path);
   anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
-  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
+  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
   // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
   // NetAnim still animates packet movement fine without metadata.
-          
+
   if (N_RSUs > 0)
   {
 	  for (uint32_t i=0; i<RSU_Nodes.GetN() ; i++)
@@ -144234,7 +144250,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeDescription(RSU_Nodes.Get(i), "RSU-" + std::to_string(i+1));
 	  }
   }
-  
+
   if (N_Vehicles > 0)
   {
 	  for (uint32_t i=0; i<Vehicle_Nodes.GetN() ; i++)
@@ -144244,7 +144260,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
 	  	anim.UpdateNodeDescription(Vehicle_Nodes.Get(i), "V-" + std::to_string(i+1));
 	  }
-	   
+
 	  if (architecture !=1)
 	  {
 		  for (uint32_t i=0; i<other_stationary_LTE_nodes.GetN() ; i++)
@@ -144255,7 +144271,7 @@ if (architecture == 3 && N_Vehicles > 0)
 		  }
 	  }
   }
-  
+
     if (architecture != 1)
     {
       // Color and label all N_Controllers controller nodes
@@ -144268,7 +144284,8 @@ if (architecture == 3 && N_Vehicles > 0)
             "CTRL-" + std::to_string(ci+1));
       }
     }
- 
+  } // enable_netanim
+
   //AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
