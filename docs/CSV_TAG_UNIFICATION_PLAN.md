@@ -52,21 +52,28 @@ Prefix-specific filenames:
    (`--enable_netanim=1` on both) produced two distinct, independently-growing files
    with no collision.
 
-2. **`bc_run_suffix()` missing `_FADE` disambiguator** — bc_blockchain_helper.h:90-94.
-   Has `enable_tap ? "_TAP" : ""` but no equivalent for FADE runs. `run_hf_attacks.py`
+2. **DONE — `bc_run_suffix()` missing `_FADE` disambiguator.** bc_blockchain_helper.h:90-94
+   had `enable_tap ? "_TAP" : ""` but no equivalent for FADE runs. `run_hf_attacks.py`
    submits the normal MOBIGUARD run and the FADE run for the same (attack, pct) to the
    same `ThreadPoolExecutor` concurrently (confirmed in `main()`, lines 325-358), and
-   `FADE_PARAMS` never sets any flag this function checks — so both processes compute
-   the identical suffix and collide on `bc_anchor_log`, `bc_dkg_log`, `bc_detection_log`,
+   `FADE_PARAMS` never set any flag this function checked — so both processes computed
+   the identical suffix and collided on `bc_anchor_log`, `bc_dkg_log`, `bc_detection_log`,
    `bc_model_log`, `bc_flowmod_log`, `bc_trust_updates`, `bc_tref_log`.
-   Fix: check `fade_detection_active` alongside `enable_tap` in `bc_run_suffix()` —
-   **do not add a new CLI flag.** `fade_detection_active` (routing.cc:144339,
-   `active_attack_variant in [4,7] && !enable_lrad_obu && !enable_lrad_rsu`) already
-   exists as a reliable, auto-computed signal that's true precisely during an isolated
-   FADE run and false otherwise. Reusing it means the fix needs zero changes to
-   `run_hf_attacks.py`'s launch args or `FADE_PARAMS` — nothing for a launcher to
-   forget to wire up, unlike `enable_tap` which the TAP path sets explicitly via a CLI
-   flag it does control.
+
+   Fixed by checking `fade_detection_active` alongside `enable_tap` — no new CLI flag
+   needed. `fade_detection_active` (routing.cc:144339,
+   `active_attack_variant in [4,7] && !enable_lrad_obu && !enable_lrad_rsu`) is already a
+   reliable, auto-computed signal that's true precisely during an isolated FADE run, and
+   it's resolved during one-time setup in `main()` before `Simulator::Run()` starts —
+   i.e. before any bc_* file could possibly be opened from a scheduled event — so it's
+   safe to read from `bc_run_suffix()` without reordering anything. Zero changes needed
+   to `run_hf_attacks.py` or `FADE_PARAMS`.
+
+   Verified: build succeeds; ran the normal MOBIGUARD process and an isolated FADE
+   process (`--enable_lrad_obu=0 --enable_lrad_rsu=0`) concurrently for the same
+   Attack5/pct40/seed1, and got two fully disjoint file sets —
+   `bc_dkg_log_Attack5_40.csv` / `bc_dkg_log_Attack5_40_FADE.csv`, and the same clean
+   split for `bc_flowmod_log`, `bc_tref_log`, `bc_trust_updates` — no collision.
 
 3. **`tcam_snapshots_*` / `tcam_occupancy_*` / `lambda_l_true_*` missing seed (and mostly
    missing pct)** — tcam_attack_helper.h. Filename is just `mode` (`"attack{N}"` /
