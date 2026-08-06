@@ -11,11 +11,11 @@
 
 **Every LSTM number currently in the report is a lower bound produced by a model trained on
 partly-broken data.** Three separate defects corrupted the last training set. All three are
-fixed in code; **none has been verified to actually produce good data in a collection run.**
+fixed in code — and, as of 2026-08-06, all three are **verified working in real data**.
 
-That verification is the pre-flight in §5, and it costs ~30 minutes against a ~3-day
-collection. **Do not skip it.** The last collection was invalidated by exactly the failure it
-checks for.
+**UPDATE 2026-08-06: the pre-flight in §5 has been RUN and ALL CHECKS PASSED.** All three
+defects are now verified fixed in real data. Collection is cleared to start. §5 also records
+an append hazard found in the process — read it before collecting.
 
 **Good news that unblocks you:** LSTM data collection does **not** depend on any of the
 open detection-layer decisions (the `eq:dup_alert_cond` redesign, the witness scope
@@ -128,18 +128,75 @@ at 8 workers):
 
 | # | Defect | Effect on last dataset | Code fix | **Verified in a run?** |
 |---|---|---|---|---|
-| A | `zkp_delay_fail` identically 0 for A2 | zero gradient across all 1,792 rows — the feature was dead | `7307662` (attribution via `hf_gt_attribution_node`) | ❌ **NO** |
-| B | A3/A4 labelled the attacker, not the TCAM victim | A3 had 1 labelled RSU instead of ~26 | `lstm_logger.h` victim-RSU labelling | ⚠️ verified once (26 RSUs), not since | 
-| C | A6/A8 labels missing via covering-RSU fallback | HF labels absent | `7307662` label fallback | ❌ proven *correct* but **inert** on available data |
+| A | `zkp_delay_fail` identically 0 for A2 | zero gradient across all 1,792 rows — the feature was dead | `7307662` (attribution via `hf_gt_attribution_node`) | ✅ **YES — 295 rows, 2026-08-06 (§5)** |
+| B | A3/A4 labelled the attacker, not the TCAM victim | A3 had 1 labelled RSU instead of ~26 | `lstm_logger.h` victim-RSU labelling | ✅ **YES — 608 A3 labels (§5)** |
+| C | A6/A8 labels missing via covering-RSU fallback | HF labels absent | `7307662` label fallback | ✅ **YES — 889 labels each (§5)**; was previously correct-but-inert |
 
-**Defect C deserves emphasis.** The fallback was shown to map 91/91 vehicles with 0
-unmapped — but produced **zero additional labels**, because every attacker was already
-on-path so no covering RSU was clean. It has therefore never demonstrably changed a label.
-That is why §5 exists.
+**Defect C is worth understanding.** The fallback had been shown to map 91/91 vehicles with 0
+unmapped — yet produced **zero additional labels**, because in that run every attacker was
+already on-path so no covering RSU was clean. It was correct code that had never
+demonstrably changed a label. The §5 pre-flight is what finally exercised it: 889 positive
+labels on each of A6 and A8. This is why "the fix is committed" and "the fix works" are
+different claims, and why §5 must be re-run after any change to labelling or attribution.
 
 ---
 
-## 5. Pre-flight — run this before committing HPC time
+## 5. Pre-flight — RUN 2026-08-06, ALL CHECKS PASSED ✅
+
+**Result: collection is cleared to start.** Executed on the 16-core desktop, 4 runs
+(A2/A3/A6/A8) at 30 s, 60 %, seed 1, 4 workers, ~35 min wall.
+
+| Check | Result | Verdict |
+|---|---|---|
+| Files written | 256 = 4 variants × 64 RSUs | ✅ |
+| CSV header | **17 columns** (incl. `hf_send_gt`) | ✅ (see §2 — the retrain guide's "16" is stale) |
+| **A2 `zkp_delay_fail` non-zero** | **295 rows** | ✅ **the dead feature is alive** |
+| A6 `zkp_hop_fail` non-zero | 613 rows | ✅ |
+| A8 `zkp_hop_fail` non-zero | 440 rows | ✅ |
+| A2 positive labels | 2,409 | ✅ |
+| A3 positive labels | 608 | ✅ victim-RSU labelling works |
+| A6 positive labels | 889 | ✅ |
+| A8 positive labels | 889 | ✅ fallback firing for the first time |
+
+**Check 2 is the one that mattered.** `zkp_delay_fail` was identically zero across all 1,792
+rows of the previous training set — the dead feature that invalidated it. Commit `7307662`
+fixed it, and this is the first run to prove it in data.
+
+**Defect C (§4) is now resolved too.** The A6/A8 covering-RSU fallback had been proven
+*correct* but *inert* — it had never actually produced a label. It now yields 889 positives
+on each.
+
+### ⚠️ Operational hazard found while doing this: THE LOGGER APPENDS
+
+`lstm_logger.h:816` opens with `std::ios::app`. Re-running any configuration **appends to the
+existing file** rather than replacing it, silently mixing run vintages. Confirmed on this
+machine: `A2_pct60_seed1.csv` contained duplicate `cycle` values from an earlier run before
+the pre-flight even started.
+
+Nothing downstream flags this. `preprocessor.py` will happily train on a file containing two
+different runs.
+
+**Before starting the 240-run collection:**
+
+```bash
+mv $HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
+   $HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_OLD_$(date +%F)
+```
+
+**After collection, verify no file contains duplicate cycles:**
+
+```bash
+BASE=$HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
+for f in $BASE/RSU_*/A*.csv; do
+  d=$(awk -F, 'NR>1{print $1}' "$f" | sort -n | uniq -d | wc -l)
+  [ "$d" -gt 0 ] && echo "DUPLICATE CYCLES: $f ($d)"
+done
+```
+
+Silence means clean. Any output means that file holds more than one run and must be
+regenerated.
+
+### The pre-flight procedure (for re-running it elsewhere, e.g. on HPC)
 
 Four short runs (30 s, 60 %, seed 1), chosen by known risk:
 
@@ -277,7 +334,7 @@ recording correctly suppressed.
 
 The federated LSTM is fully implemented and integrated — logger, pipeline, BRFA-v2
 aggregation, C++ inference, weight export. What it lacks is **trustworthy training data**.
-Three defects corrupted the last set; all three are fixed in code and none is verified in a
-real run. Run the §5 pre-flight (~30 min), then collect 240 runs on HPC (~1 day), then
-retrain (§6), then re-run AB3. Collection is blocked on nothing else and should start as
-soon as the pre-flight passes.
+Three defects corrupted the last set; **all three are now fixed AND verified in real data
+(§5, 2026-08-06)**. The remaining sequence is: clear `lstm_training/` (the logger appends —
+§5), collect 240 runs on HPC (~1 day), retrain (§6), re-run AB3. Collection is blocked on
+nothing and should start now.
