@@ -35,7 +35,6 @@ Usage:
 """
 
 import argparse
-import glob
 import os
 import shutil
 import subprocess

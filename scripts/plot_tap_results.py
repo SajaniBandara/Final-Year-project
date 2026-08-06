@@ -57,7 +57,6 @@ CSV column order (columns are 0-indexed):
 """
 
 import argparse
-import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -161,9 +160,7 @@ def load_method_data(prefix, attack_number, suffix="", seed=DEFAULT_SEED):
     """
     data = {}
     for pct in ATTACK_PERCENTAGES:
-        matches = sorted(glob.glob(os.path.join(
-            RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}{suffix}_seed{seed}.csv")))
-        filepath = matches[0] if matches else os.path.join(
+        filepath = os.path.join(
             RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}{suffix}_seed{seed}.csv")
         data[pct] = read_csv(filepath)
     return data
