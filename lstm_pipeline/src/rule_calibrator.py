@@ -35,7 +35,10 @@ from sklearn.metrics import matthews_corrcoef
 # ---------------------------------------------------------------------------
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
-NS3_DIR      = Path.home() / "ns-allinone-3.35/ns-3.35"
+# Must include "ns3_g13_apsari": Path.home() / "ns-allinone-3.35" resolves
+# through a symlink into a DIFFERENT group's ns-3 checkout on this shared
+# account (same issue found and fixed in lstm_logger.h's C++ path helpers).
+NS3_DIR      = Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"
 DEFAULT_DATA = NS3_DIR / "results_routing" / "lstm_training"
 OUTPUT_JSON  = PIPELINE_DIR / "calibrated_params.json"
 OUTPUT_REPORT = PIPELINE_DIR / "calibration_report.txt"
@@ -104,7 +107,7 @@ CONVERGENCE_TOL = 0.01
 # Data loading
 # ---------------------------------------------------------------------------
 
-def load_benign_data(data_dir: Path) -> pd.DataFrame:
+def load_benign_data(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load all Attack0_0_seed*.csv files across all RSU dirs into one DataFrame."""
     dfs = []
     pattern = list(data_dir.glob("RSU_*/Attack0_0_seed*.csv"))

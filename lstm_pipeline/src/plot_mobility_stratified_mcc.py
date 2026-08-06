@@ -35,8 +35,11 @@ REPO = Path(__file__).resolve().parents[2]
 PRE = REPO / "lstm_pipeline" / "preprocessed"
 MODEL_DIR = REPO / "lstm_pipeline" / "models"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Must include "ns3_g13_apsari": HOME/ns-allinone-3.35 resolves through a
+# symlink into a DIFFERENT group's ns-3 checkout on this shared account
+# (same issue found and fixed in lstm_logger.h's C++ path helpers).
 BASE = Path(os.environ.get("HOME", "/home/nipuni")) / \
-       "ns-allinone-3.35/ns-3.35/results_routing"
+       "ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"
 WINDOW = 10
 
 ATTACK_NAMES = {5: "A5 CP-ActiveHF", 6: "A6 DP-ActiveHF",
