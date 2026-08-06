@@ -438,10 +438,16 @@ inline LRADRSUFlags lrad_rsu(
 inline void process_escalation_at_rsu(uint32_t rsu_id)
 {
     auto& queue = g_escalation_queue[rsu_id];
-    for (auto& ev : queue)
+    for (auto& ev : queue) {
         lrad_rsu(rsu_id, ev.vehicle_id, ev.pkt_id, ev.flow_id,
                  ev.obu_flags, ns3::Simulator::Now().GetSeconds(),
                  ev.orig_prev_sender);
+        // RSU.Confirm(v,r) — full-mode analysis for this escalation is complete,
+        // so eq:local_quarantine's hold on the vehicle is released. This is the
+        // release arm of "until RSU.Confirm(v,r) ∨ t > t_detect + T_hold"; the
+        // timeout arm is handled lazily in fwd_hold_remaining().
+        rsu_confirm_release(ev.vehicle_id);
+    }
 
     // main.tex §5039/5307 "Escalation to LSTM detector": the same D_OBU
     // escalation that reaches LRAD-RSU above must also reach the LSTM side
@@ -573,6 +579,11 @@ inline LRADOBUFlags lrad_obu(
 
     if (flags.D_OBU) {
         g_d_obu_count++;
+        // alg:lrad_obu line 1 of the D_OBU branch: HOLD_FORWARD(v,r).
+        // eq:local_quarantine — suspend forwarding of the flagged flow pending
+        // RSU confirmation or T_hold timeout. Gated by enable_local_quarantine
+        // (default off; see its declaration in crypto_layer.h for why).
+        hold_forward(vehicle, fid);
         // prev_sender → suspect for S1/S2p (the forwarding node), passed so
         // the RSU can write the correct BC.Write record (eq:rsu_write).
         escalate_to_rsu(vehicle, pkt_id, fid, flags, prev_sender);

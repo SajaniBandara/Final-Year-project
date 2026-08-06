@@ -213,6 +213,83 @@ bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
 bool enable_quarantine             = true;  // AB7: trust updates + SC.Quarantine
+// ── eq:local_quarantine / HOLD_FORWARD (added 2026-08-06) ───────────────────
+// alg:lrad_obu (main.tex:2395-2397) specifies TWO actions on D_OBU=1:
+//     HOLD_FORWARD(v,r)   and   ESCALATE(p,v,r,{flag_S1,flag_S2p})
+// Only ESCALATE was implemented. eq:local_quarantine formalises the missing
+// half:
+//     HOLD_FORWARD(v,r) => fwd_state(v) = Hold
+//       until RSU.Confirm(v,r) \/ t > t_detect + T_hold
+// with the prose: "upon D_OBU=1 the OBU suspends forwarding of flows matching
+// the flagged signature for a maximum hold window T_hold, awaiting either RSU
+// confirmation or timeout."
+//
+// DEFAULT OFF, deliberately. Enabling it changes every delivery/latency metric,
+// so switching it on by default would silently invalidate all existing results
+// without anyone choosing to. Off reproduces every run to date; --enable_local_
+// quarantine=1 gives the spec-faithful arm, and the pair is exactly the
+// with/without comparison the thesis needs to justify the mechanism.
+bool   enable_local_quarantine     = false;
+// T_hold is NOT given a numeric value anywhere in main.tex — the symbol table
+// (main.tex:1319) defines it only as "maximum duration for OBU local forwarding
+// suspension pending RSU confirmation". 0.1 s is a placeholder chosen to exceed
+// the 1 ms simulated OBU->RSU escalation delay (lrad.h escalate_to_rsu) by two
+// orders of magnitude, so RSU.Confirm virtually always releases the hold before
+// the timeout does. IT IS NOT CALIBRATED — treat as an open parameter.
+double T_HOLD                      = 0.1;
+double g_fwd_hold_until[268]       = {};          // 0.0 = not held
+uint32_t g_fwd_hold_flow[268]      = {};          // flagged flow id
+uint32_t g_fwd_hold_events         = 0;           // HOLD_FORWARD invocations
+uint32_t g_fwd_suspended_pkts      = 0;           // packets actually deferred
+double   g_fwd_suspended_time_sum  = 0.0;         // total deferral applied (s)
+uint32_t g_fwd_release_confirm     = 0;           // released by RSU.Confirm
+uint32_t g_fwd_release_timeout     = 0;           // released by T_hold expiry
+
+// HOLD_FORWARD(v,r) — set fwd_state(v) = Hold for the flagged flow.
+inline void hold_forward(uint32_t v, uint32_t fid) {
+    if (!enable_local_quarantine) return;
+    if (v >= 268u) return;
+    g_fwd_hold_until[v] = ns3::Simulator::Now().GetSeconds() + T_HOLD;
+    g_fwd_hold_flow[v]  = fid;
+    ++g_fwd_hold_events;
+}
+
+// RSU.Confirm(v,r) — the RSU has completed full-mode analysis; release the hold.
+inline void rsu_confirm_release(uint32_t v) {
+    if (!enable_local_quarantine) return;
+    if (v >= 268u) return;
+    if (g_fwd_hold_until[v] > 0.0) {
+        g_fwd_hold_until[v] = 0.0;
+        ++g_fwd_release_confirm;
+    }
+}
+
+// Remaining suspension for (v, fid), in seconds; 0.0 when not held.
+//
+// APPROXIMATION, stated openly: a packet reaching the forward path while the
+// hold is still active is deferred by the FULL remaining window rather than
+// being released the instant RSU.Confirm arrives, because the ns-3 send is
+// already scheduled by then and cannot be pulled forward. Since confirmation
+// lands ~1 ms after escalation and T_hold is 0.1 s, this over-holds only those
+// packets forwarded inside that 1 ms gap; every packet after the confirm sees
+// 0.0. The error is conservative (over-suspension), never under-suspension.
+inline double fwd_hold_remaining(uint32_t v, uint32_t fid) {
+    if (!enable_local_quarantine) return 0.0;
+    if (v >= 268u) return 0.0;
+    if (g_fwd_hold_until[v] <= 0.0) return 0.0;
+    double now = ns3::Simulator::Now().GetSeconds();
+    if (now >= g_fwd_hold_until[v]) {          // t > t_detect + T_hold
+        g_fwd_hold_until[v] = 0.0;
+        ++g_fwd_release_timeout;
+        return 0.0;
+    }
+    if (g_fwd_hold_flow[v] != fid) return 0.0; // "flows matching the flagged signature"
+    double rem = g_fwd_hold_until[v] - now;
+    ++g_fwd_suspended_pkts;
+    g_fwd_suspended_time_sum += rem;
+    return rem;
+}
+
 bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
 bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
 bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
@@ -1755,6 +1832,8 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_stark_hop",              "AB4: enable STARK hop-legitimacy proof π_hop",  enable_stark_hop);
     cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
     cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);
+    cmd.AddValue("enable_local_quarantine",       "eq:local_quarantine / HOLD_FORWARD: OBU suspends forwarding of the flagged flow pending RSU.Confirm or T_hold (default OFF — changes all delivery metrics)", enable_local_quarantine);
+    cmd.AddValue("T_hold",                        "eq:local_quarantine max hold window (s). NOT specified numerically in main.tex — uncalibrated placeholder", T_HOLD);
     cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
