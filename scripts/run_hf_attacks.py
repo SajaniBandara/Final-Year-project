@@ -161,13 +161,16 @@ def clean_results(attack: int | None, percentage: int | None) -> None:
     attacks = [attack] if attack else [a["attack_number"] for a in ATTACKS]
     percs   = [percentage] if percentage is not None else ATTACK_PERCENTAGES
 
-    patterns = []
+    removed = 0
     for a in attacks:
         for p in percs:
-            patterns.append(RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}.csv")
-            patterns.append(RESULTS_DIR / f"FADE_Attack{a}_{p}.csv")
-
-    removed = sum(1 for f in patterns if f.exists() and (f.unlink() or True))
+            # Glob rather than exact match: seed is now native to both
+            # filenames, and FADE's is "FADE__Attack..." (double underscore).
+            for pat in (f"MOBIGUARD_Attack{a}_{p}_seed*.csv",
+                        f"FADE__Attack{a}_{p}_seed*.csv"):
+                for f in RESULTS_DIR.glob(pat):
+                    f.unlink()
+                    removed += 1
     if removed:
         print(f"── Removed {removed} old result file(s) ──\n")
 
@@ -323,9 +326,10 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Two runs per (attack, pct): the normal MOBIGUARD run (full S1-S8,
-    # writes MOBIGUARD_Attack<N>_<pct>.csv) and the isolated FADE-baseline
-    # run (S1-S8 off via FADE_PARAMS, writes FADE_Attack<N>_<pct>.csv). See
-    # module docstring for why isolation is needed.
+    # writes MOBIGUARD_Attack<N>_<pct>_seed<S>.csv) and the isolated
+    # FADE-baseline run (S1-S8 off via FADE_PARAMS, writes
+    # FADE__Attack<N>_<pct>_seed<S>.csv). See module docstring for why
+    # isolation is needed.
     runs = []
     for a in scope_attacks:
         for p in scope_percs:

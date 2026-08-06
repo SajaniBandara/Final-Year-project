@@ -22,12 +22,15 @@ script only collects the NEW configs that don't exist yet:
   AB1 scope: all 8 attacks.
 
 Filename-collision handling: write_security_metrics_csv() names files by
-(attack_number, pct) only, regardless of which ablation flags were passed
-— multiple configs targeting the SAME (attack, pct) would collide exactly
-like the seed-contamination bug found earlier this session. Every config
-touching a given (attack, pct) therefore runs in one SEQUENTIAL lane
-(mirroring run_rule_based_sweep.py), renaming the result to embed a
-config tag immediately after each run.
+(attack_number, pct, seed) — ablation flags like enable_stark_delay/
+enable_lrad_rsu have no slot in that filename at all, so multiple configs
+targeting the SAME (attack, pct, seed) would collide the same way the
+seed-contamination bug did before seed was native (that specific bug is
+fixed; this one is a different axis the filename was never designed to
+carry, so this workaround stays necessary — unlike run_rule_based_sweep.py's,
+which became obsolete once seed went native). Every config touching a given
+(attack, pct) therefore runs in one SEQUENTIAL lane, renaming the result to
+embed a config tag immediately after each run.
 
 Usage:
   python3 scripts/run_ablation_sweep.py --workers 16
@@ -66,7 +69,7 @@ AB1_ATTACKS = [1, 2, 3, 4, 5, 6, 7, 8]
 
 def result_filename(attack_number: int) -> str:
     suffix = "_d80ms" if attack_number in (1, 2) else ""
-    return f"MOBIGUARD_Attack{attack_number}_60{suffix}.csv"
+    return f"MOBIGUARD_Attack{attack_number}_60{suffix}_seed{FIXED_PARAMS['sim_seed']}.csv"
 
 
 def build_cmd(attack_number: int, extra: dict) -> list:

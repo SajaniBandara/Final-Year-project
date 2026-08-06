@@ -423,29 +423,95 @@ Prefix-specific filenames:
    `tcam_occupancy_*`/`lambda_l_true_*`); ran a real Attack4 sim and confirmed the
    `_nN` suffix path produces `tcam_snapshots_Attack4_40_seed1_n80.csv`.
 
-8. **Update downstream Python consumers** — once the C++ side changes:
-   - `run_rule_based_sweep.py` — drop the sequential-lane "run then rename" workaround
-     (its own docstring says this exists only to fix the contamination bug from before
-     seed was native to the filename); can move to running seeds concurrently once seed
-     is baked in from the moment the file is opened.
-   - `run_std_attacks.py`, `run_hf_attacks.py` (also carries the Phase 1 #2 fix),
-     `run_ablation_sweep.py`, `run_tcam_sweep.py` — update any hardcoded filename
-     patterns to match the new scheme.
-   - `plot_fade_results.py` — also update/remove the docstring at lines 192-197 once
-     `routing_fade_per_cycle.csv` (Phase 1 #4b) is tagged; the warning about it being
-     untagged and cross-contaminated becomes stale once fixed, and the file becomes
-     safe to use directly instead of routing everyone to `fade_metrics_*` as a workaround.
-   - `plot_fade_results.py`, `plot_hf_results.py` — currently do manual
-     `variant = attack_number - 1` conversion to bridge `g_sim_tag`'s 0-indexing against
-     MOBIGUARD's 1-indexing (plot_fade_results.py:200, plot_hf_results.py:51-54). This
-     conversion becomes unnecessary once `g_sim_tag` is 1-indexed (Phase 2 #6) — remove it,
-     don't just leave it as a no-op.
-   - `plot_tcam_detection.py` — check against new tcam filenames.
-   - `verify_metrics.py` — check against new filenames generally.
-   - `functional_verification.py` — two hardcoded patterns to update:
-     `bc_dkg_log_Attack{attack}_*` (line 713), `bc_trust_updates_Attack{attack}_*`
-     (line 1021). Its main MOBIGUARD-parsing regex (line 330) may already tolerate the
-     new shape — verify rather than assume.
+8. **DONE — Update downstream Python consumers.**
+
+   - **`run_rule_based_sweep.py`** — dropped the sequential-lane "run then rename"
+     workaround entirely, as planned. Its premise was already false: `result_filename()`
+     built the pre-Phase-2-#5 no-seed name, so `src.exists()` in the rename step was
+     always `False` (the seed-tagged file the C++ side actually wrote never matched),
+     meaning every run silently logged "(NO OUTPUT FILE)" and `passed` was always 0 —
+     even though the final "sample check" loop happened to construct the *correct*
+     seed-tagged name independently and would have reported files present. Restructured
+     to submit one job per `(attack, pct, seed)` directly (no lanes, no rename) and
+     check for the native output path.
+     **Verified live**, not just build/syntax: ran a real 2-job sweep
+     (`--attack 1 --percentage 40 --seeds 1 2`) — `Passed: 2/2`, both
+     `MOBIGUARD_Attack1_40_d80ms_seed{1,2}.csv` found directly with no rename step.
+
+   - **`run_ablation_sweep.py`** — confirmed this one is *not* like
+     `run_rule_based_sweep.py`: its sequential-lane rename exists for a genuinely
+     different, still-real collision (multiple ablation configs — AB4-A/B/C, AB1-A/B —
+     sharing the identical `(attack, pct, seed=1)`, since ablation flags like
+     `enable_stark_delay`/`enable_lrad_rsu` have no slot in the filename at all). Kept
+     the rename mechanism; the actual bug was that `result_filename()` was missing
+     `_seed{S}` (same "can't find the file to rename" failure pattern), fixed by adding
+     it. Docstring corrected to explain why this workaround stays necessary while
+     `run_rule_based_sweep.py`'s did not.
+
+   - **`run_std_attacks.py`** — `clean_results()` and `check_results()` both did
+     exact-match lookups with no seed and the old single-underscore `TAP_Attack`; both
+     switched to glob-based (`clean_results`) / seed-parameterized exact match
+     (`check_results`, threaded through from `args.seed`) with the `TAP__Attack` double
+     underscore. Docstring and two inline comments referencing the old filename shapes
+     corrected.
+
+   - **`run_hf_attacks.py`** — found a second bug beyond the `check_results()` one
+     already fixed in Phase 2 #6: `clean_results()` had the identical no-seed,
+     single-underscore-TAP problem (missed in the earlier pass since that function
+     wasn't touched then). Fixed the same way — glob-based cleanup tolerating any seed.
+
+   - **`plot_tap_results.py`** — **not on the original 12-file list at all**, discovered
+     while reading `run_std_attacks.py`'s comments (which reference it directly). Its
+     `load_method_data()` was byte-for-byte the same exact-match-no-seed bug as
+     `plot_fade_results.py`'s had before Phase 2 #6 — fixed identically: glob-based,
+     `seed` parameter (new `--seed` CLI flag, default 1) threaded through, `"TAP_"`
+     prefix (→ `"TAP__Attack..."`) at the call site. This is exactly the kind of gap
+     the plan's "enumerate exactly what each one assumes... before changing the writer"
+     caution was for — the original file audit was scoped to lstm consumers and never
+     looked at this one, since it doesn't touch `lstm_training` at all.
+
+   - **`plot_fade_results.py`** — updated the docstring at `load_fade_summary_mcc()`
+     that used to justify avoiding `routing_fade_per_cycle.csv` partly by citing its
+     (now-fixed) cross-contamination risk. Kept the function's actual behavior
+     unchanged — the small-sample MCC artifact reason alone still justifies preferring
+     `fade_metrics_*` — just corrected the now-false half of the stated reasoning.
+
+   - **`plot_hf_results.py`** — the `variant = attack_number - 1` conversion this item
+     originally flagged was already removed as part of Phase 2 #6's rewrite (confirmed
+     via grep — zero remaining references). No further action needed here.
+
+   - **`plot_tcam_detection.py`** — already fully handled in Phase 2 #7 (fixed
+     alongside the baseline-unification work, since it shared the same missing-seed bug
+     independent of baseline).
+
+   - **`verify_metrics.py`** — the `MOBIGUARD_baseline.csv` exact match was already
+     fixed in Phase 2 #7. Broader audit here found nothing else needing a change: every
+     other lookup was already glob-based (`find_one()`), and there's no regex-based
+     filename parsing in this file to re-verify (unlike `functional_verification.py`'s
+     `MG_RE`). `MOBIGUARD_baseline_fbad*.csv` (a separate, unrelated M9-specific
+     convention, not produced by `write_security_metrics_csv()`) correctly left alone,
+     as already noted in Phase 2 #7.
+
+   - **`functional_verification.py`** — the two flagged patterns
+     (`bc_dkg_log_Attack{attack}_*`, `bc_trust_updates_Attack{attack}_*`) needed a
+     trailing `*` added before `.csv`: with `bc_run_suffix()` now appending
+     `_seed{S}[_TAP][_FADE]` *after* the delay segment, the old glob (ending exactly at
+     `_d{delay}ms.csv`) stopped matching whenever a delay was present — the no-delay
+     case worked by coincidence (its trailing `*` already covered the seed segment).
+     Also found `load_tap()` doing the same single-underscore `TAP_Attack` bug found
+     independently in `run_std_attacks.py`/`plot_tap_results.py` — fixed to
+     `TAP__Attack` in both the glob and its accompanying regex, with the same trailing
+     `*` fix. The main `MG_RE` regex was confirmed (not assumed) already correct — it
+     already had an optional seed group before this plan even started. Also corrected a
+     stale block comment above `MG_RE` that was actively misleading about *why* seeds
+     appear in filenames (attributing it to `run_rule_based_sweep.py`'s now-removed
+     rename step rather than the C++ side being fixed at the source).
+
+   Verified throughout: `python3 -m py_compile` clean on all eight touched files
+   (`run_rule_based_sweep.py`, `run_ablation_sweep.py`, `run_std_attacks.py`,
+   `run_hf_attacks.py`, `plot_tap_results.py`, `plot_fade_results.py`,
+   `functional_verification.py`, `verify_metrics.py`); `run_rule_based_sweep.py` also
+   verified with a real live sweep as described above.
 
 ### Not in scope for this plan
 

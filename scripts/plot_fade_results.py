@@ -193,10 +193,12 @@ def load_fade_summary_mcc(attack_number, seeds=(1,)):
     not a detection failure).
     fade_metrics_Attack<N>_<pct>_seed<S>.csv (written once per run by
     fade_save_metrics(), using the node-per-epoch pp_tp/fp/tn/fn counters
-    Fix 7 introduced) does not have this problem — far more samples, and
-    its filename embeds attack/pct/seed so it can't be cross-contaminated
-    by concurrent runs the way the shared routing_fade_per_cycle.csv can.
-    Use it for FADE's MCC instead.
+    Fix 7 introduced) does not have this problem — far more samples. Use it
+    for FADE's MCC instead. (routing_fade_per_cycle.csv, the per-cycle
+    file this reads, used to be a single untagged shared file that
+    concurrent runs could cross-contaminate — since fixed by tagging it
+    with g_sim_tag — but the small-sample MCC artifact above is the
+    reason this function avoids it regardless of tagging.)
     """
     data = {}
     for pct in ATTACK_PERCENTAGES:
