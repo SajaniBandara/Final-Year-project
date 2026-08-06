@@ -384,12 +384,17 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
-    // Fallback only — unreachable whenever HOME is set (overwritten just below).
-    std::string dir = "/home/nipuni/g13_project_repo/Final-Year-project/";
-    const char* home = std::getenv("HOME");
-    if (home)
-        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/";
-    return dir + "lstm_pipeline/lstm_weights_cpp.bin";
+    // Hardcoded absolute path, same convention as every other writer in this
+    // codebase (routing.cc, bc_blockchain_helper.h, etc.) — NOT $HOME-relative.
+    // This used to build "$HOME/ns-allinone-3.35/ns-3.35/final yr project
+    // updated/Final-Year-project/..." which was already wrong even before
+    // considering $HOME: that subpath doesn't exist anywhere on this host (a
+    // leftover from a prior directory layout), so live LSTM inference could
+    // never actually find its weights file via this path. On top of that,
+    // $HOME/ns-allinone-3.35 is a symlink into a DIFFERENT group's ns-3
+    // checkout (ns3-workspace) on this shared account, so even a correct
+    // relative subpath would have resolved into someone else's directory.
+    return "/home/sdvn_hidden_attacks/ns3_g13_apsari/g13_project_repo/Final-Year-project/lstm_pipeline/lstm_weights_cpp.bin";
 }
 
 // =========================================================================
@@ -397,17 +402,15 @@ inline std::string lstm_weights_bin_path()
 // Resolves the results_routing base directory the same way routing.cc does,
 // so the logger is self-contained and does not depend on the caller passing
 // results_dir (which is set after the per-RSU loop in the original code).
+// Hardcoded rather than $HOME-relative — see lstm_weights_bin_path() above
+// for why: $HOME/ns-allinone-3.35 is a symlink into a different group's
+// checkout on this shared account, so a --training=1 run using the old
+// $HOME-based path would silently write its LSTM training data into that
+// other group's results_routing/ instead of this project's.
 // =========================================================================
 inline std::string lstm_make_base_dir()
 {
-    std::string dir =
-        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
-    const char* home = std::getenv("HOME");
-    if (home)
-        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/results_routing/";
-    if (!dir.empty() && dir.back() != '/')
-        dir += '/';
-    return dir;
+    return "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
 }
 
 // =========================================================================
