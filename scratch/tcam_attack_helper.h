@@ -590,26 +590,23 @@ inline void tcam_snapshot_dump()
     // to "attack3"/"attack4" — an inconsistent, off-by-one labeling that made
     // e.g. Attack 2 (variant=1) data land in a file named "tcam_snapshots_attack1*",
     // indistinguishable from actual Attack 1 output.
-    std::string mode;
-    if (active_attack_variant == -1) {
-        mode = "baseline";
-    } else {
-        mode = "attack" + std::to_string(active_attack_variant + 1);
-        // For Attack 4 multi-attacker sweeps append _nN so each run
-        // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
-        if (active_attack_variant == 3 && num_attackers > 1)
-            mode += "_n" + std::to_string(num_attackers);
-        // For Attack 3 CP-percentage sweeps append _pctN so each run
-        // produces a distinct file: attack3_pct20.csv, attack3_pct40.csv, …
-        // (Attack 3 has no analogous num_attackers axis, so every run is
-        // suffixed — unlike Attack 4, there is no single-run "bare" case.)
-        // NOTE: this _pctN suffix is derived from cp_attack_intensity, which is
-        // NOT the report's attack_percentage — see the extern declaration above
-        // and the "Fixed 2026-07-10" comment on cp_attack_tick() below. Do not
-        // read the "_pctN" in a filename as the report's attack percentage.
-        if (active_attack_variant == 2)
-            mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
-    }
+    // Baseline (-1) folded into the same numeric axis as every other attack
+    // ("attack0"), rather than a separate "baseline" mode string.
+    std::string mode = "attack" + std::to_string(active_attack_variant >= 0 ? active_attack_variant + 1 : 0);
+    // For Attack 4 multi-attacker sweeps append _nN so each run
+    // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
+    if (active_attack_variant == 3 && num_attackers > 1)
+        mode += "_n" + std::to_string(num_attackers);
+    // For Attack 3 CP-percentage sweeps append _pctN so each run
+    // produces a distinct file: attack3_pct20.csv, attack3_pct40.csv, …
+    // (Attack 3 has no analogous num_attackers axis, so every run is
+    // suffixed — unlike Attack 4, there is no single-run "bare" case.)
+    // NOTE: this _pctN suffix is derived from cp_attack_intensity, which is
+    // NOT the report's attack_percentage — see the extern declaration above
+    // and the "Fixed 2026-07-10" comment on cp_attack_tick() below. Do not
+    // read the "_pctN" in a filename as the report's attack percentage.
+    if (active_attack_variant == 2)
+        mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     // Neither branch above accounts for the report's own attack_percentage or
     // sim_seed, so two different percentages of the same attack (or two seeds
     // of the same attack/percentage) used to collide on the identical mode
@@ -731,19 +728,16 @@ inline void tcam_snapshot_dump()
 inline void export_tcam_snapshot_baseline()
 {
     // Same paper-numbering scheme as tcam_snapshot_dump(): attack_id = variant+1.
-    std::string mode;
-    if (active_attack_variant == -1) {
-        mode = "baseline";
-    } else {
-        mode = "attack" + std::to_string(active_attack_variant + 1);
-        // Mirror the _nN / _pctN suffix logic from tcam_snapshot_dump().
-        // NOTE: _pctN comes from cp_attack_intensity, NOT the report's
-        // attack_percentage (see extern declaration near top of file).
-        if (active_attack_variant == 3 && num_attackers > 1)
-            mode += "_n" + std::to_string(num_attackers);
-        if (active_attack_variant == 2)
-            mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
-    }
+    // Baseline (-1) folded into "attack0" rather than a separate "baseline"
+    // mode string, same as tcam_snapshot_dump().
+    std::string mode = "attack" + std::to_string(active_attack_variant >= 0 ? active_attack_variant + 1 : 0);
+    // Mirror the _nN / _pctN suffix logic from tcam_snapshot_dump().
+    // NOTE: _pctN comes from cp_attack_intensity, NOT the report's
+    // attack_percentage (see extern declaration near top of file).
+    if (active_attack_variant == 3 && num_attackers > 1)
+        mode += "_n" + std::to_string(num_attackers);
+    if (active_attack_variant == 2)
+        mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     // Same missing-percentage/seed gap as tcam_snapshot_dump() — mirror its fix
     // exactly so this backup export can't collide with a differently-percentaged
     // or differently-seeded run of the same attack either.

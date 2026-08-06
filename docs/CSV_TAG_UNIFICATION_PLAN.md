@@ -252,20 +252,53 @@ Prefix-specific filenames:
    `load_method_data()` correctly found 4 rows for both the MOBIGUARD and FADE_ prefixes
    against the same files.
 
-7. **Unify baseline representation to `Attack0` everywhere** — replace the three
-   competing conventions (separate filename in MOBIGUARD/FADE/tcam; raw negative index
-   in `g_sim_tag`) with the `Attack0` convention `bc_run_suffix()` and lstm_logger.h
-   already use. Removes `MOBIGUARD_baseline.csv`, `FADE_baseline.csv`,
-   `tcam_*_baseline.csv` as distinct filenames.
+7. **DONE — Unify baseline representation to `Attack0` everywhere.** Replaced the
+   competing conventions (separate filename in MOBIGUARD/FADE/tcam) with the `Attack0`
+   convention `bc_run_suffix()`/`g_sim_tag`/lstm_logger.h already used. Removed
+   `MOBIGUARD_baseline_*.csv`, `FADE_baseline_*.csv`, and tcam's `"baseline"` mode
+   string as distinct forms:
+   - `write_security_metrics_csv()` (MOBIGUARD): the whole `switch` that special-cased
+     `active_attack_variant == -1` into a separate filename was replaced with the same
+     one-line `id = variant>=0 ? variant+1 : 0` formula everywhere else already uses —
+     baseline now falls out of the general path naturally as `Attack0`.
+   - `fade_write_per_cycle_csv()` (FADE): same restructuring. Its baseline branch was
+     actually unreachable dead code before this change too — `fade_detection_active`
+     (the function's own top-of-function guard) requires `active_attack_variant` in
+     `[4,7]`, which a true baseline run (`variant == -1`) never satisfies — but fixed
+     for consistency and in case that guard is ever relaxed.
+   - `tcam_snapshot_dump()` / `export_tcam_snapshot_baseline()`: `mode` folded to
+     `"attack0"` for baseline, staying within tcam's own existing lowercase
+     `"attack{N}"` convention rather than jumping ahead to the capitalized `Attack{N}`
+     canonical shape — that full rename is #7c's job, not this item's; doing it here
+     too would be churn undone again one item later.
 
-   **Will silently break three scripts if not updated in the same change** — confirmed
-   via grep, these hardcode the literal filename `"MOBIGUARD_baseline.csv"` (exact
-   string, not a wildcard/glob), so once that file stops being produced they'll fail
-   to find it (missing-file error, or silently-empty baseline series depending on how
-   each handles a missing path):
-   - `scripts/run_tcam_sweep.py:151`
-   - `scripts/verify_metrics.py:325`
-   - `scripts/plot_tcam_detection.py:87`
+   **Fixed three scripts that hardcoded the literal `"MOBIGUARD_baseline.csv"`** (exact
+   string, not a wildcard) in the same change, per the risk flagged when this item was
+   still pending:
+   - `run_tcam_sweep.py` — `out_csv` for baseline updated to
+     `MOBIGUARD_Attack0_0_seed1.csv` (no `--sim_seed` is ever passed by this script, so
+     seed is always the C++ default of 1 — exact match is accurate here, not just
+     convenient). Also fixed its Attack3/Attack4 `out_csv` entries the same way — they
+     had the identical missing-seed gap, not just the baseline one.
+   - `plot_tcam_detection.py` — same fix, plus discovered its `Attack{ATTACK_ID}_{pct}`
+     lookup had the identical missing-seed bug independent of baseline (already broken
+     by #5, not just this item). Added a `SEED = 1` config constant and fixed both
+     lookups.
+   - `verify_metrics.py` — its `pattern_map`'s baseline entry was the one exact-match
+     holdout while its three sibling entries (`Attack1`, `Attack5`, `Attack7`) already
+     used a `*` wildcard via `find_one()` (confirmed glob-based). Changed baseline to
+     `MOBIGUARD_Attack0_*.csv` to match that existing glob convention instead of
+     hardcoding a seed. Left `MOBIGUARD_baseline_fbad*.csv` (a different, unrelated
+     M9-specific naming convention — not produced by `write_security_metrics_csv()`)
+     untouched.
+
+   Also corrected a stale doc-comment above `fade_write_per_cycle_csv()` describing the
+   old `FADE_baseline.csv` shape.
+
+   Verified: build succeeds (force-rebuilt, confirmed `Compiling`/`Linking`);
+   `python3 -m py_compile` clean on all three edited scripts; ran a true baseline sim
+   (no `--attack_number` at all) and got `MOBIGUARD_Attack0_0_seed1.csv` and
+   `tcam_snapshots_attack0_ap0_seed1.csv` — no `_baseline`-named file produced at all.
 
 7b. **Convert lstm_logger.h to the canonical shape** — currently writes
    `lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv` (lstm_logger.h, near the

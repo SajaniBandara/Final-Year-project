@@ -1,6 +1,7 @@
 """
 MOBIGUARD TCAM Detection Plots
-Reads MOBIGUARD_baseline.csv and MOBIGUARD_Attack3_*.csv
+Reads MOBIGUARD_Attack0_0_seed<S>.csv (baseline) and
+MOBIGUARD_Attack3_<pct>_seed<S>.csv.
 Produces 3 figures saved to the same directory as the CSVs.
 
 Column map (0-indexed):
@@ -30,6 +31,7 @@ RESULTS_DIR   = "results_routing"          # relative to ns-3 root
 OUTPUT_DIR    = RESULTS_DIR                # save plots here
 ATTACK_ID     = 3                          # Attack 3 = CP TCAM exhaustion
 PERCENTAGES   = [20, 40, 60, 80]          # which sweep files to look for
+SEED          = 1                          # matches run_tcam_sweep.py's default (no --sim_seed passed)
 ATTACK_START  = 10                         # seconds
 TCAM_THRESH   = 0.80                       # S3 util threshold
 FM_THRESH     = 10.0                       # S3 lambda_fm threshold
@@ -84,14 +86,14 @@ def shade_s3(ax, cycles, any_s3, color=COL_S3, alpha=0.12):
         ax.axvspan(start, cycles[-1] + 0.5, color=color, alpha=alpha, zorder=0)
 
 # ── load data ─────────────────────────────────────────────────────────────────
-base_path = os.path.join(RESULTS_DIR, "MOBIGUARD_baseline.csv")
+base_path = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack0_0_seed{SEED}.csv")
 if not os.path.exists(base_path):
     raise FileNotFoundError(f"Baseline not found: {base_path}")
 base = load_csv(base_path)
 
 attacks = {}
 for pct in PERCENTAGES:
-    path = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack{ATTACK_ID}_{pct}.csv")
+    path = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack{ATTACK_ID}_{pct}_seed{SEED}.csv")
     if os.path.exists(path):
         attacks[pct] = load_csv(path)
     else:

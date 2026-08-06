@@ -117700,48 +117700,14 @@ void write_security_metrics_csv()
 
 	int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;
 
-	int attack_id = 1;
-	switch (active_attack_variant)
-	{
-		case (-1):
-			filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline_seed" + to_string(sim_seed) + ".csv";
-			break;
-		case (0):
-			attack_id = 1;
-			break;
-		case (1):
-			attack_id = 2;
-			break;
-		case (2):
-			attack_id = 3;
-			break;
-		case (3):
-			attack_id = 4;
-			break;
-		case (4):
-			attack_id = 5;
-			break;
-		case (5):
-			attack_id = 6;
-			break;
-		case (6):
-			attack_id = 7;
-			break;
-		case (7):
-			attack_id = 8;
-			break;
-		default:
-			attack_id = 1;
-			break;
-	}
-
-	if (active_attack_variant != -1)
-	{
-		filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
-		           + to_string(attack_id)
-		           + "_" + to_string(attack_percentage)
-		           + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
-	}
+	// Baseline (-1) folded into the same Attack0 shape everything else
+	// uses (bc_run_suffix(), g_sim_tag), rather than a separate
+	// "MOBIGUARD_baseline_*.csv" filename.
+	int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+	filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+	           + to_string(attack_id)
+	           + "_" + to_string(attack_percentage)
+	           + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
 
 	fout.open(filename, ios::out|ios::app);
 
@@ -117880,7 +117846,7 @@ void write_security_metrics_csv()
 // ============================================================
 // FADE per-cycle CSV writer. Mirrors write_security_metrics_csv() so FADE
 // output files share the SAME shape: one file per scenario
-// (FADE_baseline.csv / FADE_AttackN_PCT.csv), one row per cycle. The MOBIGUARD
+// (FADE__AttackN_PCT_seedS.csv, Attack0 for baseline), one row per cycle. The MOBIGUARD
 // columns are reproduced position-for-position; cur_PIR and avg_PIR are appended
 // as two trailing columns. FADE has no mitigation stage so those two columns
 // are always 0 (kept for positional compatibility).
@@ -117915,38 +117881,21 @@ void fade_write_per_cycle_csv(std::string dir)
 		if (cycle < 1.0)
 			cycle = 1.0;
 
-		int attack_id = 1;
-		switch (active_attack_variant)
-		{
-			case (-1): break;
-			case (0): attack_id = 1; break;
-			case (1): attack_id = 2; break;
-			case (2): attack_id = 3; break;
-			case (3): attack_id = 4; break;
-			case (4): attack_id = 5; break;
-			case (5): attack_id = 6; break;
-			case (6): attack_id = 7; break;
-			case (7): attack_id = 8; break;
-			default:  attack_id = 1; break;
-		}
-
-		if (active_attack_variant == -1)
-		{
-			filename = dir + "FADE_baseline_seed" + to_string(sim_seed) + ".csv";
-		}
-		else
-		{
-			int pct = 0;
-			if      (attack_percentage <= 0)   pct = 0;
-			else if (attack_percentage <= 20)  pct = 20;
-			else if (attack_percentage <= 40)  pct = 40;
-			else if (attack_percentage <= 60)  pct = 60;
-			else if (attack_percentage <= 80)  pct = 80;
-			else                               pct = 100;
-			// Double underscore is deliberate: "FADE_" prefix + canonical
-			// "_Attack{N}_{pct}..." suffix, same convention as TAP below.
-			filename = dir + "FADE__Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
-		}
+		// Baseline (-1) folded into the same Attack0 shape everything else
+		// uses, rather than a separate "FADE_baseline_*.csv" filename.
+		// attack_percentage is 0 for a baseline run, so the bucketing below
+		// naturally lands on pct=0 without any special-casing needed.
+		int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+		int pct = 0;
+		if      (attack_percentage <= 0)   pct = 0;
+		else if (attack_percentage <= 20)  pct = 20;
+		else if (attack_percentage <= 40)  pct = 40;
+		else if (attack_percentage <= 60)  pct = 60;
+		else if (attack_percentage <= 80)  pct = 80;
+		else                               pct = 100;
+		// Double underscore is deliberate: "FADE_" prefix + canonical
+		// "_Attack{N}_{pct}..." suffix, same convention as TAP below.
+		filename = dir + "FADE__Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
 
 		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
 		for (auto &entry : fade_flow_config)

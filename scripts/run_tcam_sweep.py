@@ -5,9 +5,9 @@ Run from your ns-3 root directory:
     python3 run_tcam_sweep.py
 
 Produces per-percentage CSVs in results_routing/:
-    MOBIGUARD_baseline.csv
-    MOBIGUARD_Attack3_20.csv  ...  MOBIGUARD_Attack3_80.csv
-    MOBIGUARD_Attack4_20.csv  ...  MOBIGUARD_Attack4_80.csv
+    MOBIGUARD_Attack0_0_seed1.csv
+    MOBIGUARD_Attack3_20_seed1.csv  ...  MOBIGUARD_Attack3_80_seed1.csv
+    MOBIGUARD_Attack4_20_seed1.csv  ...  MOBIGUARD_Attack4_80_seed1.csv
 """
 
 import subprocess
@@ -148,7 +148,7 @@ runs.append(dict(
     label      = "baseline",
     args       = "--active_attack_variant=-1 --attack_percentage=0",
     sim_time   = SIM_TIMES["baseline"],
-    out_csv    = os.path.join(RESULTS_DIR, "MOBIGUARD_baseline.csv"),
+    out_csv    = os.path.join(RESULTS_DIR, "MOBIGUARD_Attack0_0_seed1.csv"),
     log        = os.path.join(LOG_DIR, f"{timestamp}_baseline.log"),
 ))
 
@@ -161,7 +161,7 @@ for pct in PERCENTAGES:
             f"--attack_percentage={pct}"
         ),
         sim_time = SIM_TIMES["attack3"],
-        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack3_{pct}.csv"),
+        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack3_{pct}_seed1.csv"),
         log      = os.path.join(LOG_DIR, f"{timestamp}_attack3_{pct}.log"),
     ))
 
@@ -174,7 +174,7 @@ for pct in PERCENTAGES:
             f"--attack_percentage={pct}"
         ),
         sim_time = SIM_TIMES["attack4"],
-        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack4_{pct}.csv"),
+        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack4_{pct}_seed1.csv"),
         log      = os.path.join(LOG_DIR, f"{timestamp}_attack4_{pct}.log"),
     ))
 
