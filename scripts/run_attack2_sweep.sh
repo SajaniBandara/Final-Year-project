@@ -8,7 +8,7 @@ echo "Starting Attack 2 (Data Plane / Selective Time Delay) Sweep..."
 # Make sure we're in the ns-3.35 directory before running waf
 # This script should ideally be run from the ns-3.35 directory,
 # but we can navigate there if needed.
-NS3_DIR="$HOME/ns3_g13/ns-allinone-3.35/ns-3.35"
+NS3_DIR="$HOME/ns-allinone-3.35/ns-3.35"
 if [ ! -d "$NS3_DIR" ]; then
     echo "Error: ns-3 directory not found at $NS3_DIR"
     exit 1

@@ -205,6 +205,10 @@ bool g_disable_s7_s8                = false;
 // trust_update_negative() (eq:bft_penalty), which are what Q4 exists to
 // measure, and the controller-plane ctrl_trust_update_negative().
 bool g_disable_btmm_trust           = false;
+// DIAGNOSTIC (2026-08-06): per-firing trace of eq:dup_alert_cond, used to
+// characterise the witness false-positive mechanism. Off by default (the
+// alert fires thousands of times per run).
+bool g_dup_diag_log                 = false;
 bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
@@ -322,6 +326,13 @@ struct WitnessAlert {
     size_t   alert_sig_len = 0;
     double   ts            = 0.0; // submission time — needed to prune the pool by
                                   // WITNESS_WINDOW (see witness_bft_quorum_reached)
+    // The (v_i, p) EVENT this alert concerns: ((flow_id << 32) | pkt_id).
+    // eq:bft_penalty's quorum is over distinct witnesses reporting "the same
+    // (v_i, p) event" — v_i is already the pool's map key (target_node), so
+    // this supplies p. Derived from the raw identifiers rather than from H(p)
+    // because h_p degrades to all-zeros when no g_packet_crypto record exists,
+    // which would silently collapse every event onto one key.
+    uint64_t event_key     = 0;
 };
 
 
@@ -1327,14 +1338,20 @@ inline void witness_log_packet(uint32_t witness, const uint8_t* pkt_hash,
                   << " log_size=" << g_witness_log[witness].size() << "\n";
 }
 
+// matched_dst / matched_age_out: diagnostic outputs (2026-08-06) used to
+// characterise WHY eq:dup_alert_cond fires. Pass nullptr to ignore.
 inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
-                                       uint32_t dst_seen_now) {
+                                       uint32_t dst_seen_now,
+                                       uint32_t* matched_dst = nullptr,
+                                       double*   matched_age = nullptr) {
     auto it = g_witness_log.find(witness);
     if (it == g_witness_log.end()) return false;
     double cutoff = ns3::Simulator::Now().GetSeconds() - WITNESS_WINDOW;
     for (auto& e : it->second)
         if (memcmp(e.pkt_hash, pkt_hash, 64) == 0 &&
             e.dst != dst_seen_now && e.ts >= cutoff) {
+            if (matched_dst) *matched_dst = e.dst;
+            if (matched_age) *matched_age = ns3::Simulator::Now().GetSeconds() - e.ts;
             if (CRYPTO_DEBUG_LOG)
                 std::cout << "[WITNESS-DUP] witness=" << witness
                           << " hash[0..3]=" << _hex4(pkt_hash)
@@ -1364,8 +1381,26 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
 // trust penalty. Measured 2026-08-05 on A7/Q4: 14,284 crossings in a 30 s run,
 // 200 of 268 nodes quarantined, FP_W=202 at 15.5% precision, MCC=-0.051, with
 // the log showing "3 verified", "4 verified", "5 verified" on one target.
-// Returns true only on the transition INTO quorum; the caller clears the pool.
-inline bool witness_bft_quorum_reached(uint32_t target_node, OQS_SIG* oqs) {
+// SCOPED PER (v_i, p) EVENT (corrected 2026-08-06). The first version of this
+// function counted distinct witnesses across the target's WHOLE pool and the
+// caller then cleared the whole pool. Both halves were wrong in the same
+// direction — too strict — because eq:bft_penalty's quorum is per event:
+// "distinct witness vehicles w that have each submitted at least one valid
+// alert ... for the same (v_i, p) event", deduplicated by (w, v_i, H(p)).
+// Alerts about DIFFERENT packets are separate events and must accumulate
+// independently; wiping them together discarded live evidence.
+//
+// Measured cost of the over-strict version on Q4 (30 s, 60 %): every penalty
+// needed a fresh 3-witness quorum, and 6 penalties are required to cross
+// T_min, i.e. 18 distinct witness observations to convict one attacker inside
+// a 20 s attack window. A4 fell from MCC 0.444 to 0.240 (TP 10 -> 3) and A8's
+// recall stayed at 20 % with FN=127. Precision was unaffected (A1/A2/A4 held
+// FP=0 throughout), confirming the loss was pure recall.
+//
+// Returns true only when THIS event reaches quorum; the caller then clears
+// only this event's alerts, leaving other events' evidence intact.
+inline bool witness_bft_quorum_reached(uint32_t target_node, uint64_t event_key,
+                                        OQS_SIG* oqs) {
     auto it = g_witness_alert_pool.find(target_node);
     if (it == g_witness_alert_pool.end()) return false;
 
@@ -1379,11 +1414,13 @@ inline bool witness_bft_quorum_reached(uint32_t target_node, OQS_SIG* oqs) {
                               [cutoff](const WitnessAlert& a) { return a.ts < cutoff; }),
                pool.end());
 
-    // Cardinality over DISTINCT witnesses, each independently verified under
-    // its own pk_w. std::set is the deduplication the spec assigns to the
-    // smart contract.
+    // Cardinality over DISTINCT witnesses reporting THIS event, each
+    // independently verified under its own pk_w. std::set keyed on witness_id,
+    // restricted to event_key, is exactly the (w, v_i, H(p)) deduplication the
+    // spec assigns to the smart contract.
     std::set<uint32_t> distinct_witnesses;
     for (auto& wa : pool) {
+        if (wa.event_key != event_key) continue;
         if (!g_node_keys[wa.witness_id].keys_generated) continue;
         if (OQS_SIG_verify(oqs, wa.signed_digest, 64,
                            wa.alert_sig, wa.alert_sig_len,
@@ -1391,6 +1428,18 @@ inline bool witness_bft_quorum_reached(uint32_t target_node, OQS_SIG* oqs) {
             distinct_witnesses.insert(wa.witness_id);
     }
     return distinct_witnesses.size() >= (size_t)(2 * WITNESS_F + 1);
+}
+
+// Clears only the alerts belonging to one resolved (v_i, p) event.
+inline void witness_clear_event(uint32_t target_node, uint64_t event_key) {
+    auto it = g_witness_alert_pool.find(target_node);
+    if (it == g_witness_alert_pool.end()) return;
+    auto& pool = it->second;
+    pool.erase(std::remove_if(pool.begin(), pool.end(),
+                              [event_key](const WitnessAlert& a) {
+                                  return a.event_key == event_key;
+                              }),
+               pool.end());
 }
 
 // α_w: duplication alert — same packet at two destinations (eq:da_sign)
@@ -1427,6 +1476,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                      h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
 
     alert.ts = ts_w;
+    alert.event_key = ((uint64_t)flow_id << 32) | (uint64_t)pkt_id;
     g_witness_alert_pool[target_node].push_back(alert);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
@@ -1438,8 +1488,8 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                   << " t_alert=" << ts_w
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
-    // BFT penalty over DISTINCT verified witnesses within W (eq:bft_penalty).
-    if (witness_bft_quorum_reached(target_node, oqs)) {
+    // BFT penalty over DISTINCT verified witnesses for THIS event within W.
+    if (witness_bft_quorum_reached(target_node, alert.event_key, oqs)) {
         std::cout << "[WITNESS-DA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
@@ -1478,7 +1528,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         // alerts re-crossing on every subsequent submission. Without this the
         // pool only ever grows and trust decays monotonically to quarantine
         // for any node that ever attracted 2f+1 witnesses.
-        g_witness_alert_pool[target_node].clear();
+        witness_clear_event(target_node, alert.event_key);
     }
 }
 
@@ -1515,6 +1565,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                      h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
 
     alert.ts = ts_w;
+    alert.event_key = ((uint64_t)flow_id << 32) | (uint64_t)pkt_id;
     g_witness_alert_pool[target_node].push_back(alert);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
@@ -1527,8 +1578,8 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << " T_fwd=" << T_fwd << "s"
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
-    // BFT penalty over DISTINCT verified witnesses within W (eq:bft_penalty).
-    if (witness_bft_quorum_reached(target_node, oqs)) {
+    // BFT penalty over DISTINCT verified witnesses for THIS event within W.
+    if (witness_bft_quorum_reached(target_node, alert.event_key, oqs)) {
         std::cout << "[WITNESS-NFA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
@@ -1549,7 +1600,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         // removed from this function.
         //
         // Same episode-clear as the α_w path — see witness_submit_duplication_alert().
-        g_witness_alert_pool[target_node].clear();
+        witness_clear_event(target_node, alert.event_key);
     }
 }
 
@@ -1696,6 +1747,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's eq:lstm_gate LSTM-suppression publishing intact", g_disable_s3_s4);
     cmd.AddValue("g_disable_s5_s6",               "DIAGNOSTIC: disable S5+S6 (active HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution", g_disable_s5_s6);
     cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 (passive HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution (isolates the witness pipeline)", g_disable_s7_s8);
+    cmd.AddValue("g_dup_diag_log",                "DIAGNOSTIC: trace every eq:dup_alert_cond firing (witness, accused, both destinations, ground truth)", g_dup_diag_log);
     cmd.AddValue("g_disable_btmm_trust",          "DIAGNOSTIC: disable the per-packet BTMM trust update (eq:trust_update); witness-driven and controller-plane trust updates unaffected", g_disable_btmm_trust);
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);

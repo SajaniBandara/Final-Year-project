@@ -38,8 +38,8 @@ from pathlib import Path
 
 # ─── Paths & run parameters ───────────────────────────────────────────────────
 
-NS3_DIR      = Path("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35")
-PROJ_DIR     = Path("/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project")
+NS3_DIR      = Path("/home/nipuni/ns-allinone-3.35/ns-3.35")
+PROJ_DIR     = Path("/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project")
 RESULTS      = PROJ_DIR / "results_routing"      # NS-3 stdout / waf cwd output
 NS3_RESULTS  = NS3_DIR / "results_routing"       # blockchain CSVs (hardcoded BC_RESULTS_DIR)
 

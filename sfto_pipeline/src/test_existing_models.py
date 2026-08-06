@@ -90,7 +90,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--ns3-results-dir",
-        default="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/backup",
+        default="/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/backup",
         help="Directory containing tcam_snapshots_{baseline,attack3,attack4}.csv",
     )
     args = parser.parse_args()
