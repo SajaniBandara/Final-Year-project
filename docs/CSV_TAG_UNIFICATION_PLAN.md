@@ -1,6 +1,9 @@
 # CSV Tag Unification & Bug Fix Plan
 
-Status: not started. Nothing in this document has been applied yet.
+Status: DONE. All Phase 1 and Phase 2 items applied, verified, and committed
+(see individual item entries below for what each verification actually covered).
+Existing CSVs on disk from prior runs were not migrated — see "Coverage &
+caveats" below.
 
 Source of truth for editing: this repo's `scratch/routing.cc` and
 `scratch/*.h`. Sync to `ns-allinone-3.35/ns-3.35/scratch/routing/` (or run
