@@ -143856,10 +143856,15 @@ if (architecture == 3 && N_Vehicles > 0)
 			// either --attack_number (new path) or --active_attack_variant
 			// (legacy path). Using active_attack_variant means every variant —
 			// including those that never set attack_number — gets a distinct tag.
-			g_sim_tag = "_V" + std::to_string(active_attack_variant)
-			          + "_pct" + std::to_string(attack_percentage)
-			          + "_s" + std::to_string(sim_seed)
-			          + g_delay_suffix;
+			// 1-indexed to match MOBIGUARD/TAP/FADE/bc_* (id = variant+1, 0 for
+			// baseline) rather than the raw 0-indexed variant this used to carry.
+			{
+				int g_sim_tag_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+				g_sim_tag = "_Attack" + std::to_string(g_sim_tag_id)
+				          + "_" + std::to_string(attack_percentage)
+				          + g_delay_suffix
+				          + "_seed" + std::to_string(sim_seed);
+			}
 			
 			if (routing_test) {
 			    hardcode_test_network_attackers();

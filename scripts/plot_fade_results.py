@@ -9,9 +9,9 @@ MATLAB look), but scoped to the metrics that are actually meaningful for
 the FADE/B3 comparison per main.tex:
 
   - M1 (MCC)  — reported "all frameworks" (main.tex Experiment 5 table).
-    FADE's side is read from fade_metrics_V<variant>_pct<pct>_s<seed>.csv
+    FADE's side is read from fade_metrics_Attack<N>_<pct>_seed<S>.csv
     (fade_save_metrics()'s node-per-epoch pp_tp/fp/tn/fn summary), NOT
-    from FADE_Attack<N>_<pct>.csv's own per-cycle cur_MCC column — that
+    from FADE__Attack<N>_<pct>_seed<S>.csv's own per-cycle cur_MCC column — that
     column is computed at flow level with only 1-2 tracked flows, which
     degenerates to ~0 by the MCC formula's epsilon term whenever a cycle
     has only TP samples and no TN counterexample (or vice versa). See
@@ -109,7 +109,7 @@ MOB_COL_TN      = 15
 MOB_COL_FN      = 16
 MOB_COL_UCR_AVG = 20
 
-# FADE_Attack<N>_<pct>.csv column layout (fade_write_per_cycle_csv, routing.cc)
+# FADE__Attack<N>_<pct>_seed<S>.csv column layout (fade_write_per_cycle_csv, routing.cc)
 # NOTE: two extra PIR columns (17,18) shift TVR/UCR two places right vs MOBIGUARD's file.
 FADE_COL_PDR_AVG = 2
 FADE_COL_LAT_AVG = 4
@@ -152,10 +152,15 @@ def mean_and_ci(values):
     return m, t * (s / np.sqrt(n))
 
 
-def load_method_data(prefix, attack_number, seeds=None):
+def load_method_data(prefix, attack_number, seeds=(1,)):
     """
-    seeds=None: single unsuffixed file per pct (FADE_Attack<N>_<pct>.csv —
-    the isolated FADE sweep, run_hf_attacks.py, only ever collects seed=1).
+    prefix is the literal filename prefix as written by the C++ side —
+    "MOBIGUARD" (single underscore before "_Attack") or "FADE_" (double
+    underscore: the "FADE_" prefix plus the canonical "_Attack..." suffix
+    gives "FADE__Attack...").
+
+    seeds=(1,): FADE__Attack<N>_<pct>[_d<D>ms]_seed<S>.csv — the isolated
+    FADE sweep (run_hf_attacks.py) only ever collects seed=1.
 
     seeds=(1,2,3): MOBIGUARD_Attack<N>_<pct>[_d<D>ms]_seed<S>.csv — each
     seed's rows are concatenated, so mean_and_ci naturally averages over
@@ -168,41 +173,36 @@ def load_method_data(prefix, attack_number, seeds=None):
     data = {}
     for pct in ATTACK_PERCENTAGES:
         rows = []
-        if seeds:
-            for seed in seeds:
-                for filepath in glob.glob(os.path.join(
-                        RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}*_seed{seed}.csv")):
-                    rows.extend(read_csv(filepath))
-        else:
-            filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}.csv")
-            rows = read_csv(filepath)
+        for seed in seeds:
+            for filepath in glob.glob(os.path.join(
+                    RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}*_seed{seed}.csv")):
+                rows.extend(read_csv(filepath))
         data[pct] = rows
     return data
 
 
 def load_fade_summary_mcc(attack_number, seeds=(1,)):
     """
-    FADE_Attack<N>_<pct>.csv's own cur_MCC/avg_MCC columns are computed at
-    FLOW level (fade_write_per_cycle_csv section 1): with only 1-2 flows
-    tracked by fade_flow_config, most cycles have either a TP-only or a
-    TN-only sample and no counterexample in the SAME cycle, so the MCC
+    FADE__Attack<N>_<pct>_seed<S>.csv's own cur_MCC/avg_MCC columns are
+    computed at FLOW level (fade_write_per_cycle_csv section 1): with only
+    1-2 flows tracked by fade_flow_config, most cycles have either a TP-only
+    or a TN-only sample and no counterexample in the SAME cycle, so the MCC
     formula's epsilon-regularized denominator forces cur_MCC to ~0 even
     when detection is working correctly (see PENDING_FIXES.md Fix 7/Fix 8
     discussion — this is a small-sample artifact of the per-cycle file,
     not a detection failure).
-    fade_metrics_V<variant>_pct<pct>_s<seed>.csv (written once per run by
+    fade_metrics_Attack<N>_<pct>_seed<S>.csv (written once per run by
     fade_save_metrics(), using the node-per-epoch pp_tp/fp/tn/fn counters
     Fix 7 introduced) does not have this problem — far more samples, and
-    its filename embeds variant/pct/seed so it can't be cross-contaminated
+    its filename embeds attack/pct/seed so it can't be cross-contaminated
     by concurrent runs the way the shared routing_fade_per_cycle.csv can.
     Use it for FADE's MCC instead.
     """
-    variant = attack_number - 1
     data = {}
     for pct in ATTACK_PERCENTAGES:
         vals = []
         for seed in seeds:
-            filepath = os.path.join(RESULTS_DIR, f"fade_metrics_V{variant}_pct{pct}_s{seed}.csv")
+            filepath = os.path.join(RESULTS_DIR, f"fade_metrics_Attack{attack_number}_{pct}_seed{seed}.csv")
             if not os.path.exists(filepath):
                 continue
             with open(filepath) as f:
@@ -350,7 +350,7 @@ def _blank_row(axes_row, message):
 
 def plot_attack_row(axes_row, attack_number, row_label=None):
     """Draw one attack's 5-panel comparison across the given row of axes."""
-    fade_data = load_method_data("FADE", attack_number)
+    fade_data = load_method_data("FADE_", attack_number)
     mob_data  = load_method_data("MOBIGUARD", attack_number, seeds=(1, 2, 3))
 
     excluded = EXCLUDED_PERCENTAGES.get(attack_number, [])

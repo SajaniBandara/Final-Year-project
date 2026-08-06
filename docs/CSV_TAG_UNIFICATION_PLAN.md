@@ -183,30 +183,74 @@ Prefix-specific filenames:
    before reaching it) — code-reviewed only for that specific branch, same conditional
    structure as the verified MOBIGUARD baseline branch.
 
-6. **Convert `g_sim_tag` from 0-indexed to 1-indexed, and to the canonical shape** —
-   routing.cc:143846-143850 currently builds
-   `_V{active_attack_variant}_pct{...}_s{seed}{delay}` using the raw 0-indexed variant.
-   Decided: replace this outright with the canonical
+6. **DONE — Convert `g_sim_tag` from 0-indexed to 1-indexed, and to the canonical
+   shape.** routing.cc used to build `_V{active_attack_variant}_pct{...}_s{seed}{delay}`
+   from the raw 0-indexed variant. Replaced outright with the canonical
    `_Attack{N}_{pct}[_d{X}ms]_seed{S}` shape — same `id = variant>=0 ? variant+1 : 0`
-   conversion `bc_run_suffix()` already uses, `Attack` instead of `V`, and `seed{S}`
-   instead of `s{seed}`. No `V`-prefixed form is kept anywhere, internal or otherwise.
+   conversion `bc_run_suffix()` already used, `Attack` instead of `V`, `seed{S}` instead
+   of `s{seed}`, and the delay segment (when present) now ordered before seed instead
+   of after. No `V`-prefixed form is kept anywhere.
 
-   `N` must be derived from `active_attack_variant + 1`, never from the `attack_number`
-   variable — confirmed `attack_number` (routing.cc:141912) is only populated on the
-   new `--attack_number` CLI path (routing.cc:141991, gated by
-   `attack_number_cli != -1`); a run launched via the legacy `--active_attack_variant`
-   path never touches it, leaving it stale/default, and it isn't `extern`'d into any
-   header anyway. `active_attack_variant` is the only state both CLI paths reliably
-   resolve into (routing.cc:141996), which is why every existing tag-writer
-   (`bc_run_suffix()`, MOBIGUARD's switch, TAP, tcam) already derives `N` from it via
-   `variant + 1` rather than from `attack_number` — keep that pattern.
+   Consumers automatically inherited the new shape with no code changes needed, since
+   they just interpolate `g_sim_tag` as-is: `optimization_link_lifetime_data_*`,
+   `link_lifetime_solution_*`, `fade_results`, `fade_metrics`, `crypto_timing_log`,
+   plus the two Phase 1 fixes that also use `g_sim_tag` directly (`routing.xml`,
+   `routing_fade_per_cycle.csv`) — all verified producing `..._Attack5_40_seed1...`
+   filenames in the runtime test below.
 
-   Consumers to re-check after this change: `optimization_link_lifetime_data_*`,
-   `link_lifetime_solution_*`, `fade_results`, `fade_metrics` (efade_detection.h:401),
-   `crypto_timing_log` (crypto_event_log.h:69) — and `plot_fade_results.py` /
-   `plot_hf_results.py`, which currently parse the `_V{variant}_pct{...}` shape directly
-   (see Phase 2 #8) and must be updated to parse `_Attack{N}_{pct}...` instead, not just
-   drop their `variant = attack_number - 1` conversion.
+   `plot_fade_results.py` and `plot_hf_results.py`, which parsed the old
+   `_V{variant}_pct{...}` shape directly, were NOT left broken — updated in this same
+   change (see below) rather than deferred to #8, since leaving them stale would mean
+   the g_sim_tag conversion ships broken for its two actual consumers.
+
+   **Downstream fixes made in this same pass, beyond the item's literal scope:**
+   - `plot_fade_results.py`: `load_method_data()`'s FADE branch (exact match, assumed
+     an unsuffixed `FADE_Attack<N>_<pct>.csv`) is now glob+seed based like its
+     MOBIGUARD branch always was, with a `"FADE_"` prefix (double underscore result:
+     `"FADE_" + "_Attack..." = "FADE__Attack..."`) — call site updated accordingly.
+     `load_fade_summary_mcc()`'s exact-match path rewritten from
+     `fade_metrics_V<variant>_pct<pct>_s<seed>.csv` to
+     `fade_metrics_Attack<N>_<pct>_seed<S>.csv`; the now-unused `variant = attack_number
+     - 1` line removed. `load_mobiguard_final_mcc()` needed no change — it was already
+     glob+seed based and tolerates the new shape as-is. Docstrings/comments referencing
+     the old filename shapes updated throughout the file for accuracy.
+   - `plot_hf_results.py`: had **zero seed awareness at all** (not just the V-tag
+     issue) — `load_fade(variant, pct)` and `load_mobiguard(number, pct)` both did
+     bare exact-match lookups with no seed segment, which Phase 2 #5's seed addition
+     had already silently broken before this item even started. Rewrote both:
+     `load_fade` now takes `(number, pct, seed=1)` and reads
+     `fade_metrics_Attack{number}_{pct}_seed{seed}.csv`; `load_mobiguard` now takes
+     `(number, pct, seed=1)` and globs `MOBIGUARD_Attack{number}_{pct}*_seed{seed}.csv`
+     (tolerating a possible delay segment, mirroring `plot_fade_results.py`'s pattern
+     even though delay never actually applies to the Attacks 5-8 this script targets).
+     Added the missing `import glob`. Updated the `load_all()` call site to pass the
+     1-indexed attack `number` instead of the internal 0-indexed `variant` (the
+     filenames are keyed by attack number now, not variant).
+   - `run_hf_attacks.py`: `check_results()` did exact-match checks for
+     `MOBIGUARD_Attack{a}_{p}.csv` / `FADE_Attack{a}_{p}.csv` with no seed and the old
+     single underscore — also silently broken by #5 before this item started (every
+     check would report MISSING regardless of real output). Added a `seed` parameter,
+     fixed to `MOBIGUARD_Attack{a}_{p}_seed{seed}.csv` /
+     `FADE__Attack{a}_{p}_seed{seed}.csv`, and passed `args.seed` through at the call
+     site. Also corrected a stale module-docstring block describing the old filename
+     shapes.
+
+   Deliberately NOT touched in this pass (left for #8 as originally scoped):
+   `run_std_attacks.py`, `run_ablation_sweep.py`, `run_tcam_sweep.py`,
+   `functional_verification.py`, `verify_metrics.py`, `plot_tcam_detection.py` — these
+   weren't newly broken by g_sim_tag specifically (or weren't verified either way), so
+   fixing them here would be scope creep beyond what this item's testing covered.
+
+   Verified: build succeeds (force-rebuilt, confirmed `Compiling`/`Linking` lines);
+   `python3 -m py_compile` clean on all three edited Python files; ran a FADE-isolated
+   Attack5/pct40/seed1 sim and got `fade_results_Attack5_40_seed1.csv`,
+   `routing_fade_per_cycle_Attack5_40_seed1.csv`, and `routing_Attack5_40_seed1.xml`
+   (all three now inheriting the canonical shape automatically); ran a normal
+   Attack5/pct40/seed1 sim and functionally tested the real Python loaders against the
+   real output files — `plot_hf_results.py`'s `load_mobiguard()` correctly parsed 4 real
+   data rows into PDR/MCC/DR/FPR arrays, and `plot_fade_results.py`'s
+   `load_method_data()` correctly found 4 rows for both the MOBIGUARD and FADE_ prefixes
+   against the same files.
 
 7. **Unify baseline representation to `Attack0` everywhere** — replace the three
    competing conventions (separate filename in MOBIGUARD/FADE/tcam; raw negative index

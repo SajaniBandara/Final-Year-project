@@ -7,16 +7,16 @@ matching the style of Figure3_Attack2_AllMetrics.png from plot_tap_results.py.
 CSV files — copy from Linux results_routing/ to simulations/results/hf/
 
   eFADE summary (one row per run):
-    fade_metrics_V4_pct{0,20,40,60,80,100}.csv   ← Attack 5
-    fade_metrics_V5_pct{...}.csv                  ← Attack 6
-    fade_metrics_V6_pct{...}.csv                  ← Attack 7
-    fade_metrics_V7_pct{...}.csv                  ← Attack 8
+    fade_metrics_Attack5_{0,20,40,60,80,100}_seed1.csv
+    fade_metrics_Attack6_{...}_seed1.csv
+    fade_metrics_Attack7_{...}_seed1.csv
+    fade_metrics_Attack8_{...}_seed1.csv
 
     Columns (header row): attack_variant, attack_percentage, total_flows,
                           pdr(%), pir(%), tp, fp, tn, fn, mcc
 
   MOBIGUARD per-cycle (no header):
-    MOBIGUARD_Attack{5,6,7,8}_{0,20,40,60,80,100}.csv
+    MOBIGUARD_Attack{5,6,7,8}_{0,20,40,60,80,100}_seed1.csv
 
     Columns: cycle, cur_PDR, avg_PDR, cur_lat, avg_lat,
              cur_MCC, avg_MCC, cur_DR, avg_DR, cur_FPR, avg_FPR,
@@ -34,6 +34,7 @@ Usage:
 """
 
 import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as stats
@@ -105,8 +106,8 @@ def mean_ci(values):
 
 # ─── Data loading ─────────────────────────────────────────────────────────────
 
-def load_fade(variant, pct):
-    path = os.path.join(RESULTS_DIR, f"fade_metrics_V{variant}_pct{pct}.csv")
+def load_fade(number, pct, seed=1):
+    path = os.path.join(RESULTS_DIR, f"fade_metrics_Attack{number}_{pct}_seed{seed}.csv")
     rows = read_rows(path, skip_header=True)
     if not rows:
         return None
@@ -122,8 +123,13 @@ def load_fade(variant, pct):
     }
 
 
-def load_mobiguard(number, pct):
-    path = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack{number}_{pct}.csv")
+def load_mobiguard(number, pct, seed=1):
+    # Glob rather than an exact match: the filename may carry a _d<D>ms delay
+    # segment before _seed<S> (attacks 1/2 only; never for the HF attacks 5-8
+    # this script targets, but glob matching costs nothing and stays correct
+    # if that ever changes).
+    matches = glob.glob(os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack{number}_{pct}*_seed{seed}.csv"))
+    path = matches[0] if matches else os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack{number}_{pct}_seed{seed}.csv")
     rows = read_rows(path, skip_header=False)
     if not rows:
         return None
@@ -147,7 +153,7 @@ def load_all():
         fade[v], mob[n] = {}, {}
         mf, mm = [], []
         for pct in ATTACK_PERCENTAGES:
-            fade[v][pct] = load_fade(v, pct)
+            fade[v][pct] = load_fade(n, pct)
             mob[n][pct]  = load_mobiguard(n, pct)
             if fade[v][pct] is None: mf.append(pct)
             if mob[n][pct]  is None: mm.append(pct)
