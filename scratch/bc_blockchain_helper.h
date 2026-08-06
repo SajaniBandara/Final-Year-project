@@ -101,6 +101,7 @@ static const std::string BC_RESULTS_DIR =
 inline std::string bc_run_suffix() {
     int id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
     return "_Attack" + std::to_string(id) + "_" + std::to_string(attack_percentage) + g_delay_suffix
+           + "_seed" + std::to_string(sim_seed)
            + (enable_tap ? "_TAP" : "")
            + (fade_detection_active ? "_FADE" : "");
 }

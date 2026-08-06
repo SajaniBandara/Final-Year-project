@@ -145,12 +145,43 @@ Prefix-specific filenames:
 
 ### Phase 2 — Naming/indexing unification (do after Phase 1 fixes are verified)
 
-5. **Add seed to MOBIGUARD/TAP/FADE/bc_*** — none of these five file families carry
-   `sim_seed` today. Add `_seed{S}` per the target format above.
-   - MOBIGUARD: routing.cc:117736 (`write_security_metrics_csv`)
-   - TAP: tap_detection.h:183 (`write_tap_csv`)
-   - FADE: routing.cc:117942
-   - bc_*: bc_blockchain_helper.h `bc_run_suffix()`
+5. **DONE — Add seed to MOBIGUARD/TAP/FADE/bc_*.** None of these five file families
+   carried `sim_seed`. Added `_seed{S}` per the target format, and applied the
+   `TAP_`/`FADE_` double-underscore prefix convention (`TAP__Attack...`,
+   `FADE__Attack...`) at the same time since it was part of the same target-format
+   change:
+   - MOBIGUARD: routing.cc `write_security_metrics_csv()`
+   - TAP: tap_detection.h `write_tap_csv()`
+   - FADE: routing.cc `fade_write_per_cycle_csv()`
+   - bc_*: bc_blockchain_helper.h `bc_run_suffix()` — seed placed before the
+     `_TAP`/`_FADE` disambiguators (`..._seed{S}_TAP`, not `..._TAP_seed{S}`)
+
+   Went slightly beyond the item's literal wording: also added seed to the *baseline*
+   branch of MOBIGUARD (`MOBIGUARD_baseline.csv` → `MOBIGUARD_baseline_seed{S}.csv`)
+   and FADE (`FADE_baseline.csv` → `FADE_baseline_seed{S}.csv`), which weren't
+   separately called out as their own Phase 1 item but had the identical missing-seed
+   collision — two seeds of a baseline run would otherwise still collide after this
+   item. Baseline is intentionally NOT given the double-underscore treatment
+   (`FADE_baseline`, not `FADE__baseline`) since it isn't using the
+   `_Attack{N}_{pct}...` canonical suffix that motivated the double underscore in the
+   first place — that gets resolved when baseline is unified to `Attack0` in #7.
+
+   FADE's percentage bucketing (rounds `attack_percentage` to the nearest of
+   `{0,20,40,60,80,100}` before embedding it) was left untouched — out of scope for a
+   seed-only change, noted here so it isn't mistaken for something this item was
+   supposed to fix.
+
+   Verified: build succeeds (force-rebuilt per the gotcha above); ran four concurrent
+   processes — normal Attack1, TAP-enabled Attack2, FADE-isolated Attack5, and a
+   baseline run, all `--sim_seed=1` — and got correctly-tagged output from all four
+   writer families in one pass: `MOBIGUARD_Attack1_40_d100ms_seed1.csv`,
+   `MOBIGUARD_baseline_seed1.csv`, `TAP__Attack2_40_d100ms_seed1.csv`,
+   `FADE__Attack5_40_seed1.csv`, `bc_dkg_log_Attack1_40_d100ms_seed1.csv`, and
+   `bc_dkg_log_Attack5_40_seed1_FADE.csv`. `FADE_baseline_seed{S}.csv`'s branch wasn't
+   live-fired (the baseline test run has `active_attack_variant == -1`, so
+   `fade_detection_active` never gates true and `fade_write_per_cycle_csv()` returns
+   before reaching it) — code-reviewed only for that specific branch, same conditional
+   structure as the verified MOBIGUARD baseline branch.
 
 6. **Convert `g_sim_tag` from 0-indexed to 1-indexed, and to the canonical shape** —
    routing.cc:143846-143850 currently builds

@@ -117704,7 +117704,7 @@ void write_security_metrics_csv()
 	switch (active_attack_variant)
 	{
 		case (-1):
-			filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
+			filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline_seed" + to_string(sim_seed) + ".csv";
 			break;
 		case (0):
 			attack_id = 1;
@@ -117740,7 +117740,7 @@ void write_security_metrics_csv()
 		filename = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
 		           + to_string(attack_id)
 		           + "_" + to_string(attack_percentage)
-		           + g_delay_suffix + ".csv";
+		           + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
 	}
 
 	fout.open(filename, ios::out|ios::app);
@@ -117932,7 +117932,7 @@ void fade_write_per_cycle_csv(std::string dir)
 
 		if (active_attack_variant == -1)
 		{
-			filename = dir + "FADE_baseline.csv";
+			filename = dir + "FADE_baseline_seed" + to_string(sim_seed) + ".csv";
 		}
 		else
 		{
@@ -117943,7 +117943,9 @@ void fade_write_per_cycle_csv(std::string dir)
 			else if (attack_percentage <= 60)  pct = 60;
 			else if (attack_percentage <= 80)  pct = 80;
 			else                               pct = 100;
-			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + ".csv";
+			// Double underscore is deliberate: "FADE_" prefix + canonical
+			// "_Attack{N}_{pct}..." suffix, same convention as TAP below.
+			filename = dir + "FADE__Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
 		}
 
 		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
