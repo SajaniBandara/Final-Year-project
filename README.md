@@ -135,7 +135,7 @@ EOF
 python3 scripts/run_std_attacks.py --build
 ```
 
-> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns-allinone-3.35/ns-3.35`.
+> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns-allinone-3.35/ns-3.35`.
 
 ---
 
@@ -651,9 +651,9 @@ sudo apt-get install libssl-dev
 
 Verify by checking that `/usr/include/openssl/evp.h` exists.
 
-### Launcher fails: "No such file or directory: .../ns3_g13_apsari/..."
+### Launcher fails: "No such file or directory: .../ns3_g13/..."
 
-The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
+The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns3_g13/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
 
 ```python
 NS3_DIR = Path.home() / "ns-allinone-3.35/ns-3.35"   # personal laptop
@@ -743,7 +743,7 @@ Run these steps in order when running a blockchain-enabled simulation session:
 #### Step 1: Deploy the Fabric Network
 From the project root directory, navigate to the test-network and run the deployment script:
 ```bash
-cd "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./deploy-mobiguard.sh
 ```
 *This starts the Fabric nodes (peers, orderer, CAs, CouchDB), creates `mychannel`, and deploys the Go chaincode (`mobiguard-cc`). Wait for the success banner.*
@@ -751,7 +751,7 @@ cd "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr p
 #### Step 2: Enroll RSU Identities (First-time only)
 Enroll the RSU nodes' Fabric CA certificates:
 ```bash
-cd "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 ./enroll_rsu_identities.sh stage1
 ```
 *This generates public/private key wallets under `blockchain/bridge/wallet/`.*
@@ -759,7 +759,7 @@ cd "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr p
 #### Step 3: Start the Bridge (Terminal 1)
 Run the bridge service to tail logs and publish to Fabric:
 ```bash
-cd "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 node index.js
 ```
 *Keep this terminal open. It will print blockchain transaction submissions in real time.*
@@ -767,7 +767,7 @@ node index.js
 #### Step 4: Run the NS-3 Simulation (Terminal 2)
 In a separate terminal, run the NS-3 simulation as usual (either using the sweep scripts or manually via `./waf`):
 ```bash
-cd /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
+cd /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35
 # Example: Run Attack 3 (Control Plane TCAM Flood)
 ./waf --run "scratch/routing/routing --simTime=40 --attack_number=3 --attack_percentage=40"
 ```
@@ -776,13 +776,13 @@ cd /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
 #### Step 5: Querying the Ledger (Optional)
 To query the current ledger state directly, set up the peer CLI environment variables and invoke peer commands:
 ```bash
-export PATH="/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
-export FABRIC_CFG_PATH="/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
+export PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
+export FABRIC_CFG_PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
 export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_LOCALMSPID="Org1MSP"
 export CORE_PEER_ADDRESS=localhost:7051
-export CORE_PEER_MSPCONFIGPATH="/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
-export CORE_PEER_TLS_ROOTCERT_FILE="/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+export CORE_PEER_MSPCONFIGPATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+export CORE_PEER_TLS_ROOTCERT_FILE="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
 
 # Example: Check trust score for RSU 200
 peer chaincode query -C mychannel -n mobiguard-cc -c '{"function":"QueryTrust","Args":["200"]}'
@@ -791,6 +791,6 @@ peer chaincode query -C mychannel -n mobiguard-cc -c '{"function":"QueryTrust","
 #### Step 6: Shut Down and Clean up
 Stop the Node.js bridge using `Ctrl+C` in Terminal 1, then tear down the Fabric network:
 ```bash
-cd "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./network.sh down
 ```

@@ -31,7 +31,7 @@ publishable performance numbers. See §6 for why that distinction matters.
 ## 1. Prerequisites on the cluster
 
 ```bash
-cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35        # NS3_DIR default matches this
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35        # NS3_DIR default matches this
 ./waf build                                   # or via the launcher, see below
 ```
 
@@ -49,7 +49,7 @@ Checklist — all four must hold or results are silently wrong:
    A plain `./waf build` does **not** copy the `.py` helpers and the sim will
    abort mid-run with "Solution not found".
 3. **Mobility traces present** at the paths compiled into `routing.cc`
-   (`/home/sdvn_hidden_attacks/ns3_g13_apsari/mobility/...`). On the cluster these are
+   (`/home/sdvn_hidden_attacks/ns3_g13/mobility/...`). On the cluster these are
    the real paths — no swapping needed. Seeds 1–5 use
    `mobility_urban_150_seed{N}.tcl`.
 4. **`lstm_pipeline/lstm_weights_cpp.bin` exists.** Q3 and Q6 set
@@ -72,7 +72,7 @@ python3 scripts/run_q1q6_ablation.py --dry-run    # all 48 commands, runs nothin
 python3 scripts/run_q1q6_ablation.py --workers 16 # execute
 ```
 
-`NS3_DIR` defaults to `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35`. Override without
+`NS3_DIR` defaults to `~/ns3_g13/ns-allinone-3.35/ns-3.35`. Override without
 editing the file:
 
 ```bash
@@ -262,7 +262,7 @@ Q4 it reflects the quarantine path.
 ## 8. Gotchas
 
 * **Do not commit local path swaps.** `routing.cc` stores cluster paths
-  (`/home/sdvn_hidden_attacks/ns3_g13_apsari/...`) intentionally. On a dev laptop use
+  (`/home/sdvn_hidden_attacks/ns3_g13/...`) intentionally. On a dev laptop use
   `scripts/local_path_swap.sh local` before running and `... hpc` before any
   `git add`. On the cluster no swapping is needed.
 * **Result files collide.** `write_security_metrics_csv()` names by

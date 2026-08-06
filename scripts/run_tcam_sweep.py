@@ -24,7 +24,7 @@ import math
 # created next to this script rather than the real simulation output
 # directory. Fixed to the same absolute path convention every other script
 # in this codebase uses.
-NS3_ROOT    = os.path.expanduser("~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35")
+NS3_ROOT    = os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35")
 RESULTS_DIR = os.path.join(NS3_ROOT, "results_routing")
 LOG_DIR     = os.path.join(RESULTS_DIR, "sweep_logs")
 

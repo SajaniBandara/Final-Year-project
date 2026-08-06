@@ -35,10 +35,10 @@ from sklearn.metrics import matthews_corrcoef
 # ---------------------------------------------------------------------------
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
-# Must include "ns3_g13_apsari": Path.home() / "ns-allinone-3.35" resolves
+# Must include "ns3_g13": Path.home() / "ns-allinone-3.35" resolves
 # through a symlink into a DIFFERENT group's ns-3 checkout on this shared
 # account (same issue found and fixed in lstm_logger.h's C++ path helpers).
-NS3_DIR      = Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"
+NS3_DIR      = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
 DEFAULT_DATA = NS3_DIR / "results_routing" / "lstm_training"
 OUTPUT_JSON  = PIPELINE_DIR / "calibrated_params.json"
 OUTPUT_REPORT = PIPELINE_DIR / "calibration_report.txt"
