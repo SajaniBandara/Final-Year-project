@@ -5385,7 +5385,11 @@ $\lfloor 0.01p \times 264 \rfloor$ attacker nodes are
 allocated among the 200 vehicles and 64 \ac{RSU}s
 plane-specifically per attack variant; controller
 compromise follows the threshold rule defined in
-Section~\ref{sec:simulation} automatically.
+Section~\ref{sec:simulation} automatically. For Hidden
+Forwarding (Variants~5--8), attacker candidates are
+additionally restricted to nodes lying on an active
+flow's routing path, since an off-path node can neither
+observe nor duplicate traffic it never relays.
 
 \textbf{Second dimension — Attack Intensity $\mathcal{I}$:}
 Three discrete levels produce three lines per metric

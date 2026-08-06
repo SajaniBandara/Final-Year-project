@@ -8,7 +8,7 @@
 // Writes one CSV row per RSU per 1 Hz cycle when --training=1 is passed.
 //
 // Output path:
-//   $HOME/ns-allinone-3.35/ns-3.35/results_routing/
+//   $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
 //       lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
 //
 // CSV columns (10 features + escalation flag + metadata + live-inference
@@ -385,7 +385,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
 inline std::string lstm_weights_bin_path()
 {
     // Fallback only — unreachable whenever HOME is set (overwritten just below).
-    std::string dir = "/home/nipuni/g13_project_repo/Final-Year-project/";
+    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/Final-Year-project/";
     const char* home = std::getenv("HOME");
     if (home)
         dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/";
@@ -401,10 +401,10 @@ inline std::string lstm_weights_bin_path()
 inline std::string lstm_make_base_dir()
 {
     std::string dir =
-        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     const char* home = std::getenv("HOME");
     if (home)
-        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+        dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     if (!dir.empty() && dir.back() != '/')
         dir += '/';
     return dir;

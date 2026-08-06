@@ -120,7 +120,7 @@ NS-3's waf build system needs a `wscript` file in the scratch subdirectory to kn
 python3 scripts/run_std_attacks.py --build
 
 # Then write the wscript:
-cat > ~/ns-allinone-3.35/ns-3.35/scratch/routing/wscript << 'EOF'
+cat > ~/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/routing/wscript << 'EOF'
 import os
 
 def build(bld):
@@ -135,7 +135,7 @@ EOF
 python3 scripts/run_std_attacks.py --build
 ```
 
-> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns-allinone-3.35/ns-3.35`.
+> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns3_g13/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns3_g13/ns-allinone-3.35/ns-3.35`.
 
 ---
 
@@ -150,9 +150,9 @@ If you already have a mobility trace (`mobility_urban_150.tcl`) and NS-3 is inst
 python3 scripts/run_std_attacks.py --build --delay 80
 
 # Results appear in:
-#   ~/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack1_<pct>_d80ms.csv
-#   ~/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack2_<pct>_d80ms.csv
-#   ~/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_<pct>_d80ms.csv
+#   ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack1_<pct>_d80ms.csv
+#   ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack2_<pct>_d80ms.csv
+#   ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_<pct>_d80ms.csv
 #   logs/A<N>_pct<P>_d80ms_seed1.log
 ```
 
@@ -287,7 +287,7 @@ python3 scripts/run_std_attacks.py --build
 ```
 
 What this does internally:
-1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
+1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
 2. Runs `./waf build`
 
 Every file inside `scratch/` is synced automatically — no explicit list to maintain. The `scratch/routing/wscript` is **not** synced — create it once manually as described in §2.1.
@@ -295,13 +295,13 @@ Every file inside `scratch/` is synced automatically — no explicit list to mai
 To build manually without the launcher:
 
 ```bash
-cd ~/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
 ./waf build 2>&1 | grep -i error
 ```
 
 > **Note:** A manual `./waf build` compiles the code but does **not** copy the `.py` helper scripts. If you skip `--build`, run this once to copy them:
 > ```bash
-> cp <path-to-this-repo>/scratch/*.py ~/ns-allinone-3.35/ns-3.35/scratch/
+> cp <path-to-this-repo>/scratch/*.py ~/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/
 > ```
 
 ---
@@ -382,7 +382,7 @@ python3 scripts/run_std_attacks.py --build --clean --sim-time 300 --delay 80
 **Attack 1 — Control Plane (CP) Selective Time Delay:**
 
 ```bash
-cd ~/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
 ./waf --run "scratch/routing/routing \
   --routing_test=false \
   --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
@@ -396,7 +396,7 @@ cd ~/ns-allinone-3.35/ns-3.35
 **Attack 2 — Data Plane (DP) Selective Time Delay:**
 
 ```bash
-cd ~/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
 ./waf --run "scratch/routing/routing \
   --routing_test=false \
   --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
@@ -489,7 +489,7 @@ Active only for `--attack_number=3` or `--attack_number=4`. Metrics are appended
 
 ## 9. Result Files
 
-All result CSVs are written to `~/ns-allinone-3.35/ns-3.35/results_routing/`.
+All result CSVs are written to `~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/`.
 
 ### Filename convention
 
@@ -622,7 +622,7 @@ RSU-to-controller assignment: each RSU is assigned to its nearest controller by 
 
 ```bash
 ~/ns-allinone-3.35/netanim-3.109/NetAnim
-# File → Open → ~/ns-allinone-3.35/ns-3.35/routing.xml
+# File → Open → ~/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml
 ```
 
 ---
@@ -653,10 +653,10 @@ Verify by checking that `/usr/include/openssl/evp.h` exists.
 
 ### Launcher fails: "No such file or directory: .../ns3_g13/..."
 
-The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
+The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns3_g13/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
 
 ```python
-NS3_DIR = Path.home() / "ns-allinone-3.35/ns-3.35"   # personal laptop
+NS3_DIR = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"   # personal laptop
 ```
 
 ### Build error: "not declared in this scope"
@@ -674,7 +674,7 @@ The optimizer (`optimization_lifetime.py`) reads a per-run tagged CSV (e.g. `opt
 Run under gdb:
 
 ```bash
-cd ~/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
 ./waf --run "scratch/routing/routing --attack_number=2 --attack_percentage=40" --gdb
 # In gdb: run  →  bt
 ```
@@ -714,8 +714,8 @@ python3 scripts/run_std_attacks.py --clean --build --delay 80
 Or manually:
 
 ```bash
-rm ~/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack*.csv
-rm ~/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack*.csv
+rm ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack*.csv
+rm ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack*.csv
 ```
 
 ---
@@ -743,7 +743,7 @@ Run these steps in order when running a blockchain-enabled simulation session:
 #### Step 1: Deploy the Fabric Network
 From the project root directory, navigate to the test-network and run the deployment script:
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./deploy-mobiguard.sh
 ```
 *This starts the Fabric nodes (peers, orderer, CAs, CouchDB), creates `mychannel`, and deploys the Go chaincode (`mobiguard-cc`). Wait for the success banner.*
@@ -751,7 +751,7 @@ cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-pr
 #### Step 2: Enroll RSU Identities (First-time only)
 Enroll the RSU nodes' Fabric CA certificates:
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 ./enroll_rsu_identities.sh stage1
 ```
 *This generates public/private key wallets under `blockchain/bridge/wallet/`.*
@@ -759,7 +759,7 @@ cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-pr
 #### Step 3: Start the Bridge (Terminal 1)
 Run the bridge service to tail logs and publish to Fabric:
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 node index.js
 ```
 *Keep this terminal open. It will print blockchain transaction submissions in real time.*
@@ -767,7 +767,7 @@ node index.js
 #### Step 4: Run the NS-3 Simulation (Terminal 2)
 In a separate terminal, run the NS-3 simulation as usual (either using the sweep scripts or manually via `./waf`):
 ```bash
-cd /home/nipuni/ns-allinone-3.35/ns-3.35
+cd /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35
 # Example: Run Attack 3 (Control Plane TCAM Flood)
 ./waf --run "scratch/routing/routing --simTime=40 --attack_number=3 --attack_percentage=40"
 ```
@@ -776,13 +776,13 @@ cd /home/nipuni/ns-allinone-3.35/ns-3.35
 #### Step 5: Querying the Ledger (Optional)
 To query the current ledger state directly, set up the peer CLI environment variables and invoke peer commands:
 ```bash
-export PATH="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
-export FABRIC_CFG_PATH="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
+export PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
+export FABRIC_CFG_PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
 export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_LOCALMSPID="Org1MSP"
 export CORE_PEER_ADDRESS=localhost:7051
-export CORE_PEER_MSPCONFIGPATH="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
-export CORE_PEER_TLS_ROOTCERT_FILE="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+export CORE_PEER_MSPCONFIGPATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+export CORE_PEER_TLS_ROOTCERT_FILE="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
 
 # Example: Check trust score for RSU 200
 peer chaincode query -C mychannel -n mobiguard-cc -c '{"function":"QueryTrust","Args":["200"]}'
@@ -791,6 +791,6 @@ peer chaincode query -C mychannel -n mobiguard-cc -c '{"function":"QueryTrust","
 #### Step 6: Shut Down and Clean up
 Stop the Node.js bridge using `Ctrl+C` in Terminal 1, then tear down the Fabric network:
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./network.sh down
 ```

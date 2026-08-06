@@ -19,12 +19,12 @@ dynamically (=10) — no other blockers found by inspection.
 
 `preprocessor.py` looks for CSVs at:
 ```
-$HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_*/A{v}_pct{p}_seed{s}.csv
+$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_*/A{v}_pct{p}_seed{s}.csv
 ```
 (`lstm_pipeline/src/preprocessor.py:44-45`). On Windows there's no `HOME` env
 var by default, so either:
 - set one before running anything: `export HOME=/c/Users/user/Desktop/FYP/lstm_data` (bash) —
-  then place the CSVs at `$HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_*/...`, or
+  then place the CSVs at `$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_*/...`, or
 - just recreate that exact relative folder structure wherever your friend's
   CSVs land and point `HOME` at its root.
 

@@ -82,7 +82,7 @@ files at runtime, so mixed-vintage directories are survivable — but verify rat
 **Output path** (`lstm_logger.h:801-812`, base from `lstm_make_base_dir()`):
 
 ```
-$HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
 ```
 
 Note `A{v}` is the **proposal attack number**, not the internal variant index —
@@ -179,14 +179,14 @@ different runs.
 **Before starting the 240-run collection:**
 
 ```bash
-mv $HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
-   $HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_OLD_$(date +%F)
+mv $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
+   $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_OLD_$(date +%F)
 ```
 
 **After collection, verify no file contains duplicate cycles:**
 
 ```bash
-BASE=$HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
+BASE=$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
 for f in $BASE/RSU_*/A*.csv; do
   d=$(awk -F, 'NR>1{print $1}' "$f" | sort -n | uniq -d | wc -l)
   [ "$d" -gt 0 ] && echo "DUPLICATE CYCLES: $f ($d)"
@@ -214,7 +214,7 @@ done; wait
 **Then check all four of these. Any failure blocks collection:**
 
 ```bash
-BASE=$HOME/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
+BASE=$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
 
 # 1. Files exist at all
 find $BASE -name 'A*_pct60_seed1.csv' | wc -l          # expect > 0, ideally 64 per variant

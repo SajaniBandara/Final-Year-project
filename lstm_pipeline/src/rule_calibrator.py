@@ -35,7 +35,7 @@ from sklearn.metrics import matthews_corrcoef
 # ---------------------------------------------------------------------------
 SCRIPT_DIR   = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
-NS3_DIR      = Path.home() / "ns-allinone-3.35/ns-3.35"
+NS3_DIR      = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
 DEFAULT_DATA = NS3_DIR / "results_routing" / "lstm_training"
 OUTPUT_JSON  = PIPELINE_DIR / "calibrated_params.json"
 OUTPUT_REPORT = PIPELINE_DIR / "calibration_report.txt"

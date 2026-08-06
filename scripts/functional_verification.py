@@ -81,9 +81,9 @@ _spec.loader.exec_module(vm)
 # ~/ns3_g13 tree is deliberately NOT a default -- pass it with --results-dir if
 # you need to inspect those older runs.
 DEFAULT_RESULTS = [
-    os.path.expanduser("~/ns-allinone-3.35/ns-3.35/results_routing"),
-    os.path.expanduser("~/ns-allinone-3.35/ns-3.35/results_routing_test_runs_1"),
-    os.path.expanduser("~/ns-allinone-3.35/ns-3.35/results_routing_test_runs/results_routing"),
+    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"),
+    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing_test_runs_1"),
+    os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing_test_runs/results_routing"),
 ]
 
 

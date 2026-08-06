@@ -680,7 +680,7 @@ std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns
 char* home_env = getenv("HOME");
 if (home_env != nullptr)
 {
-    results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
+    results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 }
 ```
 
