@@ -108,17 +108,33 @@ Prefix-specific filenames:
    fixing it silently. If HF per-event duplicate logging is actually wanted, wiring up
    the call site and the `g_hf_event_log.push_back(...)` is a distinct piece of work.
 
-4b. **`routing_fade_per_cycle.csv` completely untagged** — routing.cc:118054
-   (`dir + "routing_fade_per_cycle.csv"`), written whenever
-   `routing_algorithm == 4 && active_attack_variant != -1`. No attack/pct/seed/delay
-   at all — every concurrent FADE-adjacent run of any attack/pct/seed appends to the
-   identical shared file. This is not a hypothetical: `scripts/plot_fade_results.py`
-   (lines 192-197) already has a docstring explicitly warning about this exact file
+4b. **DONE — `routing_fade_per_cycle.csv` completely untagged.** `fade_write_per_cycle_csv()`
+   (routing.cc) wrote `dir + "routing_fade_per_cycle.csv"` with no attack/pct/seed/delay
+   at all — every concurrent FADE-adjacent run of any attack/pct/seed appended to the
+   identical shared file. This wasn't a hypothetical: `scripts/plot_fade_results.py`
+   (lines 192-197) already had a docstring explicitly warning about this exact file
    being "cross-contaminated by concurrent runs" and instructing callers to use
    `fade_metrics_V<variant>_pct<pct>_s<seed>.csv` instead for anything that needs
    per-run isolation — i.e. the collision was already known and worked around in one
-   consumer, never fixed at the source. Fix: tag with the canonical suffix like every
-   other per-run file.
+   consumer, never fixed at the source.
+
+   Fixed by tagging with `g_sim_tag`, same approach as the `AnimationInterface` fix
+   (#1) — the function only fires from a scheduled per-cycle callback, always well
+   after `g_sim_tag` is resolved during setup.
+
+   Note for whoever picks up Phase 2 #6 (converting `g_sim_tag` to the canonical
+   `Attack{N}` shape): `fade_write_per_cycle_csv()` is gated by
+   `if (!fade_detection_active) return;` at its top, so it only ever fires for HF
+   attacks (5-8) run in isolated-FADE mode — this matters when re-testing after that
+   conversion (a normal, non-FADE run will never produce this file, by design, not by
+   bug).
+
+   Verified: build succeeds (explicitly re-confirmed compile+link after deleting the
+   stale object/binary — see the caveat added to "Coverage & caveats" below); ran two
+   concurrent Attack 5 runs at pct=40/seed=1 and pct=80/seed=2 (both with
+   `--enable_lrad_obu=0 --enable_lrad_rsu=0`, matching real FADE-isolation runs) and got
+   two distinct files, `routing_fade_per_cycle_V4_pct40_s1.csv` and
+   `routing_fade_per_cycle_V4_pct80_s2.csv`, instead of one shared file.
 
 4c. **DONE — `tcam_snapshots_{mode}_final.csv` missing seed.** tcam_attack_helper.h's
    `export_tcam_snapshot_baseline()` (end-of-sim backup dump) built `mode` via the exact
@@ -292,6 +308,18 @@ script under `scripts/` or `lstm_pipeline/src/` independently writes CSVs
 side, so this file-by-file sweep is the complete set of *writers*. This plan is
 therefore structurally complete: every CSV-writing call site in the codebase is
 accounted for with a specific fix.
+
+**Build verification gotcha found while implementing #4b**: `./waf build` reported
+`'build' finished successfully` in ~0.2s without a `Compiling`/`Linking` line, on a
+change that was definitely a real header-content edit — the object file was stale
+relative to the edit and the binary didn't reflect the change, despite waf reporting
+success. Deleting `build/scratch/routing/routing.cc.*.o` and
+`build/scratch/routing/routing` outright and rebuilding fixed it, with `Compiling
+scratch/routing/routing.cc` / `Linking build/scratch/routing/routing` then appearing
+as expected. Don't trust a fast/quiet `./waf build` after a header-only edit — grep the
+output for an explicit `Compiling scratch/routing/routing.cc` line, and if it's
+missing, force it by deleting the object/binary before concluding the build is
+actually current.
 
 That said, applying this plan does not make every inconsistency instantly and
 silently disappear. Three caveats:

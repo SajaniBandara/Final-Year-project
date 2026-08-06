@@ -118055,7 +118055,10 @@ void fade_write_per_cycle_csv(std::string dir)
 			pp_level_fn = pp_fn_global;
 		}
 
-		std::string filename = dir + "routing_fade_per_cycle.csv";
+		// Tagged with g_sim_tag: this file previously had no attack/pct/seed
+		// tag at all, so every concurrent run of any attack/pct/seed appended
+		// to the identical shared file.
+		std::string filename = dir + "routing_fade_per_cycle" + g_sim_tag + ".csv";
 		std::fstream fout;
 		fout.open(filename, std::ios::out | std::ios::app);
 		fout << cycle_id << ", "
