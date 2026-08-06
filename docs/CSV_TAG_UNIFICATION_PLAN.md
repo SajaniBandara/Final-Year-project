@@ -75,10 +75,25 @@ Prefix-specific filenames:
    `bc_dkg_log_Attack5_40.csv` / `bc_dkg_log_Attack5_40_FADE.csv`, and the same clean
    split for `bc_flowmod_log`, `bc_tref_log`, `bc_trust_updates` — no collision.
 
-3. **`tcam_snapshots_*` / `tcam_occupancy_*` / `lambda_l_true_*` missing seed (and mostly
-   missing pct)** — tcam_attack_helper.h. Filename is just `mode` (`"attack{N}"` /
-   `"baseline"`), pct only appended for Attack 3/4. Two seeds of the same attack/pct
-   collide. Fix: add seed (and pct where missing) to `mode` construction.
+3. **DONE — `tcam_snapshots_*` / `tcam_occupancy_*` / `lambda_l_true_*` missing seed (and
+   mostly missing pct).** tcam_attack_helper.h's `tcam_snapshot_dump()` built `mode` as
+   just `"attack{N}"` / `"baseline"`, with pct-like info only for Attack 3/4 (and even
+   then it was `cp_attack_intensity`/`num_attackers`, not the report's
+   `attack_percentage`). Every other attack got zero differentiation by percentage or
+   seed — two different percentage sweeps of the same attack collided on the identical
+   filename, not just two seeds.
+
+   Fixed by appending `_ap{attack_percentage}_seed{sim_seed}` to `mode` unconditionally,
+   after the existing `_nN`/`_pctN` logic. Used `_ap` rather than `_pct` deliberately so
+   it can never be confused with Attack 3's `cp_attack_intensity`-derived `_pctN` — see
+   the "watch" note at the bottom of this doc. Since `tcam_occupancy_*` and
+   `lambda_l_true_*` reuse the same local `mode` variable in the same function, fixing
+   it once fixed all three files together.
+
+   Verified: build succeeds; ran two concurrent Attack 1 runs at pct=40 and pct=80
+   (same seed) — previously both would collide on `tcam_snapshots_attack1.csv`; now
+   produced `tcam_snapshots_attack1_ap40_seed1.csv` / `_ap80_seed1.csv`, with the same
+   clean split for `tcam_occupancy_*` and `lambda_l_true_*`.
 
 4. **`hf_events_{mode}_{pct}.csv` missing seed** — hf_attack_helper.h. Same collision
    class as #3, for Attacks 5-8. Fix: add seed.
@@ -95,12 +110,12 @@ Prefix-specific filenames:
    consumer, never fixed at the source. Fix: tag with the canonical suffix like every
    other per-run file.
 
-4c. **`tcam_snapshots_{mode}_final.csv` missing seed** — tcam_attack_helper.h,
-   `export_tcam_snapshot_baseline()` (end-of-sim backup dump). Builds `mode` via the
-   exact same logic as `tcam_snapshot_dump()`'s per-second `tcam_snapshots_{mode}.csv`
-   (same `_nN`/`_pctN` extra suffixes, same missing seed) — was missed in the initial
-   inventory because it's a separate function from the one already covered in #3.
-   Fix in lockstep with #3/#7c, not separately — same `mode` derivation, same fix.
+4c. **DONE — `tcam_snapshots_{mode}_final.csv` missing seed.** tcam_attack_helper.h's
+   `export_tcam_snapshot_baseline()` (end-of-sim backup dump) built `mode` via the exact
+   same logic as #3's per-second writer, with the same gap. Fixed identically —
+   appended the same `_ap{attack_percentage}_seed{sim_seed}` after its `_nN`/`_pctN`
+   logic. Build verified; not separately runtime-tested beyond the build (same fix as
+   #3, applied to a function that only fires once at end-of-sim).
 
 ### Phase 2 — Naming/indexing unification (do after Phase 1 fixes are verified)
 

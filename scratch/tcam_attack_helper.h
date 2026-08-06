@@ -610,6 +610,14 @@ inline void tcam_snapshot_dump()
         if (active_attack_variant == 2)
             mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     }
+    // Neither branch above accounts for the report's own attack_percentage or
+    // sim_seed, so two different percentages of the same attack (or two seeds
+    // of the same attack/percentage) used to collide on the identical mode
+    // string and overwrite each other's snapshot/occupancy/lambda files. Use
+    // "_ap" rather than "_pct" here so it can never be confused with Attack
+    // 3's cp_attack_intensity-derived "_pctN" above — that one is a different
+    // quantity, not the report's percentage.
+    mode += "_ap" + std::to_string(attack_percentage) + "_seed" + std::to_string(sim_seed);
 
     const std::string base_dir =
         "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -736,6 +744,10 @@ inline void export_tcam_snapshot_baseline()
         if (active_attack_variant == 2)
             mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     }
+    // Same missing-percentage/seed gap as tcam_snapshot_dump() — mirror its fix
+    // exactly so this backup export can't collide with a differently-percentaged
+    // or differently-seeded run of the same attack either.
+    mode += "_ap" + std::to_string(attack_percentage) + "_seed" + std::to_string(sim_seed);
     std::string path =
         "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
     std::ofstream fout(path, std::ios::trunc);
