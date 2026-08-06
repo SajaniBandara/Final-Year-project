@@ -3,9 +3,9 @@
 run_training_attacks.py — Collect LSTM training CSVs for all 8 attack variants.
 
 Runs: 8 attacks × 5 percentages {20,40,60,80,100} × 5 seeds = 200 simulations
-Output: lstm_training/RSU_*/A{v}_pct{p}_seed{s}.csv  (labels 0=benign, 1=malicious RSU)
+Output: lstm_training/RSU_*/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv  (labels 0=benign, 1=malicious RSU)
 
-Benign data (A0_pct0) is collected separately by running the simulation with
+Benign data (Attack0_0) is collected separately by running the simulation with
 --active_attack_variant=-1 (already done / running). This script covers attacks 1-8.
 
 Usage:

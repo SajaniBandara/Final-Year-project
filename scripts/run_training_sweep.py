@@ -6,7 +6,7 @@ Covers all 8 attack variants × 6 attack percentages × N seeds, plus benign
 (attack_number=0) × N seeds, with --training=1 so lstm_logger.h writes CSVs.
 
 Output CSVs:
-  results_routing/lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+  results_routing/lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 
 Usage:
   # Full sweep (all 8 attacks, 3 seeds, workers=10):
@@ -35,6 +35,7 @@ Usage:
 """
 
 import argparse
+import glob
 import os
 import shutil
 import subprocess
@@ -114,11 +115,19 @@ def build_simulation() -> bool:
     return True
 
 
+def lstm_csv_path(attack: int, pct: int, seed: int) -> Path | None:
+    """Find the RSU_0 CSV for this run, if it exists. Globs rather than an
+    exact match since attacks 1/2 carry an extra _d<X>ms segment before
+    _seed<S> that other attacks/benign don't."""
+    matches = sorted((RESULTS_DIR / "lstm_training" / "RSU_0").glob(
+        f"Attack{attack}_{pct}*_seed{seed}.csv"))
+    return matches[0] if matches else None
+
+
 def csv_is_complete(attack: int, pct: int, seed: int, sim_time: int) -> bool:
     """Return True if the RSU_0 CSV for this run already has enough rows."""
-    path = (RESULTS_DIR / "lstm_training" / "RSU_0"
-            / f"A{attack}_pct{pct}_seed{seed}.csv")
-    if not path.exists():
+    path = lstm_csv_path(attack, pct, seed)
+    if path is None:
         return False
     try:
         lines = path.read_text().splitlines()
@@ -168,11 +177,11 @@ def check_outputs(runs: list[dict], sim_time: int) -> None:
     print("\n── Output verification ──")
     missing = []
     for r in runs:
-        path = (RESULTS_DIR / "lstm_training" / "RSU_0"
-                / f"A{r['attack']}_pct{r['pct']}_seed{r['seed']}.csv")
-        ok = path.exists() and len(path.read_text().splitlines()) >= int(sim_time * 0.95)
+        path = lstm_csv_path(r["attack"], r["pct"], r["seed"])
+        ok = path is not None and len(path.read_text().splitlines()) >= int(sim_time * 0.95)
         mark = "✓" if ok else "✗ MISSING"
-        print(f"  {mark:<12} RSU_0/A{r['attack']}_pct{r['pct']}_seed{r['seed']}.csv")
+        name = path.name if path else f"Attack{r['attack']}_{r['pct']}_seed{r['seed']}.csv"
+        print(f"  {mark:<12} RSU_0/{name}")
         if not ok:
             missing.append(r["label"])
     if missing:

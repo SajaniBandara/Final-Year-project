@@ -2,15 +2,20 @@
 preprocessor.py — MOBIGUARD LSTM pipeline step 1
 Loads eq:lstm_input CSVs, Z-score normalises, builds sliding-window sequences.
 
-Input  : lstm_training/RSU_*/A{v}_pct{p}_seed{s}.csv
+Input  : lstm_training/RSU_*/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 Output : preprocessed/{split}_X.npy, {split}_y.npy, {split}_meta.npy
          scaler_params.json   (fit on benign only, applied to all)
 """
 
-import os, json, glob, argparse
+import os, json, glob, re, argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
+
+# Attack1/2's optional _d<X>ms delay segment is present or absent depending
+# on whether the run passed --attack_number (see routing.cc's g_delay_suffix
+# gating) - match it as optional rather than assuming a fixed field count.
+FNAME_RE = re.compile(r"^Attack(?P<attack_v>\d+)_(?P<pct>\d+)(?:_d\d+ms)?_seed(?P<seed>\d+)$")
 
 FEATURES   = ["delta_t", "lambda_PI", "U_TCAM",
               "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
@@ -19,7 +24,7 @@ WINDOW     = 10      # 10-second sliding window (1 Hz cycles)
 STRIDE     = 5       # 5-second stride = 50% overlap (spec §3)
 TRAIN_FRAC = 0.70
 VAL_FRAC   = 0.15    # test = remaining 0.15
-BENIGN_V   = 0       # attack_v == 0 → benign (A0)
+BENIGN_V   = 0       # attack_v == 0 → benign (Attack0)
 # Seeds partitioned by role (spec: "partitioned by seed")
 TRAIN_SEEDS = {1, 2, 3}
 VAL_SEEDS   = {4}
@@ -57,16 +62,18 @@ OUT  = REPO / "lstm_pipeline" / "preprocessed"
 
 def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
     dfs = []
-    pattern = str(lstm_dir / "RSU_*" / "A*_pct*_seed*.csv")
+    pattern = str(lstm_dir / "RSU_*" / "Attack*_seed*.csv")
     files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
     for path in files:
         p = Path(path)
-        parts = p.stem.split("_")
-        attack_v = int(parts[0][1:])
-        pct      = int(parts[1][3:])
-        seed     = int(parts[2][4:])
+        m = FNAME_RE.match(p.stem)
+        if not m:
+            raise ValueError(f"Unrecognized lstm_training filename shape: {p.name}")
+        attack_v = int(m.group("attack_v"))
+        pct      = int(m.group("pct"))
+        seed     = int(m.group("seed"))
         rsu_id   = int(p.parent.name[4:])
         df = pd.read_csv(path)
         df["attack_v"] = attack_v

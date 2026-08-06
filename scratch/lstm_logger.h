@@ -802,15 +802,19 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         }
     }
 
-    // ── File path: lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+    // ── File path: lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
     // attack_v maps internal variant index (-1=benign→0, 0→1, 1→2, ...) to
-    // the proposal's attack number (0=benign, 1–8=attacks).
+    // the proposal's attack number (0=benign, 1–8=attacks). Matches the same
+    // Attack{N}_{pct}[_d{X}ms]_seed{S} shape MOBIGUARD/TAP/FADE/bc_*/g_sim_tag
+    // all use. g_delay_suffix is only ever non-empty for attack_v 1/2
+    // (Selective Time Delay), same gating as everywhere else that uses it.
     int attack_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
     std::string base = lstm_make_base_dir();
     std::string path = base
-        + "lstm_training/RSU_" + std::to_string(r) + "/A"
+        + "lstm_training/RSU_" + std::to_string(r) + "/Attack"
         + std::to_string(attack_v)
-        + "_pct" + std::to_string(attack_percentage)
+        + "_" + std::to_string(attack_percentage)
+        + g_delay_suffix
         + "_seed" + std::to_string(sim_seed)
         + ".csv";
 

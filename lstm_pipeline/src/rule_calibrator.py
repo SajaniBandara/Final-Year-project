@@ -8,7 +8,7 @@ Implements §Simulation settings calibration procedure:
   3. k sweep {1, 2, 3}: select for best MCC at FPR ≤ 1%
   4. Robustness check: perturb each param by ±{10%, 20%, 30%}, record ΔFPR
 
-Input:  lstm_training/RSU_*/A0_pct0_seed*.csv  (benign runs, label=0)
+Input:  lstm_training/RSU_*/Attack0_0_seed*.csv  (benign runs, label=0)
 Output: lstm_pipeline/calibrated_params.json
         lstm_pipeline/calibration_report.txt
 
@@ -105,9 +105,9 @@ CONVERGENCE_TOL = 0.01
 # ---------------------------------------------------------------------------
 
 def load_benign_data(data_dir: Path) -> pd.DataFrame:
-    """Load all A0_pct0_seed*.csv files across all RSU dirs into one DataFrame."""
+    """Load all Attack0_0_seed*.csv files across all RSU dirs into one DataFrame."""
     dfs = []
-    pattern = list(data_dir.glob("RSU_*/A0_pct0_seed*.csv"))
+    pattern = list(data_dir.glob("RSU_*/Attack0_0_seed*.csv"))
     if not pattern:
         sys.exit(f"ERROR: No benign CSVs found in {data_dir}\n"
                  "       Run Step 2 benign simulations first.")
@@ -117,7 +117,7 @@ def load_benign_data(data_dir: Path) -> pd.DataFrame:
             df = pd.read_csv(p)
             # Extract RSU id from directory name and seed from filename
             rsu_id  = int(p.parent.name.split("_")[1])
-            seed_id = int(p.stem.split("seed")[1])   # "A0_pct0_seed3" → 3
+            seed_id = int(p.stem.split("seed")[1])   # "Attack0_0_seed3" → 3
             df["rsu_dir"] = rsu_id
             df["seed"]    = seed_id
             dfs.append(df)
@@ -126,7 +126,7 @@ def load_benign_data(data_dir: Path) -> pd.DataFrame:
 
     df_all = pd.concat(dfs, ignore_index=True)
     print(f"Loaded {len(df_all):,} rows from {len(pattern)} benign CSVs "
-          f"({data_dir.parent.name}/lstm_training/RSU_*/A0_pct0_seed*.csv)")
+          f"({data_dir.parent.name}/lstm_training/RSU_*/Attack0_0_seed*.csv)")
 
     # Sanity checks
     assert (df_all["label"] == 0).all(), "Benign CSVs contain label=1 rows — check data"

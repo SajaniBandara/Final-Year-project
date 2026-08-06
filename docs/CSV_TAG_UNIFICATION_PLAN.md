@@ -300,34 +300,86 @@ Prefix-specific filenames:
    (no `--attack_number` at all) and got `MOBIGUARD_Attack0_0_seed1.csv` and
    `tcam_snapshots_attack0_ap0_seed1.csv` — no `_baseline`-named file produced at all.
 
-7b. **Convert lstm_logger.h to the canonical shape** — currently writes
-   `lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv` (lstm_logger.h, near the
-   `attack_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1)` line):
-   no `_d{X}ms`, no leading `_Attack` literal, uses `A` instead of `Attack`. Needs
-   converting to `Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` per the canonical shape
-   (`attack_v` is already the correct 1-indexed-with-0-benign value — this is a pure
-   rename, not an indexing fix).
+7b. **DONE — Convert lstm_logger.h to the canonical shape.** Was
+   `lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv`: no `_d{X}ms`, no leading `Attack`
+   literal, used `A` instead of `Attack`. Converted to
+   `Attack{v}_{pct}[_d{X}ms]_seed{s}.csv` (`attack_v` was already the correct
+   1-indexed-with-0-benign value — pure rename, not an indexing fix). Confirmed live:
+   attacks 1/2 DO now carry a real `_d{X}ms` segment in lstm files (e.g.
+   `Attack1_40_d100ms_seed1.csv`) since `run_training_sweep.py`/`run_training_attacks.py`
+   never override `--attack_delay_ms`, so `g_delay_suffix` fires at its default anchor
+   value — this is a genuinely new segment these files didn't carry before, not a
+   theoretical edge case.
 
-   **This one has a much wider and more fragile blast radius than MOBIGUARD/TAP/FADE/bc_*:**
-   `lstm_pipeline/src/preprocessor.py:60-70` globs `RSU_*/A*_pct*_seed*.csv` and then
-   parses the filename **positionally** — `p.stem.split("_")`, then
-   `parts[0][1:]` / `parts[1][3:]` / `parts[2][4:]` for `attack_v`/`pct`/`seed`. This
-   is not "may need updating" like other consumers — it **will** break the moment the
-   prefix changes from `A` to `Attack` or a `_d{X}ms` segment is inserted, since the
-   fixed-offset slicing (`[1:]`, `[3:]`, `[4:]`) and fixed part index (`parts[2]` for
-   seed) both assume the current exact shape. Must be rewritten (e.g. to a proper
-   regex extracting each field by name, not position) in the same change that renames
-   the C++ writer — not after.
+   **Full audit of all 12 originally-flagged consumers, done before touching the C++
+   writer as planned:**
 
-   Also confirmed via grep to reference this filename shape and need checking:
-   `lstm_pipeline/src/evaluator.py`, `local_trainer.py`, `fed_aggregator.py`,
-   `rule_calibrator.py`, `mobility_stratified_eval.py`, `plot_mobility_stratified_mcc.py`,
-   `a2_warmup_adaptation_eval.py`, `q30_holdout_eval.py`; and on the writer/launcher
-   side, `scripts/run_training_sweep.py`, `run_training_attacks.py`,
-   `run_rule_based_sweep.py`, `run_std_attacks.py`, `run_hf_attacks.py`,
-   `functional_verification.py`. This list was found by grepping for the filename
-   shape, not by reading each file — enumerate exactly what each one assumes (glob
-   pattern vs. positional parse vs. just a path string) before changing the writer.
+   Real fixes required (all applied):
+   - `lstm_pipeline/src/preprocessor.py` — the positional parse (`parts[0][1:]` etc.)
+     rewritten to a named-group regex
+     (`^Attack(?P<attack_v>\d+)_(?P<pct>\d+)(?:_d\d+ms)?_seed(?P<seed>\d+)$`) tolerant
+     of the optional delay segment; glob updated to `Attack*_seed*.csv`.
+   - `lstm_pipeline/src/rule_calibrator.py` — glob updated
+     (`A0_pct0_seed*.csv` → `Attack0_0_seed*.csv`); its `p.stem.split("seed")[1]`
+     seed-extraction needed no change (splits on the literal substring "seed",
+     agnostic to whatever prefix precedes it).
+   - `lstm_pipeline/src/plot_mobility_stratified_mcc.py` — same positional-parse bug
+     as preprocessor.py (`parts[0][1:]` etc.), fixed with the same regex approach; glob
+     updated to `Attack[5-8]_*_seed5.csv`.
+   - `lstm_pipeline/src/q30_holdout_eval.py` — exact-match path updated
+     (`A0_pct0_seed{seed}.csv` → `Attack0_0_seed{seed}.csv`).
+   - `scripts/run_training_sweep.py` — `csv_is_complete()` and `check_outputs()` both
+     did exact-match lookups with no delay tolerance; both now share a new
+     `lstm_csv_path()` helper that globs `Attack{attack}_{pct}*_seed{seed}.csv`,
+     correctly tolerating the delay segment for attacks 1/2.
+
+   Confirmed NOT broken (docstring-only staleness fixed, no functional bug):
+   `scripts/run_training_attacks.py` (only ever logs to its own `.log` files, never
+   reads the CSV back to check it).
+
+   Confirmed genuinely out of scope (grepped in originally only because of a
+   coincidental `A{n}_pct{p}` substring match, not a real lstm_training reference):
+   - `lstm_pipeline/src/evaluator.py`, `mobility_stratified_eval.py`,
+     `a2_warmup_adaptation_eval.py` — the matches were `f"A{av}"` human-readable
+     fallback labels (`ATTACK_NAMES.get(av, f"A{av}")`), not file paths. These three
+     plus `local_trainer.py`/`fed_aggregator.py` only ever consume already-preprocessed
+     `.npy`/`.pt`/`.json` artifacts, never the raw `lstm_training/*.csv` files directly.
+   - `scripts/run_std_attacks.py`, `functional_verification.py` — their matches were
+     this script's own `.log` filenames or console-only labels; neither references
+     `lstm_training` at all (confirmed via direct grep).
+   - `scripts/run_hf_attacks.py` — already fully handled in Phase 2 #6 (MOBIGUARD/FADE
+     files); doesn't touch lstm_training either.
+
+   **`scripts/run_rule_based_sweep.py` — confirmed out of #7b's scope, but surfaced a
+   new, currently-live bug, not just staleness.** This script has nothing to do with
+   lstm_training (it exclusively renames `MOBIGUARD_Attack*.csv`, matched by the same
+   `A{n}_pct{p}` substring coincidence as the other false positives above) — its
+   in-scope home is Phase 2 #8, where the plan already says to "drop the sequential-lane
+   rename workaround." But its docstring's premise
+   ("`write_security_metrics_csv()` has no seed in its output filename") was falsified
+   by Phase 2 #5 several commits before this one, and the script wasn't updated at the
+   time. Concretely, today: it runs the sim (now producing an *already*
+   seed-tagged `MOBIGUARD_Attack1_40_d80ms_seed3.csv`), then unconditionally does
+   `src.name.replace(".csv", f"_seed{seed}.csv")` — appending a **second** seed suffix
+   on top of the one the C++ side already wrote, e.g.
+   `MOBIGUARD_Attack1_40_d80ms_seed3_seed3.csv`. Not fixed here (deliberately —
+   staying inside this item's scope), but flagged prominently since it's an active
+   double-suffix bug right now, not a "becomes unnecessary" cleanup — should be the
+   first thing addressed when #8 starts.
+
+   Also corrected two stale filename-shape references in `CLAUDE.md` (lstm_training
+   line and the adjacent MOBIGUARD line, which was separately missing seed/baseline
+   accuracy from Phase 2 #5/#7).
+
+   Verified: build succeeds; `python3 -m py_compile` clean on all six edited Python
+   files; ran a real Attack1/pct40/seed1 training-data-collection sim
+   (`--training=1`) and got `Attack1_40_d100ms_seed1.csv` (confirming the delay
+   segment really does appear); ran `preprocessor.py`'s actual `load_all_csvs()`
+   against the real output — correctly parsed 256 rows across all 64 RSU directories
+   with `attack_v=1, pct=40, seed=1` extracted correctly from the delay-bearing
+   filename; separately confirmed via direct glob calls that `rule_calibrator.py`'s and
+   `run_training_sweep.py`'s new patterns match/reject correctly against the same real
+   file.
 
 7c. **Convert tcam/lambda and hf_events to the canonical shape** — Phase 1 #3/#4 only
    patch the live collision (add seed, add pct where missing) while keeping each
