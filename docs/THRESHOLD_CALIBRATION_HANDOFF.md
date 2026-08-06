@@ -5,7 +5,7 @@
 **Companions:** [`HANDOFF_STATE_2026-08-04.md`](HANDOFF_STATE_2026-08-04.md),
 [`LSTM_FULL_PICTURE.md`](LSTM_FULL_PICTURE.md)
 
----
+---  
 
 ## 0. TL;DR
 
