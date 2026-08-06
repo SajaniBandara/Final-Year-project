@@ -144,8 +144,11 @@ inline void export_hf_event_log()
 
     const std::string base_dir =
         "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/";
+    // seed added so two seeds of the same attack/pct don't overwrite each
+    // other's event log — pct alone was already here but seed never was.
     std::string path = base_dir + "hf_events_" + mode + "_" +
-                       std::to_string(attack_percentage) + ".csv";
+                       std::to_string(attack_percentage) + "_seed" +
+                       std::to_string(sim_seed) + ".csv";
 
     std::ofstream fout(path, std::ios::trunc);
     fout << "t,flow_id,packet_id,malicious_node,eavesdropper,is_active,is_cp\n";

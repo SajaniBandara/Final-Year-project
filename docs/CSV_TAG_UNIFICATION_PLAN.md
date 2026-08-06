@@ -95,8 +95,18 @@ Prefix-specific filenames:
    produced `tcam_snapshots_attack1_ap40_seed1.csv` / `_ap80_seed1.csv`, with the same
    clean split for `tcam_occupancy_*` and `lambda_l_true_*`.
 
-4. **`hf_events_{mode}_{pct}.csv` missing seed** — hf_attack_helper.h. Same collision
-   class as #3, for Attacks 5-8. Fix: add seed.
+4. **DONE — `hf_events_{mode}_{pct}.csv` missing seed.** hf_attack_helper.h's
+   `export_hf_event_log()` had `pct` but no seed. Appended `_seed{sim_seed}`, same
+   pattern as #3.
+
+   Verified build-only, not runtime — while implementing this, found that
+   `export_hf_event_log()` is never actually called anywhere in the codebase (grepped
+   all of `scratch/`), and the `g_hf_event_log` vector it reads from is never pushed to
+   either. `hf_events_*.csv` is dead code as it stands today: correctly tagged now, but
+   not produced by any current run regardless. This is a pre-existing gap unrelated to
+   the tagging bug — separate from what this plan scopes, flagging here rather than
+   fixing it silently. If HF per-event duplicate logging is actually wanted, wiring up
+   the call site and the `g_hf_event_log.push_back(...)` is a distinct piece of work.
 
 4b. **`routing_fade_per_cycle.csv` completely untagged** — routing.cc:118054
    (`dir + "routing_fade_per_cycle.csv"`), written whenever
