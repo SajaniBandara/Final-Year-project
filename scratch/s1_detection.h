@@ -357,7 +357,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
             sender_node_id < (uint32_t)total_size &&
             !is_detected_node[S1_HOME_VARIANT][sender_node_id])
         {
-            record_detection_event(S1_HOME_VARIANT, sender_node_id);
+            record_detection_event(S1_HOME_VARIANT, sender_node_id, DSRC_RULE_S1);
             cout << "[S1] record_detection_event fired for sender node "
                  << sender_node_id << " (detected at RSU " << current_hop
                  << ") variant=" << S1_HOME_VARIANT

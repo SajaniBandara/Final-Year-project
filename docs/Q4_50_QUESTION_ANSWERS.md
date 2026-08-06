@@ -250,11 +250,20 @@ window and no decay-back. Two callers of `trust_update_negative()` are live in Q
 1. the witness BFT path (`crypto_layer.h:1380`, `:1468`), and
 2. **the BTMM per-packet update at `routing.cc:121919`, which no Q1–Q6 flag disables.**
 
-The second is **RC2** and is the answer the question is really after: **trust penalties are
-accumulating from a mechanism other than witness-driven `SC.PenalizeTrust`.** Confirmation —
 TP+FP equals the `TRUST-QUARANTINE` count exactly on 7 of 8 variants (A1 14/14, A2 102/102,
-A3 0/0, A5 199/199, A6 190/190, A7 200/200, A8 68/68; A4 off by one). **The witness boundary
-is not clean, and neither is any other Q-config's.**
+A3 0/0, A5 199/199, A6 190/190, A7 200/200, A8 68/68; A4 off by one) — which proves quarantine
+is the **channel**, but not which **caller**.
+
+**CORRECTED 2026-08-06.** An earlier version of this answer asserted that trust penalties were
+accumulating from a mechanism *other than* witness-driven `SC.PenalizeTrust`. That was wrong
+for A7. Two measurements: with BTMM gated off, A7/Q4 still produced 189/268 quarantines and
+TP=33/FP=156; and the per-source tag reports
+`[SECURITY-SRC] Variant 6 | witness_DA(TP=33,FP=156)` — **100 % witness, 0 % BTMM.** For A7 the
+trust penalties *are* witness-driven `SC.PenalizeTrust`, exactly as the architecture intends.
+
+RC2 is still a genuine defect: BTMM is ungated and reaches the matrix in Q1/Q2/Q3/Q5, where the
+witness is off. But it is not what drives Q4, and the per-variant answer for A4 (`NFA`-driven)
+and A5/A6 (`DA`-driven) should be re-measured with the source tag rather than inferred.
 
 **Q36. [A] Do `--g_disable_s5_s6` / `--g_disable_s7_s8` suppress computation, not just logging?**
 **Computation, confirmed.** In Q4: **0 `[S5]`, 0 `[S6]`, 0 `[S7]`, 0 `[S8]` lines across all

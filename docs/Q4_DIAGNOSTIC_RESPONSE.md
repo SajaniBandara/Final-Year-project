@@ -10,13 +10,35 @@ were required.** That is itself a finding — see §6.
 
 ## 0. Headline
 
-The supervisor's core instinct is **correct and understated**: the Q4 boundary is not
-clean. But the mechanism is not the one named in the diagnostics.
+> ### ⚠ CORRECTION (2026-08-06) — read before §3 and §4
+>
+> An earlier version of this section claimed: *"Not one of the 268 detections in any Q4
+> variant came from the witness mechanism scoring a node. Every single one came from"* the
+> BTMM path. **That claim was wrong, and it is retracted.**
+>
+> The original evidence — TP+FP matching the `TRUST-QUARANTINE` count exactly — only showed
+> that *quarantine is the channel*. It never identified **which caller** of
+> `trust_update_negative()` was responsible, and both the witness and BTMM call it. We
+> inferred BTMM and did not verify.
+>
+> Two measurements settle it, both on A7/Q4 at identical parameters:
+>
+> 1. With `--g_disable_btmm_trust=1` (BTMM off), A7 **still** produced 189/268 quarantines,
+>    TP=33, FP=156. BTMM accounted for roughly 6 % of the pre-fix quarantines, not 100 %.
+> 2. With the per-source tag (Fix 5) in place, the run reports:
+>    `[SECURITY-SRC] Variant 6 | witness_DA(TP=33,FP=156)` — **every detection attributed to
+>    the witness duplication alert, none to BTMM.**
+>
+> **Consequence: the Q4 confusion matrix substantially DOES measure the witness, and the
+> negative MCC on A7/A8 genuinely is the witness performing worse than chance.** The
+> supervisor's original framing was closer to correct than our response allowed. RC2 remains
+> a real isolation defect — BTMM is genuinely ungated and does contaminate Q1/Q2/Q3/Q5,
+> where the witness is off — but it does **not** explain Q4's numbers, and gating it will
+> not rescue them.
 
-**Not one of the 268 "detections" in any Q4 variant came from the witness mechanism
-scoring a node.** Every single one came from `trust_update_negative()` → trust falling
-below `T_min` → `record_detection_event()`. This channel is **not gated by any Q1–Q6
-flag**, so it contaminates *all six configurations*, not just Q4.
+The supervisor's core instinct is **correct**: the Q4 boundary is not clean. Two things are
+true at once — the quarantine channel is shared and ungated (RC2, real but secondary), and
+the witness itself is producing the false positives (the dominant effect, confirmed above).
 
 Four independent root causes, all confirmed:
 
@@ -169,12 +191,19 @@ cycle:
 Seven of eight match exactly; A4 is off by one (one quarantine landing between the sampled
 cycle and the row, benign sampling skew).
 
-**Conclusion: the Q4 confusion matrix measures quarantine outcome, not witness
-performance.** The redirect to witness-native counters was the right call — but this is the
-evidence that justifies it, which we should have supplied the first time.
+**Conclusion (revised — see the correction box in §0).** The exact match proves quarantine is
+the *channel* through which every detection reaches the matrix. It does **not** identify the
+*caller*. The per-source tag now does: on A7/Q4 the answer is `witness_DA(TP=33,FP=156)`,
+100 % witness, 0 % BTMM.
 
-**This also means Q1, Q2, Q3, Q5 and Q6 confusion matrices are contaminated by the same
-channel.** The ablation grid does not currently isolate what it claims to.
+So the matrix in Q4 **does** measure the witness, and our redirect to witness-native counters
+was **not** justified on the grounds we gave. The witness-native counters and the generic
+matrix agree; they were never measuring different things on A7.
+
+**RC2 still matters, but for the other configs.** BTMM is genuinely ungated and reaches the
+matrix in Q1, Q2, Q3 and Q5 — configurations where the witness is switched off and therefore
+cannot be the source. There, it is the only contaminating channel. Gating it is still
+necessary for the grid to isolate anything; it is simply not what explains Q4.
 
 ---
 

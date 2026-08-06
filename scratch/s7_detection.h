@@ -221,7 +221,7 @@ inline bool s7_detect(uint32_t recv_flow_id,
             prev_sender < (uint32_t)total_size &&
             !is_detected_node[S7_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(S7_HOME_VARIANT, prev_sender);
+            record_detection_event(S7_HOME_VARIANT, prev_sender, DSRC_RULE_S7);
             cout << "[S7] record_detection_event fired for malicious RSU "
                  << prev_sender << " variant=" << S7_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;

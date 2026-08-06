@@ -1095,7 +1095,9 @@ inline void trust_update_negative(uint32_t node) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
         if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
-            record_detection_event(active_attack_variant, (int)node);
+            record_detection_event(active_attack_variant, (int)node,
+                                   g_current_trust_source ? g_current_trust_source
+                                                          : (uint16_t)DSRC_QUARANTINE);
         // Unconditional: quarantine is a high-importance detection event
         std::cout << "[TRUST-QUARANTINE] node=" << node
                   << " trust=" << g_trust_score[node]
@@ -1441,7 +1443,9 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         std::cout << "[WITNESS-DA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
+        g_current_trust_source = DSRC_WITNESS_DA;
         trust_update_negative(target_node);
+        g_current_trust_source = DSRC_NONE;
         // M12 — WAP-R: count this threshold-crossing event once per node per run.
         //
         // FIXED 2026-07-11 — main.tex's M12 definition (§"Witness Alert
@@ -1528,7 +1532,9 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         std::cout << "[WITNESS-NFA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
+        g_current_trust_source = DSRC_WITNESS_NFA;
         trust_update_negative(target_node);
+        g_current_trust_source = DSRC_NONE;
         // M12 (WAP-R) intentionally NOT counted here (fixed 2026-07-11).
         // main.tex scopes M12 to the duplication-alert mechanism only
         // (eq:dup_alert_cond, "specifically against Variants 7 and 8") — this

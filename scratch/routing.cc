@@ -114660,6 +114660,42 @@ bool is_malicious_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 // Set to true when your detection logic fires for that variant/node
 bool is_detected_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 
+// Detection SOURCE attribution (added 2026-08-06, supervisor Fix 5).
+// is_detected_node[][] records THAT a node was flagged but not BY WHAT, so a
+// signature detection and a trust-decay quarantine side-effect are
+// indistinguishable in the confusion matrix. That ambiguity is what made the
+// Q4 analysis contestable: TP+FP matched the TRUST-QUARANTINE count exactly on
+// 7 of 8 variants, but the counters alone could not say which caller of
+// trust_update_negative() was responsible. With this tag, every Q-config's
+// TP/FP can be broken down per component and the per-component MCC table
+// becomes meaningful.
+//
+// Bit-set, not a scalar: a node can legitimately be flagged by more than one
+// component in the same run (e.g. S7 and the witness both firing on A7), and
+// collapsing that to "first writer wins" would under-report the others.
+enum DetectionSource : uint16_t {
+    DSRC_NONE        = 0,
+    DSRC_RULE_S1     = 1u << 0,
+    DSRC_RULE_S2     = 1u << 1,
+    DSRC_RULE_S3     = 1u << 2,
+    DSRC_RULE_S4     = 1u << 3,
+    DSRC_RULE_S5     = 1u << 4,
+    DSRC_RULE_S6     = 1u << 5,
+    DSRC_RULE_S7     = 1u << 6,
+    DSRC_RULE_S8     = 1u << 7,
+    DSRC_LSTM        = 1u << 8,
+    DSRC_WITNESS_DA  = 1u << 9,   // α_w duplication alert (eq:dup_alert_cond)
+    DSRC_WITNESS_NFA = 1u << 10,  // β_w non-forwarding alert (eq:nfwd_detect)
+    DSRC_BTMM_PACKET = 1u << 11,  // per-packet trust decay (eq:trust_update)
+    DSRC_QUARANTINE  = 1u << 12,  // trust < T_min, caller not otherwise identified
+};
+uint16_t detection_source[NUM_ATTACK_VARIANTS][total_size] = {{0}};
+
+// Set by whichever path is about to call trust_update_negative(), so the
+// quarantine that may follow can be attributed to its real cause rather than
+// to the generic DSRC_QUARANTINE bucket. Reset to DSRC_NONE by the caller.
+uint16_t g_current_trust_source = DSRC_NONE;
+
 // Issue 5 fix (2026-08-02): event-gated ground truth for A1/A2 only.
 // is_malicious_node[0]/[1] above are static per-run identity flags (true for
 // the whole run for a designated attacker RSU, set once in
@@ -115027,7 +115063,7 @@ void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
-void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+void record_detection_event(int v, int n, uint16_t src); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
 void handoff_tracker_cycle_update(); // defined after lrad.h (needs lookup_vehicle_associated_rsu_local_idx); forward-declared so calculate_performance_evaluation_metrics() can schedule it
 #include "handoff_tracker.h"        // Per-vehicle serving-RSU handoff detection (mobility amplification fix §4.1)
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
@@ -115308,9 +115344,13 @@ void record_attack_onset(int v, int n)
 }
 
 // Call when detection/quarantine fires — v=variant(0-7), n=node index
-void record_detection_event(int v, int n)
+// src: which component decided this (supervisor Fix 5). Defaults to
+// DSRC_QUARANTINE so the trust-decay path, which has no single owning
+// signature, still lands in a named bucket rather than an unlabelled one.
+void record_detection_event(int v, int n, uint16_t src)
 {
 	is_detected_node[v][n] = true;
+	detection_source[v][n] |= src;
 	t_quarantine[n] = Simulator::Now().GetSeconds();
 }
 
@@ -117378,6 +117418,41 @@ void calculate_security_detection_metrics()
                   << " TP=" << sec_TP[v] << " FP=" << sec_FP[v]
                   << " TN=" << sec_TN[v] << " FN=" << sec_FN[v]
                   << std::endl;
+
+        // Per-source TP/FP breakdown (supervisor Fix 5). Emitted only for the
+        // variant actually under test, and only once it has any detections, to
+        // keep the per-cycle log readable. Without this, a Q-config's TP/FP
+        // cannot be split between a genuine signature firing and a trust-decay
+        // quarantine side-effect — the ambiguity that made Q4 contestable.
+        if (v == active_attack_variant && (sec_TP[v] + sec_FP[v]) > 0)
+        {
+            static const struct { uint16_t bit; const char* name; } kSources[] = {
+                {DSRC_RULE_S1,     "S1"},     {DSRC_RULE_S2,     "S2"},
+                {DSRC_RULE_S3,     "S3"},     {DSRC_RULE_S4,     "S4"},
+                {DSRC_RULE_S5,     "S5"},     {DSRC_RULE_S6,     "S6"},
+                {DSRC_RULE_S7,     "S7"},     {DSRC_RULE_S8,     "S8"},
+                {DSRC_LSTM,        "LSTM"},   {DSRC_WITNESS_DA,  "witness_DA"},
+                {DSRC_WITNESS_NFA, "witness_NFA"},
+                {DSRC_BTMM_PACKET, "btmm_packet"},
+                {DSRC_QUARANTINE,  "quarantine_unattributed"},
+            };
+            std::cout << "[SECURITY-SRC] Variant " << v << " |";
+            for (auto& s : kSources)
+            {
+                uint32_t tp_s = 0, fp_s = 0;
+                for (int n = 0; n < active_topology_nodes; n++)
+                {
+                    if (!(detection_source[v][n] & s.bit)) continue;
+                    bool mal = is_malicious_node[v][n];
+                    if (v == 0) mal = mal && g_s1_gt_delay_exceeded[n];
+                    else if (v == 1) mal = mal && g_s2_gt_delay_exceeded[n];
+                    if (mal) tp_s++; else fp_s++;
+                }
+                if (tp_s || fp_s)
+                    std::cout << " " << s.name << "(TP=" << tp_s << ",FP=" << fp_s << ")";
+            }
+            std::cout << std::endl;
+        }
     }
 }
 
@@ -121921,8 +121996,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						if (!g_disable_btmm_trust) {
 							if (hop_ok && timing_ok && g_batch_passed)
 								trust_update_positive(prev_sender);
-							else
+							else {
+								g_current_trust_source = DSRC_BTMM_PACKET;
 								trust_update_negative(prev_sender);
+								g_current_trust_source = DSRC_NONE;
+							}
 						}
 					}
 				}

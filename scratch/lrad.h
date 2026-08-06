@@ -216,8 +216,11 @@ inline void btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok)
 {
     if (b_batch && b_hop && timing_ok)
         trust_update_positive(node);
-    else
+    else {
+        g_current_trust_source = DSRC_BTMM_PACKET;
         trust_update_negative(node);
+        g_current_trust_source = DSRC_NONE;
+    }
 }
 
 // =========================================================================
@@ -245,7 +248,19 @@ inline LRADRSUFlags lrad_rsu(
 
     // Use .find() — never operator[] — to avoid silently inserting a
     // default-constructed "verification failed" record for unsigned packets.
-    auto it         = g_packet_crypto.find({prev_sender, pkt_id});
+    //
+    // KEY MUST BE crypto_msg_key(pkt_id, fid), NOT the raw pkt_id (fixed
+    // 2026-08-06). g_packet_crypto is written by mldsa87_sign() as
+    // {signer, crypto_msg_key(pkt_id, seq)} (crypto_layer.h:585) and read
+    // everywhere else with the same composite key. Since
+    // crypto_msg_key = ((flow_id & 0xFFF) << 12) | (pkt_id & 0xFFF), a raw
+    // pkt_id lookup only ever matched flow_id == 0 (and pkt_id < 4096), so
+    // have_crypto was false for essentially all traffic. Consequences while
+    // this was live: the RSU-side BTMM update below never fired, and S2f /
+    // S5-S8 lost the sig_valid / stark_hop_ok evidence they read from `it`.
+    // Matches the sibling verify call at routing.cc:121857, which passes the
+    // same `fid` in the same scope.
+    auto it         = g_packet_crypto.find({prev_sender, crypto_msg_key(pkt_id, fid)});
     bool have_crypto = (it != g_packet_crypto.end() && it->second.sig_len > 0);
 
     // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
@@ -335,7 +350,14 @@ inline LRADRSUFlags lrad_rsu(
         // trust_update_negative fires when sig or hop proof fails; for volume-based
         // signals (S7/S8) the negative path is forced via have_crypto being true
         // but the detection having already confirmed attack behaviour.
-        if (have_crypto)
+        // g_disable_btmm_trust also gates THIS BTMM site, not just the one at
+        // routing.cc:121919 (fixed 2026-08-06 — the first pass missed it). Both
+        // reach trust_update_negative() -> quarantine -> record_detection_event(),
+        // so leaving either ungated re-contaminates the ablation's confusion
+        // matrix. This one was previously unreachable anyway because the
+        // g_packet_crypto lookup above used the wrong key; with that fixed it
+        // becomes live, which is exactly why it now needs the gate.
+        if (have_crypto && !g_disable_btmm_trust)
             btmm(prev_sender, it->second.sig_valid && g_batch_passed,
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
@@ -383,7 +405,7 @@ inline LRADRSUFlags lrad_rsu(
             prev_sender < (uint32_t)total_size &&
             !is_detected_node[active_attack_variant][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(active_attack_variant, prev_sender, DSRC_LSTM);
         }
         if (flags.flag_LSTM) bc_write_detection_event(rsu, prev_sender, 9, t_now);
         if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);

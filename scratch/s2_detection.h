@@ -139,7 +139,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
             sender_sim_index < (uint32_t)total_size &&
             !is_detected_node[S2_HOME_VARIANT][sender_sim_index])
         {
-            record_detection_event(S2_HOME_VARIANT, sender_sim_index);
+            record_detection_event(S2_HOME_VARIANT, sender_sim_index, DSRC_RULE_S2);
             cout << "[S2] record_detection_event fired for node "
                  << sender_sim_index << " variant=" << S2_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
