@@ -306,8 +306,9 @@ Prefix-specific filenames:
 7b. **DONE — Convert lstm_logger.h to the canonical shape.** Was
    `lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv`: no `_d{X}ms`, no leading `Attack`
    literal, used `A` instead of `Attack`. Converted to
-   `Attack{v}_{pct}[_d{X}ms]_seed{s}.csv` (`attack_v` was already the correct
-   1-indexed-with-0-benign value — pure rename, not an indexing fix). Confirmed live:
+   `Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` (the local C++ variable is named
+   `attack_v`, but it already held the correct 1-indexed-with-0-benign value that
+   the rest of this doc calls `N` — pure rename, not an indexing fix). Confirmed live:
    attacks 1/2 DO now carry a real `_d{X}ms` segment in lstm files (e.g.
    `Attack1_40_d100ms_seed1.csv`) since `run_training_sweep.py`/`run_training_attacks.py`
    never override `--attack_delay_ms`, so `g_delay_suffix` fires at its default anchor
@@ -556,27 +557,27 @@ output for an explicit `Compiling scratch/routing/routing.cc` line, and if it's
 missing, force it by deleting the object/binary before concluding the build is
 actually current.
 
-That said, applying this plan does not make every inconsistency instantly and
-silently disappear. Three caveats:
+The three caveats below were written before implementation started, to flag what
+this plan would *not* automatically solve. Now that every item is DONE, #2 and #3
+are resolved (recorded here for history, not as open work) — #1 remains genuinely
+true and is the one thing left if you need it:
 
-1. **Existing CSVs on disk are not touched.** This plan fixes the code that generates
-   *future* files. Anything already sitting in `results_routing/` from past runs keeps
-   its old filename shape — there is no migration/rename step for historical data in
-   this plan. If old and new-format runs need to coexist for analysis, that's separate
-   work not currently scoped here.
+1. **Existing CSVs on disk were not touched — still true.** Every fix changed the
+   code that generates *future* files. Anything already sitting in `results_routing/`
+   from before this work kept its old filename shape — no migration/rename step was
+   run over historical data. If old and new-format runs need to coexist for analysis,
+   or old files need bulk-renaming to the new shape, that's separate work, not done
+   as part of this plan.
 
-2. **Downstream Python fixes are scoped, not all pre-verified line-by-line.** For
-   `bc_*`, `hf_events`, `tcam_*`, and `functional_verification.py`'s three lookup
-   patterns, the exact lines needing change are identified. For the 8
-   `lstm_pipeline/src/*.py` files and several `scripts/*.py` files (Phase 2 #7b, #8),
-   the plan lists them as "confirmed via grep to reference this filename shape" —
-   someone still needs to open each one and determine exactly what breaks (glob
-   pattern vs. positional parse vs. plain path string) before the C++ writer changes,
-   as those sections already say. Treat that enumeration as part of the implementation
-   work, not something already done.
+2. **Downstream Python fixes — resolved.** Every file originally flagged as
+   "confirmed via grep, needs opening to determine what breaks" was individually
+   opened, classified (glob / positional-parse / plain path / genuinely unaffected),
+   and fixed where needed — see each item's "Verified" note for specifics. Two
+   consumers not on the original list at all (`plot_tap_results.py`, and a second bug
+   in `run_hf_attacks.py`'s `clean_results()`) were found and fixed during that
+   process rather than being missed.
 
-3. **A few fields don't map cleanly onto the canonical shape and need a judgment call
-   at implementation time**, not a mechanical find-replace: Attack 3's
-   `cp_attack_intensity`-derived suffix and Attack 4's `_nN` attacker-count suffix
-   (Phase 2 #7c) must survive as extra segments alongside `Attack{N}_{pct}_seed{S}`,
-   and the exact spelling of those extra segments isn't locked in yet.
+3. **The extra-suffix spelling — resolved.** Attack 3's `cp_attack_intensity`-derived
+   suffix is `_cpintN`; Attack 4's attacker-count suffix stayed `_nN`. Both ship as
+   trailing segments after `Attack{N}_{pct}_seed{S}`, confirmed live
+   (`Attack3_40_seed1_cpint40.csv`, `Attack4_40_seed1_n80.csv`).
