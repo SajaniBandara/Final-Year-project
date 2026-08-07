@@ -256,7 +256,7 @@ inline bool s5_detect(uint32_t recv_flow_id,
         if (prev_sender < (uint32_t)total_size &&
             !is_detected_node[S5_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(S5_HOME_VARIANT, prev_sender);
+            record_detection_event(S5_HOME_VARIANT, prev_sender, DSRC_RULE_S5);
             cout << "[S5] record_detection_event fired for malicious RSU "
                  << prev_sender << " variant=" << S5_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;

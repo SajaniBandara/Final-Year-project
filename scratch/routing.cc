@@ -94730,6 +94730,7 @@ void write_csv_delay_training(uint32_t index, uint32_t mode)
 {
 	fstream fout;
 	fout.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
+	fout.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/delay_training_data.csv",ios::out|ios::app);
 	fout << mode << ", "
 	     << mode*D_wl_bar[index] << ", "
 	     <<	(1-mode)*D_wi_bar[index] << ", "
@@ -114660,6 +114661,42 @@ bool is_malicious_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 // Set to true when your detection logic fires for that variant/node
 bool is_detected_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 
+// Detection SOURCE attribution (added 2026-08-06, supervisor Fix 5).
+// is_detected_node[][] records THAT a node was flagged but not BY WHAT, so a
+// signature detection and a trust-decay quarantine side-effect are
+// indistinguishable in the confusion matrix. That ambiguity is what made the
+// Q4 analysis contestable: TP+FP matched the TRUST-QUARANTINE count exactly on
+// 7 of 8 variants, but the counters alone could not say which caller of
+// trust_update_negative() was responsible. With this tag, every Q-config's
+// TP/FP can be broken down per component and the per-component MCC table
+// becomes meaningful.
+//
+// Bit-set, not a scalar: a node can legitimately be flagged by more than one
+// component in the same run (e.g. S7 and the witness both firing on A7), and
+// collapsing that to "first writer wins" would under-report the others.
+enum DetectionSource : uint16_t {
+    DSRC_NONE        = 0,
+    DSRC_RULE_S1     = 1u << 0,
+    DSRC_RULE_S2     = 1u << 1,
+    DSRC_RULE_S3     = 1u << 2,
+    DSRC_RULE_S4     = 1u << 3,
+    DSRC_RULE_S5     = 1u << 4,
+    DSRC_RULE_S6     = 1u << 5,
+    DSRC_RULE_S7     = 1u << 6,
+    DSRC_RULE_S8     = 1u << 7,
+    DSRC_LSTM        = 1u << 8,
+    DSRC_WITNESS_DA  = 1u << 9,   // α_w duplication alert (eq:dup_alert_cond)
+    DSRC_WITNESS_NFA = 1u << 10,  // β_w non-forwarding alert (eq:nfwd_detect)
+    DSRC_BTMM_PACKET = 1u << 11,  // per-packet trust decay (eq:trust_update)
+    DSRC_QUARANTINE  = 1u << 12,  // trust < T_min, caller not otherwise identified
+};
+uint16_t detection_source[NUM_ATTACK_VARIANTS][total_size] = {{0}};
+
+// Set by whichever path is about to call trust_update_negative(), so the
+// quarantine that may follow can be attributed to its real cause rather than
+// to the generic DSRC_QUARANTINE bucket. Reset to DSRC_NONE by the caller.
+uint16_t g_current_trust_source = DSRC_NONE;
+
 // Issue 5 fix (2026-08-02): event-gated ground truth for A1/A2 only.
 // is_malicious_node[0]/[1] above are static per-run identity flags (true for
 // the whole run for a designated attacker RSU, set once in
@@ -115031,7 +115068,7 @@ void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
-void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+void record_detection_event(int v, int n, uint16_t src); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
 void handoff_tracker_cycle_update(); // defined after lrad.h (needs lookup_vehicle_associated_rsu_local_idx); forward-declared so calculate_performance_evaluation_metrics() can schedule it
 #include "handoff_tracker.h"        // Per-vehicle serving-RSU handoff detection (mobility amplification fix §4.1)
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
@@ -115312,9 +115349,13 @@ void record_attack_onset(int v, int n)
 }
 
 // Call when detection/quarantine fires — v=variant(0-7), n=node index
-void record_detection_event(int v, int n)
+// src: which component decided this (supervisor Fix 5). Defaults to
+// DSRC_QUARANTINE so the trust-decay path, which has no single owning
+// signature, still lands in a named bucket rather than an unlabelled one.
+void record_detection_event(int v, int n, uint16_t src)
 {
 	is_detected_node[v][n] = true;
+	detection_source[v][n] |= src;
 	t_quarantine[n] = Simulator::Now().GetSeconds();
 }
 
@@ -117382,6 +117423,41 @@ void calculate_security_detection_metrics()
                   << " TP=" << sec_TP[v] << " FP=" << sec_FP[v]
                   << " TN=" << sec_TN[v] << " FN=" << sec_FN[v]
                   << std::endl;
+
+        // Per-source TP/FP breakdown (supervisor Fix 5). Emitted only for the
+        // variant actually under test, and only once it has any detections, to
+        // keep the per-cycle log readable. Without this, a Q-config's TP/FP
+        // cannot be split between a genuine signature firing and a trust-decay
+        // quarantine side-effect — the ambiguity that made Q4 contestable.
+        if (v == active_attack_variant && (sec_TP[v] + sec_FP[v]) > 0)
+        {
+            static const struct { uint16_t bit; const char* name; } kSources[] = {
+                {DSRC_RULE_S1,     "S1"},     {DSRC_RULE_S2,     "S2"},
+                {DSRC_RULE_S3,     "S3"},     {DSRC_RULE_S4,     "S4"},
+                {DSRC_RULE_S5,     "S5"},     {DSRC_RULE_S6,     "S6"},
+                {DSRC_RULE_S7,     "S7"},     {DSRC_RULE_S8,     "S8"},
+                {DSRC_LSTM,        "LSTM"},   {DSRC_WITNESS_DA,  "witness_DA"},
+                {DSRC_WITNESS_NFA, "witness_NFA"},
+                {DSRC_BTMM_PACKET, "btmm_packet"},
+                {DSRC_QUARANTINE,  "quarantine_unattributed"},
+            };
+            std::cout << "[SECURITY-SRC] Variant " << v << " |";
+            for (auto& s : kSources)
+            {
+                uint32_t tp_s = 0, fp_s = 0;
+                for (int n = 0; n < active_topology_nodes; n++)
+                {
+                    if (!(detection_source[v][n] & s.bit)) continue;
+                    bool mal = is_malicious_node[v][n];
+                    if (v == 0) mal = mal && g_s1_gt_delay_exceeded[n];
+                    else if (v == 1) mal = mal && g_s2_gt_delay_exceeded[n];
+                    if (mal) tp_s++; else fp_s++;
+                }
+                if (tp_s || fp_s)
+                    std::cout << " " << s.name << "(TP=" << tp_s << ",FP=" << fp_s << ")";
+            }
+            std::cout << std::endl;
+        }
     }
 }
 
@@ -117629,6 +117705,22 @@ void calculate_witness_wapr_metric()
               << " FN_W=" << g_witness_FN_W
               << " P_W=" << 100.0 * current_WAP_precision << "%"
               << " R_W=" << 100.0 * current_WAP_recall << "%" << std::endl;
+
+    // eq:local_quarantine observability. Printed only when the mechanism is
+    // enabled, so the default build's log is unchanged. mean_hold is the mean
+    // deferral actually applied per suspended packet — the quantity that says
+    // whether HOLD_FORWARD has any material effect on delivery, which is the
+    // open question the with/without arms exist to answer.
+    if (enable_local_quarantine) {
+        double mean_hold = (g_fwd_suspended_pkts > 0)
+                         ? (g_fwd_suspended_time_sum / (double)g_fwd_suspended_pkts) : 0.0;
+        std::cout << "[SECURITY] HOLD-FORWARD: holds=" << g_fwd_hold_events
+                  << " suspended_pkts=" << g_fwd_suspended_pkts
+                  << " mean_hold_ms=" << mean_hold * 1000.0
+                  << " released_confirm=" << g_fwd_release_confirm
+                  << " released_timeout=" << g_fwd_release_timeout
+                  << " T_hold=" << T_HOLD << "s" << std::endl;
+    }
 }
 
 // Single canonical TCAM capacity constant — every check that reads
@@ -121347,7 +121439,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    <<" at t="<<Now().GetSeconds()<<endl;
 						// Record hit: install on first forward, then increment counters.
 						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
-						Simulator::Schedule (Seconds(total_tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+						// eq:local_quarantine / HOLD_FORWARD — if this node's OBU flagged
+						// this flow (D_OBU=1) and the RSU has not yet confirmed, suspend
+						// the forward for the remainder of the hold window. Returns 0.0
+						// when the mechanism is disabled (the default), when the hold has
+						// been released by RSU.Confirm, when T_hold has expired, or when
+						// the flow does not match the flagged signature — so the default
+						// build is bit-identical to before this change.
+						double _hold_defer = fwd_hold_remaining(current_hop, flow_id);
+						Simulator::Schedule (Seconds(total_tx_delay + _hold_defer), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
 						bool apply_attack_delay = (total_tx_delay > 0.0);   
 						double retry_delay = tg + 0.000100 + rand_delay;
@@ -121871,10 +121971,20 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
 						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
 						// sig_ok gate excludes overheard broadcast packets.
-						if (hop_ok && timing_ok && g_batch_passed)
-							trust_update_positive(prev_sender);
-						else
-							trust_update_negative(prev_sender);
+						// g_disable_btmm_trust: diagnostic ablation gate — see its
+						// declaration in crypto_layer.h for why this branch needed
+						// one of its own (it reached the confusion matrix in every
+						// Q1-Q6 config, including the ones claiming to isolate
+						// something else).
+						if (!g_disable_btmm_trust) {
+							if (hop_ok && timing_ok && g_batch_passed)
+								trust_update_positive(prev_sender);
+							else {
+								g_current_trust_source = DSRC_BTMM_PACKET;
+								trust_update_negative(prev_sender);
+								g_current_trust_source = DSRC_NONE;
+							}
+						}
 					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
@@ -121890,8 +122000,34 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// Only fire duplication alert during HF attack variants (S5-S8).
 					// Flow destinations change during routing updates causing false positives
 					// in non-HF scenarios.
+					uint32_t _dup_prev_dst = UINT32_MAX;
+					double   _dup_age      = -1.0;
 					if ((present_active_hf_attack || present_passive_hf_attack) &&
-					    witness_check_duplication(current_hop, pkt_hash, destination)) {
+					    witness_check_duplication(current_hop, pkt_hash, destination,
+					                              &_dup_prev_dst, &_dup_age)) {
+						// DIAGNOSTIC (2026-08-06): characterise eq:dup_alert_cond's
+						// false positives before redesigning the hash. Prints the two
+						// destinations that collided, how far apart in time, and whether
+						// the accused node is genuinely a hidden-forwarding attacker.
+						// The paper's justification for this condition is "under
+						// single-path routing, the same hash at two distinct
+						// destinations is impossible for legitimate traffic" — this
+						// line measures how often that precondition actually holds.
+						if (g_dup_diag_log) {
+							bool _gt_mal = (_w_prev < (uint32_t)total_size) &&
+							               (passive_hf_malicious_nodes[_w_prev] ||
+							                active_hf_malicious_nodes[_w_prev]);
+							std::cout << "[DUP-DIAG]"
+							          << " witness=" << current_hop
+							          << " accused=" << _w_prev
+							          << " gt_malicious=" << (_gt_mal ? 1 : 0)
+							          << " fid=" << fid
+							          << " pkt=" << packet_ID
+							          << " dst_now=" << destination
+							          << " dst_prev=" << _dup_prev_dst
+							          << " dt=" << _dup_age
+							          << " t=" << Now().GetSeconds() << std::endl;
+						}
 						witness_submit_duplication_alert(current_hop, _w_prev,
 						                                 packet_ID, fid, destination, current_hop);
 					}
