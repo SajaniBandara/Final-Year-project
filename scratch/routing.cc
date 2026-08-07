@@ -144535,8 +144535,8 @@ if (fade_detection_active)
   if (enable_detector_windows)
   {
       int _dw_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
-      dw_write_csv(lstm_make_base_dir() + "detector_windows_A" + std::to_string(_dw_v)
-                   + "_pct" + std::to_string(attack_percentage)
+      dw_write_csv(lstm_make_base_dir() + "detector_windows_Attack" + std::to_string(_dw_v)
+                   + "_" + std::to_string(attack_percentage) + g_delay_suffix
                    + "_seed" + std::to_string(sim_seed) + ".csv");
   }
   Simulator::Destroy();
