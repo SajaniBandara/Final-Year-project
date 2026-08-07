@@ -120,7 +120,7 @@ NS-3's waf build system needs a `wscript` file in the scratch subdirectory to kn
 python3 scripts/run_std_attacks.py --build
 
 # Then write the wscript:
-cat > ~/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/routing/wscript << 'EOF'
+cat > ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/routing/wscript << 'EOF'
 import os
 
 def build(bld):
@@ -150,9 +150,9 @@ If you already have a mobility trace (`mobility_urban_150.tcl`) and NS-3 is inst
 python3 scripts/run_std_attacks.py --build --delay 80
 
 # Results appear in:
-#   ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack1_<pct>_d80ms.csv
-#   ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack2_<pct>_d80ms.csv
-#   ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_<pct>_d80ms.csv
+#   ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack1_<pct>_d80ms.csv
+#   ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack2_<pct>_d80ms.csv
+#   ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack2_<pct>_d80ms.csv
 #   logs/A<N>_pct<P>_d80ms_seed1.log
 ```
 
@@ -287,7 +287,7 @@ python3 scripts/run_std_attacks.py --build
 ```
 
 What this does internally:
-1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
+1. Copies `routing.cc` and all `.h` files from `scratch/` into `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/routing/` (subdirectory), and `.py` helpers into `scratch/` directly
 2. Runs `./waf build`
 
 Every file inside `scratch/` is synced automatically — no explicit list to maintain. The `scratch/routing/wscript` is **not** synced — create it once manually as described in §2.1.
@@ -295,13 +295,13 @@ Every file inside `scratch/` is synced automatically — no explicit list to mai
 To build manually without the launcher:
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
 ./waf build 2>&1 | grep -i error
 ```
 
 > **Note:** A manual `./waf build` compiles the code but does **not** copy the `.py` helper scripts. If you skip `--build`, run this once to copy them:
 > ```bash
-> cp <path-to-this-repo>/scratch/*.py ~/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/
+> cp <path-to-this-repo>/scratch/*.py ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/scratch/
 > ```
 
 ---
@@ -382,7 +382,7 @@ python3 scripts/run_std_attacks.py --build --clean --sim-time 300 --delay 80
 **Attack 1 — Control Plane (CP) Selective Time Delay:**
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
 ./waf --run "scratch/routing/routing \
   --routing_test=false \
   --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
@@ -396,7 +396,7 @@ cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
 **Attack 2 — Data Plane (DP) Selective Time Delay:**
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
 ./waf --run "scratch/routing/routing \
   --routing_test=false \
   --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
@@ -489,7 +489,7 @@ Active only for `--attack_number=3` or `--attack_number=4`. Metrics are appended
 
 ## 9. Result Files
 
-All result CSVs are written to `~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/`.
+All result CSVs are written to `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/`.
 
 ### Filename convention
 
@@ -622,7 +622,7 @@ RSU-to-controller assignment: each RSU is assigned to its nearest controller by 
 
 ```bash
 ~/ns-allinone-3.35/netanim-3.109/NetAnim
-# File → Open → ~/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml
+# File → Open → ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/routing.xml
 ```
 
 ---
@@ -656,7 +656,7 @@ Verify by checking that `/usr/include/openssl/evp.h` exists.
 The launcher script (`scripts/run_std_attacks.py`) has `NS3_DIR` hardcoded to `~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35` — the path used on the project's HPC cluster. On a personal machine, edit line 59 of the script to point to your actual NS-3 install:
 
 ```python
-NS3_DIR = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"   # personal laptop
+NS3_DIR = Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"   # personal laptop
 ```
 
 ### Build error: "not declared in this scope"
@@ -674,7 +674,7 @@ The optimizer (`optimization_lifetime.py`) reads a per-run tagged CSV (e.g. `opt
 Run under gdb:
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
 ./waf --run "scratch/routing/routing --attack_number=2 --attack_percentage=40" --gdb
 # In gdb: run  →  bt
 ```
@@ -714,8 +714,8 @@ python3 scripts/run_std_attacks.py --clean --build --delay 80
 Or manually:
 
 ```bash
-rm ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack*.csv
-rm ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack*.csv
+rm ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack*.csv
+rm ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/TAP_Attack*.csv
 ```
 
 ---

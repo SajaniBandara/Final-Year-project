@@ -82,7 +82,7 @@ files at runtime, so mixed-vintage directories are survivable — but verify rat
 **Output path** (`lstm_logger.h:801-812`, base from `lstm_make_base_dir()`):
 
 ```
-$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+$HOME/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 ```
 
 Note `A{v}` is the **proposal attack number**, not the internal variant index —
@@ -179,14 +179,14 @@ different runs.
 **Before starting the 240-run collection:**
 
 ```bash
-mv $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
-   $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_OLD_$(date +%F)
+mv $HOME/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
+   $HOME/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_OLD_$(date +%F)
 ```
 
 **After collection, verify no file contains duplicate cycles:**
 
 ```bash
-BASE=$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
+BASE=$HOME/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
 for f in $BASE/RSU_*/A*.csv; do
   d=$(awk -F, 'NR>1{print $1}' "$f" | sort -n | uniq -d | wc -l)
   [ "$d" -gt 0 ] && echo "DUPLICATE CYCLES: $f ($d)"
@@ -214,18 +214,18 @@ done; wait
 **Then check all four of these. Any failure blocks collection:**
 
 ```bash
-BASE=$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
+BASE=$HOME/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
 
 # 1. Files exist at all
-find $BASE -name 'A*_pct60_seed1.csv' | wc -l          # expect > 0, ideally 64 per variant
+find $BASE -name 'Attack*_60_seed1.csv' | wc -l          # expect > 0, ideally 64 per variant
 
 # 2. A2's zkp_delay_fail is NOT all zero  <-- the failure that killed the last dataset
 awk -F, 'NR>1 && $6!=0 {n++} END{print "A2 zkp_delay_fail nonzero rows:", n+0}' \
-    $BASE/RSU_*/A2_pct60_seed1.csv
+    $BASE/RSU_*/Attack2_60_seed1.csv
 
 # 3. A6/A8 zkp_hop_fail is NOT all zero
 awk -F, 'NR>1 && $7!=0 {n++} END{print "zkp_hop_fail nonzero rows:", n+0}' \
-    $BASE/RSU_*/A6_pct60_seed1.csv $BASE/RSU_*/A8_pct60_seed1.csv
+    $BASE/RSU_*/Attack6_60_seed1.csv $BASE/RSU_*/Attack8_60_seed1.csv
 
 # 4. Labels are present for A3/A6/A8
 for V in 3 6 8; do

@@ -47,7 +47,7 @@ Usage:
   python3 scripts/run_q1q6_ablation.py --workers 8   # execute
 
 NS3_DIR defaults to the shared cluster path this repo stores. Override locally
-WITHOUT committing:  NS3_DIR=~/ns3_g13/ns-allinone-3.35/ns-3.35 python3 scripts/run_q1q6_ablation.py ...
+WITHOUT committing:  NS3_DIR=~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35 python3 scripts/run_q1q6_ablation.py ...
 """
 
 import argparse

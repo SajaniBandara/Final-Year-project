@@ -154,7 +154,7 @@ between a calibration and a result you cannot defend.
 **Spec:** 0 % attack, 300 s, 5 seeds. This is the input for §2, §3 and §4.
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35
 for S in 1 2 3 4 5; do
   ./waf --run-no-build "scratch/routing/routing \
     --routing_test=false --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 \
@@ -169,7 +169,7 @@ Notes:
 
 - **`--attack_percentage=0`** — benign. No `--attack_number`, so the run is baseline.
 - **`--training=1`** is required: the calibrator reads the LSTM training CSVs
-  (`results_routing/lstm_training/RSU_*/A0_pct0_seed{S}.csv`), which is where `delta_t`,
+  (`results_routing/lstm_training/RSU_*/Attack0_0_seed{S}.csv`), which is where `delta_t`,
   `rho` and `v_bar` come from.
 - ⚠️ **The logger APPENDS** (`lstm_logger.h`, `std::ios::app`). Move
   `results_routing/lstm_training/` aside first, or old rows mix into the new baseline and
@@ -180,8 +180,8 @@ Notes:
 ### Integrity check after the run
 
 ```bash
-BASE=~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
-for f in $BASE/RSU_*/A0_pct0_seed*.csv; do
+BASE=~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
+for f in $BASE/RSU_*/Attack0_0_seed*.csv; do
   d=$(awk -F, 'NR>1{print $1}' "$f" | sort -n | uniq -d | wc -l)
   [ "$d" -gt 0 ] && echo "DUPLICATE CYCLES: $f"
 done
@@ -194,9 +194,9 @@ Silence = clean. Any output means that file holds more than one run.
 ## 6. Running the calibrator
 
 ```bash
-cd ~/ns3_g13/ns-allinone-3.35/ns-3.35/final\ yr\ project\ updated/Final-Year-project
+cd ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/final\ yr\ project\ updated/Final-Year-project
 python3 lstm_pipeline/src/rule_calibrator.py \
-    --data-dir ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
+    --data-dir ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/lstm_training \
     --val-fraction 0.3
 ```
 

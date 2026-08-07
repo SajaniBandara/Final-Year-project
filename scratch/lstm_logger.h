@@ -8,8 +8,8 @@
 // Writes one CSV row per RSU per 1 Hz cycle when --training=1 is passed.
 //
 // Output path:
-//   $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
-//       lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+//   /home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/
+//       lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 //
 // CSV columns (10 features + escalation flag + metadata + live-inference
 // result + label-only HF ground-truth column, full eq:lstm_input order):
