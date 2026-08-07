@@ -22,7 +22,7 @@ for p in "${PERCENTAGES[@]}"; do
     echo "====================================================="
     
     # We pass the attack percentage to the script along with Architecture 3 parameters.
-    ./waf --run "scratch/routing --routing_test=false --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 --simTime=40 --architecture=3 --attack_number=2 --attack_percentage=$p" > "results_routing/Attack2_${p}_percent_log.txt" 2>&1
+    ./waf --run "scratch/routing/routing --routing_test=false --N_Vehicles=200 --N_RSUs=64 --N_Controllers=4 --mobility_scenario=0 --maxspeed=150 --use_sumo_mobility=1 --simTime=40 --architecture=3 --attack_number=2 --attack_percentage=$p" > "results_routing/Attack2_${p}_percent_log.txt" 2>&1
     
     # Save the optimization files for each percentage run so they don't get overwritten
     cp scratch/optimization_link_lifetime_data.csv results_routing/optimization_lifetime_Attack2_${p}.csv    
