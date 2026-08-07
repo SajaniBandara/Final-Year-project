@@ -47,7 +47,7 @@ Usage:
   python3 scripts/run_q1q6_ablation.py --workers 8   # execute
 
 NS3_DIR defaults to the shared cluster path this repo stores. Override locally
-WITHOUT committing:  NS3_DIR=~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35 python3 scripts/run_q1q6_ablation.py ...
+WITHOUT committing:  NS3_DIR=~/ns3_g13/ns-allinone-3.35/ns-3.35 python3 scripts/run_q1q6_ablation.py ...
 """
 
 import argparse
@@ -57,7 +57,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-NS3_DIR     = Path(os.environ.get("NS3_DIR", Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"))
+NS3_DIR     = Path(os.environ.get("NS3_DIR", Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"))
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = Path(__file__).resolve().parent.parent / "logs" / "q1q6_ablation"
 BINARY_PATH = NS3_DIR / "build" / "scratch" / "routing" / "routing"

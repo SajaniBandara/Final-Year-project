@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # local_path_swap.sh — LOCAL ONLY, NEVER COMMIT THE RESULT.
 #
-# The repo intentionally stores HPC cluster paths (/home/sdvn_hidden_attacks/ns3_g13_apsari/...)
+# The repo intentionally stores HPC cluster paths (/home/sdvn_hidden_attacks/ns3_g13/...)
 # because the tree is shared with the cluster. This machine uses /home/nipuni/...
 # instead, so scratch/routing.cc must be rewritten before a local run and rewritten
 # back before committing.
@@ -24,11 +24,11 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$REPO/scratch/routing.cc"
 
-HPC_ROOT='/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/'
+HPC_ROOT='/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/'
 LOC_ROOT='/home/nipuni/ns-allinone-3.35/ns-3.35/'
-HPC_MOB='/home/sdvn_hidden_attacks/ns3_g13_apsari/mobility/'
+HPC_MOB='/home/sdvn_hidden_attacks/ns3_g13/mobility/'
 LOC_MOB='/home/nipuni/mobility/'
-HPC_HOME='"/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing/"'
+HPC_HOME='"/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/"'
 LOC_HOME='"/ns-allinone-3.35/ns-3.35/results_routing/"'
 
 case "${1:-status}" in
