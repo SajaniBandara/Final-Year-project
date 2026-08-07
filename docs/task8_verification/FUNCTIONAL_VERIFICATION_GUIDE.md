@@ -133,7 +133,7 @@ place stops the two scripts from drifting. Everything else is Python stdlib.
 
 | Input | Location |
 |---|---|
-| MOBIGUARD / TAP / FADE CSVs | `~/ns-allinone-3.35/ns-3.35/results_routing/` |
+| MOBIGUARD / TAP / FADE CSVs | `~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/` |
 | LSTM pipeline JSONs (Group N) | `lstm_pipeline/*.json` |
 | SFTO metrics (Group O) | `sfto_pipeline/results/*/metrics.json` |
 | Run logs (no-bypass attestation) | `logs/` and `logs/rule_based_sweep/` |
@@ -156,7 +156,7 @@ label-vs-`main.tex` cross-check lives in `audit_equations.py`.
 ## 4. How to regenerate the evidence (commands, in order)
 
 > Run everything from the project directory:
-> `cd ~/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project`
+> `cd ~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project`
 
 ### Step 0 — Understand the runners
 
@@ -225,7 +225,7 @@ python3 scripts/run_rule_based_sweep.py --clean --attack 4 --sim-time 90 --seeds
 ```bash
 tail -f logs/sweep_driver.log                         # driver progress + build output
 ls logs/rule_based_sweep/A*.log 2>/dev/null | wc -l   # runs started
-ls ~/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack*_seed1.csv | wc -l  # completed (target 48)
+ls ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack*_seed1.csv | wc -l  # completed (target 48)
 pgrep -c routing                                      # concurrent sims (0 = done)
 ```
 
@@ -368,5 +368,5 @@ Final-Year-project/
 │   └── functional_verification.log        # deliverable 2 output
 └── scratch/                          # NS-3 sources (synced into ns-3 tree on build)
 
-~/ns-allinone-3.35/ns-3.35/results_routing/   # all CSV output
+~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/   # all CSV output
 ```

@@ -216,8 +216,11 @@ inline void btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok)
 {
     if (b_batch && b_hop && timing_ok)
         trust_update_positive(node);
-    else
+    else {
+        g_current_trust_source = DSRC_BTMM_PACKET;
         trust_update_negative(node);
+        g_current_trust_source = DSRC_NONE;
+    }
 }
 
 // =========================================================================
@@ -245,17 +248,34 @@ inline LRADRSUFlags lrad_rsu(
 
     // Use .find() — never operator[] — to avoid silently inserting a
     // default-constructed "verification failed" record for unsigned packets.
-    auto it         = g_packet_crypto.find({prev_sender, pkt_id});
+    //
+    // KEY MUST BE crypto_msg_key(pkt_id, fid), NOT the raw pkt_id (fixed
+    // 2026-08-06). g_packet_crypto is written by mldsa87_sign() as
+    // {signer, crypto_msg_key(pkt_id, seq)} (crypto_layer.h:585) and read
+    // everywhere else with the same composite key. Since
+    // crypto_msg_key = ((flow_id & 0xFFF) << 12) | (pkt_id & 0xFFF), a raw
+    // pkt_id lookup only ever matched flow_id == 0 (and pkt_id < 4096), so
+    // have_crypto was false for essentially all traffic. Consequences while
+    // this was live: the RSU-side BTMM update below never fired, and S2f /
+    // S5-S8 lost the sig_valid / stark_hop_ok evidence they read from `it`.
+    // Matches the sibling verify call at routing.cc:121857, which passes the
+    // same `fid` in the same scope.
+    auto it         = g_packet_crypto.find({prev_sender, crypto_msg_key(pkt_id, fid)});
     bool have_crypto = (it != g_packet_crypto.end() && it->second.sig_len > 0);
 
     // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
     // s2_detect_packet() internally evaluates both the delay threshold AND
     // the STARK timing proof, covering the full eq:stark_delay_verify check.
-    // g_disable_s1_s2: diagnostic-only skip, see crypto_layer.h declaration.
-    flags.flag_S2f = g_disable_s1_s2 ? false :
-                      s2_detect_packet(prev_sender, t_now,
+    // g_disable_s1_s2 is applied to the FLAG, not to the call — s2_detect_packet()
+    // latches g_s2_gt_delay_exceeded[], which is A2's ground truth at
+    // routing.cc:117329. Skipping the call zeroed that ground truth, so A2
+    // reported TP+FN=0 in every config with the flag set (Q2/Q3/Q4). The
+    // record_detection_event() inside is separately gated on the same flag.
+    // Same asymmetry as g_disable_s3_s4; see crypto_layer.h.
+    const bool _s2f = s2_detect_packet(prev_sender, t_now,
                                        is_safety_critical_flow[fid],
                                        rsu, pkt_id, fid);
+    flags.flag_S2f = g_disable_s1_s2 ? false : _s2f;
 
     // ── S5–S8 (lines 5–8 of alg:lrad_rsu) ──────────────────────────────────
     // recv_flow_id approximated as fid: these functions prefer g_packet_crypto
@@ -330,7 +350,14 @@ inline LRADRSUFlags lrad_rsu(
         // trust_update_negative fires when sig or hop proof fails; for volume-based
         // signals (S7/S8) the negative path is forced via have_crypto being true
         // but the detection having already confirmed attack behaviour.
-        if (have_crypto)
+        // g_disable_btmm_trust also gates THIS BTMM site, not just the one at
+        // routing.cc:121919 (fixed 2026-08-06 — the first pass missed it). Both
+        // reach trust_update_negative() -> quarantine -> record_detection_event(),
+        // so leaving either ungated re-contaminates the ablation's confusion
+        // matrix. This one was previously unreachable anyway because the
+        // g_packet_crypto lookup above used the wrong key; with that fixed it
+        // becomes live, which is exactly why it now needs the gate.
+        if (have_crypto && !g_disable_btmm_trust)
             btmm(prev_sender, it->second.sig_valid && g_batch_passed,
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
@@ -378,7 +405,7 @@ inline LRADRSUFlags lrad_rsu(
             prev_sender < (uint32_t)total_size &&
             !is_detected_node[active_attack_variant][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(active_attack_variant, prev_sender, DSRC_LSTM);
         }
         if (flags.flag_LSTM) bc_write_detection_event(rsu, prev_sender, 9, t_now);
         if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);
@@ -411,10 +438,16 @@ inline LRADRSUFlags lrad_rsu(
 inline void process_escalation_at_rsu(uint32_t rsu_id)
 {
     auto& queue = g_escalation_queue[rsu_id];
-    for (auto& ev : queue)
+    for (auto& ev : queue) {
         lrad_rsu(rsu_id, ev.vehicle_id, ev.pkt_id, ev.flow_id,
                  ev.obu_flags, ns3::Simulator::Now().GetSeconds(),
                  ev.orig_prev_sender);
+        // RSU.Confirm(v,r) — full-mode analysis for this escalation is complete,
+        // so eq:local_quarantine's hold on the vehicle is released. This is the
+        // release arm of "until RSU.Confirm(v,r) ∨ t > t_detect + T_hold"; the
+        // timeout arm is handled lazily in fwd_hold_remaining().
+        rsu_confirm_release(ev.vehicle_id);
+    }
 
     // main.tex §5039/5307 "Escalation to LSTM detector": the same D_OBU
     // escalation that reaches LRAD-RSU above must also reach the LSTM side
@@ -507,8 +540,13 @@ inline LRADOBUFlags lrad_obu(
     // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────
     // Reads the associated RSU's existing EWMA baseline/variance state
     // directly — simulation shortcut documented in the LRAD plan.
-    if (!g_disable_s1_s2 && assoc_rsu_local_idx < (uint32_t)N_RSUs) {
-        flags.flag_S1 = s1_detect_packet(
+    // g_disable_s1_s2 applied to the FLAG, not the call — s1_detect_packet()
+    // latches g_s1_gt_delay_exceeded[] (A1's ground truth, routing.cc:117328)
+    // and maintains the per-RSU EWMA baseline, both of which must stay live
+    // across every ablation config. Its record_detection_event() is gated on
+    // the same flag internally. See s1_detection.h.
+    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
+        const bool _s1 = s1_detect_packet(
             assoc_rsu_local_idx, vehicle, delta_p, is_high_priority,
             // sender_node_id → fed into record_detection_event. Must be the
             // associated RSU (matching alg:lrad_obu's ESCALATE(p,v,r,...)
@@ -523,6 +561,7 @@ inline LRADOBUFlags lrad_obu(
             N_Vehicles + assoc_rsu_local_idx,
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
+        flags.flag_S1 = g_disable_s1_s2 ? false : _s1;
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
@@ -540,6 +579,11 @@ inline LRADOBUFlags lrad_obu(
 
     if (flags.D_OBU) {
         g_d_obu_count++;
+        // alg:lrad_obu line 1 of the D_OBU branch: HOLD_FORWARD(v,r).
+        // eq:local_quarantine — suspend forwarding of the flagged flow pending
+        // RSU confirmation or T_hold timeout. Gated by enable_local_quarantine
+        // (default off; see its declaration in crypto_layer.h for why).
+        hold_forward(vehicle, fid);
         // prev_sender → suspect for S1/S2p (the forwarding node), passed so
         // the RSU can write the correct BC.Write record (eq:rsu_write).
         escalate_to_rsu(vehicle, pkt_id, fid, flags, prev_sender);
