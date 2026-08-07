@@ -209,6 +209,10 @@ bool g_disable_btmm_trust           = false;
 // characterise the witness false-positive mechanism. Off by default (the
 // alert fires thousands of times per run).
 bool g_dup_diag_log                 = false;
+// Defined in detector_windows.h, which routing.cc includes AFTER this header
+// (it needs lstm_rsu_ground_truth_label from lstm_logger.h). Forward-declared
+// so crypto_register_cli_params() below can register its CLI flag.
+extern bool enable_detector_windows;
 bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
@@ -1824,6 +1828,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's eq:lstm_gate LSTM-suppression publishing intact", g_disable_s3_s4);
     cmd.AddValue("g_disable_s5_s6",               "DIAGNOSTIC: disable S5+S6 (active HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution", g_disable_s5_s6);
     cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 (passive HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution (isolates the witness pipeline)", g_disable_s7_s8);
+    cmd.AddValue("enable_detector_windows",       "M1: emit detector_windows.csv (per-window OBU/RSU decisions + truth) for metrics/m01_detection_quality.py", enable_detector_windows);
     cmd.AddValue("g_dup_diag_log",                "DIAGNOSTIC: trace every eq:dup_alert_cond firing (witness, accused, both destinations, ground truth)", g_dup_diag_log);
     cmd.AddValue("g_disable_btmm_trust",          "DIAGNOSTIC: disable the per-packet BTMM trust update (eq:trust_update); witness-driven and controller-plane trust updates unaffected", g_disable_btmm_trust);
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);

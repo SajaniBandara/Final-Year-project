@@ -117748,6 +117748,9 @@ int TCAM_CAPACITY = 1500;  // 2026-07-17: production capacity. Floor of the cite
                            // captures the full stealthy-climb -> exhaustion lifecycle.
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
+#include "detector_windows.h"        // M1 per-window grid (detector_windows.csv).
+                                     // AFTER lstm_logger.h: reuses lstm_rsu_ground_truth_label().
+                                     // BEFORE lrad.h: supplies its dw_mark_obu/dw_mark_rsu hooks.
                                      // g_slowpath_hit_count extern'd inside header;
                                      // defined below at line ~120273 in this file.
 
@@ -118217,6 +118220,8 @@ void calculate_performance_evaluation_metrics()
 		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
+	// M1 window grid: snapshot this cycle's OBU/RSU decisions + ground truth.
+	dw_end_cycle();
 	// [density-logging] flush this cycle's rows so data survives any exit path.
 	if (g_rsu_density_csv.is_open()) g_rsu_density_csv.flush();
 	// Resolve the results directory dynamically using the user or HOME environment variable
@@ -143932,6 +143937,7 @@ if (architecture == 3 && N_Vehicles > 0)
 			declare_attack_states();
 			declare_attackers();
 			lrad_reset_state(); // reset LRAD counters/queues each run (lrad.h in scope here)
+			dw_init();          // M1 window grid — clear per-cycle history
 
 			// Set unique tag for all per-run scratch-level CSV files AFTER
 			// declare_attack_states() has resolved active_attack_variant from
@@ -144523,6 +144529,16 @@ if (fade_detection_active)
 // and is called once per data-gathering cycle — no post-simulation call needed.
 
   crypto_log_close();  // flush and close crypto_timing_log.csv
+  // M1: emit the per-window detector grid (metrics/m01_detection_quality.py).
+  // Tagged with attack number + percentage + seed so a sweep's runs do not
+  // overwrite one another, mirroring the MOBIGUARD_*.csv naming convention.
+  if (enable_detector_windows)
+  {
+      int _dw_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
+      dw_write_csv(lstm_make_base_dir() + "detector_windows_A" + std::to_string(_dw_v)
+                   + "_pct" + std::to_string(attack_percentage)
+                   + "_seed" + std::to_string(sim_seed) + ".csv");
+  }
   Simulator::Destroy();
   
  

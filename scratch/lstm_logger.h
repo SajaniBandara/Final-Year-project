@@ -421,6 +421,8 @@ inline std::string lstm_make_base_dir()
 // =========================================================================
 inline void lstm_logger_init(uint32_t n_rsus)
 {
+    // eq:theta_adapt: clear per-RSU warm-up accumulators for this run.
+    mglstm::lstm_theta_adapt_reset((size_t)N_RSUs);
     if (g_lstm_logger_ready) return;
     g_lstm_prev_slowpath.assign(n_rsus, 0);
     g_lstm_prev_ranom.assign(n_rsus, 0);
@@ -508,6 +510,138 @@ inline void lstm_logger_init(uint32_t n_rsus)
 // Label: is_malicious_node[active_attack_variant][rsu_sim_idx] — 1 if the RSU
 //        is a confirmed attacker this cycle under the current attack variant.
 // =========================================================================
+// =========================================================================
+// lstm_rsu_ground_truth_label():
+// Ground-truth label for one RSU cycle row -- 1 if this RSU is attack-affected
+// under the active variant, else 0.
+//
+// EXTRACTED 2026-08-06 from lstm_log_rsu_cycle()'s inline label block, with no
+// behavioural change, so detector_windows.h can reuse the SAME definition of
+// RSU ground truth instead of reimplementing it. That logic carries four
+// hard-won fallbacks (A3/A4 victim-RSU, A2 covering-RSU, A6/A8 covering-RSU)
+// whose rationale is documented inline below; duplicating them would guarantee
+// the two copies drift.
+//   rsu_sim_idx = N_Vehicles + r  (the RSU's global node index)
+// =========================================================================
+inline int lstm_rsu_ground_truth_label(uint32_t rsu_sim_idx)
+{
+int label = 0;
+if (active_attack_variant >= 0 &&
+    active_attack_variant < NUM_ATTACK_VARIANTS)
+{
+    label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
+    // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
+    // variant 2) or attacker vehicles (A4, variant 3), never the RSU
+    // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
+    // positives and A3 only the single representative RSU. Label the
+    // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
+    // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
+    // is declared in tcam_detection.h, included just before this header.
+    if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
+    {
+        for (const auto& entry : g_tcam_table)
+        {
+            if (entry.node_id == rsu_sim_idx && entry.is_malicious)
+            {
+                label = 1;
+                break;
+            }
+        }
+    }
+    // A2 (Selective Time Delay, DP — variant 1): same root cause as the
+    // A3/A4 case above, missed when that fallback was added. Supervisor
+    // review fix (2026-08-03).
+    //
+    // declare_attackers() (attack_declaration.h) picks A2 attackers from the
+    // full var = N_Vehicles + N_RSUs candidate pool and sets
+    // is_malicious_node[1][idx] on the attacker's OWN node index. That is
+    // correct for the S1-S8 confusion matrix, which attributes detections to
+    // prev_sender (itself often the attacking vehicle) -- so it must NOT be
+    // changed at the declaration site. But this label indexes
+    // is_malicious_node[variant][rsu_sim_idx] by RSU, so whenever the A2
+    // attacker lands on a vehicle (200 of the 264 candidates) NO RSU row is
+    // ever labelled 1, and every A2 training row reads label=0 for the whole
+    // run even though the delay attack is firing. That is corrupted ground
+    // truth, not a weak feature.
+    //
+    // Fix mirrors the A3/A4 "victim RSU" idea using the covering-RSU
+    // attribution already used for the HF ground-truth counters: an RSU is
+    // attack-affected if it currently covers (strongest DSRC link to) at
+    // least one malicious A2 node. hf_gt_attribution_node() returns the node
+    // itself for RSU attackers, the covering RSU for vehicle attackers, and
+    // UINT32_MAX when no RSU is in range -- in which case no RSU observes
+    // that attacker at this instant and correctly no row is labelled for it.
+    if (!label && active_attack_variant == 1)
+    {
+        for (uint32_t n = 0; n < (uint32_t)var; ++n)
+        {
+            if (!selective_delay_malicious_nodes[n]) continue;
+            if (hf_gt_attribution_node(n) == rsu_sim_idx)
+            {
+                label = 1;
+                break;
+            }
+        }
+    }
+    // A6 (variant 5, active HF DP) and A8 (variant 7, passive HF DP):
+    // identical root cause to the A2 case above. Supervisor-approved
+    // 2026-08-04, scoped to these two variants ONLY.
+    //
+    // hf_declare_malicious_rsus() draws mal_node from a pool that for DP
+    // variants is "RSUs + intermediate vehicle relays" (hf_attack_helper.h
+    // :417) and sets is_malicious_node[variant][mal_node] on that node's own
+    // index (hf_attack_helper.h:653). When the draw lands on a vehicle, no
+    // RSU row is ever labelled 1 even though the attack is firing.
+    //
+    // This was structurally masked in earlier verification: at p=100% the
+    // entire on-path pool is compromised, so every RSU is directly malicious
+    // and the fallback is never needed. The bug only appears below 100%.
+    //
+    // NOT extended to A5 (variant 4) or A7 (variant 6): those are
+    // control-plane variants whose attacker pool is RSUs/controllers, never
+    // vehicles, so the vehicle-orphaning case cannot arise for them.
+    //
+    // Note this is the LABEL. The hf_gt_attribution_node() calls already
+    // present in routing.cc (~121709 / ~121793) fix the FEATURE counters
+    // (r_anom, hf_send_gt, the ZKP counters) and never touch the label.
+    if (!label && (active_attack_variant == 5 || active_attack_variant == 7))
+    {
+        const bool* mal = (active_attack_variant == 5)
+                            ? active_hf_malicious_nodes
+                            : passive_hf_malicious_nodes;
+        // MEASURED (2026-08-04, supervisor-confirmed scope call (a)): this
+        // fallback is CORRECT BUT INERT for A6/A8 in the current attacker
+        // model, and that is expected -- do not "fix" it by widening scope.
+        // Instrumented across two runs (p=40 %: 67 malicious vehicles;
+        // p=20 %: 24), the covering-RSU lookup resolved 91/91 with ZERO
+        // unmapped, but in every case the covering RSU was already directly
+        // malicious, so the fallback never changed a label.
+        // Cause: A6/A8 draw attackers from the ON-PATH pool
+        // (hf_attack_helper.h:417), which structurally places malicious
+        // vehicle relays inside on-path RSU zones -- and those RSUs are
+        // themselves in the draw. Lowering the attack percentage shrinks
+        // both sets together rather than decoupling them. Physically
+        // necessary: an off-path node never handles the traffic it would
+        // have to duplicate.
+        // Contrast A2 above, which draws from the full 264-node pool
+        // uniformly -- there the identical fallback moved 38 -> 54 RSUs.
+        // Kept as defensive code: it costs one pass over total_size per
+        // logged cycle and would matter immediately if attacker selection
+        // ever stops being on-path constrained.
+        for (uint32_t n = 0; n < (uint32_t)total_size; ++n)
+        {
+            if (!mal[n]) continue;
+            if (hf_gt_attribution_node(n) == rsu_sim_idx)
+            {
+                label = 1;
+                break;
+            }
+        }
+    }
+}
+    return label;
+}
+
 inline void lstm_log_rsu_cycle(uint32_t r,
                                 double   rho_t,
                                 double   v_bar_t,
@@ -671,7 +805,8 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if ((int)win.size() == LSTM_WINDOW)
         {
             float score = mglstm::lstm_forward_and_score(g_lstm_model, win);
-            bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score);
+            bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score,
+                                               ns3::Simulator::Now().GetSeconds());
             g_lstm_last_score[r] = score;
             g_lstm_last_dlstm[r] = d_lstm;
             if (CRYPTO_DEBUG_LOG)
@@ -686,121 +821,8 @@ inline void lstm_log_rsu_cycle(uint32_t r,
 
     if (!do_training_log) return;
 
-    // ── Label (ground truth)
-    int label = 0;
-    if (active_attack_variant >= 0 &&
-        active_attack_variant < NUM_ATTACK_VARIANTS)
-    {
-        label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
-        // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
-        // variant 2) or attacker vehicles (A4, variant 3), never the RSU
-        // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
-        // positives and A3 only the single representative RSU. Label the
-        // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
-        // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
-        // is declared in tcam_detection.h, included just before this header.
-        if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
-        {
-            for (const auto& entry : g_tcam_table)
-            {
-                if (entry.node_id == rsu_sim_idx && entry.is_malicious)
-                {
-                    label = 1;
-                    break;
-                }
-            }
-        }
-        // A2 (Selective Time Delay, DP — variant 1): same root cause as the
-        // A3/A4 case above, missed when that fallback was added. Supervisor
-        // review fix (2026-08-03).
-        //
-        // declare_attackers() (attack_declaration.h) picks A2 attackers from the
-        // full var = N_Vehicles + N_RSUs candidate pool and sets
-        // is_malicious_node[1][idx] on the attacker's OWN node index. That is
-        // correct for the S1-S8 confusion matrix, which attributes detections to
-        // prev_sender (itself often the attacking vehicle) -- so it must NOT be
-        // changed at the declaration site. But this label indexes
-        // is_malicious_node[variant][rsu_sim_idx] by RSU, so whenever the A2
-        // attacker lands on a vehicle (200 of the 264 candidates) NO RSU row is
-        // ever labelled 1, and every A2 training row reads label=0 for the whole
-        // run even though the delay attack is firing. That is corrupted ground
-        // truth, not a weak feature.
-        //
-        // Fix mirrors the A3/A4 "victim RSU" idea using the covering-RSU
-        // attribution already used for the HF ground-truth counters: an RSU is
-        // attack-affected if it currently covers (strongest DSRC link to) at
-        // least one malicious A2 node. hf_gt_attribution_node() returns the node
-        // itself for RSU attackers, the covering RSU for vehicle attackers, and
-        // UINT32_MAX when no RSU is in range -- in which case no RSU observes
-        // that attacker at this instant and correctly no row is labelled for it.
-        if (!label && active_attack_variant == 1)
-        {
-            for (uint32_t n = 0; n < (uint32_t)var; ++n)
-            {
-                if (!selective_delay_malicious_nodes[n]) continue;
-                if (hf_gt_attribution_node(n) == rsu_sim_idx)
-                {
-                    label = 1;
-                    break;
-                }
-            }
-        }
-        // A6 (variant 5, active HF DP) and A8 (variant 7, passive HF DP):
-        // identical root cause to the A2 case above. Supervisor-approved
-        // 2026-08-04, scoped to these two variants ONLY.
-        //
-        // hf_declare_malicious_rsus() draws mal_node from a pool that for DP
-        // variants is "RSUs + intermediate vehicle relays" (hf_attack_helper.h
-        // :417) and sets is_malicious_node[variant][mal_node] on that node's own
-        // index (hf_attack_helper.h:653). When the draw lands on a vehicle, no
-        // RSU row is ever labelled 1 even though the attack is firing.
-        //
-        // This was structurally masked in earlier verification: at p=100% the
-        // entire on-path pool is compromised, so every RSU is directly malicious
-        // and the fallback is never needed. The bug only appears below 100%.
-        //
-        // NOT extended to A5 (variant 4) or A7 (variant 6): those are
-        // control-plane variants whose attacker pool is RSUs/controllers, never
-        // vehicles, so the vehicle-orphaning case cannot arise for them.
-        //
-        // Note this is the LABEL. The hf_gt_attribution_node() calls already
-        // present in routing.cc (~121709 / ~121793) fix the FEATURE counters
-        // (r_anom, hf_send_gt, the ZKP counters) and never touch the label.
-        if (!label && (active_attack_variant == 5 || active_attack_variant == 7))
-        {
-            const bool* mal = (active_attack_variant == 5)
-                                ? active_hf_malicious_nodes
-                                : passive_hf_malicious_nodes;
-            // MEASURED (2026-08-04, supervisor-confirmed scope call (a)): this
-            // fallback is CORRECT BUT INERT for A6/A8 in the current attacker
-            // model, and that is expected -- do not "fix" it by widening scope.
-            // Instrumented across two runs (p=40 %: 67 malicious vehicles;
-            // p=20 %: 24), the covering-RSU lookup resolved 91/91 with ZERO
-            // unmapped, but in every case the covering RSU was already directly
-            // malicious, so the fallback never changed a label.
-            // Cause: A6/A8 draw attackers from the ON-PATH pool
-            // (hf_attack_helper.h:417), which structurally places malicious
-            // vehicle relays inside on-path RSU zones -- and those RSUs are
-            // themselves in the draw. Lowering the attack percentage shrinks
-            // both sets together rather than decoupling them. Physically
-            // necessary: an off-path node never handles the traffic it would
-            // have to duplicate.
-            // Contrast A2 above, which draws from the full 264-node pool
-            // uniformly -- there the identical fallback moved 38 -> 54 RSUs.
-            // Kept as defensive code: it costs one pass over total_size per
-            // logged cycle and would matter immediately if attacker selection
-            // ever stops being on-path constrained.
-            for (uint32_t n = 0; n < (uint32_t)total_size; ++n)
-            {
-                if (!mal[n]) continue;
-                if (hf_gt_attribution_node(n) == rsu_sim_idx)
-                {
-                    label = 1;
-                    break;
-                }
-            }
-        }
-    }
+    // ── Label (ground truth) — see lstm_rsu_ground_truth_label() above.
+    int label = lstm_rsu_ground_truth_label(rsu_sim_idx);
 
     // ── File path: lstm_training/RSU_{r}/Attack{N}_{pct}[_d{X}ms]_seed{S}.csv
     // attack_v (local variable name, holds the same value the rest of the

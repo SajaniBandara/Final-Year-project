@@ -340,6 +340,7 @@ inline LRADRSUFlags lrad_rsu(
 
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
                   flags.flag_S7 || flags.flag_S8 || flags.flag_LSTM;
+    if (flags.D_RSU) dw_mark_rsu(rsu);   // M1 window grid (detector_windows.h)
 
     // ── BC.Write per-signal + BTMM (eq:rsu_write, alg:lrad_rsu) ─────────────
     // Per thesis alg:lrad_rsu: BTMM and BC.Write are BOTH inside the D_RSU gate.
@@ -579,6 +580,7 @@ inline LRADOBUFlags lrad_obu(
 
     if (flags.D_OBU) {
         g_d_obu_count++;
+        dw_mark_obu(vehicle);   // M1 window grid (detector_windows.h)
         // alg:lrad_obu line 1 of the D_OBU branch: HOLD_FORWARD(v,r).
         // eq:local_quarantine — suspend forwarding of the flagged flow pending
         // RSU confirmation or T_hold timeout. Gated by enable_local_quarantine
