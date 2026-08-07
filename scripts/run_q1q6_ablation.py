@@ -162,6 +162,11 @@ def fixed_params(args) -> dict:
         "architecture": 3, "simTime": args.sim_time,
         "attack_percentage": args.percentage,
         "sim_seed": args.seed, "sim_run": 1,
+        # M1 (eq:mcc): emit the per-window detector grid every run. Without it
+        # the only MCC available is the inline PER-NODE matrix, which is a
+        # different statistic from the paper's per-window one -- see
+        # scratch/detector_windows.h. Cheap: one bit per node per cycle.
+        "enable_detector_windows": args.detector_windows,
     }
 
 
@@ -426,6 +431,10 @@ def main():
     ap = argparse.ArgumentParser(description="Q1-Q6 component-isolation ablation")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--sim-time", type=int, default=30, help="supervisor spec: 30 s")
+    ap.add_argument("--detector-windows", type=int, default=1,
+                    help="emit detector_windows.csv for M1 (default on). NOTE: needs "
+                         "sim-time >= 90 to survive the evaluator's 30-cycle warm-up "
+                         "exclusion -- a 30 s run yields too few usable windows.")
     ap.add_argument("--percentage", type=int, default=60, help="supervisor spec: 60 %%")
     ap.add_argument("--seed", type=int, default=1, help="supervisor spec: 1 seed")
     ap.add_argument("--dry-run", action="store_true",
