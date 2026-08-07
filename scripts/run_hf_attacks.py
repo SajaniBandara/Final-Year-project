@@ -28,7 +28,7 @@ write_security_metrics_csv()'s guard (both updated 2026-07-12).
 
 Result CSVs written by the simulation:
   results_routing/MOBIGUARD_Attack<N>_<pct>_seed<S>.csv   — MOBIGUARD detector (normal run only)
-  results_routing/FADE__Attack<N>_<pct>_seed<S>.csv        — eFADE detector (isolated run only)
+  results_routing/FADE_Attack<N>_<pct>_seed<S>.csv        — eFADE detector (isolated run only)
 
 Per-run files in the NS-3 working directory (tagged, no collision):
   fade_results_Attack<N>_<pct>_seed<S>.csv   — per-flow FADE detection detail
@@ -68,7 +68,7 @@ from pathlib import Path
 # Paths
 # ---------------------------------------------------------------------------
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-NS3_DIR     = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
+NS3_DIR     = Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"
 SCRATCH_DIR = NS3_DIR / "scratch"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = PROJECT_DIR / "logs"
@@ -164,10 +164,9 @@ def clean_results(attack: int | None, percentage: int | None) -> None:
     removed = 0
     for a in attacks:
         for p in percs:
-            # Glob rather than exact match: seed is now native to both
-            # filenames, and FADE's is "FADE__Attack..." (double underscore).
+            # Glob rather than exact match: seed is now native to both filenames.
             for pat in (f"MOBIGUARD_Attack{a}_{p}_seed*.csv",
-                        f"FADE__Attack{a}_{p}_seed*.csv"):
+                        f"FADE_Attack{a}_{p}_seed*.csv"):
                 for f in RESULTS_DIR.glob(pat):
                     f.unlink()
                     removed += 1
@@ -242,7 +241,7 @@ def check_results(scope_attacks: list[int], scope_percs: list[int], seed: int) -
         for p in scope_percs:
             for f in [
                 RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}_seed{seed}.csv",
-                RESULTS_DIR / f"FADE__Attack{a}_{p}_seed{seed}.csv",
+                RESULTS_DIR / f"FADE_Attack{a}_{p}_seed{seed}.csv",
             ]:
                 exists = f.exists() and f.stat().st_size > 0
                 mark   = "✓" if exists else "✗ MISSING"
@@ -328,7 +327,7 @@ def main() -> None:
     # Two runs per (attack, pct): the normal MOBIGUARD run (full S1-S8,
     # writes MOBIGUARD_Attack<N>_<pct>_seed<S>.csv) and the isolated
     # FADE-baseline run (S1-S8 off via FADE_PARAMS, writes
-    # FADE__Attack<N>_<pct>_seed<S>.csv). See module docstring for why
+    # FADE_Attack<N>_<pct>_seed<S>.csv). See module docstring for why
     # isolation is needed.
     runs = []
     for a in scope_attacks:

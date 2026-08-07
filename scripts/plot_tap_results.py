@@ -65,7 +65,7 @@ import scipy.stats as stats
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 RESULTS_DIR = os.path.expanduser(
-    "~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing")
+    "~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing")
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
@@ -81,7 +81,7 @@ ATTACK_INFO = {
 # The simulation appends a "_d<delay>ms" suffix to every Attack 1/2 result file
 # whenever --attack_number is set (routing.cc, g_delay_suffix). run_std_attacks.py
 # always passes --attack_number and defaults the delay to 80 ms, so the CSVs it
-# produces are named e.g. TAP__Attack2_40_d80ms_seed1.csv. This must match, or no
+# produces are named e.g. TAP_Attack2_40_d80ms_seed1.csv. This must match, or no
 # data is found. Override with --delay/--seed to plot a different point of a sweep.
 DEFAULT_DELAY_MS = 80
 DEFAULT_SEED = 1   # matches run_std_attacks.py's --seed default
@@ -154,9 +154,7 @@ def load_method_data(prefix, attack_number, suffix="", seed=DEFAULT_SEED):
     Load data for one method (TAP or MOBIGUARD) across all attack percentages.
     `suffix` is the delay tag (e.g. '_d80ms') the simulation appends to the
     filename. `prefix` is the literal filename prefix as written by the C++
-    side — "MOBIGUARD" (single underscore before "_Attack") or "TAP_" (double
-    underscore: the "TAP_" prefix plus the canonical "_Attack..." suffix gives
-    "TAP__Attack..."). Returns dict: {attack_pct: rows_list}
+    side — "MOBIGUARD" or "TAP". Returns dict: {attack_pct: rows_list}
     """
     data = {}
     for pct in ATTACK_PERCENTAGES:
@@ -279,7 +277,7 @@ def main():
     print(f"Loading CSV data for Attack {attack_number} ({attack_desc})...")
     if suffix:
         print(f"  Using filename suffix '{suffix}'")
-    tap_data = load_method_data("TAP_", attack_number, suffix, args.seed)
+    tap_data = load_method_data("TAP", attack_number, suffix, args.seed)
     mob_data = load_method_data("MOBIGUARD", attack_number, suffix, args.seed)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -292,7 +290,7 @@ def main():
     if all(len(tap_data[p]) == 0 for p in ATTACK_PERCENTAGES) and \
        all(len(mob_data[p]) == 0 for p in ATTACK_PERCENTAGES):
         print(f"\n⚠  No data found in {RESULTS_DIR}")
-        print(f"   Expected files like  TAP__Attack{attack_number}_40{suffix}_seed{args.seed}.csv")
+        print(f"   Expected files like  TAP_Attack{attack_number}_40{suffix}_seed{args.seed}.csv")
         print( "   Check the --delay value matches the runs, or pass --no-suffix.")
 
     print("\nGenerating Figure 1: Detection Quality (M1 MCC, M2 TVR)")

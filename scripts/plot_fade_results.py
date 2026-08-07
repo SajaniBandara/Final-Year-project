@@ -11,7 +11,7 @@ the FADE/B3 comparison per main.tex:
   - M1 (MCC)  — reported "all frameworks" (main.tex Experiment 5 table).
     FADE's side is read from fade_metrics_Attack<N>_<pct>_seed<S>.csv
     (fade_save_metrics()'s node-per-epoch pp_tp/fp/tn/fn summary), NOT
-    from FADE__Attack<N>_<pct>_seed<S>.csv's own per-cycle cur_MCC column — that
+    from FADE_Attack<N>_<pct>_seed<S>.csv's own per-cycle cur_MCC column — that
     column is computed at flow level with only 1-2 tracked flows, which
     degenerates to ~0 by the MCC formula's epsilon term whenever a cycle
     has only TP samples and no TN counterexample (or vice versa). See
@@ -63,7 +63,7 @@ import matplotlib.pyplot as plt
 import os
 import scipy.stats as stats
 
-RESULTS_DIR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+RESULTS_DIR = "/home/sdvn_hidden_attacks/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing"
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "fade")
@@ -109,7 +109,7 @@ MOB_COL_TN      = 15
 MOB_COL_FN      = 16
 MOB_COL_UCR_AVG = 20
 
-# FADE__Attack<N>_<pct>_seed<S>.csv column layout (fade_write_per_cycle_csv, routing.cc)
+# FADE_Attack<N>_<pct>_seed<S>.csv column layout (fade_write_per_cycle_csv, routing.cc)
 # NOTE: two extra PIR columns (17,18) shift TVR/UCR two places right vs MOBIGUARD's file.
 FADE_COL_PDR_AVG = 2
 FADE_COL_LAT_AVG = 4
@@ -155,11 +155,9 @@ def mean_and_ci(values):
 def load_method_data(prefix, attack_number, seeds=(1,)):
     """
     prefix is the literal filename prefix as written by the C++ side —
-    "MOBIGUARD" (single underscore before "_Attack") or "FADE_" (double
-    underscore: the "FADE_" prefix plus the canonical "_Attack..." suffix
-    gives "FADE__Attack...").
+    "MOBIGUARD" or "FADE".
 
-    seeds=(1,): FADE__Attack<N>_<pct>[_d<D>ms]_seed<S>.csv — the isolated
+    seeds=(1,): FADE_Attack<N>_<pct>[_d<D>ms]_seed<S>.csv — the isolated
     FADE sweep (run_hf_attacks.py) only ever collects seed=1.
 
     seeds=(1,2,3): MOBIGUARD_Attack<N>_<pct>[_d<D>ms]_seed<S>.csv — each
@@ -183,7 +181,7 @@ def load_method_data(prefix, attack_number, seeds=(1,)):
 
 def load_fade_summary_mcc(attack_number, seeds=(1,)):
     """
-    FADE__Attack<N>_<pct>_seed<S>.csv's own cur_MCC/avg_MCC columns are
+    FADE_Attack<N>_<pct>_seed<S>.csv's own cur_MCC/avg_MCC columns are
     computed at FLOW level (fade_write_per_cycle_csv section 1): with only
     1-2 flows tracked by fade_flow_config, most cycles have either a TP-only
     or a TN-only sample and no counterexample in the SAME cycle, so the MCC
@@ -352,7 +350,7 @@ def _blank_row(axes_row, message):
 
 def plot_attack_row(axes_row, attack_number, row_label=None):
     """Draw one attack's 5-panel comparison across the given row of axes."""
-    fade_data = load_method_data("FADE_", attack_number)
+    fade_data = load_method_data("FADE", attack_number)
     mob_data  = load_method_data("MOBIGUARD", attack_number, seeds=(1, 2, 3))
 
     excluded = EXCLUDED_PERCENTAGES.get(attack_number, [])

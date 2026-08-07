@@ -42,7 +42,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-NS3_DIR     = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
+NS3_DIR     = Path.home() / "ns3_g13_apsari/ns-allinone-3.35/ns-3.35"
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = Path(__file__).resolve().parent.parent / "logs" / "ablation_sweep"
 BINARY_PATH = NS3_DIR / "build" / "scratch" / "routing" / "routing"

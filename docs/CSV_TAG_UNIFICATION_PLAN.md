@@ -5,6 +5,15 @@ Status: DONE. All Phase 1 and Phase 2 items applied, verified, and committed
 Existing CSVs on disk from prior runs were not migrated — see "Coverage &
 caveats" below.
 
+**Amendment (post-completion):** the `TAP__Attack.../FADE__Attack...` double-underscore
+form documented throughout this doc and originally shipped was later reversed to single
+underscore (`TAP_Attack...`, `FADE_Attack...`, matching MOBIGUARD's plain form) at
+explicit request. Every `Verified`/`Confirmed live` note below that shows a
+double-underscore filename is an accurate record of what was tested *at the time* —
+left as-is rather than rewritten, since revising history here would make the doc lie
+about what was actually run and when. The "Target format" section immediately below
+reflects the current, final state; everything past that point in the doc is historical.
+
 Source of truth for editing: this repo's `scratch/routing.cc` and
 `scratch/*.h`. Sync to `ns-allinone-3.35/ns-3.35/scratch/routing/` (or run
 each script's `sync_files()`) after each step, and rebuild before testing.
@@ -25,8 +34,9 @@ _Attack{N}_{pct}[_d{X}ms]_seed{S}
 
 Prefix-specific filenames:
 - `MOBIGUARD_Attack{N}_{pct}[_d{X}ms]_seed{S}.csv`
-- `TAP__Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` (double underscore: prefix `TAP_` + suffix `_Attack...`)
-- `FADE__Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` (double underscore: prefix `FADE_` + suffix `_Attack...`)
+- `TAP_Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` (single underscore, same form as MOBIGUARD —
+  reversed from an earlier double-underscore version; see the amendment note at the top)
+- `FADE_Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` (single underscore, same reversal as TAP)
 - Baseline uniformly represented as `Attack0` — no more separate `MOBIGUARD_baseline.csv` /
   `FADE_baseline.csv` / `tcam_*_baseline.csv` files, no more raw negative index (`V-1`).
 - `lstm_training/RSU_{r}/Attack{N}_{pct}[_d{X}ms]_seed{S}.csv` — replaces the current
