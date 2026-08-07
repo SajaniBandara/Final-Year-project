@@ -288,8 +288,11 @@ forward on **every** number, not as a generic disclaimer:
    understate real contribution *even after the fix*, because the model never saw a working
    feature there. Carry this on A2 rows specifically.
 3. **Q3 runs 9 effective features, not 10** — `zkp_hop_fail` zeroes out under
-   `disable_crypto=1` (`stark_verify_hop` short-circuits), while `zkp_delay_fail` does **not**
-   (it is a raw wall-clock comparison at `routing.cc:121884` with no crypto gate).
+   `disable_crypto=1` (`stark_verify_hop`, `crypto_layer.h:964-967`, checks `g_disable_crypto`
+   and short-circuits), while `zkp_delay_fail` does **not** — it comes from
+   `stark_prove_timing()`/`stark_verify_timing()` (`crypto_layer.h:920,948`, called from
+   `s2_detection.h:107-109`), a raw wall-clock comparison against `STARK_DELTA_MAX` gated only
+   by `enable_stark_delay`, with no `g_disable_crypto` check.
 4. **Suppression counts don't scale linearly.** The paper's 14,000+ figure is a 300 s
    full-run number; a 30 s run's ceiling is 64 RSUs × 30 cycles = 1,920. Compare per-cycle
    rates, never totals.

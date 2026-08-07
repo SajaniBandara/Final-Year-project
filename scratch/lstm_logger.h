@@ -95,22 +95,30 @@
 #include <iterator>
 #include "lstm_inference.h"   // live in-sim forward pass — main.tex sec:fed_lstm
 
-// Forward declaration — g_slowpath_hit_count is DEFINED in routing.cc at the
-// point where it is declared (int g_slowpath_hit_count[300] = {0}).
-// This extern follows the same pattern used for g_tcam_rule_count in routing.cc
-// (extern int g_tcam_rule_count[300]) so the header can be included before that
-// definition while still accessing the variable at runtime.
-extern int g_slowpath_hit_count[300];
+// g_packetin_count (PACKET_IN/table-miss rate source for S4's λ_PI, same
+// counter S4 already reports) is declared extern in tcam_attack_helper.h and
+// tcam_detection.h, both included before this header per the inclusion-order
+// rule at the top of this file — no local extern needed here (same pattern
+// as g_tcam_rule_count's use below, at U_TCAM).
+//
+// HANDOVER_2026-08-07.md §5: λ_PI previously read g_slowpath_hit_count, which
+// is incremented ONLY on A3/A4 AND only once the TCAM table is completely
+// full (routing.cc:121308's gate) — a condition that can never occur in a
+// benign run, so every training row had λ_PI≡0 and the exported scaler's std
+// was exactly 1.0 (sklearn's zero-variance fallback). g_packetin_count is
+// incremented on every PACKET_IN across all variants (routing.cc:121309 and
+// tcam_attack_helper.h's attack-injection sites), giving real benign-vs-attack
+// variance. Point this feature at the same counter S4 already uses.
 
-// ── Per-RSU slowpath counter from the previous cycle.
-// Used to compute Δ(g_slowpath_hit_count) = λ_PI feature for each cycle.
+// ── Per-RSU PACKET_IN counter from the previous cycle (λ_PI feature).
+// Used to compute Δ(g_packetin_count) for each cycle.
 // Sized by lstm_logger_init(); zero-initialised.
 static std::vector<int> g_lstm_prev_slowpath;
 static bool             g_lstm_logger_ready = false;
 
 // ── Per-RSU R_anom counter from the previous cycle (eq:feat_ranom).
 // Used to compute Δ(g_lstm_ranom_count) the same way λ_PI is computed from
-// Δ(g_slowpath_hit_count) -- a proper per-window rate, not a cumulative
+// Δ(g_packetin_count) -- a proper per-window rate, not a cumulative
 // ever-fired latch (see g_lstm_ranom_count's declaration in crypto_layer.h
 // for why that distinction matters here). Sized by lstm_logger_init().
 static std::vector<uint32_t> g_lstm_prev_ranom;
@@ -384,17 +392,17 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
-    // Hardcoded absolute path, same convention as every other writer in this
-    // codebase (routing.cc, bc_blockchain_helper.h, etc.) — NOT $HOME-relative.
-    // This used to build "$HOME/ns-allinone-3.35/ns-3.35/final yr project
-    // updated/Final-Year-project/..." which was already wrong even before
-    // considering $HOME: that subpath doesn't exist anywhere on this host (a
-    // leftover from a prior directory layout), so live LSTM inference could
-    // never actually find its weights file via this path. On top of that,
-    // $HOME/ns-allinone-3.35 is a symlink into a DIFFERENT group's ns-3
-    // checkout (ns3-workspace) on this shared account, so even a correct
-    // relative subpath would have resolved into someone else's directory.
-    return "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/lstm_pipeline/lstm_weights_cpp.bin";
+    // $HOME-relative into the git repo checkout (g13_project_repo), not the
+    // ns-3.35 tree — the weights file lives in lstm_pipeline/ in this repo.
+    // A prior version hardcoded ".../ns-allinone-3.35/ns-3.35/final yr project
+    // updated/Final-Year-project/..." which never existed on this host and,
+    // even if it had, $HOME/ns-allinone-3.35 is a symlink into a DIFFERENT
+    // group's ns-3 checkout (ns3-workspace) on this shared account.
+    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project/";
+    const char* home = std::getenv("HOME");
+    if (home)
+        dir = std::string(home) + "/ns3_g13/g13_project_repo/Final-Year-project/";
+    return dir + "lstm_pipeline/lstm_weights_cpp.bin";
 }
 
 // =========================================================================
@@ -500,7 +508,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
 //
 // Features logged (eq:lstm_input):
 //   δ_t          = obs_delay
-//   λ_PI,t       = Δ(g_slowpath_hit_count[rsu_sim_idx]) since last cycle
+//   λ_PI,t       = Δ(g_packetin_count[rsu_sim_idx]) since last cycle
 //   U_TCAM,t     = g_tcam_rule_count[rsu_sim_idx] / TCAM_CAPACITY (clamped 0–1)
 //   𝟙[π_delay=⊥] = 1 if g_lstm_stark_counts[rsu_sim_idx].first  > 0 this cycle
 //   𝟙[π_hop=⊥]   = 1 if g_lstm_stark_counts[rsu_sim_idx].second > 0 this cycle
@@ -662,8 +670,10 @@ inline void lstm_log_rsu_cycle(uint32_t r,
 
     const uint32_t rsu_sim_idx = (uint32_t)N_Vehicles + r;
 
-    // ── Feature 2: λ_PI — Δ PACKET_IN slow-path hits since last cycle
-    int cur_slow  = g_slowpath_hit_count[rsu_sim_idx];
+    // ── Feature 2: λ_PI — Δ PACKET_IN (table-miss) hits since last cycle.
+    // g_packetin_count, not g_slowpath_hit_count — see HANDOVER_2026-08-07.md
+    // §5 / the comment above g_lstm_prev_slowpath's declaration for why.
+    int cur_slow  = g_packetin_count[rsu_sim_idx];
     double lam_PI = (double)(cur_slow - g_lstm_prev_slowpath[r]);
     if (lam_PI < 0.0) lam_PI = 0.0;    // guard: counter reset between cycles
     g_lstm_prev_slowpath[r] = cur_slow;
