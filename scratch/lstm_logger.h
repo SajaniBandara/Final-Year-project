@@ -8,8 +8,8 @@
 // Writes one CSV row per RSU per 1 Hz cycle when --training=1 is passed.
 //
 // Output path:
-//   $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
-//       lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+//   /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
+//       lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 //
 // CSV columns (10 features + escalation flag + metadata + live-inference
 // result + label-only HF ground-truth column, full eq:lstm_input order):
@@ -384,12 +384,17 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
-    // Fallback only — unreachable whenever HOME is set (overwritten just below).
-    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/Final-Year-project/";
-    const char* home = std::getenv("HOME");
-    if (home)
-        dir = std::string(home) + "/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/";
-    return dir + "lstm_pipeline/lstm_weights_cpp.bin";
+    // Hardcoded absolute path, same convention as every other writer in this
+    // codebase (routing.cc, bc_blockchain_helper.h, etc.) — NOT $HOME-relative.
+    // This used to build "$HOME/ns-allinone-3.35/ns-3.35/final yr project
+    // updated/Final-Year-project/..." which was already wrong even before
+    // considering $HOME: that subpath doesn't exist anywhere on this host (a
+    // leftover from a prior directory layout), so live LSTM inference could
+    // never actually find its weights file via this path. On top of that,
+    // $HOME/ns-allinone-3.35 is a symlink into a DIFFERENT group's ns-3
+    // checkout (ns3-workspace) on this shared account, so even a correct
+    // relative subpath would have resolved into someone else's directory.
+    return "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/lstm_pipeline/lstm_weights_cpp.bin";
 }
 
 // =========================================================================
@@ -397,17 +402,15 @@ inline std::string lstm_weights_bin_path()
 // Resolves the results_routing base directory the same way routing.cc does,
 // so the logger is self-contained and does not depend on the caller passing
 // results_dir (which is set after the per-RSU loop in the original code).
+// Hardcoded rather than $HOME-relative — see lstm_weights_bin_path() above
+// for why: $HOME/ns-allinone-3.35 is a symlink into a different group's
+// checkout on this shared account, so a --training=1 run using the old
+// $HOME-based path would silently write its LSTM training data into that
+// other group's results_routing/ instead of this project's.
 // =========================================================================
 inline std::string lstm_make_base_dir()
 {
-    std::string dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
-    const char* home = std::getenv("HOME");
-    if (home)
-        dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
-    if (!dir.empty() && dir.back() != '/')
-        dir += '/';
-    return dir;
+    return "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 }
 
 // =========================================================================
@@ -821,15 +824,21 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     // ── Label (ground truth) — see lstm_rsu_ground_truth_label() above.
     int label = lstm_rsu_ground_truth_label(rsu_sim_idx);
 
-    // ── File path: lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
-    // attack_v maps internal variant index (-1=benign→0, 0→1, 1→2, ...) to
-    // the proposal's attack number (0=benign, 1–8=attacks).
+    // ── File path: lstm_training/RSU_{r}/Attack{N}_{pct}[_d{X}ms]_seed{S}.csv
+    // attack_v (local variable name, holds the same value the rest of the
+    // codebase calls N) maps internal variant index (-1=benign→0, 0→1,
+    // 1→2, ...) to the proposal's attack number (0=benign, 1–8=attacks).
+    // Matches the same Attack{N}_{pct}[_d{X}ms]_seed{S} shape MOBIGUARD/TAP/
+    // FADE/bc_*/g_sim_tag all use. g_delay_suffix is only ever non-empty
+    // for attack_v 1/2 (Selective Time Delay), same gating as everywhere
+    // else that uses it.
     int attack_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
     std::string base = lstm_make_base_dir();
     std::string path = base
-        + "lstm_training/RSU_" + std::to_string(r) + "/A"
+        + "lstm_training/RSU_" + std::to_string(r) + "/Attack"
         + std::to_string(attack_v)
-        + "_pct" + std::to_string(attack_percentage)
+        + "_" + std::to_string(attack_percentage)
+        + g_delay_suffix
         + "_seed" + std::to_string(sim_seed)
         + ".csv";
 

@@ -9,15 +9,15 @@ longest single run instead of serially.
 Every attack runs TWICE per (percentage, delay): once as the normal MOBIGUARD
 run, and once as a TAP baseline run (--enable_tap=1, MOBIGUARD's own S1-S8
 detectors disabled via --enable_lrad_obu=0 --enable_lrad_rsu=0) — this is
-what actually produces the TAP_Attack<N>_<pct>.csv files. Note:
-scripts/plot_tap_results.py currently only reads/plots TAP_Attack2_*.csv —
-it needs a parallel update to cover Attack 1 TAP figures too.
+what actually produces the TAP_Attack<N>_<pct>_seed<S>.csv files. Note:
+scripts/plot_tap_results.py defaults to Attack 2 (--attack lets you pick
+Attack 1 instead) — it plots one attack per run, not both at once.
 
 Result CSVs written by the simulation:
-  results_routing/MOBIGUARD_Attack1_<pct>[_d<X>ms].csv  — Attack 1 (CP), MOBIGUARD S1 detector
-  results_routing/TAP_Attack1_<pct>[_d<X>ms].csv        — Attack 1 (CP), TAP baseline detector
-  results_routing/MOBIGUARD_Attack2_<pct>[_d<X>ms].csv  — Attack 2 (DP), MOBIGUARD S2 detector
-  results_routing/TAP_Attack2_<pct>[_d<X>ms].csv        — Attack 2 (DP), TAP baseline detector
+  results_routing/MOBIGUARD_Attack1_<pct>[_d<X>ms]_seed<S>.csv  — Attack 1 (CP), MOBIGUARD S1 detector
+  results_routing/TAP_Attack1_<pct>[_d<X>ms]_seed<S>.csv       — Attack 1 (CP), TAP baseline detector
+  results_routing/MOBIGUARD_Attack2_<pct>[_d<X>ms]_seed<S>.csv  — Attack 2 (DP), MOBIGUARD S2 detector
+  results_routing/TAP_Attack2_<pct>[_d<X>ms]_seed<S>.csv       — Attack 2 (DP), TAP baseline detector
 
 Per-run logs (stdout + stderr):
   logs/A<N>_pct<P>[_d<X>ms]_seed<S>.log
@@ -158,12 +158,14 @@ def clean_results(attack: int | None, percentage: int | None,
         for p in percs:
             for d in delays:
                 sfx = delay_suffix(d)
-                candidates = [
-                    RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}{sfx}.csv",
-                    RESULTS_DIR / f"TAP_Attack{a}_{p}{sfx}.csv",
+                # Glob rather than an exact seed match — clean should catch
+                # stale files from any prior seed, not just the one about to run.
+                patterns = [
+                    f"MOBIGUARD_Attack{a}_{p}{sfx}_seed*.csv",
+                    f"TAP_Attack{a}_{p}{sfx}_seed*.csv",
                 ]
-                for f in candidates:
-                    if f.exists():
+                for pat in patterns:
+                    for f in RESULTS_DIR.glob(pat):
                         f.unlink()
                         removed += 1
     if removed:
@@ -177,9 +179,8 @@ def clean_results(attack: int | None, percentage: int | None,
 # identically regardless of which attack is active. --enable_lrad_obu/
 # --enable_lrad_rsu=0 disables MOBIGUARD's own S1-S8 signature detectors so
 # the TAP run is a clean TAP-only baseline, not TAP+MOBIGUARD running
-# simultaneously. Note: scripts/plot_tap_results.py currently only reads/
-# plots TAP_Attack2_*.csv — it needs a parallel update to also cover
-# TAP_Attack1_*.csv if Attack 1 TAP figures are needed.
+# simultaneously. scripts/plot_tap_results.py --attack 1|2 selects which
+# attack's TAP_Attack<N>_*.csv to plot (default 2).
 TAP_PARAMS = {
     "enable_tap":       1,
     "enable_lrad_obu":  0,
@@ -268,7 +269,7 @@ def run_one(attack_number: int, attack_percentage: int,
 
 
 def check_results(scope_attacks: list[int], scope_percs: list[int],
-                  scope_delays: list[int | None]) -> None:
+                  scope_delays: list[int | None], seed: int) -> None:
     """Print a table showing which expected result CSVs were produced."""
     print("\n── Result files ──")
     all_ok = True
@@ -279,8 +280,8 @@ def check_results(scope_attacks: list[int], scope_percs: list[int],
         for a in scope_attacks:
             for p in scope_percs:
                 files = [
-                    RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}{sfx}.csv",
-                    RESULTS_DIR / f"TAP_Attack{a}_{p}{sfx}.csv",
+                    RESULTS_DIR / f"MOBIGUARD_Attack{a}_{p}{sfx}_seed{seed}.csv",
+                    RESULTS_DIR / f"TAP_Attack{a}_{p}{sfx}_seed{seed}.csv",
                 ]
                 for f in files:
                     exists = f.exists() and f.stat().st_size > 0
@@ -473,7 +474,7 @@ def main() -> None:
             print(f"    {r['label']}  (returncode={r['returncode']})")
             print(f"      log → {r['log']}")
 
-    check_results(scope_attacks, scope_percs, scope_delays)
+    check_results(scope_attacks, scope_percs, scope_delays, args.seed)
 
     sys.exit(0 if not failed else 1)
 

@@ -65,7 +65,7 @@ import scipy.stats as stats
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 RESULTS_DIR = os.path.expanduser(
-    "~/ms3_g13/ns-allinone-3.35/ns-3.35/results_routing")
+    "~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing")
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR  = os.path.join(PROJECT_DIR, "output", "tap")
@@ -81,9 +81,10 @@ ATTACK_INFO = {
 # The simulation appends a "_d<delay>ms" suffix to every Attack 1/2 result file
 # whenever --attack_number is set (routing.cc, g_delay_suffix). run_std_attacks.py
 # always passes --attack_number and defaults the delay to 80 ms, so the CSVs it
-# produces are named e.g. TAP_Attack2_40_d80ms.csv. This must match, or no data
-# is found. Override with --delay to plot a different point of a delay sweep.
+# produces are named e.g. TAP_Attack2_40_d80ms_seed1.csv. This must match, or no
+# data is found. Override with --delay/--seed to plot a different point of a sweep.
 DEFAULT_DELAY_MS = 80
+DEFAULT_SEED = 1   # matches run_std_attacks.py's --seed default
 
 
 def delay_suffix(delay_ms):
@@ -148,15 +149,17 @@ def mean_and_ci(values):
 
 # ─── Load data for all attack percentages ────────────────────────────────────
 
-def load_method_data(prefix, attack_number, suffix=""):
+def load_method_data(prefix, attack_number, suffix="", seed=DEFAULT_SEED):
     """
     Load data for one method (TAP or MOBIGUARD) across all attack percentages.
     `suffix` is the delay tag (e.g. '_d80ms') the simulation appends to the
-    filename. Returns dict: {attack_pct: rows_list}
+    filename. `prefix` is the literal filename prefix as written by the C++
+    side — "MOBIGUARD" or "TAP". Returns dict: {attack_pct: rows_list}
     """
     data = {}
     for pct in ATTACK_PERCENTAGES:
-        filepath = os.path.join(RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}{suffix}.csv")
+        filepath = os.path.join(
+            RESULTS_DIR, f"{prefix}_Attack{attack_number}_{pct}{suffix}_seed{seed}.csv")
         data[pct] = read_csv(filepath)
     return data
 
@@ -261,6 +264,10 @@ def main():
         "--no-suffix", action="store_true",
         help="Read files with no '_d<delay>ms' suffix (legacy naming).",
     )
+    parser.add_argument(
+        "--seed", type=int, default=DEFAULT_SEED,
+        help=f"sim_seed of the run to plot (default {DEFAULT_SEED}, matching run_std_attacks.py).",
+    )
     args = parser.parse_args()
 
     attack_number = args.attack
@@ -270,8 +277,8 @@ def main():
     print(f"Loading CSV data for Attack {attack_number} ({attack_desc})...")
     if suffix:
         print(f"  Using filename suffix '{suffix}'")
-    tap_data = load_method_data("TAP", attack_number, suffix)
-    mob_data = load_method_data("MOBIGUARD", attack_number, suffix)
+    tap_data = load_method_data("TAP", attack_number, suffix, args.seed)
+    mob_data = load_method_data("MOBIGUARD", attack_number, suffix, args.seed)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # Verify files loaded
@@ -283,7 +290,7 @@ def main():
     if all(len(tap_data[p]) == 0 for p in ATTACK_PERCENTAGES) and \
        all(len(mob_data[p]) == 0 for p in ATTACK_PERCENTAGES):
         print(f"\n⚠  No data found in {RESULTS_DIR}")
-        print(f"   Expected files like  TAP_Attack{attack_number}_40{suffix}.csv")
+        print(f"   Expected files like  TAP_Attack{attack_number}_40{suffix}_seed{args.seed}.csv")
         print( "   Check the --delay value matches the runs, or pass --no-suffix.")
 
     print("\nGenerating Figure 1: Detection Quality (M1 MCC, M2 TVR)")

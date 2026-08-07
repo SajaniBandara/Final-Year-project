@@ -169,7 +169,7 @@ Notes:
 
 - **`--attack_percentage=0`** — benign. No `--attack_number`, so the run is baseline.
 - **`--training=1`** is required: the calibrator reads the LSTM training CSVs
-  (`results_routing/lstm_training/RSU_*/A0_pct0_seed{S}.csv`), which is where `delta_t`,
+  (`results_routing/lstm_training/RSU_*/Attack0_0_seed{S}.csv`), which is where `delta_t`,
   `rho` and `v_bar` come from.
 - ⚠️ **The logger APPENDS** (`lstm_logger.h`, `std::ios::app`). Move
   `results_routing/lstm_training/` aside first, or old rows mix into the new baseline and
@@ -181,7 +181,7 @@ Notes:
 
 ```bash
 BASE=~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training
-for f in $BASE/RSU_*/A0_pct0_seed*.csv; do
+for f in $BASE/RSU_*/Attack0_0_seed*.csv; do
   d=$(awk -F, 'NR>1{print $1}' "$f" | sort -n | uniq -d | wc -l)
   [ "$d" -gt 0 ] && echo "DUPLICATE CYCLES: $f"
 done

@@ -583,33 +583,30 @@ inline void tcam_snapshot_dump()
     double now = Simulator::Now().GetSeconds();
     int    t   = static_cast<int>(std::round(now));
 
-    // Derive mode tag — maps internal enum values to the paper's attack numbers
-    // (attack_id = active_attack_variant + 1), matching the scheme
-    // write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Previously
-    // variant 0/1 stayed as "attack0"/"attack1" while variant 2/3 were bumped
-    // to "attack3"/"attack4" — an inconsistent, off-by-one labeling that made
-    // e.g. Attack 2 (variant=1) data land in a file named "tcam_snapshots_attack1*",
-    // indistinguishable from actual Attack 1 output.
-    std::string mode;
-    if (active_attack_variant == -1) {
-        mode = "baseline";
-    } else {
-        mode = "attack" + std::to_string(active_attack_variant + 1);
-        // For Attack 4 multi-attacker sweeps append _nN so each run
-        // produces a distinct file: attack4_n1.csv, attack4_n8.csv, …
-        if (active_attack_variant == 3 && num_attackers > 1)
-            mode += "_n" + std::to_string(num_attackers);
-        // For Attack 3 CP-percentage sweeps append _pctN so each run
-        // produces a distinct file: attack3_pct20.csv, attack3_pct40.csv, …
-        // (Attack 3 has no analogous num_attackers axis, so every run is
-        // suffixed — unlike Attack 4, there is no single-run "bare" case.)
-        // NOTE: this _pctN suffix is derived from cp_attack_intensity, which is
-        // NOT the report's attack_percentage — see the extern declaration above
-        // and the "Fixed 2026-07-10" comment on cp_attack_tick() below. Do not
-        // read the "_pctN" in a filename as the report's attack percentage.
-        if (active_attack_variant == 2)
-            mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
-    }
+    // Canonical shape: Attack{N}_{pct}_seed{S}[_cpint{X}|_n{N}], matching
+    // MOBIGUARD/TAP/FADE/bc_*/g_sim_tag/lstm — N is 1-indexed (0 = baseline).
+    // cp_attack_intensity (Attack 3) and num_attackers (Attack 4) have no
+    // slot in the canonical shape, so they stay as trailing suffixes rather
+    // than being folded into {pct} — {pct} here is always attack_percentage.
+    int mode_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+    std::string mode = "Attack" + std::to_string(mode_id)
+                      + "_" + std::to_string(attack_percentage)
+                      + "_seed" + std::to_string(sim_seed);
+    // For Attack 4 multi-attacker sweeps append _nN so each run
+    // produces a distinct file: ..._n1.csv, ..._n8.csv, …
+    if (active_attack_variant == 3 && num_attackers > 1)
+        mode += "_n" + std::to_string(num_attackers);
+    // For Attack 3 CP-percentage sweeps append _cpintN so each run
+    // produces a distinct file. (Attack 3 has no analogous num_attackers
+    // axis, so every run is suffixed — unlike Attack 4, there is no
+    // single-run "bare" case.)
+    // NOTE: this is derived from cp_attack_intensity, which is NOT the
+    // report's attack_percentage (already captured correctly above) — see
+    // the extern declaration above and the "Fixed 2026-07-10" comment on
+    // cp_attack_tick() below. Do not read "_cpintN" as the report's attack
+    // percentage.
+    if (active_attack_variant == 2)
+        mode += "_cpint" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
 
     const std::string base_dir =
         "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
@@ -722,20 +719,19 @@ inline void tcam_snapshot_dump()
 // Writes a final static snapshot with total lifetime counters per entry.
 inline void export_tcam_snapshot_baseline()
 {
-    // Same paper-numbering scheme as tcam_snapshot_dump(): attack_id = variant+1.
-    std::string mode;
-    if (active_attack_variant == -1) {
-        mode = "baseline";
-    } else {
-        mode = "attack" + std::to_string(active_attack_variant + 1);
-        // Mirror the _nN / _pctN suffix logic from tcam_snapshot_dump().
-        // NOTE: _pctN comes from cp_attack_intensity, NOT the report's
-        // attack_percentage (see extern declaration near top of file).
-        if (active_attack_variant == 3 && num_attackers > 1)
-            mode += "_n" + std::to_string(num_attackers);
-        if (active_attack_variant == 2)
-            mode += "_pct" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
-    }
+    // Same canonical shape as tcam_snapshot_dump():
+    // Attack{N}_{pct}_seed{S}[_cpint{X}|_n{N}].
+    int mode_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+    std::string mode = "Attack" + std::to_string(mode_id)
+                      + "_" + std::to_string(attack_percentage)
+                      + "_seed" + std::to_string(sim_seed);
+    // Mirror the _nN / _cpintN suffix logic from tcam_snapshot_dump().
+    // NOTE: _cpintN comes from cp_attack_intensity, NOT the report's
+    // attack_percentage (see extern declaration near top of file).
+    if (active_attack_variant == 3 && num_attackers > 1)
+        mode += "_n" + std::to_string(num_attackers);
+    if (active_attack_variant == 2)
+        mode += "_cpint" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     std::string path =
         "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
     std::ofstream fout(path, std::ios::trunc);

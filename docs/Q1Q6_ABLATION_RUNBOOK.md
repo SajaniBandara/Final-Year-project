@@ -40,10 +40,10 @@ Checklist — all four must hold or results are silently wrong:
 1. **Binary built** at `$NS3_DIR/build/scratch/routing/routing`.
    The runner refuses to start if it is missing.
 2. **Scratch synced.** The real source lives in
-   `final yr project updated/Final-Year-project/scratch/`; `scratch/routing/` in
+   `~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/scratch/`; `scratch/routing/` in
    the ns-3 tree is symlinks/copies. Sync + build with:
    ```bash
-   cd "final yr project updated/Final-Year-project"
+   cd ~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project
    python3 scripts/run_std_attacks.py --build
    ```
    A plain `./waf build` does **not** copy the `.py` helpers and the sim will
@@ -65,7 +65,7 @@ Checklist — all four must hold or results are silently wrong:
 ## 2. Running it
 
 ```bash
-cd "final yr project updated/Final-Year-project"
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project
 
 python3 scripts/run_q1q6_ablation.py --table      # flag mapping, runs nothing
 python3 scripts/run_q1q6_ablation.py --dry-run    # all 48 commands, runs nothing

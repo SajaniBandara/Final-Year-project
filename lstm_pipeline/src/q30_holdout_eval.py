@@ -39,7 +39,7 @@ def load_holdout_csvs() -> pd.DataFrame:
     for rsu_dir in sorted(lstm_dir.glob("RSU_*")):
         rsu_id = int(rsu_dir.name[4:])
         for seed in HOLDOUT_SEEDS:
-            f = rsu_dir / f"A0_pct0_seed{seed}.csv"
+            f = rsu_dir / f"Attack0_0_seed{seed}.csv"
             if not f.exists():
                 continue
             df = pd.read_csv(f)

@@ -322,7 +322,7 @@ def run_full_report(directory: str):
     print("FULL METRICS REPORT")
     print("=" * 70)
     pattern_map = {
-        "M1/M2/M3/M4/M6/M7 (baseline)": os.path.join(directory, "MOBIGUARD_baseline.csv"),
+        "M1/M2/M3/M4/M6/M7 (baseline)": os.path.join(directory, "MOBIGUARD_Attack0_*.csv"),
         "M2 TVR (Attack1)":  os.path.join(directory, "MOBIGUARD_Attack1_*.csv"),
         "M3 UCR (Attack5)":  os.path.join(directory, "MOBIGUARD_Attack5_*.csv"),
         "M12 WAP-R (Attack7)": os.path.join(directory, "MOBIGUARD_Attack7_*.csv"),

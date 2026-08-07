@@ -315,17 +315,19 @@ def present(paths, name, need_rows=True):
 # Loaders
 # --------------------------------------------------------------------------- #
 
-# Result filenames differ per runner, and every form must be discovered:
-#   run_std_attacks.py       MOBIGUARD_Attack1_100_d80ms.csv
-#   run_hf_attacks.py        MOBIGUARD_Attack5_100.csv
-#   run_rule_based_sweep.py  MOBIGUARD_Attack3_100_seed1.csv
+# Every runner now produces the same shape natively --
+# write_security_metrics_csv() embeds attack/pct/[delay]/seed in the
+# filename from the moment it opens, so no runner-specific rename step is
+# needed anymore (it used to be: run_rule_based_sweep.py's own rename step
+# was the only source of the _seed suffix, back when the C++ writer didn't
+# carry it -- that gap is what MG_RE's optional seed group below was
+# originally added to tolerate):
+#   MOBIGUARD_Attack1_100_d80ms_seed1.csv   (run_std_attacks.py)
+#   MOBIGUARD_Attack5_100_seed1.csv         (run_hf_attacks.py)
+#   MOBIGUARD_Attack3_100_seed1.csv         (run_rule_based_sweep.py)
 #
-# The rule-based sweep ALWAYS renames its output to embed the seed (even for a
-# single seed), because write_security_metrics_csv() has no seed in its
-# filename and opens with ios::app -- two concurrent seeds of the same
-# (attack, pct) would otherwise interleave into one file.  It is also the only
-# runner that produces attacks 3 and 4, so a pattern that rejected the _seed
-# suffix would silently drop every TCAM result and report "sweep not run".
+# The seed group stays optional in MG_RE regardless, since older files
+# collected before this was fixed may still be lying around.
 MG_RE = re.compile(
     r"MOBIGUARD_Attack(\d+)_(\d+)(?:_d(\d+)ms)?(?:_seed(\d+))?\.csv$")
 
@@ -396,7 +398,7 @@ def load_tap(dirs, attack, delay):
     """{pct: last_row} for the TAP baseline of one subject (19-column schema)."""
     suffix = f"_d{delay}ms" if delay is not None else ""
     out = {}
-    for path in find_files(dirs, f"TAP_Attack{attack}_*{suffix}.csv"):
+    for path in find_files(dirs, f"TAP_Attack{attack}_*{suffix}*.csv"):
         m = re.search(r"TAP_Attack\d+_(\d+)", os.path.basename(path))
         if not m:
             continue
@@ -710,8 +712,11 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
                      f"({_stamp(SRC_MTIME)}) -- re-run this sweep; failures below "
                      f"may already be fixed"))
 
+    # Trailing "*" tolerates the _seed<S>[_TAP][_FADE] suffix bc_run_suffix()
+    # now appends after the delay segment -- without it, the delay-filtered
+    # glob wouldn't match since _d<X>ms is no longer the last thing before .csv.
     dkg = find_files(dirs, f"bc_dkg_log_Attack{attack}_*"
-                           + (f"_d{delay}ms" if delay is not None else "") + ".csv")
+                           + (f"_d{delay}ms" if delay is not None else "") + "*.csv")
     verify_no_bypass(rep, attack, delay, top, ops, tag,
                      {"dkg_rounds": max_dkg_round(dkg)})
 
@@ -861,10 +866,10 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
                 "attacker attribution counters recorded (lambda_PI)",
                 gte(top.get("total_lambda_pi"), 0.0, "total_lambda_pi"))
     rep.add("eq:sig_s4", None, "per-RSU TCAM occupancy trace written",
-            present(find_files(dirs, f"tcam_occupancy_attack{attack}.csv"),
+            present(find_files(dirs, f"tcam_occupancy_Attack{attack}_*.csv"),
                     "tcam_occupancy"))
     rep.add("eq:rule_s4", None, "per-RSU TCAM rule snapshots written",
-            present(find_files(dirs, f"tcam_snapshots_attack{attack}*.csv"),
+            present(find_files(dirs, f"tcam_snapshots_Attack{attack}_*.csv"),
                     "tcam_snapshots"))
 
     # ---- G. hidden forwarding S5-S8 ---------------------------------------- #
@@ -1020,8 +1025,10 @@ def verify_subject(rep, dirs, attack, delay, runs, ops):
     # eroding under attack -- are already covered by eq:trust_update (above) and
     # eq:ctrl_trust_update (above), so this line reports the limitation honestly
     # rather than asserting an aggregate bound the paper never states.
+    # Trailing "*" tolerates the _seed<S>[_TAP][_FADE] suffix, same reason
+    # as the bc_dkg_log glob above.
     bc_trust = find_files(dirs, f"bc_trust_updates_Attack{attack}_*"
-                          + (f"_d{delay}ms" if delay is not None else "") + ".csv")
+                          + (f"_d{delay}ms" if delay is not None else "") + "*.csv")
     rep.add("eq:quarantine", None,
             "per-node quarantine trigger (T_v < T_min) recorded for later audit",
             ("WARN", f"eq:quarantine is a per-node condition not verifiable from the "
@@ -1133,7 +1140,7 @@ def verify_environment(rep, dirs):
             rep.add(eq, None, d, ("WARN", "rsu_density.csv absent"))
     rep.add("eq:density_normalized_rate", None,
             "ground-truth injection-rate trace written",
-            present(find_files(dirs, "lambda_l_true_attack*.csv"), "lambda_l_true"))
+            present(find_files(dirs, "lambda_l_true_Attack*.csv"), "lambda_l_true"))
 
 
 def verify_crypto_timing(rep, dirs):

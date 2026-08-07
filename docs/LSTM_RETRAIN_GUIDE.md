@@ -19,7 +19,7 @@ dynamically (=10) — no other blockers found by inspection.
 
 `preprocessor.py` looks for CSVs at:
 ```
-$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_*/A{v}_pct{p}_seed{s}.csv
+$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training/RSU_*/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 ```
 (`lstm_pipeline/src/preprocessor.py:44-45`). On Windows there's no `HOME` env
 var by default, so either:

@@ -135,17 +135,15 @@ std::vector<HfDuplicateEvent> g_hf_event_log;
 // Export at end of simulation — mirrors export_tcam_snapshot_baseline()
 inline void export_hf_event_log()
 {
-    static const std::map<int, std::string> variant_to_label = {
-        {4, "attack5"}, {5, "attack6"}, {6, "attack7"}, {7, "attack8"}
-    };
-    std::string mode = "baseline";
-    auto it = variant_to_label.find(active_attack_variant);
-    if (it != variant_to_label.end()) mode = it->second;
+    // Canonical shape, same variant+1 conversion as everywhere else, rather
+    // than a hardcoded variant->label map that only covered Attacks 5-8.
+    int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
 
     const std::string base_dir =
         "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
-    std::string path = base_dir + "hf_events_" + mode + "_" +
-                       std::to_string(attack_percentage) + ".csv";
+    std::string path = base_dir + "hf_events_Attack" + std::to_string(attack_id) + "_" +
+                       std::to_string(attack_percentage) + "_seed" +
+                       std::to_string(sim_seed) + ".csv";
 
     std::ofstream fout(path, std::ios::trunc);
     fout << "t,flow_id,packet_id,malicious_node,eavesdropper,is_active,is_cp\n";

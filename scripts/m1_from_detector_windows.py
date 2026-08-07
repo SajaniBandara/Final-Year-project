@@ -20,17 +20,17 @@ Measured 2026-08-06 on the same Q6 configuration: 0.264 per-node against ~0.895
 per-window on the LSTM pipeline's own evaluator. Neither is wrong; only the
 per-window one is M1.
 
-The simulator now emits detector_windows_A{v}_pct{p}_seed{s}.csv per run. This
-script stitches a set of those into the single `detector_windows.csv` that
-metrics/run_metrics.py expects and runs M1 over it. Concatenating is correct
-rather than a shortcut: m01's View 2 groups by the `variant` column, so one
-combined file yields the aggregate topline AND the per-variant/per-mode
-breakdown in a single pass.
+The simulator now emits detector_windows_Attack{N}_{pct}[_d{X}ms]_seed{S}.csv
+per run (N=1-indexed, 0=baseline). This script stitches a set of those into
+the single `detector_windows.csv` that metrics/run_metrics.py expects and
+runs M1 over it. Concatenating is correct rather than a shortcut: m01's
+View 2 groups by the `variant` column, so one combined file yields the
+aggregate topline AND the per-variant/per-mode breakdown in a single pass.
 
 USAGE
   python3 scripts/m1_from_detector_windows.py \
-      --results-dir ~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing \
-      --tag pct60_seed1 \
+      --results-dir ~/ns3_g13_apsari/ns-allinone-3.35/ns-3.35/results_routing \
+      --tag 60_seed1 \
       --out-dir /tmp/m1_q6
 
   # then, from the ns-3 tree root (metrics/ is a package there):

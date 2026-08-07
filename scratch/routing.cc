@@ -114934,6 +114934,10 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 // explicitly requires "all eight attack variants operate simultaneously" —
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
+bool enable_netanim = false;   // master enable for NetAnim trace output (routing.xml) — off by
+                                // default since every run builds a full per-run trace file
+                                // (hundreds of MB for a real simTime); opt in only for the runs
+                                // that actually need a NetAnim video/screenshot.
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -117790,48 +117794,14 @@ void write_security_metrics_csv()
 
 	int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;
 
-	int attack_id = 1;
-	switch (active_attack_variant)
-	{
-		case (-1):
-			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
-			break;
-		case (0):
-			attack_id = 1;
-			break;
-		case (1):
-			attack_id = 2;
-			break;
-		case (2):
-			attack_id = 3;
-			break;
-		case (3):
-			attack_id = 4;
-			break;
-		case (4):
-			attack_id = 5;
-			break;
-		case (5):
-			attack_id = 6;
-			break;
-		case (6):
-			attack_id = 7;
-			break;
-		case (7):
-			attack_id = 8;
-			break;
-		default:
-			attack_id = 1;
-			break;
-	}
-
-	if (active_attack_variant != -1)
-	{
-		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
-		           + to_string(attack_id)
-		           + "_" + to_string(attack_percentage)
-		           + g_delay_suffix + ".csv";
-	}
+	// Baseline (-1) folded into the same Attack0 shape everything else
+	// uses (bc_run_suffix(), g_sim_tag), rather than a separate
+	// "MOBIGUARD_baseline_*.csv" filename.
+	int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+	filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+	           + to_string(attack_id)
+	           + "_" + to_string(attack_percentage)
+	           + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
 
 	fout.open(filename, ios::out|ios::app);
 
@@ -117970,7 +117940,7 @@ void write_security_metrics_csv()
 // ============================================================
 // FADE per-cycle CSV writer. Mirrors write_security_metrics_csv() so FADE
 // output files share the SAME shape: one file per scenario
-// (FADE_baseline.csv / FADE_AttackN_PCT.csv), one row per cycle. The MOBIGUARD
+// (FADE_AttackN_PCT_seedS.csv, Attack0 for baseline), one row per cycle. The MOBIGUARD
 // columns are reproduced position-for-position; cur_PIR and avg_PIR are appended
 // as two trailing columns. FADE has no mitigation stage so those two columns
 // are always 0 (kept for positional compatibility).
@@ -118005,36 +117975,19 @@ void fade_write_per_cycle_csv(std::string dir)
 		if (cycle < 1.0)
 			cycle = 1.0;
 
-		int attack_id = 1;
-		switch (active_attack_variant)
-		{
-			case (-1): break;
-			case (0): attack_id = 1; break;
-			case (1): attack_id = 2; break;
-			case (2): attack_id = 3; break;
-			case (3): attack_id = 4; break;
-			case (4): attack_id = 5; break;
-			case (5): attack_id = 6; break;
-			case (6): attack_id = 7; break;
-			case (7): attack_id = 8; break;
-			default:  attack_id = 1; break;
-		}
-
-		if (active_attack_variant == -1)
-		{
-			filename = dir + "FADE_baseline.csv";
-		}
-		else
-		{
-			int pct = 0;
-			if      (attack_percentage <= 0)   pct = 0;
-			else if (attack_percentage <= 20)  pct = 20;
-			else if (attack_percentage <= 40)  pct = 40;
-			else if (attack_percentage <= 60)  pct = 60;
-			else if (attack_percentage <= 80)  pct = 80;
-			else                               pct = 100;
-			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + ".csv";
-		}
+		// Baseline (-1) folded into the same Attack0 shape everything else
+		// uses, rather than a separate "FADE_baseline_*.csv" filename.
+		// attack_percentage is 0 for a baseline run, so the bucketing below
+		// naturally lands on pct=0 without any special-casing needed.
+		int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+		int pct = 0;
+		if      (attack_percentage <= 0)   pct = 0;
+		else if (attack_percentage <= 20)  pct = 20;
+		else if (attack_percentage <= 40)  pct = 40;
+		else if (attack_percentage <= 60)  pct = 60;
+		else if (attack_percentage <= 80)  pct = 80;
+		else                               pct = 100;
+		filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
 
 		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
 		for (auto &entry : fade_flow_config)
@@ -118145,7 +118098,10 @@ void fade_write_per_cycle_csv(std::string dir)
 			pp_level_fn = pp_fn_global;
 		}
 
-		std::string filename = dir + "routing_fade_per_cycle.csv";
+		// Tagged with g_sim_tag: this file previously had no attack/pct/seed
+		// tag at all, so every concurrent run of any attack/pct/seed appended
+		// to the identical shared file.
+		std::string filename = dir + "routing_fade_per_cycle" + g_sim_tag + ".csv";
 		std::fstream fout;
 		fout.open(filename, std::ios::out | std::ios::app);
 		fout << cycle_id << ", "
@@ -142048,7 +142004,11 @@ int main(int argc, char *argv[])
                   "instead of MOBIGUARD S1-S8 (default 0=off). Pass alongside --enable_lrad_obu=0 "
                   "--enable_lrad_rsu=0 to disable MOBIGUARD's own signature detectors for a clean "
                   "TAP-only baseline run.", enable_tap);
-    
+    cmd.AddValue ("enable_netanim", "1 = write a NetAnim trace (routing<tag>.xml) for this run "
+                  "(default 0=off). Every run builds the full trace unconditionally when on -- "
+                  "hundreds of MB for a real simTime -- so leave off for sweeps and only enable "
+                  "for the specific single run you want to visualize.", enable_netanim);
+
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
@@ -143984,10 +143944,15 @@ if (architecture == 3 && N_Vehicles > 0)
 			// either --attack_number (new path) or --active_attack_variant
 			// (legacy path). Using active_attack_variant means every variant —
 			// including those that never set attack_number — gets a distinct tag.
-			g_sim_tag = "_V" + std::to_string(active_attack_variant)
-			          + "_pct" + std::to_string(attack_percentage)
-			          + "_s" + std::to_string(sim_seed)
-			          + g_delay_suffix;
+			// 1-indexed to match MOBIGUARD/TAP/FADE/bc_* (id = variant+1, 0 for
+			// baseline) rather than the raw 0-indexed variant this used to carry.
+			{
+				int g_sim_tag_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+				g_sim_tag = "_Attack" + std::to_string(g_sim_tag_id)
+				          + "_" + std::to_string(attack_percentage)
+				          + g_delay_suffix
+				          + "_seed" + std::to_string(sim_seed);
+			}
 			
 			if (routing_test) {
 			    hardcode_test_network_attackers();
@@ -144357,14 +144322,22 @@ if (architecture == 3 && N_Vehicles > 0)
   Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml");  
+  // NetAnim trace is opt-in (enable_netanim, default off): it's a full per-run
+  // trace file that grows unbounded with simTime, so leaving it on for every
+  // sweep run would silently fill the disk. The path is tagged with g_sim_tag
+  // so that when it IS enabled, concurrent runs each get their own file instead
+  // of racing to write the same one.
+  if (enable_netanim)
+  {
+  std::string anim_path = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing" + g_sim_tag + ".xml";
+  AnimationInterface anim(anim_path);
   anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
-  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
+  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
   // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
   // NetAnim still animates packet movement fine without metadata.
-          
+
   if (N_RSUs > 0)
   {
 	  for (uint32_t i=0; i<RSU_Nodes.GetN() ; i++)
@@ -144375,7 +144348,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeDescription(RSU_Nodes.Get(i), "RSU-" + std::to_string(i+1));
 	  }
   }
-  
+
   if (N_Vehicles > 0)
   {
 	  for (uint32_t i=0; i<Vehicle_Nodes.GetN() ; i++)
@@ -144385,7 +144358,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
 	  	anim.UpdateNodeDescription(Vehicle_Nodes.Get(i), "V-" + std::to_string(i+1));
 	  }
-	   
+
 	  if (architecture !=1)
 	  {
 		  for (uint32_t i=0; i<other_stationary_LTE_nodes.GetN() ; i++)
@@ -144396,7 +144369,7 @@ if (architecture == 3 && N_Vehicles > 0)
 		  }
 	  }
   }
-  
+
     if (architecture != 1)
     {
       // Color and label all N_Controllers controller nodes
@@ -144409,7 +144382,8 @@ if (architecture == 3 && N_Vehicles > 0)
             "CTRL-" + std::to_string(ci+1));
       }
     }
- 
+  } // enable_netanim
+
   //AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
@@ -144561,8 +144535,8 @@ if (fade_detection_active)
   if (enable_detector_windows)
   {
       int _dw_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
-      dw_write_csv(lstm_make_base_dir() + "detector_windows_A" + std::to_string(_dw_v)
-                   + "_pct" + std::to_string(attack_percentage)
+      dw_write_csv(lstm_make_base_dir() + "detector_windows_Attack" + std::to_string(_dw_v)
+                   + "_" + std::to_string(attack_percentage) + g_delay_suffix
                    + "_seed" + std::to_string(sim_seed) + ".csv");
   }
   Simulator::Destroy();

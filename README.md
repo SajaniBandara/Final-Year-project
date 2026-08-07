@@ -135,7 +135,7 @@ EOF
 python3 scripts/run_std_attacks.py --build
 ```
 
-> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns3_g13/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns3_g13/ns-allinone-3.35/ns-3.35`.
+> **NS-3 path:** The launcher script (`scripts/run_std_attacks.py`, line 59) uses the path `~/ns3_g13/ns-allinone-3.35/ns-3.35`. If NS-3 is installed at a different location on your machine (e.g. `~/ns-allinone-3.35/ns-3.35` on a personal laptop), edit `NS3_DIR` in that file to match before running anything. The manual `./waf` commands throughout this README assume `~/ns-allinone-3.35/ns-3.35`.
 
 ---
 
