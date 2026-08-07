@@ -156,7 +156,7 @@ label-vs-`main.tex` cross-check lives in `audit_equations.py`.
 ## 4. How to regenerate the evidence (commands, in order)
 
 > Run everything from the project directory:
-> `cd ~/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project`
+> `cd ~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project`
 
 ### Step 0 — Understand the runners
 

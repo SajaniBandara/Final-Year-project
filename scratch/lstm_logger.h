@@ -394,7 +394,7 @@ inline std::string lstm_weights_bin_path()
     // $HOME/ns-allinone-3.35 is a symlink into a DIFFERENT group's ns-3
     // checkout (ns3-workspace) on this shared account, so even a correct
     // relative subpath would have resolved into someone else's directory.
-    return "/home/sdvn_hidden_attacks/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/lstm_pipeline/lstm_weights_cpp.bin";
+    return "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/lstm_pipeline/lstm_weights_cpp.bin";
 }
 
 // =========================================================================

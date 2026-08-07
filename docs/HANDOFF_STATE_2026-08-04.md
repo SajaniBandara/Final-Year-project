@@ -267,7 +267,7 @@ rather than computed. Supervisor accepted both as simulation modeling notes.
   across 25 files — check `git diff --cached | grep /home/<user>/` before
   committing.
 * **Edit the real source.** `scratch/routing/` in the ns-3 tree is
-  symlinks/copies of `~/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/scratch/`.
+  symlinks/copies of `~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/scratch/`.
   Edits to the former are silently lost.
 * **Build via the launcher**, not plain `./waf build` — the latter does not copy
   the `.py` helpers and the sim aborts mid-run with "Solution not found":
