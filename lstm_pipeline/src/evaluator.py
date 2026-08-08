@@ -29,7 +29,7 @@ REPO      = Path(__file__).resolve().parents[2]
 PRE       = REPO / "lstm_pipeline" / "preprocessed"
 MODEL_DIR = REPO / "lstm_pipeline" / "models"
 RESULTS   = Path(os.environ.get("HOME", "/home/nipuni")) / \
-            "ns-allinone-3.35/ns-3.35/results_routing"
+            "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 5-8 match main.tex's own attack titles: Attack 5 "Active Hidden Forward

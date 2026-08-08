@@ -55,7 +55,7 @@ SPIKE_QUANTILE = 0.99
 HF_VARIANTS = {5, 6, 7, 8}
 
 BASE = Path(os.environ.get("HOME", "/home/nipuni")) / \
-       "ns-allinone-3.35/ns-3.35/results_routing"
+       "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
 REPO = Path(__file__).resolve().parents[2]
 OUT  = REPO / "lstm_pipeline" / "preprocessed"
 

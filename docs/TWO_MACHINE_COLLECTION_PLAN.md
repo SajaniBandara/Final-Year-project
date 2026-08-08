@@ -120,22 +120,61 @@ discarded) batch: 26/27 workers active, 21 jobs queued, paused at
 `load1=31.x > ceiling=27.2` for an extended period. Keep worker sums per
 machine comfortably under `0.85 × nproc`.
 
-## 6. Next stage (not started, not covered by the commands above)
+## 6. Stage 2 (started 2026-08-08) — benign seed4 backfill + seed5 TEST split
 
-After this 51-job stage completes on both machines: seed 5 (the TEST split,
-49 jobs incl. benign — highest priority, nothing collected for it yet) and
-seeds 1-3 attack data (144 jobs, lower priority — not part of the official
-`main.tex` train/val/test evaluation, only needed if the fuller 245-job
-sweep is still wanted). Plan the split for that stage separately once this
-one is running cleanly.
+Stage 1 (§0-5 above) finished cleanly on both machines: 51/51 jobs, merged into a single
+`lstm_training/` tree on Machine A. `preprocessor.py` + `fed_aggregator.py` already ran once
+against that data — 9/64 RSUs meet the 0.95 precision target, 23/64 show real signal
+(MCC>0.3), 21/64 still dead/negative. This is the *pre-seed5* retrain, train+val only —
+no test split existed yet at that point. `rule_calibrator.py` also ran against the stage-1
+benign seeds 1-3: the β stage correctly rejected all 4 candidates (none converge within the
+22s ceiling), matching the pre-existing HANDOFF finding on real data — see session notes /
+`/tmp/supervisor_beta_message.md` for the actual numbers.
 
-## 7. Status at time of writing (2026-08-07, ~21:02)
+**Scope: 50 jobs.**
 
-- `lambda_PI` fix applied and built successfully on Machine A.
-- All previously-collected data for this batch (benign seeds 1-4 +
-  attack-val seed 4, both at the old `simTime=180`) deleted.
-- Machine A: **not yet launched** — commands in §3 ready, waiting on
-  confirmation.
-- Machine B: specs confirmed (16 cores / 16.6GB RAM / 8 safe workers), build
-  environment already set up — **not yet synced to the fix, not yet
-  launched**.
+| | Jobs | Machine |
+|---|---|---|
+| Benign, seed 4 (backfill — seed4 attack data already existed from stage 1's VAL split, but no standalone `Attack0_0_seed4.csv`, needed for the calibration spec's 5-seed benign baseline) | 1 | A |
+| Benign, seed 5 | 1 | A |
+| Attacks 1-6, seed 5, all 6 pcts | 36 | A |
+| Attacks 7-8, seed 5, all 6 pcts | 12 | B |
+| **Total** | **50** | |
+
+`simTime=120`, same as stage 1. Seed 5 is the actual held-out `TEST_SEEDS` split
+`main.tex` reports final numbers on — nothing existed for it before this stage.
+
+**Commands — Machine A (running):**
+```bash
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+python3 scripts/run_training_attacks.py --attack 0 --seed 4 5 --sim-time 120 --workers 2
+python3 scripts/run_training_attacks.py --attack 1 2 3 4 5 6 --seed 5 --sim-time 120 --workers 10
+```
+Worker counts lowered from stage 1's 3+21 to 2+10 — a second, unrelated session
+(`ns3_g13_apsari`, a separate working tree on the same machine) is concurrently running its
+own ~19-process sweep, and the combined load was pushing well past the launcher's own
+`load1 > 0.85×nproc` throttle ceiling (§5). Lower worker counts leave headroom instead of
+adding to an already-oversubscribed machine (23 ours + 19 theirs = 42 processes on 32 cores
+before the reduction; 12 + 19 = 31 after). Note the throttle checks *total* system load, not
+just our own processes — if the other session's load climbs further, our launcher can still
+pause waiting for headroom regardless of how low our own worker count is set; that part isn't
+within our control.
+
+**Command — Machine B (run this now):**
+```bash
+cd ~/ns3_g13/ns-allinone-3.35/ns-3.35
+python3 scripts/run_training_attacks.py --attack 7 8 --seed 5 --sim-time 120 --workers 8
+```
+
+**Consolidation:** same as §4 — disjoint filenames (`RSU_{r}/Attack{v}_{pct}_seed5.csv`),
+`rsync` Machine B's output into Machine A's `lstm_training/` once both finish, then re-run
+`preprocessor.py` (rebuilds scaler/windows, now with a populated test split) and
+`fed_aggregator.py` if a from-seed5 retrain comparison is wanted, and re-run
+`rule_calibrator.py` for the full 5-seed β/S3-S4 spec plus `evaluator.py`/AB3 against the
+now-real test split.
+
+## 7. Remaining after stage 2
+
+Seeds 1-3 attack data (144 jobs) — lower priority, not part of the official `main.tex`
+train/val/test evaluation (`TRAIN_SEEDS` are benign-only), only needed if the fuller
+245-job sweep is still wanted. Not started, no machine assigned yet.
