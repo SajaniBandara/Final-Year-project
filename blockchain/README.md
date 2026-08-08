@@ -15,7 +15,7 @@ Run these steps **in order** each session before starting the NS-3 simulation.
 ### Step 1 — Deploy the Fabric Network
 
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./deploy-mobiguard.sh
 ```
 
@@ -34,7 +34,7 @@ Takes about **2–3 minutes**. Wait for the banner:
 ### Step 2 — Enroll RSU Identities (first time only, or if wallet is deleted)
 
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 ./enroll_rsu_identities.sh stage1
 ```
 
@@ -47,7 +47,7 @@ their cryptographic wallets to `bridge/wallet/`.
 ### Step 3 — Start the Bridge (Terminal 1)
 
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/bridge"
 node index.js
 ```
 
@@ -86,7 +86,7 @@ the simulation progresses.
 Press `Ctrl+C` in Terminal 1 to stop the bridge, then:
 
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./network.sh down
 ```
 
@@ -97,13 +97,13 @@ cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-pr
 Set up env vars first (copy-paste once per terminal):
 
 ```bash
-export PATH="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
-export FABRIC_CFG_PATH="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
+export PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/bin:$PATH"
+export FABRIC_CFG_PATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/config/"
 export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_LOCALMSPID="Org1MSP"
 export CORE_PEER_ADDRESS=localhost:7051
-export CORE_PEER_MSPCONFIGPATH="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
-export CORE_PEER_TLS_ROOTCERT_FILE="/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+export CORE_PEER_MSPCONFIGPATH="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+export CORE_PEER_TLS_ROOTCERT_FILE="/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
 ```
 
 ```bash
@@ -176,7 +176,7 @@ sudo apt-get install -y nodejs
 ### 4. Setup Fabric Images and CLI Binaries
 Navigate to the blockchain directory and download the matching platform binaries and Docker images:
 ```bash
-cd "/home/nipuni/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain"
+cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain"
 chmod +x install-fabric.sh
 ./install-fabric.sh docker binary 2.5.15 1.5.17
 ```

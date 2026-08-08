@@ -567,7 +567,7 @@ tracked as `g_lstm_gate_suppressed_count`) would have to be added to the header 
 ### 8.3 The training CSV writes to a directory the pipeline does not read
 
 ```
-lstm_logger.h:421  lstm_make_base_dir() -> /home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/
+lstm_logger.h:421  lstm_make_base_dir() -> /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
 preprocessor.py:57 BASE                 -> $HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing
 ```
 
@@ -631,7 +631,7 @@ with this finding.
 `preprocessor.py:57` resolves `BASE` to `$HOME/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing`
 (the canonical cluster convention — correct, and the data is genuinely there on this desktop
 too). `calibration_report.txt` however records its data source as
-`/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/lstm_training`, a path that **does not
+`/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training`, a path that **does not
 exist on this machine**. That report and `calibrated_params.json` therefore cannot be reproduced
 locally as-is. Per `CLAUDE.md`, do not commit a path fix — the repo intentionally keeps the HPC
 convention.

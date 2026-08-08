@@ -49,7 +49,7 @@ Checklist — all four must hold or results are silently wrong:
    A plain `./waf build` does **not** copy the `.py` helpers and the sim will
    abort mid-run with "Solution not found".
 3. **Mobility traces present** at the paths compiled into `routing.cc`
-   (`/home/nipuni/mobility/...`). On the cluster these are
+   (`/home/sdvn_hidden_attacks/ns3_g13/mobility/...`). On the cluster these are
    the real paths — no swapping needed. Seeds 1–5 use
    `mobility_urban_150_seed{N}.tcl`.
 4. **`lstm_pipeline/lstm_weights_cpp.bin` exists.** Q3 and Q6 set

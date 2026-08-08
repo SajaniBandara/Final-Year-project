@@ -140,7 +140,7 @@ inline void export_hf_event_log()
     int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
 
     const std::string base_dir =
-        "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
+        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string path = base_dir + "hf_events_Attack" + std::to_string(attack_id) + "_" +
                        std::to_string(attack_percentage) + "_seed" +
                        std::to_string(sim_seed) + ".csv";
