@@ -28,7 +28,7 @@ from lstm_model import LSTMAutoencoder, N_FEATURES
 
 REPO      = Path(__file__).resolve().parents[2]
 MODEL_DIR = REPO / "lstm_pipeline" / "models"
-BASE      = Path("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing")
+BASE      = Path("/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing")
 HOLDOUT_SEEDS = {6, 7, 8}
 DEVICE    = "cuda" if torch.cuda.is_available() else "cpu"
 

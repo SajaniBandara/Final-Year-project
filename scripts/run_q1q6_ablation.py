@@ -170,13 +170,21 @@ def fixed_params(args) -> dict:
     }
 
 
-def result_filename(attack_number: int, pct: int) -> str:
-    # write_security_metrics_csv() names by (attack_number, pct) only -- the
-    # ablation tag is NOT in the name, so two configs on the same (attack, pct)
-    # would overwrite each other. Hence one sequential lane per attack + an
-    # immediate rename after each run (same approach as run_ablation_sweep.py).
+def result_filename(attack_number: int, pct: int, seed: int) -> str:
+    # Must match g_sim_tag in routing.cc exactly:
+    #   _Attack{N}_{pct}{_d<delay>ms}_seed{S}      (routing.cc:143958)
+    # The _seed{S} component became part of the name in #87 ("unify CSV filename
+    # tagging"); this function was not updated with it, so every lookup missed,
+    # the post-run rename below silently never fired, and each config overwrote
+    # the previous config's CSV under the shared un-tagged name -- leaving
+    # --analyse to report MISSING for all 48 cells. Keep this in sync with
+    # run_ablation_sweep.py:result_filename(), which already carries the seed.
+    #
+    # The ablation tag itself is still NOT in the simulator's name, so two
+    # configs on the same (attack, pct, seed) do collide. Hence one sequential
+    # lane per attack + an immediate rename after each run.
     suffix = "_d80ms" if attack_number in (1, 2) else ""
-    return f"MOBIGUARD_Attack{attack_number}_{pct}{suffix}.csv"
+    return f"MOBIGUARD_Attack{attack_number}_{pct}{suffix}_seed{seed}.csv"
 
 
 def build_cmd(attack_number: int, extra: dict, params: dict) -> list:
@@ -213,7 +221,8 @@ def run_lane(attack_number: int, params: dict, dry_run: bool, configs=None) -> l
         elapsed = (datetime.now() - start).total_seconds()
         ok = proc.returncode == 0
 
-        src = RESULTS_DIR / result_filename(attack_number, params["attack_percentage"])
+        src = RESULTS_DIR / result_filename(attack_number, params["attack_percentage"],
+                                            params["sim_seed"])
         dst = RESULTS_DIR / src.name.replace(".csv", f"_{tag}.csv")
         renamed = False
         if src.exists():
@@ -339,6 +348,7 @@ def analyse(params):
     cumulative-addition MCC table the supervisor asked for (Q1 / Q3 / Q4 / Q5
     standalone, then Q6 full)."""
     pct = params["attack_percentage"]
+    seed = params["sim_seed"]
     print("\n" + "=" * 78)
     print("PER-CONFIG CONFUSION MATRICES AND MCC")
     print("=" * 78)
@@ -348,7 +358,7 @@ def analyse(params):
         print(f"  {'variant':<9}{'TP':>6}{'FP':>6}{'FN':>6}{'TN':>6}{'MCC':>9}")
         table[q] = {}
         for a in ATTACKS:
-            src = RESULTS_DIR / result_filename(a, pct).replace(".csv", f"_{q}.csv")
+            src = RESULTS_DIR / result_filename(a, pct, seed).replace(".csv", f"_{q}.csv")
             got = read_confusion(src)
             if got is None:
                 print(f"  A{a:<8}{'--':>6}{'--':>6}{'--':>6}{'--':>6}{'MISSING':>9}")
@@ -409,7 +419,7 @@ def analyse(params):
         print(f"  {'variant':<9}{'TP_W':>7}{'FP_W':>7}{'FN_W':>7}"
               f"{'precision%':>12}{'recall%':>10}{'dup_alerts':>12}")
         for a in ATTACKS:
-            src = RESULTS_DIR / result_filename(a, pct).replace(".csv", f"_{q}.csv")
+            src = RESULTS_DIR / result_filename(a, pct, seed).replace(".csv", f"_{q}.csv")
             got = read_witness(src, a)
             if got is None:
                 print(f"  A{a:<8}{'--':>7}{'--':>7}{'--':>7}{'--':>12}{'--':>10}{'--':>12}")
@@ -501,7 +511,8 @@ def main():
     passed = sum(1 for r in results if r["ok"] and r["renamed"])
     print(f"\n-- Summary (wall {wall:.0f}s) -- Passed: {passed}/{total}")
     if not args.dry_run:
-        print(f"Results: {RESULTS_DIR}/MOBIGUARD_Attack<N>_{args.percentage}[_d80ms]_Q<n>.csv")
+        print(f"Results: {RESULTS_DIR}/MOBIGUARD_Attack<N>_{args.percentage}"
+              f"[_d80ms]_seed{args.seed}_Q<n>.csv")
         analyse(params)
 
 

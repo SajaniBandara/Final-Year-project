@@ -8,7 +8,7 @@
 // Writes one CSV row per RSU per 1 Hz cycle when --training=1 is passed.
 //
 // Output path:
-//   /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
+//   /home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/
 //       lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 //
 // CSV columns (10 features + escalation flag + metadata + live-inference
@@ -418,7 +418,7 @@ inline std::string lstm_weights_bin_path()
 // =========================================================================
 inline std::string lstm_make_base_dir()
 {
-    return "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    return "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
 }
 
 // =========================================================================

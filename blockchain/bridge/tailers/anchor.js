@@ -20,7 +20,7 @@ const { Tail } = require('tail');
 const { parse } = require('csv-parse/sync');
 const fc = require('../fabric-client');
 
-const CSV_PATH = '/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/bc_anchor_log.csv';
+const CSV_PATH = '/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/bc_anchor_log.csv';
 
 let identityMap = {};
 

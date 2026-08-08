@@ -676,11 +676,11 @@ mechanism.
 resolves the results output directory as:
 
 ```cpp
-std::string results_dir = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+std::string results_dir = "/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/";
 char* home_env = getenv("HOME");
 if (home_env != nullptr)
 {
-    results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+    results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
 }
 ```
 
@@ -724,7 +724,7 @@ variable, so it was never affected).
 ### Fix
 
 ```cpp
-results_dir = std::string(home_env) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
+results_dir = std::string(home_env) + "/ns-allinone-3.35/ns-3.35/results_routing/";
 ```
 
 Now matches the hardcoded fallback exactly. Rebuilt (`./waf build`,

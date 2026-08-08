@@ -22,7 +22,7 @@ const { Tail } = require('tail');
 const { parse } = require('csv-parse/sync');
 const fc     = require('../fabric-client');
 
-const CSV_PATH = '/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/bc_trust_updates.csv';
+const CSV_PATH = '/home/nipuni/ns-allinone-3.35/ns-3.35/results_routing/bc_trust_updates.csv';
 
 // Map node_id → fabric identity name (set by index.js).
 let identityMap = {};
