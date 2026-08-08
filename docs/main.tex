@@ -6466,6 +6466,146 @@ Krum-filtering advantage over unconditional averaging.
 % reflecting the evaluated scenario rather than a detection failure.
 
 
+\subsection{Component-Isolation Ablation: Rule-Based Configuration (Q1)}
+\label{sec:q1_results}
+
+Beyond the thirteen ablation experiments of
+Section~\ref{sec:ablation}, a separate six-configuration grid
+(Q1--Q6) isolates the \emph{detection components} rather than
+the architectural modes. Each configuration enables exactly one
+detection layer and disables the remainder, so that the
+contribution of that layer can be read directly from its
+confusion matrix. The six configurations are: rule-based
+signatures only (Q1), cryptographic layer only (Q2), \ac{LSTM}
+anomaly detector only (Q3), witness monitoring only (Q4),
+rule and cryptographic layers combined (Q5), and the complete
+deployed framework (Q6). This section reports Q1; the remaining
+configurations are evaluated in the same grid.
+
+In Q1, signatures S1--S4 are live while S5--S8, the \ac{LSTM}
+detector, the witness mechanism and the \texttt{BTMM} trust
+update are disabled, and signature verification is forced to pass so
+that no cryptographic evidence contributes to a detection.
+Every attack variant is evaluated at a 60\% attacker fraction
+over a 90\,s \ac{SUMO}-derived urban trace with 200 vehicles,
+64 \ac{RSU}s and 4 controllers, at a single seed. Variants A1
+and A2 inject a fixed 80\,ms delay with the banded
+pseudo-random draw disabled. Results are given in
+Table~\ref{tab:q1_confusion}.
+
+\begin{table}[H]
+\centering
+\caption{Q1 (rule-based signatures only): per-node confusion
+matrix and detection quality per attack variant. 268 nodes,
+60\% attacker fraction, seed 1, 90\,s, final evaluation cycle.}
+\label{tab:q1_confusion}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{3.9cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{1.2cm}|p{1.2cm}|p{1.3cm}|}
+\hline
+\textbf{Attack} & \textbf{TP} & \textbf{FP} & \textbf{TN} &
+\textbf{FN} & \textbf{MCC} & \textbf{DR (\%)} & \textbf{FPR (\%)} \\
+\hline
+A1 CP-Selective Delay & 23 & 54 & 191 & 0 & 0.483 & 100.00 & 22.04 \\
+\hline
+A2 DP-Selective Delay & 143 & 80 & 45 & 0 & 0.480 & 100.00 & 64.00 \\
+\hline
+A3 TCAM Exhaustion (Control plane) & 32 & 0 & 236 & 0 & 1.000 & 100.00 & 0.00 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 37 & 0 & 223 & 8 & 0.891 & 82.22 & 0.00 \\
+\hline
+A5 Active HF Attack (Control plane) & 0 & 0 & 228 & 40 & 0.000 & 0.00 & 0.00 \\
+\hline
+A6 Active HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
+\hline
+A7 Passive HF Attack (Control plane) & 0 & 0 & 229 & 39 & 0.000 & 0.00 & 0.00 \\
+\hline
+A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_Q1_ConfusionByVariant.png}
+    \caption{Q1 (rule-based signatures only): per-node confusion
+    matrix by attack variant. S5--S8 are disabled in this
+    configuration, so the Hidden Forwarding variants A5--A8
+    register no detections by construction.}
+    \label{fig:q1_confusion}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_Q1_MCC.png}
+    \caption{Q1 (rule-based signatures only): detection quality
+    (\ac{MCC}, Eq.~\ref{eq:mcc}) by attack variant.}
+    \label{fig:q1_mcc}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_Q1_DR_vs_FPR.png}
+    \caption{Q1 (rule-based signatures only): detection rate
+    against false-positive rate by attack variant. Both series
+    share a single percentage axis. The underlying counters
+    latch, so the reported false-positive rate accumulates over
+    the run and is not comparable across runs of differing
+    duration.}
+    \label{fig:q1_dr_fpr}
+\end{figure}
+
+As Figures~\ref{fig:q1_confusion}--\ref{fig:q1_dr_fpr} show,
+the rule layer partitions cleanly along attack family. The
+\ac{TCAM} exhaustion family is detected essentially perfectly:
+A3 attains an \ac{MCC} of 1.000 with complete detection and no
+false positives, and A4 reaches 0.891 at 82.22\% detection,
+also with no false positives. This validates the recalibrated
+occupancy threshold $\theta_{util} = 0.2167$ derived as the
+benign 99th percentile, and confirms that S4's occupancy-driven
+formulation separates attacked from benign \ac{RSU}s with a
+wide margin, since attacked tables saturate toward full
+occupancy while the benign distribution remains far below the
+gate.
+
+The selective delay family is detected in full --- both A1 and
+A2 reach 100\% detection with zero false negatives --- but at a
+substantial false-positive cost, 22.04\% and 64.00\%
+respectively, which depresses their \ac{MCC} to approximately
+0.48 despite perfect recall. The two variants therefore fail
+the $\leq 1\%$ per-signal false-positive budget that governs
+the calibration procedure, and the failure is attributable to
+the signature rather than to the recalibration: S1's parameters
+were recalibrated on benign traffic, whereas S2 applies a fixed
+$\Delta_{max} = 50$\,ms that the calibration procedure does not
+cover.
+
+The Hidden Forwarding family registers no detections at all,
+which is the intended result rather than a shortfall. With
+S5--S8 disabled, no live signature in Q1 responds to hidden
+forwarding behaviour, and the 40 to 158 ground-truth positive
+nodes per variant are recorded as false negatives. The rule
+layer alone is therefore blind to this family, establishing the
+detection gap that the cryptographic, witness and \ac{LSTM}
+layers are introduced to close, and which the remaining
+configurations Q2--Q6 quantify.
+
+\textbf{Verification status.} Three caveats qualify the figures
+above and are stated here so that later configurations are read
+consistently. First, the confusion counters latch: a node
+flagged once remains flagged for the remainder of the run, so
+false positives accumulate monotonically and the reported
+false-positive rate grows with simulated duration rather than
+converging. Second, these results derive from the inline
+per-node confusion matrix, which is a different statistic from
+the per-window \ac{MCC} of Eq.~\ref{eq:mcc} computed over the
+detector window grid; the two do not currently agree, and the
+per-window grid additionally registers detections for A5--A8
+where the inline matrix registers none, indicating that the
+window grid may not honour the component-isolation switches.
+Reconciling the two is outstanding. Third, all values come from
+a single seed, so no dispersion is reported.
+
 \chapter{Timeline and Resource Required}
 
 \section{Timeline}
