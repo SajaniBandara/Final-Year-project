@@ -134,7 +134,32 @@ inline void s1_update_baseline(uint32_t rsu_idx,
 
     // Eq. 3.11: δ̄_r(t) = δ₀ + α_ρ·ρ(t) + α_v·v̄(t)⁻¹
     double inv_v = (v_bar_t > 0.1) ? (1.0 / v_bar_t) : 10.0;
-    s1_delta_bar[rsu_idx] = s1_delta0 + s1_alpha_rho * rho_t + s1_alpha_v * inv_v;
+    double db = s1_delta0 + s1_alpha_rho * rho_t + s1_alpha_v * inv_v;
+
+    // Floor at delta_0 (added 2026-08-08). main.tex:2205-2211 states the baseline
+    // "increases linearly with vehicle density" and "decreases with mean speed" --
+    // i.e. eq:mobility_baseline intends alpha_rho > 0 AND alpha_v > 0, since the
+    // speed term is alpha_v * v_bar^-1 and only a POSITIVE alpha_v decays toward
+    // delta_0 as v_bar rises. With both coefficients sign-correct, v_bar^-1 > 0
+    // makes both correction terms positive, so delta_bar >= delta_0 identically:
+    // the baseline decays TOWARD delta_0, never below it.
+    //
+    // The 2026-08-08 calibration violates that: alpha_v = -0.00150238 (negative).
+    // Because inv_v is capped at 10.0 for stopped vehicles (v_bar <= 0.1 m/s,
+    // 14.9% of RSU-cycles on the seed-1 trace), alpha_v*inv_v reaches -15.02ms and
+    // swamps delta_0 = +4.47ms, driving delta_bar NEGATIVE in 15.2% of samples
+    // (min -10.44ms; confirmed in the live Q1 logs). A negative expected delay is
+    // physically meaningless, and since threshold = delta_bar + k*sigma it DEPRESSES
+    // the firing threshold precisely in stopped/congested traffic -- where benign
+    // delays are highest -- inflating S1 false positives.
+    //
+    // This floor enforces the constraint the fitted coefficients should have
+    // satisfied. It is a guard, not a model change: with sign-correct coefficients
+    // it never binds. The real fix is a sign-constrained (non-negative) re-fit in
+    // rule_calibrator.py -- with R^2 = 0.0074 the OLS is fitting noise, so the
+    // coefficient signs are essentially arbitrary. Remove this floor once the
+    // calibration is re-run under that constraint.
+    s1_delta_bar[rsu_idx] = (db > s1_delta0) ? db : s1_delta0;
     (void)observed_delay;   // no longer feeds sigma2 here — see s1_detect_packet()
 }
 

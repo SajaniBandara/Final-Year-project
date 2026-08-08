@@ -76,7 +76,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // Per thesis §1637: "the forwarding node's claimed timestamp."
     // Using t_claimed_packet ensures hop_delay = attack_delay + propagation,
     // correctly exceeding Δ_max for malicious nodes.
-    double t_fwd_by_sender = t_claimed_packet[sender_sim_index][packet_id];
+    double t_fwd_by_sender = claimed_forward_timestamp(sender_sim_index, flow_id, packet_id);
     if (t_fwd_by_sender <= 0.0) return false;
 
     // eq:delay_updated — t_fwd_by_sender is the sender's own (possibly
