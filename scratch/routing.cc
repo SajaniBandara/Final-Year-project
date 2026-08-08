@@ -117843,13 +117843,13 @@ void write_security_metrics_csv()
 			N_Vehicles, N_RSUs,
 			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
 			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
-			0.213,             // tcam_util_thresh — S4 OCCUPANCY gate. Recalibrated 2026-07-20 on the
-			                   // post-07-16 benign baseline (cap=1500) using the PAPER'S rule: benign
-			                   // 99th percentile (FPR <= 1% budget per signal), same method as S1/S3.
-			                   // benign util p99=0.213 (max=0.289); attacked RSUs saturate to 1.0 ->
-			                   // 0.213 gives ~91% TPR at ~1% benign FPR. (A stricter 0.30 = benign max
-			                   // would give ~88% TPR at 0% FPR but departs from the p99 methodology.)
-			                   // Replaces the stale 0.054688 (a different pre-arch util measure).
+			0.216667,          // tcam_util_thresh — S4 OCCUPANCY gate. Recalibrated 2026-08-08 on
+			                   // lambda_PI-fixed benign data (seeds 1-3, 120s) using the PAPER'S rule:
+			                   // benign 99th percentile (FPR <= 1% budget per signal), same method as
+			                   // S1/S3 (rule_calibrator.py Step 5). benign util p99=0.216667
+			                   // (max=0.576667), benign exceedance at p99 = 0.99%.
+			                   // Supersedes the 2026-07-20 value (0.213, pre-07-16 baseline) — close
+			                   // numerically but recomputed on current, corrected traffic data.
 			                   // *** FLAGGED deviation from paper eq:rule_s4 (rate-alone): S4 is util-driven
 			                   // here -- see the DEVIATION note in ComputeTcamDetection (tcam_detection.h). ***
 			rho_per_rsu

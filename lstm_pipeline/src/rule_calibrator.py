@@ -94,13 +94,26 @@ CONVERGENCE_CEILING = 22
 # should not be assumed meaningful.
 #
 # This module now returns inf and REJECTS rather than silently ranking, so the
-# problem is visible instead of producing a confident wrong answer. If the real
-# benign baseline also yields "no beta converges", the criterion itself needs
-# rethinking -- the principled alternative is the EWMA effective window
-# N_eff = 1/(1-beta) (beta=0.9 -> 10 cycles, 0.95 -> 20), which is deterministic
-# and lands naturally inside the 9-22 s band. That is a spec decision, not an
-# implementation one: do not change it unilaterally.
+# problem is visible instead of producing a confident wrong answer. Confirmed
+# on the real (post lambda_PI-fix) benign baseline, seeds 1-3, 2026-08-08: no
+# candidate converges at 1% (beta=0.7->76.8, 0.8->101.0, 0.9->86.3, 0.95->55.3
+# cycles, all > CONVERGENCE_CEILING). This is not a data problem -- sigma_r^2(t)
+# on real (non-stationary) vehicular traffic never settles to a fixed point, so
+# no beta can pass a "converges to within 1% of a final value" test. The
+# criterion itself was wrong, not the data.
+#
+# Spec decision (supervisor + project owner, 2026-08-08): select beta via the
+# analytic EWMA effective window N_eff = 1/(1-beta) instead, deterministic and
+# not subject to the non-stationarity problem above. main.tex:6049 states the
+# actual design target for this parameter: "fastest stable convergence...
+# within the 9s minimum RSU zone residence window" -- the MINIMUM bound, not
+# the full 9-22s range some other proposals have cited. N_EFF_CEILING=9 below
+# encodes that. Among BETA_CANDIDATES, this selects beta=0.8 (N_eff=5, inside
+# budget with margin) over beta=0.9 (N_eff=10, marginally over) or beta=0.95
+# (N_eff=20, more than double the bound -- would leave the estimator still
+# adapting when a fast-crossing vehicle has already left the zone).
 CONVERGENCE_TOL = 0.01
+N_EFF_CEILING = STABILITY_WINDOW  # main.tex:6049 — 9s minimum zone residence
 
 
 # ---------------------------------------------------------------------------
@@ -276,22 +289,48 @@ def sweep_beta(df: pd.DataFrame, delta0: float,
 
     for b, c in sorted(rejected.items()):
         shown = f"{c:.1f}" if np.isfinite(c) else "never"
-        print(f"  β={b}: REJECTED — converges at {shown} cycles "
+        print(f"  β={b}: REJECTED (empirical 1% test) — converges at {shown} cycles "
               f"(> {CONVERGENCE_CEILING}s ceiling)")
 
-    if not eligible:
-        raise SystemExit(
-            f"No β in {BETA_CANDIDATES} converges within the "
-            f"{CONVERGENCE_CEILING}s ceiling (stability window "
-            f"{STABILITY_WINDOW} cycles). Widen BETA_CANDIDATES or re-examine "
-            f"the benign baseline — do NOT silently pick the least-bad β.")
+    if eligible:
+        best_beta = min(eligible, key=eligible.__getitem__)
+        print(f"  → Selected β = {best_beta} (empirical 1% test)  "
+              f"(converges at {eligible[best_beta]:.1f} cycles ≈ {eligible[best_beta]:.1f}s; "
+              f"stability window {STABILITY_WINDOW}, ceiling {CONVERGENCE_CEILING}s)")
+        print(f"    eligible: {sorted(eligible.items())}")
+        return best_beta, f"empirical 1% test, converges at {eligible[best_beta]:.1f} cycles"
 
-    best_beta = min(eligible, key=eligible.__getitem__)
-    print(f"  → Selected β = {best_beta}  "
-          f"(converges at {eligible[best_beta]:.1f} cycles ≈ {eligible[best_beta]:.1f}s; "
-          f"stability window {STABILITY_WINDOW}, ceiling {CONVERGENCE_CEILING}s)")
-    print(f"    eligible: {sorted(eligible.items())}")
-    return best_beta
+    # No candidate converges empirically — expected on real (non-stationary)
+    # traffic, see CONVERGENCE_TOL comment above. Fall back to the analytic
+    # N_eff = 1/(1-beta) criterion against main.tex:6049's actual design bound
+    # (9s minimum zone residence), instead of refusing to select at all.
+    print(f"  No β converges under the empirical 1% test on this data — expected on "
+          f"non-stationary traffic (σ_r²(t) has no fixed point to settle to).")
+    print(f"  Falling back to analytic N_eff = 1/(1-β) vs. N_EFF_CEILING={N_EFF_CEILING}s "
+          f"(main.tex:6049 — 9s minimum RSU zone residence window):")
+    n_eff = {b: 1.0 / (1.0 - b) for b in BETA_CANDIDATES}
+    analytic_eligible = {b: n for b, n in n_eff.items() if n <= N_EFF_CEILING}
+    for b, n in sorted(n_eff.items()):
+        verdict = "OK" if n <= N_EFF_CEILING else f"REJECTED (> {N_EFF_CEILING}s)"
+        print(f"  β={b}  N_eff={n:.2f} cycles  {verdict}")
+
+    if not analytic_eligible:
+        raise SystemExit(
+            f"No β in {BETA_CANDIDATES} satisfies N_eff=1/(1-β) <= {N_EFF_CEILING}s "
+            f"either. Widen BETA_CANDIDATES toward smaller values or re-examine "
+            f"N_EFF_CEILING — do NOT silently pick the least-bad β.")
+
+    # Largest beta within budget: maximises smoothing (lowest-variance sigma^2
+    # estimate) while still guaranteeing full adaptation within the shortest
+    # zone crossing (the conservative choice — see CONVERGENCE_TOL comment).
+    best_beta = max(analytic_eligible, key=analytic_eligible.__getitem__)
+    print(f"  → Selected β = {best_beta} (analytic N_eff fallback)  "
+          f"(N_eff={analytic_eligible[best_beta]:.2f} cycles, "
+          f"ceiling {N_EFF_CEILING}s — largest β within budget)")
+    return best_beta, (f"analytic N_eff=1/(1-β) fallback (empirical 1% test never "
+                        f"converges on non-stationary traffic), N_eff="
+                        f"{analytic_eligible[best_beta]:.2f} cycles <= "
+                        f"{N_EFF_CEILING}s ceiling (main.tex:6049)")
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +526,7 @@ def main() -> None:
     delta0, alpha_rho, alpha_v, r2 = fit_ols(df)
 
     # ── Step 2: β sweep
-    best_beta = sweep_beta(df, delta0, alpha_rho, alpha_v)
+    best_beta, beta_method = sweep_beta(df, delta0, alpha_rho, alpha_v)
 
     # ── Step 3: k sweep
     best_k = sweep_k(df, delta0, alpha_rho, alpha_v, best_beta, args.val_fraction)
@@ -543,7 +582,7 @@ def main() -> None:
         f"  alpha_v   = {result['alpha_v']}  (s²/m)",
         f"  R²        = {result['ols_r2']}",
         "",
-        f"Step 2 — β selection: {result['beta']}",
+        f"Step 2 — β selection: {result['beta']}  ({beta_method})",
         f"Step 3 — k selection: {result['k']}",
         f"Step 4 — Max |ΔFPR|: {result['robustness_max_delta_fpr']}",
         "",
