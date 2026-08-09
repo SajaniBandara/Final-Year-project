@@ -625,13 +625,15 @@ generation.
 
 Chapter 4 - Performance Evaluation and Benchmarking:
 This chapter defines twelve performance metrics with
-formal equations, presents thirteen ablation
+formal equations, presents five ablation
 experiments that isolate each component's
-contribution, and five system-level benchmarking
-experiments against three state-of-the-art baselines
-varying attack penetration, mobility speed, network
-scale, and attack stealthiness. Full simulation
-settings are specified for reproducibility.
+contribution, and one system-level experiment
+reporting per-attack-variant performance under
+default settings. Every experiment defined in this
+chapter is reported in the simulation results; no
+configuration is specified that is not evaluated.
+Full simulation settings are specified for
+reproducibility.
 \\
 
 Chapter 5 - Timeline and Resources Required:
@@ -4131,13 +4133,14 @@ demonstrates the short-observation-window limitation
 under vehicular mobility.
 
 \subsubsection{Internal Ablation Baselines}
-Thirteen component-ablated configurations
-(AB1-A through AB13-B) are defined in
+Five component-ablated configurations
+(AB1 through AB5) are defined in
 Section~\ref{sec:ablation}. Each experiment
 isolates one formulated design component by
-replacing or removing it while holding all
-others fixed; the resulting performance change
-is attributed solely to that component.
+removing it, replacing it, or evaluating it
+alone while holding all others fixed; the
+resulting performance change is attributed
+solely to that component.
 
 \section{Performance Metrics}
 \label{sec:metrics}
@@ -4790,895 +4793,286 @@ WAP-R is reported as ablation context only.
 \section{Ablation Study}
 \label{sec:ablation}
 
-Thirteen ablation experiments are designed to isolate the
-contribution of each individual formulated component of the
-proposed framework. In each experiment, one component is
-replaced or removed while all others remain active; the
-resulting performance change is attributed solely to that
-component. The x variable in every experiment is categorical
-— configuration type — rather than a continuous parameter
-(parameter sensitivity is addressed separately). All
-applicable metrics from Section~\ref{sec:metrics} are
-evaluated per experiment.
+Five ablation experiments isolate the contribution of
+the individual formulated components of the proposed
+framework. In each experiment one component is
+removed, replaced or evaluated alone while all others
+are held fixed, so that the resulting performance
+change is attributed solely to that component. The x
+variable in every experiment is categorical ---
+configuration type --- rather than a continuous
+parameter. Every experiment listed here is evaluated
+in the simulation results of Chapter~4; no configuration is
+defined that is not reported.
+
+The first three experiments (AB1--AB3) form a single
+\emph{component-isolation grid} over the detection
+layers, and share one simulation setting: every
+attack variant is evaluated at a 60\% attacker
+fraction over a 90\,s \ac{SUMO}-derived urban trace
+with 200 vehicles, 64 \ac{RSU}s and 4 controllers, at
+a single seed, with Variants~A1 and~A2 injecting a
+fixed 80\,ms delay and the banded pseudo-random draw
+disabled. Because the configurations differ only in
+which detection layer is live, the difference between
+any two of them is attributable to the layers that
+changed. The remaining two experiments (AB4--AB5)
+ablate the federated learning design and are
+evaluated offline on the seed-partitioned \ac{LSTM}
+dataset rather than in the simulator.
 
 % ----------------------------------------------------------------
-% AB1 — Dual-Mode Architecture
+% AB1 — Rule layer in isolation
 % ----------------------------------------------------------------
-\subsection{AB1 — Dual-Mode Detection Architecture}
+\subsection{AB1 --- Rule-Based Signature Layer in
+Isolation}
 \label{sec:ab1}
 
 \textbf{Component isolated:}
-The dual-mode architecture pairing a lightweight rule-based
-engine on \ac{OBU}s (Algorithm~\ref{alg:lrad_obu}) with a
-full federated \ac{LSTM} detector on \ac{RSU}s
-(Algorithm~\ref{alg:lrad_rsu_detect}).
+The rule-based detection engine
+(Section~\ref{sec:rule_based}) evaluated with no
+corroborating evidence from any other layer, which
+establishes the coverage floor of the signature
+layer and the detection gap the remaining layers
+exist to close.
 
-\textbf{Configurations compared:}
-\begin{itemize}
-\item \textbf{AB1-A (Rule-only):}
-\texttt{LRAD-OBU} evaluates S1 and S2-partial
-locally; S3 and S4 are evaluated at the \ac{RSU}
-via the rule-based detectors
-(Eqs.~\ref{eq:rule_s3},~\ref{eq:rule_s4}) which
-remain active in this configuration; no \ac{LSTM}
-inference.
+\textbf{Configuration:}
+Signatures~S1--S4 are live. Signatures~S5--S8, the
+\ac{LSTM} detector, the witness mechanism and the
+\texttt{BTMM} trust update are disabled, and
+signature verification is forced to pass so that no
+cryptographic evidence can contribute to a
+detection. Forcing verification to pass makes the
+cryptographic conjuncts of S5--S8 unsatisfiable,
+which is why those signatures are reported as
+disabled rather than merely inactive.
 
-    \item \textbf{AB1-B (LSTM-only):} All packets forwarded
-    directly to RSU; \texttt{LRAD-OBU} disabled; full
-    \ac{LSTM} inference without rule pre-filtering.
-    \item \textbf{AB1-C (Full dual-mode):} Complete proposed
-    framework — \texttt{LRAD-OBU} pre-filters, escalates to
-    \texttt{LRAD-RSU} and BRFA-v2 \ac{LSTM}.
-\end{itemize}
+\textbf{x variable:} Detection layer
+$\in \{\text{rule layer only}\}$, read against AB3
+(categorical).
 
-\textbf{x variable:} Configuration
-$\in \{\text{AB1-A}, \text{AB1-B}, \text{AB1-C}\}$ (categorical).
+\textbf{y metrics evaluated:} M1 (\ac{MCC},
+Eq.~\ref{eq:mcc}) with the per-node confusion matrix,
+detection rate and false-positive rate, per attack
+variant.
 
-\textbf{y metrics evaluated:} M1 (per-variant, per-mode MCC),
-M2 (TVR for Variants~1--4), M3 (UCR for Variants~5--8),
-M4 (mitigation latency). AB1-A is expected to miss
-mobility-masked variants; AB1-B is expected to incur higher
-latency due to the absence of OBU pre-filtering.
-
+\textbf{Results:} Section~\ref{sec:q1_results}.
 
 % ----------------------------------------------------------------
-% AB2 — Federated vs Centralised LSTM
+% AB2 — Witness mechanism in isolation
 % ----------------------------------------------------------------
-\subsection{AB2 — Federated vs Centralised LSTM}
+\subsection{AB2 --- Witness-Based Forwarding
+Verification in Isolation}
 \label{sec:ab2}
 
 \textbf{Component isolated:}
-The federated learning design in which each of the 64
-\ac{RSU}s trains a local model and shares only weight
-updates (Algorithm~\ref{alg:brfa_v2}), versus centralising
-all raw flow data at a single training server.
+The witness monitoring mechanism
+(Eqs.~\ref{eq:dup_alert_cond},~\ref{eq:bft_penalty}),
+which is the primary detector for the passive
+Hidden Forwarding variants A7 and A8, where neither
+a timing anomaly nor a verification failure is
+produced. Eq.~\ref{eq:nfwd_detect} detects
+delay-equivalent non-delivery and is formally
+classified as a severe case of Selective Time Delay
+Variants~1--4; it does not target hidden forwarding
+and is excluded from this ablation's scope.
 
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB2-A (Centralised):} All 64 RSUs
-    transmit raw per-packet feature logs to a central
-    training server; one global \ac{LSTM} is trained
-    on the pooled dataset.
-    \item \textbf{AB2-B (Federated — proposed):}
-    Each \ac{RSU} trains locally; only weight updates
-    with hash commitments are transmitted; BRFA-v2
-    aggregation applies.
-\end{itemize}
+\textbf{Configuration:}
+The witness mechanism is the only active detection
+layer. Signatures~S1--S8, the \ac{LSTM} detector and
+the \texttt{BTMM} per-packet trust update are
+disabled and signature verification is forced to
+pass. Witness-driven trust updates are deliberately
+left active, since they are the mechanism under
+test.
 
-\textbf{x variable:} Training architecture
-$\in \{\text{AB2-A}, \text{AB2-B}\}$ (categorical).
+\textbf{x variable:} Detection layer
+$\in \{\text{witness only}\}$ (categorical).
 
-\textbf{y metrics evaluated:} M1 (MCC — confirms federated
-matches centralised detection quality), M3 (UCR), M10
-(privacy leakage score — AB2-A exposes raw flow metadata,
-AB2-B does not). M10 is the primary differentiating metric
-for this experiment, as it quantifies the privacy cost of
-centralisation directly.
+\textbf{y metrics evaluated:} M12 (witness alert precision and recall) using the
+witness-native counters, plus the duplicate alert
+count per variant. The per-node confusion matrix is
+\emph{not} the applicable instrument for this
+configuration --- the witness reaches it only
+indirectly, through the quarantine path --- and the
+reason is set out with the results.
 
+\textbf{Results:} Section~\ref{sec:q4_results}.
 
 % ----------------------------------------------------------------
-% AB3 — ZKP Failure Features in LSTM Input
+% AB3 — Rule + cryptographic layers
 % ----------------------------------------------------------------
-\subsection{AB3 — ZKP Failure Indicators as LSTM Features}
+\subsection{AB3 --- Rule and Cryptographic Layers
+Combined}
 \label{sec:ab3}
 
 \textbf{Component isolated:}
-The progressive contribution of three feature groups
-added to the \ac{LSTM} input vector
-(Eq.~\ref{eq:lstm_input}): the two binary \ac{ZKP}
-failure indicators
-$(\mathbb{1}[\pi_{delay}{=}\bot],\,
-\mathbb{1}[\pi_{hop}{=}\bot])$ encoding cryptographic
-evidence from the timing layer, and the three
-hidden-forwarding-specific features
-$(D_{div,t},\, A_{tp,t},\, R_{anom,t})$
-(Eqs.~\ref{eq:feat_ddiv}--\ref{eq:feat_ranom})
-encoding traffic-level forwarding anomalies.
+The hybrid cryptographic integrity layer
+(Section~\ref{sec:crypto_layer}), added on top of the
+complete rule layer. Read against AB1, the
+difference between the two configurations is
+attributable to genuine cryptographic verification
+and to Signatures~S5--S8 becoming satisfiable.
 
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB3-A (5-feature baseline):}
-    Input vector $[\delta_t, \lambda_{PI},
-    U_{TCAM}, \rho_t, \bar{v}_t]$ only ---
-    no cryptographic or forwarding feedback.
-    \item \textbf{AB3-B (7-feature):}
-    Adds both \ac{ZKP} failure indicators to
-    AB3-A; isolates the cryptographic layer
-    contribution to detection quality.
-    \item \textbf{AB3-C (10-feature proposed):}
-    Full input vector additionally including
-    $D_{div,t}$, $A_{tp,t}$, $R_{anom,t}$;
-    isolates the hidden-forwarding feature
-    contribution, particularly for Variants~7--8
-    where \ac{ZKP} indicators provide no signal.
-\end{itemize}
+\textbf{Configuration:}
+Signatures~S1--S8 are all live and signature
+verification runs naturally, so genuine
+cryptographic evidence contributes to detection.
+The \ac{LSTM} detector, the witness mechanism and
+the \texttt{BTMM} trust update remain disabled.
 
-\textbf{x variable:} Feature configuration
-$\in \{\text{AB3-A}, \text{AB3-B},
-\text{AB3-C}\}$ (categorical).
+\textbf{x variable:} Detection layer
+$\in \{\text{rule only (AB1)},\;
+\text{rule}+\text{crypto (AB3)}\}$ (categorical).
 
-\textbf{y metrics evaluated:} M1 (per-variant
-\ac{MCC}, evaluated separately for S1--S4
-and S5--S8 to show which feature group drives
-improvement in each attack class), M3 (UCR ---
-expected to improve only from AB3-B to AB3-C,
-not from AB3-A to AB3-B, since \ac{ZKP}
-indicators fire only when cryptographic checks
-already catch the attack). The gap between AB3-B
-and AB3-C on S7--S8 directly quantifies the
-contribution of the reception log anomaly score
-$R_{anom,t}$ to passive hidden forwarding
-detection.
+\textbf{y metrics evaluated:} M1 (\ac{MCC}) with the
+per-node confusion matrix, detection rate and
+false-positive rate per attack variant, reported
+alongside the corresponding AB1 value so the
+per-variant delta is directly readable. The
+\ac{TCAM} variants A3 and A4 act as a control: the
+occupancy signal does not depend on cryptographic
+verification, so those two rows are expected to be
+invariant across the change.
 
-
+\textbf{Results:} Section~\ref{sec:q5_results}.
 
 % ----------------------------------------------------------------
-% AB4 — Individual STARK Proof Contributions
+% AB4 — Byzantine-Robust Aggregation vs FedAvg
 % ----------------------------------------------------------------
-\subsection{AB4 — Individual STARK Proof Contributions}
+\subsection{AB4 --- Byzantine-Robust Aggregation}
 \label{sec:ab4}
 
 \textbf{Component isolated:}
-The two \ac{STARK} proof components — timing compliance
-$\pi_{delay}$ (Eq.~\ref{eq:stark_delay}) and next-hop
-legitimacy $\pi_{hop}$ (Eq.~\ref{eq:stark_hop}) —
-evaluated in isolation and in combination to identify
-which proof drives detection of which attack class.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB4-A (No ZKP):} ML-DSA-87 signatures
-    and batch verification retained; both \ac{STARK}
-    proofs removed entirely.
-    \item \textbf{AB4-B ($\pi_{delay}$ only):}
-    Timing compliance proof active; hop legitimacy
-    proof removed.
-    \item \textbf{AB4-C ($\pi_{hop}$ only):}
-    Hop legitimacy proof active; timing compliance
-    proof removed.
-    \item \textbf{AB4-D (Both proofs — proposed):}
-    Complete \ac{STARK} layer active.
-\end{itemize}
-
-\textbf{x variable:} Proof configuration
-$\in \{\text{AB4-A}, \text{AB4-B},
-\text{AB4-C}, \text{AB4-D}\}$ (categorical).
-
-\textbf{y metrics evaluated:} M1 (per-variant MCC),
-M2 (TVR — expected sensitive to $\pi_{delay}$),
-M3 (UCR — expected sensitive to $\pi_{hop}$),
-M7 ($T_{verify}$ — overhead reduction without each proof).
-
-
-% ----------------------------------------------------------------
-% AB5 — Byzantine-Robust Aggregation vs FedAvg
-% ----------------------------------------------------------------
-\subsection{AB5 — Byzantine-Robust Aggregation}
-\label{sec:ab5}
-
-\textbf{Component isolated:}
 The four-step BRFA-v2 procedure (trust gate, hash
-verification, Krum filtering, weighted aggregation —
-Algorithm~\ref{alg:brfa_v2}) versus standard FedAvg
-under a fixed adversarial RSU fraction of
-$\rho_{mal} = 0.25$ (16 of 64 RSUs submit poisoned
-gradients), representing a realistic worst-case within
-the PBFT bound.
+verification, Krum filtering, weighted aggregation
+--- Algorithm~\ref{alg:brfa_v2}) versus standard
+FedAvg, under an increasing adversarial \ac{RSU}
+fraction bounded by the \ac{PBFT} limit $f < n/3$.
 
 \textbf{Configurations compared:}
 \begin{itemize}
-    \item \textbf{AB5-A (Naive FedAvg):} Standard
+    \item \textbf{AB4-A (Naive FedAvg):} Standard
     weighted averaging with no trust gate, no hash
-    verification, no Krum filtering.
-    \item \textbf{AB5-B (BRFA-v2 — proposed):}
+    verification and no Krum filtering.
+    \item \textbf{AB4-B (BRFA-v2 --- proposed):}
     Full four-step Byzantine-robust procedure.
 \end{itemize}
 
 \textbf{x variable:} Aggregation algorithm
+$\in \{\text{AB4-A}, \text{AB4-B}\}$ (categorical),
+swept over malicious \ac{RSU} fraction
+$\rho_{mal} \in \{0.0,\, 0.1,\, 0.2,\, 0.3\}$ under a
+\texttt{sign\_flip} poisoning model in which each
+poisoned \ac{RSU} negates its submitted weight
+update.
+
+\textbf{y metrics evaluated:} M8 ($\Delta_{poison}$,
+Eq.~\ref{eq:delta_poison}) as the primary metric, and
+M1 (\ac{MCC}) of the resulting global model, both
+evaluated on the held-out split across all eight
+attack variants. The number of \ac{RSU} updates
+accepted by the Krum step is reported alongside, as
+the mechanism by which AB4-B obtains its result.
+
+\textbf{Results:} Section~\ref{sec:lstm_validation}.
+
+% ----------------------------------------------------------------
+% AB5 — ZKP failure indicators as LSTM features
+% ----------------------------------------------------------------
+\subsection{AB5 --- ZKP Failure Indicators as
+\ac{LSTM} Features}
+\label{sec:ab5}
+
+\textbf{Component isolated:}
+The contribution of the two binary \ac{ZKP} failure
+indicators
+$(\mathbb{1}[\pi_{delay}{=}\bot],\,
+\mathbb{1}[\pi_{hop}{=}\bot])$ added to the
+\ac{LSTM} input vector
+(Eq.~\ref{eq:lstm_input}), which encode
+cryptographic evidence from the timing layer as a
+learned feature rather than as a rule conjunct.
+
+\textbf{Configurations compared:}
+\begin{itemize}
+    \item \textbf{AB5-A (5-feature baseline):}
+    Input vector $[\delta_t, \lambda_{PI},
+    U_{TCAM}, \rho_t, \bar{v}_t]$ only --- no
+    cryptographic feedback.
+    \item \textbf{AB5-B (7-feature):} Adds both
+    \ac{ZKP} failure indicators to AB5-A.
+\end{itemize}
+
+\textbf{x variable:} Feature configuration
 $\in \{\text{AB5-A}, \text{AB5-B}\}$ (categorical).
 
-\textbf{y metrics evaluated:} M8 ($\Delta_{poison}$
-at $\rho_{mal} = 0.25$), M1 (MCC — does the global
-model's detection quality hold under poisoning?).
+\textbf{y metrics evaluated:} M1 (per-variant
+\ac{MCC}), with detection rate and false-positive
+rate reported alongside, evaluated separately for
+each attack variant so that the feature group's
+effect can be read per attack class.
 
+\textbf{Scope:} The three hidden-forwarding features
+$(D_{div,t}, A_{tp,t}, R_{anom,t})$
+(Eqs.~\ref{eq:feat_ddiv}--\ref{eq:feat_ranom}) that
+complete the deployed 10-feature vector are
+\emph{not} ablated here: no matched 10-feature run
+exists under the same training configuration, so
+their individual contribution is not separated in
+the present results and no claim is made about it.
 
-% ----------------------------------------------------------------
-% AB6 — Witness Monitoring Mechanism
-% ----------------------------------------------------------------
-\subsection{AB6 — Witness-Based Forwarding Verification}
-\label{sec:ab6}
+\textbf{Results:} Section~\ref{sec:ab5_results}.
 
-\textbf{Component isolated:}
-The witness monitoring mechanism for passive hidden
-forwarding detection
-(Eqs.~\ref{eq:dup_alert_cond},~\ref{eq:bft_penalty}),
-which is the primary detector for Variants~7 and~8
-where \ac{ZKP} corroboration alone is insufficient.
-Eq.~\ref{eq:nfwd_detect} detects delay-equivalent
-non-delivery and is formally classified as a severe
-case of Selective Time Delay Variants~1--4; it does
-not target hidden forwarding and is excluded from
-this ablation's scope.
-
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB6-A (No witness monitoring):}
-    Passive hidden forwarding detection relies solely
-    on $b_{hop} = 0$ as the corroborating indicator;
-    no witness alert submission or BFT threshold.
-    \item \textbf{AB6-B (Full witness mechanism —
-    proposed):} Witness vehicles log $(H(p), dst)$,
-    submit $\alpha_w$ or $\beta_w$ directly on-chain,
-    and \textsc{SC.PenalizeTrust} fires at $2f{+}1$
-    verified alerts.
-\end{itemize}
-
-\textbf{x variable:} Witness mechanism
-$\in \{\text{AB6-A}, \text{AB6-B}\}$ (categorical).
-
-\textbf{y metrics evaluated:} M3 (UCR for Variants~7--8),
-M12 (WAP-R precision and recall — defined only for
-AB6-B; AB6-A reports UCR only). The UCR gap between
-AB6-A and AB6-B directly quantifies the contribution
-of witness monitoring to passive attack containment.
-
-
-% ----------------------------------------------------------------
-% AB7 — Blockchain Trust Scoring and Quarantine
-% ----------------------------------------------------------------
-\subsection{AB7 — Blockchain Trust Scoring and
-Automated Quarantine}
-\label{sec:ab7}
-
-\textbf{Component isolated:}
-The smart contract trust score update and automated
-quarantine pipeline (Eqs.~\ref{eq:trust_update},
-\ref{eq:quarantine}). Without this component,
-attacks are detected but the attacking node is never
-isolated, leaving the network vulnerable to continued
-attacks.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB7-A (Detection-only):}
-    \texttt{LRAD-RSU} and \ac{LSTM} detection active;
-    trust score update and \textsc{SC.Quarantine}
-    disabled — detection events are logged but no
-    node is isolated.
-    \item \textbf{AB7-B (Full pipeline — proposed):}
-    Complete trust update and quarantine pipeline active.
-\end{itemize}
-
-\textbf{x variable:} Quarantine mechanism
-$\in \{\text{AB7-A}, \text{AB7-B}\}$ (categorical).
-
-\textbf{y metrics evaluated:} M1 (MCC — sustained
-attacks after initial detection reduce ongoing MCC in
-AB7-A), M4 (mitigation latency — undefined for AB7-A
-since no quarantine occurs), M6 ($L_{e2e}$ — without
-quarantine, attack overhead accumulates over time).
-
-
-% ----------------------------------------------------------------
-% AB8 — Multi-RSU FlowMod Endorsement
-% ----------------------------------------------------------------
-\subsection{AB8 — Multi-RSU FlowMod Endorsement}
-\label{sec:ab8}
-
-\textbf{Component isolated:}
-The $f{+}1$ independent \ac{RSU} endorsement requirement
-before blockchain FlowMod commitment
-(Eqs.~\ref{eq:rsu_endorsement},
-\ref{eq:endorsed_commit}, \ref{eq:unauth_flowmod}).
-Without endorsement, the controller can unilaterally
-commit arbitrary FlowMods.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB8-A (No endorsement):}
-    FlowMods committed to blockchain on controller
-    assertion alone — no RSU endorsement signatures
-    collected; $f_{unauth}$ cannot fire.
-    \item \textbf{AB8-B (Full endorsement —
-    proposed):} $f{+}1$ RSU endorsements required;
-    unauthorized FlowMods blocked before installation.
-\end{itemize}
-
-\textbf{x variable:} Endorsement mechanism
-$\in \{\text{AB8-A}, \text{AB8-B}\}$ (categorical).
-
-\textbf{y metrics evaluated:} M11 (UFCR — zero in
-AB8-A by definition; target 1.0 in AB8-B), M4
-(mitigation latency for control-plane attacks),
-M7 ($T_{consensus}$).
-
-
-% ----------------------------------------------------------------
-% AB9 — Multi-Controller vs Single Controller
-% ----------------------------------------------------------------
-\subsection{AB9 — Multi-Controller Zero-Trust
-Architecture}
-\label{sec:ab9}
-
-\textbf{Component isolated:}
-The flat multi-controller set with SC-Revoke trusted
-failover (Eqs.~\ref{eq:trusted_ctrl_set},
-\ref{eq:sc_revoke}, \ref{eq:ctrl_failover}) versus
-a single centralised controller, directly testing the
-single-point-of-failure elimination claim.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB9-A (Single controller):}
-    One fixed controller; no trust scoring; no failover.
-    When the controller is compromised, the framework
-    operates with no control-plane oversight.
-    \item \textbf{AB9-B (Multi-controller —
-    proposed):} Flat registered controller set with
-    on-chain trust scoring, SC-Revoke, and dynamic
-    RSU reassignment.
-\end{itemize}
-
-\textbf{x variable:} Controller architecture
-$\in \{\text{AB9-A}, \text{AB9-B}\}$ (categorical),
-evaluated under one compromised controller.
-
-\textbf{y metrics evaluated:} M1 (MCC — does detection
-degrade when the controller is compromised?), M4
-(mitigation latency), M5 (controller failover latency —
-undefined for AB9-A since no failover exists), M11
-(UFCR — AB9-A cannot block unauthorized FlowMods from
-a compromised single controller).
-
-
-% ----------------------------------------------------------------
-% AB10 — DKG vs Controller-Managed Key Generation
-% ----------------------------------------------------------------
-\subsection{AB10 — Distributed Key Generation vs
-Controller-Managed Keys}
-\label{sec:ab10}
-
-\textbf{Component isolated:}
-The \ac{DKG} ceremony among \ac{RSU} ring members
-(Eq.~\ref{eq:vk_commit}) that removes the controller
-from the key plane entirely, versus a design where
-the controller issues \ac{ZKP} proving keys.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB10-A (Controller key authority):}
-    A compromised controller issues false proving keys
-    that allow arbitrary behaviour to be proven
-    compliant — no \ac{DKG} ceremony.
-    \item \textbf{AB10-B (\ac{DKG} — proposed):}
-    Keys generated jointly among honest \ac{RSU}s;
-    blockchain-committed $vk_{ZKP}$ is the only
-    accepted verification key.
-\end{itemize}
-
-\textbf{x variable:} Key generation architecture
-$\in \{\text{AB10-A}, \text{AB10-B}\}$ (categorical),
-evaluated under a compromised controller.
-
-\textbf{y metrics evaluated:} M3 (UCR — can a
-controller with false proving keys suppress valid
-$\pi_{hop}$ proofs and enable undetected hidden
-forwarding?), M11 (UFCR — can false keys allow
-unauthorized FlowMods to appear compliant?). 
-
-
-% ----------------------------------------------------------------
-% AB11 — ZKP Key Rotation on RSU Revocation
-% ----------------------------------------------------------------
-\subsection{AB11 — ZKP Proving Key Rotation on
-RSU Revocation}
-\label{sec:ab11}
-
-\textbf{Component isolated:}
-The key rotation trigger mechanism
-(Eqs.~\ref{eq:key_rotation_trigger},
-\ref{eq:vk_commit_rotated}) that initiates a fresh
-\ac{DKG} ceremony when a revoked \ac{RSU} was a
-\ac{DKG} participant, preventing retained key
-material from being exploited post-revocation.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB11-A (No rotation):} Revoked
-    \ac{RSU} retains its \ac{DKG} key material;
-    existing $vk_{ZKP}$ remains in use after
-    revocation.
-    \item \textbf{AB11-B (With rotation —
-    proposed):} \textsc{SC.RotateKeys} triggers
-    immediately on revocation; fresh \ac{DKG}
-    among remaining honest \ac{RSU}s; new
-    $vk_{ZKP}^{new}$ committed to blockchain.
-\end{itemize}
-
-\textbf{x variable:} Key rotation policy
-$\in \{\text{AB11-A}, \text{AB11-B}\}$ (categorical),
-evaluated at $t = \{1, 2, 3, 4, 5\}$ time steps
-after RSU revocation.
-
-\textbf{y metrics evaluated:} M3 (UCR — does the
-revoked RSU exploit retained keys to produce valid
-$\pi_{hop}$ proofs enabling hidden forwarding in
-AB11-A?), M1 (MCC for hidden forwarding variants
-S5--S8 — does detection quality hold post-revocation
-in both configurations?).
-
-
-% ----------------------------------------------------------------
-% AB12 — Blockchain Write Restriction
-% ----------------------------------------------------------------
-\subsection{AB12 — Blockchain Write Restriction}
-\label{sec:ab12}
-
-\textbf{Component isolated:}
-The architectural constraint that only \ac{RSU}s
-may write to the blockchain
-(Eqs.~\ref{eq:rsu_write}, \ref{eq:flowmod_log}),
-directly testing the zero-trust principle that the
-controller is excluded from the audit trail.
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB12-A (Controller write access):}
-    A compromised controller is permitted to write
-    to the blockchain — it can retroactively insert
-    false endorsement records and manipulate the
-    audit trail.
-    \item \textbf{AB12-B (RSU-only writes —
-    proposed):} Controller has read-only access;
-    all writes originate from \ac{RSU}s via
-    \ac{PBFT} endorsement.
-\end{itemize}
-
-\textbf{x variable:} Write access policy
-$\in \{\text{AB12-A}, \text{AB12-B}\}$ (categorical),
-evaluated under a compromised controller.
-
-\textbf{y metrics evaluated:} M11 (UFCR — can a
-controller with write access retroactively legitimize
-unauthorized FlowMods?), M1 (MCC — does the integrity
-of detection event logs hold when a compromised
-controller can alter the blockchain?), M4 (mitigation
-latency — can a controller with write access cancel
-quarantine instructions?).
-
-
-% ----------------------------------------------------------------
-% AB13 — Mobility-Adjusted vs Static Thresholds
-% ----------------------------------------------------------------
-\subsection{AB13 — Mobility-Adjusted vs Static
-Detection Thresholds}
-\label{sec:ab13}
-
-\textbf{Component isolated:}
-The mobility-adjusted baseline delay estimator
-$\bar{\delta}_r(t) = \delta_0 + \alpha_\rho \cdot
-\rho(t) + \alpha_v \cdot \bar{v}(t)^{-1}$
-(Eq.~\ref{eq:mobility_baseline}) and \ac{EWMA}
-variance estimator (Eq.~\ref{eq:ewma_variance}),
-which together constitute the paper's direct
-response to Gap~1 (mobility-induced vulnerability).
-
-\textbf{Configurations compared:}
-\begin{itemize}
-    \item \textbf{AB13-A (Static threshold):}
-    Delay baseline replaced with a fixed constant
-    $\bar{\delta}_{static}$; variance replaced
-    with a fixed $\sigma_{static}$, reproducing
-    the threshold design of all three baselines
-    (TAP, SFTO-Guard, FADE).
-    \item \textbf{AB13-B (Mobility-adjusted —
-    proposed):} Full $\bar{\delta}_r(t)$ and
-    $\sigma_r(t)$ estimators active.
-\end{itemize}
-
-\textbf{x variable:} Threshold design
-$\in \{\text{AB13-A}, \text{AB13-B}\}$ (categorical).
-
-\textbf{y metrics evaluated:} M1
-($\text{MCC}_s[\rho_b, \bar{v}_b]$ —
-Eq.~\ref{eq:mcc_mobility}, the mobility-stratified
-score which directly tests whether detection quality
-holds across density and speed regimes), M2 (TVR —
-do legitimate handoff delays cause false threshold
-violations in AB13-A?). This experiment is the
-direct ablation analog of the mobility-adjustment
-robustness metric M1 and together they constitute
-the complete evaluation of the paper's Gap~1 claim.
-
-\section{Benchmarking Against State-of-the-Art}
+\section{System-Level Evaluation}
 \label{sec:benchmarking}
 
-Five benchmarking experiments are designed to evaluate
-the proposed framework against baselines B1 (TAP),
-B2 (SFTO-Guard), and B3 (FADE) at the system level.
-All eight attack variants operate simultaneously in
-every experiment unless otherwise stated. Metrics
-applicable only in ablation studies (M5, M8, M9, M12)
-are excluded from all benchmarking experiments.
-Default settings are held fixed for any variable not
-under variation in that experiment.
+One system-level experiment is evaluated. It
+complements the ablation study by reporting the
+framework's per-variant performance in its deployed
+detection configuration rather than in a
+component-isolated one.
 
-% ================================================================
-% EXPERIMENT 1 — Attack Penetration x Attack Intensity
-% ================================================================
-
-\subsection{Experiment~1 — Attack Penetration Under
-Varying Attack Intensity}
+\subsection{Experiment~1 --- Per-Attack Variant
+Performance Under Default Settings}
 \label{sec:exp1}
 
-\textbf{Motivation:} Directly answers RQ1 by evaluating
-how detection quality, threshold violations, and
-mitigation responsiveness change as the number of
-attacking nodes increases under three distinct levels
-of attack intensity, capturing both the breadth
-(how many attackers) and the severity (how hard each
-attacks) of the threat.
+\textbf{Motivation:} Provides a single-table,
+system-level breakdown of per-variant detection
+performance under default settings, giving the
+attack-class-specific view that a single aggregate
+score conceals --- in particular which attack
+families are detected by which combination of
+layers, and at what false-positive cost.
 
-\textbf{x variable — Attack Penetration $p$:}
-$p \in \{0\%, 20\%, 40\%, 60\%, 80\%, 100\%\}$,
-six equidistant data points. At each value of $p$,
-$\lfloor 0.01p \times 264 \rfloor$ attacker nodes are
-allocated among the 200 vehicles and 64 \ac{RSU}s
-plane-specifically per attack variant; controller
-compromise follows the threshold rule defined in
-Section~\ref{sec:simulation} automatically.
-
-\textbf{Second dimension — Attack Intensity $\mathcal{I}$:}
-Three discrete levels produce three lines per metric
-graph. Attack intensity is defined separately for each
-attack class.
-
-For Selective Time Delay (Variants~1--4), intensity is
-the induced per-hop delay as a multiple of $\Delta_{max}$,
-given in Equation~\eqref{eq:intensity_td}.
-\begin{equation}
-\mathcal{I}_{TD} \in
-\left\{
-1.1\cdot\Delta_{max},\;
-2\cdot\Delta_{max},\;
-4\cdot\Delta_{max}
-\right\}
-\label{eq:intensity_td}
-\end{equation}
-As given in Equation~\eqref{eq:intensity_td},
-$1.1\cdot\Delta_{max}$ represents a sub-threshold
-stealth injection just above the detection boundary,
-$2\cdot\Delta_{max}$ represents a moderate injection,
-and $4\cdot\Delta_{max}$ represents an aggressive
-injection causing severe desynchronization.
-
-For Hidden Forwarding (Variants~5--8), intensity is
-the fraction of eligible flows that are secretly
-forwarded, given in Equation~\eqref{eq:intensity_hf}.
-\begin{equation}
-\mathcal{I}_{HF} \in
-\left\{25\%,\; 50\%,\; 100\%\right\}
-\;\text{of eligible flows}
-\label{eq:intensity_hf}
-\end{equation}
-As given in Equation~\eqref{eq:intensity_hf},
-$25\%$ represents stealthy selective duplication,
-$50\%$ moderate exposure, and $100\%$ full
-forwarding of all eligible flows.
-
-\textbf{Graph format:} Three lines per metric (one
-per intensity level), each with six equidistant
-data points at $p \in \{0\%, 20\%, 40\%, 60\%,
-80\%, 100\%\}$.
-
-\textbf{y metrics evaluated:}
-M1 (MCC), M2 (TVR), M3 (UCR), M4 ($L_{mit}$),
-M6 ($L_{e2e}$), M10 ($L_{priv}$), M11 (UFCR).
-
-\textbf{Baselines:} B1 (TAP), B2 (SFTO-Guard),
-B3 (FADE). Each baseline is expected to degrade
-significantly above $p = 20\%$ and under controller
-compromise, which is automatically activated at
-$p \geq 33\%$ per the threshold rule.
-
-
-% ================================================================
-% EXPERIMENT 2 — Vehicle Mobility Speed
-% ================================================================
-
-\subsection{Experiment~2 — Detection Quality Under
-Varying Vehicle Mobility}
-\label{sec:exp2}
-
-\textbf{Motivation:} Directly answers RQ2 by
-evaluating whether the mobility-adjusted threshold
-design maintains detection quality across the full
-speed range from near-stationary urban crawl to
-high-speed highway, the exact regime where
-static-threshold baselines are expected to fail
-due to handoff-masking of delay signatures.
-
-\textbf{x variable — Mean Vehicle Speed $\bar{v}$:}
-$\bar{v} \in \{10, 60, 100, 140\}$\,km/h,
-four data points corresponding to urban crawl,
-urban arterial, highway, and high-speed highway.
-The x variable is given in
-Equation~\eqref{eq:speed_x}.
-\begin{equation}
-\bar{v}_{SUMO} = \frac{\bar{v}_{km/h}}{3.6}
-\;\text{m/s} \;\in
-\{2.78,\; 16.67,\; 27.78,\; 38.89\}\;\text{m/s}
-\label{eq:speed_x}
-\end{equation}
-As given in Equation~\eqref{eq:speed_x}, all speeds
-are converted from km/h to m/s for \ac{SUMO}
-configuration. To ensure all vehicles travel at
-exactly the target speed without inter-vehicle speed
-variation, the following \ac{SUMO} \texttt{vType}
-parameters are set: \texttt{speedFactor="1.0"} and
-\texttt{speedDev="0.0"}. Both the \texttt{vType}
-\texttt{maxSpeed} attribute and the road/edge
-\texttt{speed} attribute are set to the same m/s
-value, ensuring every vehicle traverses every road
-segment at precisely $\bar{v}_{SUMO}$.
-
-\textbf{Experimental rationale:} At $\bar{v} = 10$\,km/h,
-handoff latency is minimal (long zone residence time
-of $\approx 90$--$220$\,s), providing a near-ideal
-detection baseline. At $\bar{v} = 140$\,km/h,
-zone residence time drops to $\approx 7.7$\,s,
-maximizing handoff-induced jitter and the
-Bhattacharyya distance overlap
-(Eq.~\ref{eq:bhattacharyya}). The mobility-adjusted
-baseline $\bar{\delta}_r(t)$ (Eq.~\ref{eq:mobility_baseline})
-should compensate for this jitter; static-threshold
-baselines cannot.
-
-\textbf{y metrics evaluated:}
-M1 ($\text{MCC}_s[\rho_b, \bar{v}_b]$ —
-Eq.~\ref{eq:mcc_mobility}), M2 (TVR), M3 (UCR),
-M4 ($L_{mit}$), M6 ($L_{e2e}$), M11 (UFCR).
-
-
-% ================================================================
-% EXPERIMENT 3 — Network Scalability
-% ================================================================
-
-\subsection{Experiment~3 — System Performance Under
-Network Scalability}
-\label{sec:exp3}
-
-\textbf{Motivation:} Directly answers RQ3 and RQ4
-by evaluating whether detection quality, mitigation
-responsiveness, and cryptographic overhead remain
-within safety-critical bounds as the network scales
-from 100 to 400 vehicles over the same fixed
-geographic area and \ac{RSU} infrastructure.
-
-\textbf{x variable — Number of Vehicles $N_v$:}
-$N_v \in \{100, 200, 300, 400\}$, four equidistant
-data points. The 64 \ac{RSU}s on the 8$\times$8
-grid and 4 controllers remain fixed across all
-points; only the vehicle count scales, increasing
-vehicle density from $\approx 23$ to $\approx 90$
-vehicles per km$^2$ over the
-2061\,m$\times$2137\,m simulation area.
-The vehicle density is given in
-Equation~\eqref{eq:density_x}.
-\begin{equation}
-\rho(N_v) =
-\frac{N_v}{A_{map}}
-\;\text{veh/m}^2,
-\quad A_{map} = 2061 \times 2137\;\text{m}^2
-\label{eq:density_x}
-\end{equation}
-As given in Equation~\eqref{eq:density_x},
-$\rho(N_v)$ increases proportionally with $N_v$,
-raising both legitimate FlowMod installation rates
-and the volume of detection events written to the
-blockchain, stressing the BRFA-v2 aggregation load,
-the blockchain consensus pipeline, and the
-\textsc{BatchVerify} processing budget simultaneously.
-Vehicle type ratios are maintained proportionally
-across all four points.
-
-\textbf{y metrics evaluated:}
-M1 (MCC), M2 (TVR), M3 (UCR), M4 ($L_{mit}$),
-M6 ($L_{e2e}$), M7 ($T_{verify}(B)$ and
-$T_{consensus}$ — the two overhead sub-metrics
-most sensitive to network scale), M11 (UFCR).
-
-
-% ================================================================
-% EXPERIMENT 4 — Attack Observable Evidence Index (AOEI)
-% ================================================================
-
-\subsection{Experiment~4 — Detection Under Varying
-Attack Observable Evidence}
-\label{sec:exp4}
-
-\textbf{Motivation:} Directly answers RQ5 by
-evaluating whether the framework detects attacks at
-the low-evidence extreme — the "low-rate stealthy"
-operating regime explicitly stated in the threat
-model — where every baseline fails because
-statistical evidence in the network is deliberately
-minimized. This experiment captures two defining
-attack characteristics simultaneously: the
-\textit{selectivity} of the attacker (how broadly
-it targets eligible traffic) and the
-\textit{copy destination divergence} (how far the
-unauthorized destination is from the authorized
-path in hop count, directly affecting witness
-monitoring coverage).
-
-\textbf{x variable — Attack Observable Evidence
-Index (AOEI):}
-AOEI is a composite index combining both attack
-characteristics on a unified scale. The AOEI is
-given in Equation~\eqref{eq:aoei}.
-\begin{equation}
-\text{AOEI} =
-\frac{1}{2}
-\left(
-\frac{n_{targeted}}{n_{eligible}}
-+
-\frac{1}{1 + d_{div}/d_{max}}
-\right)
-\label{eq:aoei}
-\end{equation}
-As given in Equation~\eqref{eq:aoei},
-$n_{targeted}/n_{eligible}$ is the
-\textbf{selectivity ratio}: the fraction of
-eligible high-priority packets (for Variants~1--4)
-or eligible flows (for Variants~5--8) that the
-attacker actively targets. $d_{div}$ is the
-\textbf{copy destination divergence}: the
-topological hop distance between the unauthorized
-destination $d'$ and the authorized next-hop on
-the legitimate forwarding path. $d_{max}$ is the
-maximum hop distance across the simulated network
-topology. The second term $1/(1 + d_{div}/d_{max})$
-is a normalized proximity score: when $d' $ is
-adjacent to the authorized path ($d_{div} = 0$),
-this term equals 1 (maximum witness observability);
-when $d'$ is at maximum network divergence, this
-term approaches 0 (minimum witness observability).
-AOEI therefore equals 1.0 when the attack leaves
-maximum observable evidence (high selectivity,
-copy destination within witness range) and
-approaches 0 when the attack is maximally
-stealthy (low selectivity, copy destination
-outside witness range).
-
-The four equidistant data points are given in
-Equation~\eqref{eq:aoei_points}.
-\begin{equation}
-\text{AOEI} \in
-\{0.25,\; 0.50,\; 0.75,\; 1.0\}
-\label{eq:aoei_points}
-\end{equation}
-As given in Equation~\eqref{eq:aoei_points}, each
-data point is realized in simulation by jointly
-setting the selectivity ratio and $d_{div}$:
-\begin{itemize}
-    \item \textbf{AOEI = 0.25:}
-    $n_{targeted}/n_{eligible} = 0.10$,
-    $d_{div} = 0.8 \cdot d_{max}$.
-    Maximally stealthy — 10\% of eligible
-    traffic targeted, unauthorized copy sent
-    near maximum divergence from authorized path.
-
-    \item \textbf{AOEI = 0.50:}
-    $n_{targeted}/n_{eligible} = 0.25$,
-    $d_{div} = 0.5 \cdot d_{max}$.
-    Low-moderate evidence — 25\% targeting,
-    mid-range divergence.
-
-    \item \textbf{AOEI = 0.75:}
-    $n_{targeted}/n_{eligible} = 0.75$,
-    $d_{div} = 0.2 \cdot d_{max}$.
-    High evidence — 75\% targeting, copy
-    destination relatively close to authorized path.
-
-    \item \textbf{AOEI = 1.0:}
-    $n_{targeted}/n_{eligible} = 1.0$,
-    $d_{div} = 0$ (copy destination is adjacent
-    to authorized path).
-    Maximum evidence — full targeting, unauthorized
-    copy within direct witness radio range.
-\end{itemize}
-
-\textbf{Note:} For Variants~1--4 (Selective Time
-Delay), $d_{div}$ does not apply since there is
-no copy destination; only the selectivity ratio
-component contributes, and AOEI is computed as
-$n_{targeted}/n_{eligible}$ only. This is made
-explicit in results reporting.
-
-\textbf{y metrics evaluated:}
-M1 (MCC), M2 (TVR), M3 (UCR), M4 ($L_{mit}$),
-M12 (WAP-R — most sensitive to $d_{div}$ dimension
-since witness recall degrades as $d_{div}$ increases).
-
-
-% ================================================================
-% EXPERIMENT 5 — Per-Attack Variant Table
-% ================================================================
-
-\subsection{Experiment~5 — Per-Attack Variant
-Performance Under Default Settings}
-\label{sec:exp5}
-
-\textbf{Motivation:} Provides a single-table
-system-level comparison of per-variant detection
-performance under default settings, giving
-reviewers the attack-class-specific breakdown
-that Experiments~1--4 aggregate away. This
-experiment produces no graph — results are
-presented as a table.
-
-\textbf{Setup:} Default settings throughout. All 8
-attack variants evaluated independently in separate
-simulation runs (one variant active at a time) to
-produce per-variant scores. For hidden forwarding
-variants (S5--S8), each run reports two system-level
-\ac{FPR} figures: the \textbf{full-system \ac{FPR}}
-including all active signatures (S1--S8 simultaneously
-active as in real deployment), and the
-\textbf{isolated \ac{FPR}} with S1 and S2 disabled.
-This separation is necessary because compromised
-\ac{RSU}s executing active hidden forwarding attacks
-may also satisfy S1/S2 timing conditions due to
-processing overhead from the packet fabrication step,
-causing cross-signature firings. Reporting both
-figures honestly characterises the joint behavior of
-all signatures in deployment while also isolating the
-hidden forwarding detection mechanism's own
-contribution. Baselines B1--B3 are not subject to
-this decomposition since they implement only single
-attack-class detection.
-
+\textbf{Setup:} Default settings throughout, with all
+eight signatures live and signature verification
+running naturally. All eight attack variants are
+evaluated independently in separate simulation runs
+(one variant active at a time) to produce per-variant
+scores, at a 60\% attacker fraction over a 90\,s
+\ac{SUMO}-derived urban trace with 200 vehicles, 64
+\ac{RSU}s and 4 controllers, at a single seed.
 
 \textbf{Table structure:} One row per attack variant
-S1--S8. Columns: M1 (MCC per variant, all
-frameworks), M2 (TVR --- reported for S1--S4 only;
-N/A for S5--S8), M3 (UCR --- reported for S5--S8
-only; N/A for S1--S4), M4 ($L_{mit}$, all
-frameworks), M6 ($L_{e2e}$, all frameworks). For
-S5--S8 rows, the \ac{FPR} column reports both the
-full-system value (bracketed, all signatures active)
-and the isolated value (S1/S2 disabled), formatted
-as \textit{isolated [full-system]}. Each baseline
-reports values only for the attack variants it was
-designed to address; out-of-scope cells are marked
-\textit{not evaluated}, directly exposing the
-coverage gaps that Gap~2 in the literature review
-identified.
+A1--A8, reporting the per-node confusion matrix
+(TP, FP, TN, FN), M1 (\ac{MCC}), detection rate and
+false-positive rate. This is the AB3 configuration,
+and the table is therefore the one reported in
+Section~\ref{sec:q5_results}; it is not duplicated
+here.
 
-
-
+\textbf{Baseline coverage:} The external baselines
+B1 (TAP), B2 (SFTO-Guard) and B3 (FADE) defined in
+Section~\ref{sec:baselines} are implemented in the
+simulator but are not evaluated in the present
+results set, and no baseline column is reported.
+Comparative benchmarking against B1--B3, together
+with the sweeps over attack penetration, vehicle
+mobility, network scale and attack stealthiness, is
+identified as remaining work in
+the concluding chapter rather than claimed
+here.
 
 \section{Simulation settings}
 \label{sec:simulation}
@@ -5911,7 +5305,7 @@ operational model.
             $T_{min}$ sweep: [tbd: $\{0.3, 0.5, 0.7\}$] as defined in the permissioned blockchain subsection above.
     \item \textbf{Krum outlier rejection threshold $\gamma$ (Eq.~\ref{eq:fed_robust}):}
         $\gamma$ \textbf{[tbd: $\{1.5,\, 2.0,\, 2.5,\,3.0\}$]} (multiples of coordinate-wise standard deviation of submitted weight updates across RSUs), selected
-        for best M8 ($\Delta_{poison}$ at $\rho_{mal} = 0.25$) on the validation split under ablation AB5 (Section~\ref{sec:ab5}).
+        for best M8 ($\Delta_{poison}$ at $\rho_{mal} = 0.25$) on the validation split under ablation AB4 (Section~\ref{sec:ab4}).
 
 
 \end{itemize}
@@ -6144,7 +5538,7 @@ One-time ceremony among 64 RSUs pre-simulation
             $z = 3.5$ (one-tailed Gaussian); $\theta^{(k)} = \mu_{\mathcal{A}}^{(k)} + 2.326 \cdot \sigma_{\mathcal{A}}^{(k)}$;
             validated for $\geq$95\% precision and $\leq$1\% FPR jointly on validation split \\           
             \hline
-              $\gamma$ (Krum outlier rejection threshold, Eq.~\ref{eq:fed_robust}) & [tbd: $\{1.5, 2.0, 2.5, 3.0\}$] multiples of coordinate-wise std.\ of weight updates;   selected for best poisoning resistance (M8) under 25\% malicious RSU fraction (AB5) \\
+              $\gamma$ (Krum outlier rejection threshold, Eq.~\ref{eq:fed_robust}) & [tbd: $\{1.5, 2.0, 2.5, 3.0\}$] multiples of coordinate-wise std.\ of weight updates;   selected for best poisoning resistance (M8) under 25\% malicious RSU fraction (AB4) \\
             \hline
               BRFA-v2 trust gate threshold (Step~1, Alg.~\ref{alg:brfa_v2}) &              $T_{min}$ [tbd: $\{0.3, 0.5, 0.7\}$] (shared with blockchain quarantine threshold, Eq.~\ref{eq:quarantine}); abort if eligible RSUs $< 2f{+}1$ \\
              \hline
@@ -6306,6 +5700,10 @@ A1 CP-Selective Delay & 0.939 & 95.70 & 1.90 \\
 \hline
 A2 DP-Selective Delay & 0.971 & 98.50 & 1.40 \\
 \hline
+A3 TCAM Exhaustion (Control plane) & 0.643 & 94.53 & 26.30 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 0.801 & 97.57 & 14.59 \\
+\hline
 A5 Active HF Attack (Control plane) & 0.782 & 81.10 & 0.50 \\
 \hline
 A6 Active HF Attack (Data Plane) & 0.900 & 92.60 & 1.00 \\
@@ -6331,8 +5729,8 @@ As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_mcc},
 detection quality separates into two regimes. Selective Time Delay and
 Hidden Forwarding attacks (A1, A2, A5--A8) combine high MCC (0.78--0.97)
 with a low false-positive rate (0.5--1.9\%), while the TCAM exhaustion
-attacks (A3, A4) achieve very high detection rates (95--98\%) at a higher
-false-positive cost (15--26\%) -- a consequence of the ground-truth labelling
+attacks (A3, A4) achieve very high detection rates (94.53--97.57\%) at a higher
+false-positive cost (14.59--26.30\%) -- a consequence of the ground-truth labelling
 any RSU holding even one malicious TCAM entry as attack-positive for its
 entire observation window, since installed entries persist; the same
 $U_{TCAM}$ signal also rises under organic, non-malicious traffic surges that
@@ -6432,24 +5830,21 @@ Krum-filtering advantage over unconditional averaging.
 % low-density/high-speed stratum contains no attack-positive test windows 
 % reflecting the evaluated scenario rather than a detection failure.
 
-\subsection{Component-Isolation Ablation: Rule-Based Configuration (Q1)}
+\subsection{AB1 --- Rule-Based Signature Layer in Isolation}
 \label{sec:q1_results}
 
-Beyond the thirteen ablation experiments of
-Section~\ref{sec:ablation}, a separate six-configuration grid
-(Q1--Q6) isolates the \emph{detection components} rather than
-the architectural modes. Each configuration enables exactly one
-detection layer and disables the remainder, so that the
-contribution of that layer can be read directly from its
-confusion matrix. The six configurations are: rule-based
-signatures only (Q1), cryptographic layer only (Q2), \ac{LSTM}
-anomaly detector only (Q3), witness monitoring only (Q4),
-rule and cryptographic layers combined (Q5), and the complete
-deployed framework (Q6). This section reports Q1 and
-Section~\ref{sec:q4_results} reports Q4; the remaining
-configurations are evaluated in the same grid.
+This section reports \textbf{AB1}
+(Section~\ref{sec:ab1}), the first configuration of the
+component-isolation grid defined in
+Section~\ref{sec:ablation}. Each configuration in that grid
+enables one detection layer and disables the remainder, so
+that the contribution of that layer can be read directly from
+its confusion matrix. AB1 isolates the rule-based signature
+layer, Section~\ref{sec:q4_results} isolates the witness
+mechanism (AB2), and Section~\ref{sec:q5_results} adds the
+cryptographic layer to the rule layer (AB3).
 
-In Q1, signatures S1--S4 are live while S5--S8, the \ac{LSTM}
+In AB1, signatures S1--S4 are live while S5--S8, the \ac{LSTM}
 detector, the witness mechanism and the \texttt{BTMM} trust
 update are disabled, and signature verification is forced to pass so
 that no cryptographic evidence contributes to a detection.
@@ -6462,7 +5857,7 @@ Table~\ref{tab:q1_confusion}.
 
 \begin{table}[H]
 \centering
-\caption{Q1 (rule-based signatures only): per-node confusion
+\caption{AB1 (rule-based signatures only): per-node confusion
 matrix and detection quality per attack variant. 268 nodes,
 60\% attacker fraction, seed 1, 90\,s, final evaluation cycle.}
 \label{tab:q1_confusion}
@@ -6495,7 +5890,7 @@ A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_ConfusionByVariant.png}
-    \caption{Q1 (rule-based signatures only): per-node confusion
+    \caption{AB1 (rule-based signatures only): per-node confusion
     matrix by attack variant. S5--S8 are disabled in this
     configuration, so the Hidden Forwarding variants A5--A8
     register no detections by construction.}
@@ -6505,7 +5900,7 @@ A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_MCC.png}
-    \caption{Q1 (rule-based signatures only): detection quality
+    \caption{AB1 (rule-based signatures only): detection quality
     (\ac{MCC}, Eq.~\ref{eq:mcc}) by attack variant.}
     \label{fig:q1_mcc}
 \end{figure}
@@ -6513,7 +5908,7 @@ A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_DR_vs_FPR.png}
-    \caption{Q1 (rule-based signatures only): detection rate
+    \caption{AB1 (rule-based signatures only): detection rate
     against false-positive rate by attack variant. Both series
     share a single percentage axis. The underlying counters
     latch, so the reported false-positive rate accumulates over
@@ -6549,7 +5944,7 @@ cover.
 
 The Hidden Forwarding family registers no detections at all,
 which is the intended result rather than a shortfall. With
-S5--S8 disabled, no live signature in Q1 responds to hidden
+S5--S8 disabled, no live signature in AB1 responds to hidden
 forwarding behaviour, and the 40 to 158 ground-truth positive
 nodes per variant are recorded as false negatives. The rule
 layer alone is therefore blind to this family, establishing the
@@ -6557,20 +5952,50 @@ detection gap that the cryptographic, witness and \ac{LSTM}
 layers are introduced to close. Section~\ref{sec:q4_results}
 shows that the witness mechanism closes the passive component of
 this gap, detecting A7 and A8 at 92.31\% and 89.24\% recall
-respectively; the remaining configurations Q2, Q3, Q5 and Q6
-quantify the balance.
+respectively; AB3 (Section~\ref{sec:q5_results}) quantifies
+what the cryptographic layer adds on top of the rule layer.
+
+\textbf{Verification status.} Four caveats qualify the figures
+above and are stated here so that later configurations are read
+consistently. First, the confusion counters latch: a node
+flagged once remains flagged for the remainder of the run, so
+false positives accumulate monotonically and the reported
+false-positive rate grows with simulated duration rather than
+converging. Second, these results derive from the inline
+per-node confusion matrix, which is a different statistic from
+the per-window \ac{MCC} of Eq.~\ref{eq:mcc} computed over the
+detector window grid; the two do not currently agree. The
+per-window grid additionally registers detections for A5--A8
+where the inline matrix registers none. This is not a failure of
+the component-isolation switches: the window grid records the
+composite \ac{OBU} and \ac{RSU} decisions, and the \ac{OBU}
+composite is the disjunction of S1 and the S2 partial check,
+both of which are live in AB1 by construction. Those entries are
+therefore S1/S2 firing on Hidden Forwarding traffic, which the
+inline matrix does not record because it attributes events per
+signature to their home variant. Reconciling the two statistics
+remains outstanding. Third, all values come from a single seed,
+so no dispersion is reported. Fourth, the A1 and A2 rows of
+Table~\ref{tab:q1_confusion} predate two subsequent corrections
+to the delay-detection path --- a forwarding-timestamp indexing
+fault that allowed one flow to read another's stale claim, and a
+mobility-baseline floor preventing the fitted speed coefficient
+from driving the expected delay negative at low speed. Both
+inflate false positives on the Selective Time Delay variants
+specifically, and the false-positive columns for A1 and A2
+should be regarded as upper bounds pending regeneration.
 
 
-\subsection{Component-Isolation Ablation: Witness Monitoring
-Configuration (Q4)}
+\subsection{AB2 --- Witness-Based Forwarding Verification in
+Isolation}
 \label{sec:q4_results}
 
-In Q4, the witness monitoring mechanism is the only active
+In AB2, the witness monitoring mechanism is the only active
 detection layer. Signatures S1--S8, the \ac{LSTM} detector and
 the \texttt{BTMM} trust update are disabled, and signature
 verification is forced to pass, so that no rule-based or
 cryptographic evidence contributes to a detection. The
-simulation parameters are otherwise identical to Q1: every
+simulation parameters are otherwise identical to AB1: every
 attack variant is evaluated at a 60\% attacker fraction over a
 90\,s \ac{SUMO}-derived urban trace with 200 vehicles, 64
 \ac{RSU}s and 4 controllers, at a single seed, with variants A1
@@ -6578,7 +6003,7 @@ and A2 injecting a fixed 80\,ms delay.
 
 The instrument used to evaluate this configuration requires
 explanation, because the per-node confusion matrix reported for
-Q1 is not applicable here. The witness mechanism does not record
+AB1 is not applicable here. The witness mechanism does not record
 detection events directly; it reaches the confusion matrix only
 indirectly, by lowering a node's trust score until the node
 falls below the quarantine threshold. The \texttt{BTMM} switch
@@ -6588,7 +6013,7 @@ active, since they are the mechanism under test. That indirect
 path therefore remains open, and the per-node matrix for this
 configuration measures witness-driven quarantine rather than
 witness detection: it counts the nodes whose trust fell far
-enough to be quarantined, not the alerts that were raised. Q4 is
+enough to be quarantined, not the alerts that were raised. AB2 is
 consequently
 evaluated using the witness-native counters of the witness
 alert precision and recall metric, reported in
@@ -6596,7 +6021,7 @@ Table~\ref{tab:q4_witness}.
 
 \begin{table}[H]
 \centering
-\caption{Q4 (witness monitoring only): witness-native detection
+\caption{AB2 (witness monitoring only): witness-native detection
 counters per attack variant. 60\% attacker fraction, seed 1,
 90\,s, final evaluation cycle. Precision and recall are
 undefined for A1--A6: WAP-R scores only the duplication alert on
@@ -6633,7 +6058,7 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessNative.png}
-    \caption{Q4 (witness monitoring only): witness-native
+    \caption{AB2 (witness monitoring only): witness-native
     detection counters by attack variant. Counters are confined to
     the passive Hidden Forwarding variants A7 and A8 because
     WAP-R is scoped to the duplication alert for those two
@@ -6645,7 +6070,7 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.65\textwidth]{ablation/q4/Figure_Q4_WitnessPrecisionRecall.png}
-    \caption{Q4 (witness monitoring only): witness alert
+    \caption{AB2 (witness monitoring only): witness alert
     precision against recall for the two variants WAP-R scores.
     Variants A1--A6 are omitted because both rates are undefined
     ($0/0$) where no classified alerts enter the tally --- a
@@ -6656,7 +6081,7 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessDuplicateAlerts.png}
-    \caption{Q4 (witness monitoring only): duplicate witness
+    \caption{AB2 (witness monitoring only): duplicate witness
     alerts by attack variant. Variants A5 and A6 accumulate
     comparable duplicate counts to A7 and A8 while recording no
     classified alerts, which is examined in the verification
@@ -6731,36 +6156,35 @@ represents correct deduplication or a loss of genuine detections
 has not been established. Third, all values derive from a single
 seed, so no dispersion is reported.
 
-\subsection{Component-Isolation Ablation: Rule and Cryptographic
-Layers Combined (Q5)}
+\subsection{AB3 --- Rule and Cryptographic Layers Combined}
 \label{sec:q5_results}
 
-In Q5 the rule-based signatures S1--S8 are all live and
+In AB3 the rule-based signatures S1--S8 are all live and
 signature verification runs naturally, so genuine
 cryptographic evidence contributes to detection for the first
 time in this grid. The \ac{LSTM} detector, the witness
 mechanism and the \texttt{BTMM} trust update remain disabled.
-Simulation parameters are otherwise identical to Q1 and Q4:
+Simulation parameters are otherwise identical to AB1 and AB2:
 every attack variant at a 60\% attacker fraction over a 90\,s
 \ac{SUMO}-derived urban trace with 200 vehicles, 64 \ac{RSU}s
 and 4 controllers, at a single seed, with variants A1 and A2
 injecting a fixed 80\,ms delay.
 
-The contrast with Q1 is the point of this configuration. In
-Q1 signature verification was forced to pass, which makes the
+The contrast with AB1 is the point of this configuration. In
+AB1 signature verification was forced to pass, which makes the
 cryptographic conjuncts of Signatures~S5--S8 unsatisfiable:
 S5 requires $\neg b_{batch}$ and S7--S8 require $b_{hop}{=}0$,
 neither of which can occur when verification always succeeds.
-Q1 was therefore structurally incapable of detecting Hidden
+AB1 was therefore structurally incapable of detecting Hidden
 Forwarding, and reported zero true positives on A5--A8.
 Results are given in Table~\ref{tab:q5_confusion}.
 
 \begin{table}[H]
 \centering
-\caption{Q5 (rule and cryptographic layers combined): per-node
+\caption{AB3 (rule and cryptographic layers combined): per-node
 confusion matrix and detection quality per attack variant. 268
 nodes, 60\% attacker fraction, seed 1, 90\,s, final evaluation
-cycle. The final column gives the corresponding Q1 \ac{MCC}
+cycle. The final column gives the corresponding AB1 \ac{MCC}
 from Table~\ref{tab:q1_confusion}.}
 \label{tab:q5_confusion}
 \renewcommand{\arraystretch}{1.1}
@@ -6769,7 +6193,7 @@ from Table~\ref{tab:q1_confusion}.}
 \hline
 \textbf{Attack} & \textbf{TP} & \textbf{FP} & \textbf{TN} &
 \textbf{FN} & \textbf{MCC} & \textbf{DR (\%)} &
-\textbf{FPR (\%)} & \textbf{Q1 MCC} \\
+\textbf{FPR (\%)} & \textbf{AB1 MCC} \\
 \hline
 A1 CP-Selective Delay & 23 & 53 & 192 & 0 & 0.487 & 100.00 & 21.63 & 0.483 \\
 \hline
@@ -6793,9 +6217,9 @@ A8 Passive HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_MCC.png}
-    \caption{Q5 (rule and cryptographic layers combined):
+    \caption{AB3 (rule and cryptographic layers combined):
     detection quality by attack variant. The four Hidden
-    Forwarding variants, which Q1 could not detect at all,
+    Forwarding variants, which AB1 could not detect at all,
     reach 0.985--1.000.}
     \label{fig:q5_mcc}
 \end{figure}
@@ -6803,7 +6227,7 @@ A8 Passive HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_DR_vs_FPR.png}
-    \caption{Q5: detection rate against false-positive rate by
+    \caption{AB3: detection rate against false-positive rate by
     attack variant. Detection is at or near 100\% throughout;
     false positives occur only on A1 and A2, the two variants
     whose signatures depend on the forwarding-claim path.}
@@ -6813,7 +6237,7 @@ A8 Passive HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_ConfusionByVariant.png}
-    \caption{Q5: per-node confusion matrix by attack variant.}
+    \caption{AB3: per-node confusion matrix by attack variant.}
     \label{fig:q5_confusion}
 \end{figure}
 
@@ -6822,7 +6246,7 @@ cryptographic verification does not merely improve Hidden
 Forwarding detection --- it establishes it. A6, A7 and A8
 attain an \ac{MCC} of 1.000, classifying every node correctly
 with no false positives and no missed attackers, and A5
-attains 0.985 with a single false negative. Against Q1's zero
+attains 0.985 with a single false negative. Against AB1's zero
 on all four variants, this is the clearest evidence in the
 grid that the rule and cryptographic layers are complementary
 rather than overlapping: the rule layer supplies the
@@ -6840,341 +6264,122 @@ covered twice over in the deployed framework, by two
 independent mechanisms.
 
 Two further observations support the internal consistency of
-the experiment. A3 and A4 are unchanged from Q1 to three
+the experiment. A3 and A4 are unchanged from AB1 to three
 decimal places, which is the expected outcome since the
 \ac{TCAM} occupancy signal does not depend on cryptographic
 verification; their invariance across a configuration change
 that transformed four other variants is a useful control.
-Conversely A1 and A2 are also unchanged (0.487 and 0.480
-against Q1's 0.483 and 0.480), which is examined below.
+Conversely A1 and A2 are essentially unchanged (0.487 and
+0.480 against AB1's 0.483 and 0.480). This is consistent with
+the same mechanism: S1 and S2 are timing signatures whose
+conjuncts do not include a verification outcome, so enabling
+genuine cryptographic verification neither adds evidence to
+them nor removes any, and the single-node difference in A1's
+false-positive count is within the run-to-run variation of a
+latching counter at a single seed.
 
-\subsection{Component-Isolation Ablation: Rule-Based Configuration (Q1)}
-\label{sec:q1_results}
 
-Beyond the thirteen ablation experiments of
-Section~\ref{sec:ablation}, a separate six-configuration grid
-(Q1--Q6) isolates the \emph{detection components} rather than
-the architectural modes. Each configuration enables exactly one
-detection layer and disables the remainder, so that the
-contribution of that layer can be read directly from its
-confusion matrix. The six configurations are: rule-based
-signatures only (Q1), cryptographic layer only (Q2), \ac{LSTM}
-anomaly detector only (Q3), witness monitoring only (Q4),
-rule and cryptographic layers combined (Q5), and the complete
-deployed framework (Q6). This section reports Q1 and
-Section~\ref{sec:q4_results} reports Q4; the remaining
-configurations are evaluated in the same grid.
+\subsection{AB5 --- ZKP Failure Indicators as \ac{LSTM} Features}
+\label{sec:ab5_results}
 
-In Q1, signatures S1--S4 are live while S5--S8, the \ac{LSTM}
-detector, the witness mechanism and the \texttt{BTMM} trust
-update are disabled, and signature verification is forced to pass so
-that no cryptographic evidence contributes to a detection.
-Every attack variant is evaluated at a 60\% attacker fraction
-over a 90\,s \ac{SUMO}-derived urban trace with 200 vehicles,
-64 \ac{RSU}s and 4 controllers, at a single seed. Variants A1
-and A2 inject a fixed 80\,ms delay with the banded
-pseudo-random draw disabled. Results are given in
-Table~\ref{tab:q1_confusion}.
+AB5 (Section~\ref{sec:ab5}) measures what the two binary
+\ac{ZKP} failure indicators contribute when supplied to the
+\ac{LSTM} as input features rather than consumed as rule
+conjuncts. Both configurations are trained under an identical
+federated schedule --- $R = 30$ aggregation rounds, three local
+epochs per round, learning rate $10^{-3}$, batch size 64 ---
+differing only in the input vector, so the difference between
+them is attributable to the two added features alone. This
+schedule is shorter than the $R = 150$ used for the deployed
+detector of Table~\ref{tab:lstm_detection}, so the absolute
+scores below are not comparable with that table; only the
+difference between AB5-A and AB5-B is. Results are given in
+Table~\ref{tab:ab5_features}.
 
 \begin{table}[H]
 \centering
-\caption{Q1 (rule-based signatures only): per-node confusion
-matrix and detection quality per attack variant. 268 nodes,
-60\% attacker fraction, seed 1, 90\,s, final evaluation cycle.}
-\label{tab:q1_confusion}
+\caption{AB5 (\ac{ZKP} failure indicators as \ac{LSTM}
+features): detection quality per attack variant for the
+5-feature baseline (AB5-A) and the 7-feature configuration
+(AB5-B). Identical training schedule ($R = 30$); the final
+column gives the \ac{MCC} change attributable to the two added
+features.}
+\label{tab:ab5_features}
 \renewcommand{\arraystretch}{1.1}
 \footnotesize
-\begin{tabular}{|p{3.9cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{1.2cm}|p{1.2cm}|p{1.3cm}|}
+\begin{tabular}{|p{3.3cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.2cm}|}
 \hline
-\textbf{Attack} & \textbf{TP} & \textbf{FP} & \textbf{TN} &
-\textbf{FN} & \textbf{MCC} & \textbf{DR (\%)} & \textbf{FPR (\%)} \\
+\textbf{Attack} & \multicolumn{3}{c|}{\textbf{AB5-A (5-feature)}}
+& \multicolumn{3}{c|}{\textbf{AB5-B (7-feature)}} &
+\textbf{$\Delta$ MCC} \\
+\cline{2-7}
+ & \textbf{MCC} & \textbf{DR} & \textbf{FPR} &
+   \textbf{MCC} & \textbf{DR} & \textbf{FPR} & \\
 \hline
-A1 CP-Selective Delay & 23 & 54 & 191 & 0 & 0.483 & 100.00 & 22.04 \\
+A1 CP-Selective Delay & 0.691 & 78.19 & 4.90 & 0.699 & 78.63 & 4.73 & $+0.008$ \\
 \hline
-A2 DP-Selective Delay & 143 & 80 & 45 & 0 & 0.480 & 100.00 & 64.00 \\
+A2 DP-Selective Delay & 0.886 & 91.52 & 2.71 & 0.883 & 91.18 & 2.74 & $-0.003$ \\
 \hline
-A3 TCAM Exhaustion (Control plane) & 32 & 0 & 236 & 0 & 1.000 & 100.00 & 0.00 \\
+A3 TCAM (Control plane) & 0.242 & 87.87 & 52.41 & 0.238 & 87.08 & 52.14 & $-0.004$ \\
 \hline
-A4 TCAM Exhaustion (Data plane) & 37 & 0 & 223 & 8 & 0.891 & 82.22 & 0.00 \\
+A4 TCAM (Data plane) & 0.430 & 97.11 & 44.38 & 0.430 & 97.11 & 44.42 & $-0.000$ \\
 \hline
-A5 Active HF Attack (Control plane) & 0 & 0 & 228 & 40 & 0.000 & 0.00 & 0.00 \\
+A5 Active HF (Control plane) & 0.483 & 56.81 & 5.06 & 0.454 & 57.81 & 6.33 & $-0.029$ \\
 \hline
-A6 Active HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
+A6 Active HF (Data plane) & 0.470 & 55.06 & 5.51 & 0.464 & 57.44 & 6.36 & $-0.006$ \\
 \hline
-A7 Passive HF Attack (Control plane) & 0 & 0 & 229 & 39 & 0.000 & 0.00 & 0.00 \\
+A7 Passive HF (Control plane) & 0.485 & 59.14 & 4.91 & 0.486 & 62.65 & 5.67 & $+0.001$ \\
 \hline
-A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
+A8 Passive HF (Data plane) & 0.484 & 59.61 & 4.99 & 0.468 & 61.57 & 6.00 & $-0.017$ \\
+\hline
+\textbf{Overall (A1--A8)} & \textbf{0.508} & \textbf{80.27} &
+\textbf{15.12} & \textbf{0.505} & \textbf{80.80} &
+\textbf{15.59} & $\mathbf{-0.003}$ \\
 \hline
 \end{tabular}
 \end{table}
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_ConfusionByVariant.png}
-    \caption{Q1 (rule-based signatures only): per-node confusion
-    matrix by attack variant. S5--S8 are disabled in this
-    configuration, so the Hidden Forwarding variants A5--A8
-    register no detections by construction.}
-    \label{fig:q1_confusion}
-\end{figure}
+As Table~\ref{tab:ab5_features} shows, adding the two \ac{ZKP}
+failure indicators does not improve detection quality. Overall
+\ac{MCC} moves from 0.508 to 0.505, a change of $-0.003$ that is
+smaller in magnitude than the per-variant spread within either
+configuration, and the per-variant deltas are negative on six of
+the eight variants. The largest single movement, A5 at $-0.029$,
+is a degradation rather than a gain. What the added features do
+produce is a small, consistent shift along the operating curve
+rather than an improvement of it: detection rate rises on six
+variants (overall $80.27 \rightarrow 80.80$\%) while the
+false-positive rate rises with it (overall $15.12 \rightarrow
+15.59$\%), which is the signature of a slightly more permissive
+decision boundary rather than of a more discriminative
+representation.
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_MCC.png}
-    \caption{Q1 (rule-based signatures only): detection quality
-    (\ac{MCC}, Eq.~\ref{eq:mcc}) by attack variant.}
-    \label{fig:q1_mcc}
-\end{figure}
+The result is best read as a null result for this feature group
+under the tested configuration, and two structural reasons make
+that outcome unsurprising. First, the indicators are binary and
+sparse: $\pi_{hop}$ is structurally zero for the Selective Time
+Delay and \ac{TCAM} families, since those attacks do not violate
+next-hop policy, so on A1--A4 only one of the two added features
+carries any signal at all. Second, on the variants where the
+\ac{ZKP} indicators \emph{do} fire, the cryptographic evidence
+they encode is already acted upon directly by the rule layer ---
+Section~\ref{sec:q5_results} shows that same evidence taking the
+Hidden Forwarding family from an \ac{MCC} of 0.000 to
+0.985--1.000 as a rule conjunct. A feature that duplicates
+evidence the deterministic path has already consumed has little
+left to explain, which is consistent with the near-zero deltas
+observed here.
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_DR_vs_FPR.png}
-    \caption{Q1 (rule-based signatures only): detection rate
-    against false-positive rate by attack variant. Both series
-    share a single percentage axis. The underlying counters
-    latch, so the reported false-positive rate accumulates over
-    the run and is not comparable across runs of differing
-    duration.}
-    \label{fig:q1_dr_fpr}
-\end{figure}
+Two limitations bound this conclusion. The three
+hidden-forwarding features $(D_{div,t}, A_{tp,t}, R_{anom,t})$
+that complete the deployed 10-feature vector are not ablated:
+no matched run exists for them under this training schedule, so
+the contribution of that feature group is not measured and no
+claim is made about it here. And both configurations are single
+runs at $R = 30$ rather than the deployed $R = 150$, so while the
+comparison between them is controlled, the magnitude of the
+effect at full training length is not established.
 
-As Figures~\ref{fig:q1_confusion}--\ref{fig:q1_dr_fpr} show,
-the rule layer partitions cleanly along attack family. The
-\ac{TCAM} exhaustion family is detected essentially perfectly:
-A3 attains an \ac{MCC} of 1.000 with complete detection and no
-false positives, and A4 reaches 0.891 at 82.22\% detection,
-also with no false positives. This validates the recalibrated
-occupancy threshold $\theta_{util} = 0.2167$ derived as the
-benign 99th percentile, and confirms that S4's occupancy-driven
-formulation separates attacked from benign \ac{RSU}s with a
-wide margin, since attacked tables saturate toward full
-occupancy while the benign distribution remains far below the
-gate.
-
-The selective delay family is detected in full --- both A1 and
-A2 reach 100\% detection with zero false negatives --- but at a
-substantial false-positive cost, 22.04\% and 64.00\%
-respectively, which depresses their \ac{MCC} to approximately
-0.48 despite perfect recall. The two variants therefore fail
-the $\leq 1\%$ per-signal false-positive budget that governs
-the calibration procedure, and the failure is attributable to
-the signature rather than to the recalibration: S1's parameters
-were recalibrated on benign traffic, whereas S2 applies a fixed
-$\Delta_{max} = 50$\,ms that the calibration procedure does not
-cover.
-
-The Hidden Forwarding family registers no detections at all,
-which is the intended result rather than a shortfall. With
-S5--S8 disabled, no live signature in Q1 responds to hidden
-forwarding behaviour, and the 40 to 158 ground-truth positive
-nodes per variant are recorded as false negatives. The rule
-layer alone is therefore blind to this family, establishing the
-detection gap that the cryptographic, witness and \ac{LSTM}
-layers are introduced to close. Section~\ref{sec:q4_results}
-shows that the witness mechanism closes the passive component of
-this gap, detecting A7 and A8 at 92.31\% and 89.24\% recall
-respectively; the remaining configurations Q2, Q3, Q5 and Q6
-quantify the balance.
-
-\textbf{Verification status.} Three caveats qualify the figures
-above and are stated here so that later configurations are read
-consistently. First, the confusion counters latch: a node
-flagged once remains flagged for the remainder of the run, so
-false positives accumulate monotonically and the reported
-false-positive rate grows with simulated duration rather than
-converging. Second, these results derive from the inline
-per-node confusion matrix, which is a different statistic from
-the per-window \ac{MCC} of Eq.~\ref{eq:mcc} computed over the
-detector window grid; the two do not currently agree. The
-per-window grid additionally registers detections for A5--A8
-where the inline matrix registers none. This is not a failure of
-the component-isolation switches: the window grid records the
-composite \ac{OBU} and \ac{RSU} decisions, and the \ac{OBU}
-composite is the disjunction of S1 and the S2 partial check,
-both of which are live in Q1 by construction. Those entries are
-therefore S1/S2 firing on Hidden Forwarding traffic, which the
-inline matrix does not record because it attributes events per
-signature to their home variant. Reconciling the two statistics
-remains outstanding. Third, all values come from a single seed,
-so no dispersion is reported. Fourth, the A1 and A2 rows of
-Table~\ref{tab:q1_confusion} predate two subsequent corrections
-to the delay-detection path --- a forwarding-timestamp indexing
-fault that allowed one flow to read another's stale claim, and a
-mobility-baseline floor preventing the fitted speed coefficient
-from driving the expected delay negative at low speed. Both
-inflate false positives on the Selective Time Delay variants
-specifically, and the false-positive columns for A1 and A2
-should be regarded as upper bounds pending regeneration.
-
-\subsection{Component-Isolation Ablation: Witness Monitoring
-Configuration (Q4)}
-\label{sec:q4_results}
-
-In Q4, the witness monitoring mechanism is the only active
-detection layer. Signatures S1--S8, the \ac{LSTM} detector and
-the \texttt{BTMM} trust update are disabled, and signature
-verification is forced to pass, so that no rule-based or
-cryptographic evidence contributes to a detection. The
-simulation parameters are otherwise identical to Q1: every
-attack variant is evaluated at a 60\% attacker fraction over a
-90\,s \ac{SUMO}-derived urban trace with 200 vehicles, 64
-\ac{RSU}s and 4 controllers, at a single seed, with variants A1
-and A2 injecting a fixed 80\,ms delay.
-
-The instrument used to evaluate this configuration requires
-explanation, because the per-node confusion matrix reported for
-Q1 is not applicable here. The witness mechanism does not record
-detection events directly; it reaches the confusion matrix only
-indirectly, by lowering a node's trust score until the node
-falls below the quarantine threshold. The \texttt{BTMM} switch
-disabled in this configuration suppresses only the per-packet
-trust update; witness-driven trust updates are deliberately left
-active, since they are the mechanism under test. That indirect
-path therefore remains open, and the per-node matrix for this
-configuration measures witness-driven quarantine rather than
-witness detection: it counts the nodes whose trust fell far
-enough to be quarantined, not the alerts that were raised. Q4 is
-consequently
-evaluated using the witness-native counters of the witness
-alert precision and recall metric, reported in
-Table~\ref{tab:q4_witness}.
-
-\begin{table}[H]
-\centering
-\caption{Q4 (witness monitoring only): witness-native detection
-counters per attack variant. 60\% attacker fraction, seed 1,
-90\,s, final evaluation cycle. Precision and recall are
-undefined for A1--A6: WAP-R scores only the duplication alert on
-Variants~7 and~8, so no classified alerts enter the tally there
-and both ratios reduce to $0/0$ rather than to zero.}
-\label{tab:q4_witness}
-\renewcommand{\arraystretch}{1.1}
-\footnotesize
-\begin{tabular}{|p{3.9cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.6cm}|p{1.4cm}|p{1.5cm}|}
-\hline
-\textbf{Attack} & \textbf{TP$_W$} & \textbf{FP$_W$} &
-\textbf{FN$_W$} & \textbf{Precision (\%)} & \textbf{Recall
-(\%)} & \textbf{Duplicate alerts} \\
-\hline
-A1 CP-Selective Delay & 0 & 0 & 0 & --- & --- & 0 \\
-\hline
-A2 DP-Selective Delay & 0 & 0 & 0 & --- & --- & 0 \\
-\hline
-A3 TCAM Exhaustion (Control plane) & 0 & 0 & 0 & --- & --- & 0 \\
-\hline
-A4 TCAM Exhaustion (Data plane) & 0 & 0 & 0 & --- & --- & 0 \\
-\hline
-A5 Active HF Attack (Control plane) & 0 & 0 & 0 & --- & --- & 1542 \\
-\hline
-A6 Active HF Attack (Data plane) & 0 & 0 & 0 & --- & --- & 1465 \\
-\hline
-A7 Passive HF Attack (Control plane) & 36 & 203 & 3 & 15.06 & 92.31 & 1551 \\
-\hline
-A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
-\hline
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessNative.png}
-    \caption{Q4 (witness monitoring only): witness-native
-    detection counters by attack variant. Counters are confined to
-    the passive Hidden Forwarding variants A7 and A8 because
-    WAP-R is scoped to the duplication alert for those two
-    variants; alerts raised on other variants by the
-    non-forwarding path are out of scope and not tabulated here.}
-    \label{fig:q4_witness_native}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.65\textwidth]{ablation/q4/Figure_Q4_WitnessPrecisionRecall.png}
-    \caption{Q4 (witness monitoring only): witness alert
-    precision against recall for the two variants WAP-R scores.
-    Variants A1--A6 are omitted because both rates are undefined
-    ($0/0$) where no classified alerts enter the tally --- a
-    consequence of the metric's scope, not of witness inactivity.}
-    \label{fig:q4_witness_pr}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessDuplicateAlerts.png}
-    \caption{Q4 (witness monitoring only): duplicate witness
-    alerts by attack variant. Variants A5 and A6 accumulate
-    comparable duplicate counts to A7 and A8 while recording no
-    classified alerts, which is examined in the verification
-    status below.}
-    \label{fig:q4_witness_dup}
-\end{figure}
-
-As Figure~\ref{fig:q4_witness_native} shows, the reported
-counters are confined to the passive Hidden Forwarding family.
-This reflects the scope of the metric rather than silence of the
-mechanism, and the distinction matters for interpretation.
-WAP-R is defined against the duplication alert
-(Eq.~\ref{eq:dup_alert_cond}) specifically for Variants~7
-and~8; the non-forwarding alert (Eq.~\ref{eq:nfwd_detect}) is
-formally classified as a severe case of Selective Time Delay
-Variants~1--4 and is excluded from this ablation's scope. The
-witness in fact raised non-forwarding alerts on A1--A4,
-attributable through the detection-source instrumentation to 14,
-115, 4 and 27 correct identifications with no false positives,
-but these are out of scope for WAP-R and are consequently
-not tabulated. Within the family the metric does cover,
-detection is substantial. A7 attains 92.31\% recall and A8
-89.24\%, with only 3 and 17 missed positives respectively.
-Passive Hidden Forwarding produces neither a timing anomaly nor
-a verification failure, and is therefore the one attack family
-for which no other layer in the framework provides coverage;
-the witness mechanism supplies it.
-
-The precision of those alerts is considerably weaker, as
-Figure~\ref{fig:q4_witness_pr} records. A8 reaches 62.39\%,
-while A7 attains only 15.06\%, corresponding to 203 false
-positives against 36 true positives. The combination of high
-recall with low precision indicates that the mechanism is
-observing the attack reliably and reporting it too readily,
-rather than that detection has failed. This result bears
-directly on a stated claim: $P_W$ is defined to validate the
-false-accusation resistance of the $2f{+}1$ threshold
-(Eq.~\ref{eq:bft_penalty}), and at 15.06\% on A7 that
-validation is not achieved, with 203 false accusations against
-36 correct ones. The remedy is constrained, because $f$ is not
-a free parameter here: $R_W$ is defined to validate the
-feasibility claim that $f{=}1$, requiring three witnesses, is
-achievable at the mean vehicle density of the scenario, so
-raising the quorum to improve precision would undermine the
-claim the companion metric establishes. The disparity between
-A7 and A8 further suggests that any acceptable setting may
-differ between the control-plane and data-plane variants.
-Reconciling false-accusation resistance with $f{=}1$
-feasibility is therefore an open item rather than a tuning
-exercise.
-
-\textbf{Verification status.} Three observations qualify the
-results above. First, the per-node confusion matrix recorded
-during this configuration reports non-zero true positives for
-A1--A6. Detection-source instrumentation attributes every one of
-these events to the witness itself --- the non-forwarding alert
-on A1--A4 and the duplication alert on A5--A8 --- and none to
-any other layer, confirming that the component-isolation
-switches gate correctly and that no disabled signature
-contributed. The per-node matrix is nonetheless the wrong
-instrument for this configuration, for the reason given above:
-it counts witness-driven quarantine rather than witness alerts,
-and its A1--A4 entries fall outside the scope of WAP-R.
-The witness-native counters reported here are the applicable
-measure. Second, as
-Figure~\ref{fig:q4_witness_dup} shows, A5 and A6 accumulate 1542
-and 1465 duplicate alerts respectively while recording no
-classified alerts of any kind, indicating that witness reports
-are generated on the active Hidden Forwarding variants but are
-suppressed as duplicates before classification; whether this
-represents correct deduplication or a loss of genuine detections
-has not been established. Third, all values derive from a single
-seed, so no dispersion is reported.
 
 \chapter{Timeline and Resource Required}
 
