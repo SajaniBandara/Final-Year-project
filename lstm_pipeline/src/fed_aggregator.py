@@ -63,6 +63,9 @@ from pathlib import Path
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
 from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash, seed_everything
+from preprocessor import FEATURES
+
+D_DIV_IDX = FEATURES.index("d_div")
 
 REPO        = Path(__file__).resolve().parents[2]
 PRE         = REPO / "lstm_pipeline" / "preprocessed"
@@ -132,13 +135,54 @@ def load_rsu_data() -> dict:
         # detection, A1/A2 DR crushed 75%->20%). So staleness was never the
         # real cause: TCAM exhaustion attacks structurally elevate U_TCAM
         # for the whole run's duration (residual TCAM occupancy persists
-        # even in cycles not at the attack's peak), unlike delay/HF attacks
-        # which don't alter the RSU's baseline TCAM state at all. A3/A4's
-        # own "quiet" windows are therefore never a fair calibration
-        # population for a per-RSU benign baseline, regardless of data
-        # freshness — re-excluding permanently (2026-07-20).
+        # even in cycles not at the attack's peak). A3/A4's own "quiet"
+        # windows are therefore never a fair calibration population for a
+        # per-RSU benign baseline, regardless of data freshness —
+        # re-excluding permanently (2026-07-20).
+        #
+        # ALSO GUARDS attack_v in {5,6,7,8} (A5-A8, Hidden Forwarding) on
+        # d_div specifically, added 2026-08-08 (LSTM_PIPELINE_AUDIT §2.1
+        # investigation): the correction above ("unlike delay/HF attacks
+        # which don't alter the RSU's baseline state") was wrong. d_div
+        # (FEATURES[7], flow 0's distinct-destination count, benign value
+        # always exactly 1.0) is elevated in 85-92% of "quiet"
+        # (non-zkp/hf_send_gt-flagged) cycles inside every A5-A8 run at
+        # every pct — HF diverts flow 0's traffic to unauthorized
+        # destinations continuously, not just in is_spike-flagged cycles.
+        # Since is_spike (preprocessor.py) never looks at d_div, these
+        # windows were being folded into mask_va_benign as if benign;
+        # d_div's near-zero benign std gets clamped to 1.0 by
+        # fit_scaler()'s zero-std guard, so the resulting huge normalised
+        # d_div values single-handedly inflated mu_a/sigma_a and blew up
+        # theta (25/64 RSUs at theta>=800 against benign errors of
+        # ~0.7-1.4; strong correlation r=0.96 between an RSU's
+        # calibration-window count and its theta).
+        #
+        # Tried blanket-excluding A5-A8 like A3/A4 first (matching the
+        # TCAM precedent exactly): theta dropped to a sane range but FPR
+        # rose to ~35% median / precision ~0.60 median (all 64 RSUs missed
+        # the 95% precision target) — shrinking the calibration population
+        # this much reproduces the ORIGINAL narrow-population problem the
+        # 2026-07-18 fix above was written to solve. A per-window d_div
+        # guard (keep the window unless d_div itself is an outlier,
+        # instead of dropping the whole variant) was tested at several
+        # thresholds (2/3/5/8 in normalised-z units) — FPR stayed
+        # similarly elevated at every threshold (the FPR problem is not
+        # actually d_div-specific, see below), but median MCC across RSUs
+        # was consistently ~0.43-0.46 with any d_div correction vs. 0.25
+        # uncorrected (blown-up theta made almost nothing fire, near-zero
+        # MCC) — thr=3 gave the best median MCC (0.461) of those tested,
+        # so that is what's applied here. FPR/precision are NOT fixed by
+        # this change (see fed_summary.json's _theta_recalibration_note) —
+        # that appears to be a genuine benign-score-variance /
+        # calibration-vs-eval-population mismatch, a separate open
+        # problem for §5/§6 (more/better training data), not a d_div
+        # labeling bug.
+        D_DIV_GUARD_THR = 3.0
+        d_div_ok = (np.abs(X_va[:, :, D_DIV_IDX]).max(axis=1) <= D_DIV_GUARD_THR)
         mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
-                          & ~np.isin(meta_va[:, 1], [3, 4]))
+                          & ~np.isin(meta_va[:, 1], [3, 4])
+                          & (~np.isin(meta_va[:, 1], [5, 6, 7, 8]) | d_div_ok))
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]

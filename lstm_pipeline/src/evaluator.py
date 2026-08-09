@@ -267,26 +267,28 @@ def rule_based_clf_metrics(attack_v: int) -> dict | None:
     avg_FPR in the MOBIGUARD CSVs already reflect S1-S8 rule-based
     detection ONLY, with zero LSTM contribution.
 
-    IMPORTANT (found 2026-07-30): write_security_metrics_csv() (routing.cc)
-    builds "MOBIGUARD_Attack<N>_<pct>.csv" with NO seed suffix, and opens
-    in APPEND mode -- every run at a given (attack, pct) accumulates into
-    the SAME file across all past invocations, seeds, and even stale
-    pre-fix code versions. The "_seed1/2/3.csv" files seen in this
-    directory are leftovers from an older code version that no longer
-    exists (confirmed: current binary never writes that filename) and are
-    frozen at 2026-07-15, predating the 2026-07-23 ground-truth fix
-    (tcam_attack_helper.h's record_attack_onset() wiring) -- a glob would
-    silently mix that stale, structurally-broken data (TP=0 always, see
-    a3_a4_label_fix_pending memory / HANDOFF.md) in with fresh runs. Use
-    the EXACT no-seed filename only, and take the LAST row (the most
-    recently completed run's final converged cumulative average) rather
-    than a mean over the whole file, which spans multiple runs' distinct
-    onset transients and possibly stale vs. fresh data.
+    Filename convention (routing.cc's write_security_metrics_csv(),
+    verified 2026-08-09 against the current binary at line ~117801):
+    "MOBIGUARD_Attack<N>_<pct>[_d<X>ms]_seed<S>.csv", opened in APPEND
+    mode -- every run at a given (attack, pct, seed) accumulates into the
+    SAME file across all past invocations at that exact combination. This
+    superseded an older no-seed-suffix convention this function was
+    originally written against (found 2026-07-30); that convention no
+    longer exists on disk at all as of the 2026-08-08/09 full data
+    recollection, which is why this function silently returned None for
+    every call before this fix -- evaluator.py's main() masked the
+    failure by falling back to the LSTM's own confusion matrix while
+    still printing the "[rule-based]" tag (see the has_rule_data check in
+    main() below, added in the same fix).
+    Take the LAST row of EACH matching (attack, pct, seed) file (the most
+    recently completed run's final converged cumulative average for that
+    file) rather than a mean over the whole file, which spans multiple
+    runs' distinct onset transients -- then average across all matching
+    files.
     """
     last_rows = []
     for pct in TCAM_PCTS:
-        f = RESULTS / f"MOBIGUARD_Attack{attack_v}_{pct}.csv"
-        if f.exists():
+        for f in sorted(RESULTS.glob(f"MOBIGUARD_Attack{attack_v}_{pct}_*seed*.csv")):
             df = pd.read_csv(f, comment="#", header=None)
             if len(df) > 0:
                 last_rows.append(df.iloc[-1])
@@ -342,10 +344,25 @@ def main(args):
         # A3/A4 (TCAM): report the dedicated rule-based S3/S4 detector
         # instead of the LSTM's own confusion matrix -- see
         # rule_based_clf_metrics() docstring. Falls back to the LSTM clf
-        # if the rule-based CSVs aren't available for some reason.
+        # if the rule-based CSVs aren't available for some reason -- but
+        # that fallback must be visible, not silent: this function used to
+        # print "[rule-based]" purely based on `av in
+        # TCAM_RULE_BASED_VARIANTS`, so when rule_based_clf_metrics()
+        # returned None (as it silently did for every call before the
+        # 2026-08-09 filename-convention fix, since the MOBIGUARD CSVs had
+        # switched to a seed-suffixed naming this function didn't know
+        # about) the printed A3/A4 rows were actually the LSTM's own
+        # confusion matrix mislabeled as rule-based.
+        has_rule_data = False
         if av in TCAM_RULE_BASED_VARIANTS:
             rule_clf = rule_based_clf_metrics(av)
-            clf = rule_clf if rule_clf is not None else lstm_clf
+            has_rule_data = rule_clf is not None
+            if not has_rule_data:
+                print(f"  WARNING: no rule-based S3/S4 CSVs found for "
+                      f"{ATTACK_NAMES.get(av, f'A{av}')} -- falling back to "
+                      f"the LSTM's own confusion matrix (NOT tagged "
+                      f"[rule-based] below).")
+            clf = rule_clf if has_rule_data else lstm_clf
         else:
             clf = lstm_clf
 
@@ -359,6 +376,7 @@ def main(args):
         result = {**clf, "sim_metrics": sim_metrics}
         if av in TCAM_RULE_BASED_VARIANTS:
             result["lstm_clf_reference_only"] = lstm_clf
+            result["is_rule_based"] = has_rule_data
         all_results[ATTACK_NAMES.get(av, f"A{av}")] = result
 
         print(f"\n  {ATTACK_NAMES.get(av, f'A{av}'):30s}"
@@ -366,7 +384,7 @@ def main(args):
               f"  DR={clf['M2_DR']:.3f}"
               f"  FPR={clf['M3_FPR']:.3f}"
               f"  n={int(mask.sum())}"
-              f"{'  [rule-based]' if av in TCAM_RULE_BASED_VARIANTS else ''}")
+              f"{'  [rule-based]' if has_rule_data else '  [LSTM fallback]' if av in TCAM_RULE_BASED_VARIANTS else ''}")
 
     # Overall (all LSTM-scored variants combined, excluding benign AND
     # A3/A4 -- those are reported via the rule-based detector above, not

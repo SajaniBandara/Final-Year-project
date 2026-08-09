@@ -8,13 +8,14 @@ models_backup_*/
 # Preprocessed windows / labels / meta (.npy arrays, ~35 MB)
 preprocessed/
 
-# Per-run pipeline outputs
-evaluation_results.json
-fed_summary.json
-hparams.json
+# Per-run pipeline outputs. NOTE (2026-08-08, LSTM_PIPELINE_AUDIT): scaler_params.json,
+# fed_summary.json, hparams.json and evaluation_results.json are the PROVENANCE of
+# lstm_weights_cpp.bin, not scratch — they are the only record of what scaler/theta/
+# hparams a given .bin was exported under. Ignoring them let the committed .bin and
+# these files drift out of sync with nothing to catch it (see audit §2/§5). Keep them
+# tracked and commit them alongside any new lstm_weights_cpp.bin export.
 local_results.json
 poison_sweep_results.json
-scaler_params.json
 
 # Kept tracked (do NOT ignore): the calibration deliverable, small and
 # referenced by scratch/s1_detection.h and scratch/routing.cc —

@@ -466,6 +466,7 @@ introduced by blockchain/crypto operations.
 \begin{enumerate}
     
     \item \textbf{RQ1:}
+    \item \textbf{RQ1:}
     Across each of the eight individual attack variants
     under default settings, does MOBIGUARD achieve
     superior detection quality and mitigation performance
@@ -2388,8 +2389,10 @@ pipeline. The \ac{RSU}-side full detection procedure is given
 in Algorithm~\ref{alg:lrad_rsu}.
 \begin{algorithm}[H]
 \caption{\ac{RSU} Detection --- Signal Computation (\texttt{LRAD-RSU-Detect})}
+\caption{\ac{RSU} Detection --- Signal Computation (\texttt{LRAD-RSU-Detect})}
 \begin{algorithmic}[1]
 \small
+\Procedure{\texttt{LRAD-RSU-Detect}}{$p, v, r, \pi_{delay},
 \Procedure{\texttt{LRAD-RSU-Detect}}{$p, v, r, \pi_{delay},
   \pi_{hop}, \boldsymbol{\sigma},
   \{pk_i\}, \{m_i\}, D_{LSTM}^{(k)}$}
@@ -2412,6 +2415,7 @@ in Algorithm~\ref{alg:lrad_rsu}.
          C_{hop}, H_{\text{SHA3-512}})$
          \hfill\Comment{Eq.~\ref{eq:stark_hop_verify}}
   \State $flag_{S3} \gets
+  \State $flag_{S3} \gets
          [f_{unauth}(r,t){=}1]
          \land[\nexists\,v{:}\text{flow}(r)
          {\in}\mathcal{F}_{active}(v)]$
@@ -2426,6 +2430,7 @@ in Algorithm~\ref{alg:lrad_rsu}.
          \arg\max_{v'}\,\lambda_{PI}(v',r,t)$
          \hfill\Comment{Attribution only; does not
          gate $flag_{S4}$}
+  % --- Attacker identification after batch failure ---
   % --- Attacker identification after batch failure ---
   \If{$\neg b_{batch}$}
     \State $v_{atk,copy} \gets
@@ -2480,10 +2485,12 @@ in Algorithm~\ref{alg:lrad_rsu}.
          \hfill\Comment{S8: Eq.~\ref{eq:sig_s8};
          all three conjuncts; primary via witness}
   % --- LSTM path (gated for S3/S4) ---
+  % --- LSTM path (gated for S3/S4) ---
   \If{$\neg(flag_{S3} \lor flag_{S4})$}
     \State $flag_{LSTM} \gets D_{LSTM}^{(k)}$
            \hfill\Comment{Eq.~\ref{eq:lstm_gate}:
            active for S1--S2, S5--S8 only}
+  \Else
   \Else
     \State $flag_{LSTM} \gets 0$
            \hfill\Comment{S3/S4: rule-based layer
@@ -2494,6 +2501,21 @@ in Algorithm~\ref{alg:lrad_rsu}.
   \State $D_{RSU} \gets flag_{S2f}\lor flag_{S3}
          \lor flag_{S4}\lor flag_{S5}\lor flag_{S6}
          \lor flag_{S7}\lor flag_{S8}\lor flag_{LSTM}$
+  \State \Return $\langle D_{RSU}, flag_{S3}, flag_{S4},
+         flag_{S5}, flag_{S7}, flag_{S8}, v_{atk},
+         v_{atk,copy}\rangle$
+         \hfill\Comment{Passed to \texttt{LRAD-RSU-Respond}}
+\EndProcedure
+\end{algorithmic}
+\label{alg:lrad_rsu_detect}
+\end{algorithm}
+\begin{algorithm}[H]
+\caption{\ac{RSU} Attribution \& Response (\texttt{LRAD-RSU-Respond})}
+\begin{algorithmic}[1]
+\small
+\Procedure{\texttt{LRAD-RSU-Respond}}{$v, r, D_{RSU},
+  flag_{S3}, flag_{S4}, flag_{S5}, flag_{S7}, flag_{S8},
+  v_{atk}, v_{atk,copy}$}
   \State \Return $\langle D_{RSU}, flag_{S3}, flag_{S4},
          flag_{S5}, flag_{S7}, flag_{S8}, v_{atk},
          v_{atk,copy}\rangle$
@@ -2553,9 +2575,11 @@ in Algorithm~\ref{alg:lrad_rsu}.
 \EndProcedure
 \end{algorithmic}
 \label{alg:lrad_rsu_respond}
+\label{alg:lrad_rsu_respond}
 \end{algorithm}
 
 As outlined in Algorithms~\ref{alg:lrad_obu}
+and~\ref{alg:lrad_rsu_detect}--\ref{alg:lrad_rsu_respond}, \texttt{LRAD} splits
 and~\ref{alg:lrad_rsu_detect}--\ref{alg:lrad_rsu_respond}, \texttt{LRAD} splits
 detection across a lightweight \ac{OBU} stage and a
 full \ac{RSU} stage. The \ac{OBU} stage evaluates
@@ -5696,7 +5720,7 @@ $6\times8\times5=240$ run-instance dataset described above is realised.
 \hline
 \textbf{Attack} & \textbf{M1 MCC} & \textbf{DR (\%)} & \textbf{FPR (\%)} \\
 \hline
-A1 CP-Selective Delay & 0.939 & 95.70 & 1.90 \\
+A1 CP-Selective Delay & 0.562 & 40.84 & 0.92 \\
 \hline
 A2 DP-Selective Delay & 0.971 & 98.50 & 1.40 \\
 \hline
@@ -5704,18 +5728,24 @@ A3 TCAM Exhaustion (Control plane) & 0.643 & 94.53 & 26.30 \\
 \hline
 A4 TCAM Exhaustion (Data plane) & 0.801 & 97.57 & 14.59 \\
 \hline
-A5 Active HF Attack (Control plane) & 0.782 & 81.10 & 0.50 \\
+A3 CP-TCAM Exhaustion$^{*}$ & 0.905 & 91.53 & 0.30 \\
 \hline
-A6 Active HF Attack (Data Plane) & 0.900 & 92.60 & 1.00 \\
+A4 DP-TCAM Exhaustion$^{*}$ & 0.776 & 72.47 & 0.45 \\
 \hline
-A7 Passive HF Attack (Control plane) & 0.834 & 86.50 & 0.50 \\
+A5 Active HF Attack (Control plane) & 0.891 & 96.57 & 0.89 \\
 \hline
-A8 Passive HF Attack (Data plane) & 0.849 & 84.70 & 0.80 \\
+A6 Active HF Attack (Data Plane) & 0.944 & 98.44 & 0.89 \\
+\hline
+A7 Passive HF Attack (Control plane) & 0.888 & 96.46 & 0.89 \\
+\hline
+A8 Passive HF Attack (Data plane) & 0.921 & 98.27 & 4.20 \\
 \hline
 
-\textbf{Mean (A1--A8)} & \textbf{0.831} & \textbf{90.80} & \textbf{7.80} \\
+\textbf{Mean (A1--A8)} & \textbf{0.806} & \textbf{79.84} & \textbf{1.28} \\
 \hline
 \end{tabular}
+\vspace{2pt}
+\footnotesize{$^{*}$A3/A4 report the dedicated rule-based S3/S4 TCAM detector (Section~\ref{sec:tcam_detection}), not the LSTM, since it outperforms the LSTM on TCAM exhaustion; all other rows are the LSTM detector.}
 \end{table}
 
 \begin{figure}[H]
@@ -5829,6 +5859,419 @@ Krum-filtering advantage over unconditional averaging.
 % and low speed do not co-occur in this mobility model, and the
 % low-density/high-speed stratum contains no attack-positive test windows 
 % reflecting the evaluated scenario rather than a detection failure.
+
+\subsection{AB1 --- Rule-Based Signature Layer in Isolation}
+\label{sec:q1_results}
+
+This section reports \textbf{AB1}
+(Section~\ref{sec:ab1}), the first configuration of the
+component-isolation grid defined in
+Section~\ref{sec:ablation}. Each configuration in that grid
+enables one detection layer and disables the remainder, so
+that the contribution of that layer can be read directly from
+its confusion matrix. AB1 isolates the rule-based signature
+layer, Section~\ref{sec:q4_results} isolates the witness
+mechanism (AB2), and Section~\ref{sec:q5_results} adds the
+cryptographic layer to the rule layer (AB3).
+
+In AB1, signatures S1--S4 are live while S5--S8, the \ac{LSTM}
+detector, the witness mechanism and the \texttt{BTMM} trust
+update are disabled, and signature verification is forced to pass so
+that no cryptographic evidence contributes to a detection.
+Every attack variant is evaluated at a 60\% attacker fraction
+over a 90\,s \ac{SUMO}-derived urban trace with 200 vehicles,
+64 \ac{RSU}s and 4 controllers, at a single seed. Variants A1
+and A2 inject a fixed 80\,ms delay with the banded
+pseudo-random draw disabled. Results are given in
+Table~\ref{tab:q1_confusion}.
+
+\begin{table}[H]
+\centering
+\caption{Q1 (rule-based signatures only): per-node confusion
+matrix and detection quality per attack variant. 268 nodes,
+60\% attacker fraction, seed 1, 90\,s, final evaluation cycle.}
+\label{tab:q1_confusion}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{3.9cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{0.8cm}|p{1.2cm}|p{1.2cm}|p{1.3cm}|}
+\hline
+\textbf{Attack} & \textbf{TP} & \textbf{FP} & \textbf{TN} &
+\textbf{FN} & \textbf{MCC} & \textbf{DR (\%)} & \textbf{FPR (\%)} \\
+\hline
+A1 CP-Selective Delay & 23 & 54 & 191 & 0 & 0.483 & 100.00 & 22.04 \\
+\hline
+A2 DP-Selective Delay & 143 & 80 & 45 & 0 & 0.480 & 100.00 & 64.00 \\
+\hline
+A3 TCAM Exhaustion (Control plane) & 32 & 0 & 236 & 0 & 1.000 & 100.00 & 0.00 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 37 & 0 & 223 & 8 & 0.891 & 82.22 & 0.00 \\
+\hline
+A5 Active HF Attack (Control plane) & 0 & 0 & 228 & 40 & 0.000 & 0.00 & 0.00 \\
+\hline
+A6 Active HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
+\hline
+A7 Passive HF Attack (Control plane) & 0 & 0 & 229 & 39 & 0.000 & 0.00 & 0.00 \\
+\hline
+A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_ConfusionByVariant.png}
+    \caption{Q1 (rule-based signatures only): per-node confusion
+    matrix by attack variant. S5--S8 are disabled in this
+    configuration, so the Hidden Forwarding variants A5--A8
+    register no detections by construction.}
+    \label{fig:q1_confusion}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_MCC.png}
+    \caption{Q1 (rule-based signatures only): detection quality
+    (\ac{MCC}, Eq.~\ref{eq:mcc}) by attack variant.}
+    \label{fig:q1_mcc}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_DR_vs_FPR.png}
+    \caption{Q1 (rule-based signatures only): detection rate
+    against false-positive rate by attack variant. Both series
+    share a single percentage axis. The underlying counters
+    latch, so the reported false-positive rate accumulates over
+    the run and is not comparable across runs of differing
+    duration.}
+    \label{fig:q1_dr_fpr}
+\end{figure}
+
+As Figures~\ref{fig:q1_confusion}--\ref{fig:q1_dr_fpr} show,
+the rule layer partitions cleanly along attack family. The
+\ac{TCAM} exhaustion family is detected essentially perfectly:
+A3 attains an \ac{MCC} of 1.000 with complete detection and no
+false positives, and A4 reaches 0.891 at 82.22\% detection,
+also with no false positives. This validates the recalibrated
+occupancy threshold $\theta_{util} = 0.2167$ derived as the
+benign 99th percentile, and confirms that S4's occupancy-driven
+formulation separates attacked from benign \ac{RSU}s with a
+wide margin, since attacked tables saturate toward full
+occupancy while the benign distribution remains far below the
+gate.
+
+The selective delay family is detected in full --- both A1 and
+A2 reach 100\% detection with zero false negatives --- but at a
+substantial false-positive cost, 22.04\% and 64.00\%
+respectively, which depresses their \ac{MCC} to approximately
+0.48 despite perfect recall. The two variants therefore fail
+the $\leq 1\%$ per-signal false-positive budget that governs
+the calibration procedure, and the failure is attributable to
+the signature rather than to the recalibration: S1's parameters
+were recalibrated on benign traffic, whereas S2 applies a fixed
+$\Delta_{max} = 50$\,ms that the calibration procedure does not
+cover.
+
+The Hidden Forwarding family registers no detections at all,
+which is the intended result rather than a shortfall. With
+S5--S8 disabled, no live signature in Q1 responds to hidden
+forwarding behaviour, and the 40 to 158 ground-truth positive
+nodes per variant are recorded as false negatives. The rule
+layer alone is therefore blind to this family, establishing the
+detection gap that the cryptographic, witness and \ac{LSTM}
+layers are introduced to close. Section~\ref{sec:q4_results}
+shows that the witness mechanism closes the passive component of
+this gap, detecting A7 and A8 at 92.31\% and 89.24\% recall
+respectively; the remaining configurations Q2, Q3, Q5 and Q6
+quantify the balance.
+
+
+\subsection{Component-Isolation Ablation: Witness Monitoring
+Configuration (Q4)}
+\label{sec:q4_results}
+
+In Q4, the witness monitoring mechanism is the only active
+detection layer. Signatures S1--S8, the \ac{LSTM} detector and
+the \texttt{BTMM} trust update are disabled, and signature
+verification is forced to pass, so that no rule-based or
+cryptographic evidence contributes to a detection. The
+simulation parameters are otherwise identical to Q1: every
+attack variant is evaluated at a 60\% attacker fraction over a
+90\,s \ac{SUMO}-derived urban trace with 200 vehicles, 64
+\ac{RSU}s and 4 controllers, at a single seed, with variants A1
+and A2 injecting a fixed 80\,ms delay.
+
+The instrument used to evaluate this configuration requires
+explanation, because the per-node confusion matrix reported for
+Q1 is not applicable here. The witness mechanism does not record
+detection events directly; it reaches the confusion matrix only
+indirectly, by lowering a node's trust score until the node
+falls below the quarantine threshold. The \texttt{BTMM} switch
+disabled in this configuration suppresses only the per-packet
+trust update; witness-driven trust updates are deliberately left
+active, since they are the mechanism under test. That indirect
+path therefore remains open, and the per-node matrix for this
+configuration measures witness-driven quarantine rather than
+witness detection: it counts the nodes whose trust fell far
+enough to be quarantined, not the alerts that were raised. Q4 is
+consequently
+evaluated using the witness-native counters of the witness
+alert precision and recall metric, reported in
+Table~\ref{tab:q4_witness}.
+
+\begin{table}[H]
+\centering
+\caption{Q4 (witness monitoring only): witness-native detection
+counters per attack variant. 60\% attacker fraction, seed 1,
+90\,s, final evaluation cycle. Precision and recall are
+undefined for A1--A6: WAP-R scores only the duplication alert on
+Variants~7 and~8, so no classified alerts enter the tally there
+and both ratios reduce to $0/0$ rather than to zero.}
+\label{tab:q4_witness}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{3.9cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.6cm}|p{1.4cm}|p{1.5cm}|}
+\hline
+\textbf{Attack} & \textbf{TP$_W$} & \textbf{FP$_W$} &
+\textbf{FN$_W$} & \textbf{Precision (\%)} & \textbf{Recall
+(\%)} & \textbf{Duplicate alerts} \\
+\hline
+A1 CP-Selective Delay & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A2 DP-Selective Delay & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A3 TCAM Exhaustion (Control plane) & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A5 Active HF Attack (Control plane) & 0 & 0 & 0 & --- & --- & 1542 \\
+\hline
+A6 Active HF Attack (Data plane) & 0 & 0 & 0 & --- & --- & 1465 \\
+\hline
+A7 Passive HF Attack (Control plane) & 36 & 203 & 3 & 15.06 & 92.31 & 1551 \\
+\hline
+A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessNative.png}
+    \caption{Q4 (witness monitoring only): witness-native
+    detection counters by attack variant. Counters are confined to
+    the passive Hidden Forwarding variants A7 and A8 because
+    WAP-R is scoped to the duplication alert for those two
+    variants; alerts raised on other variants by the
+    non-forwarding path are out of scope and not tabulated here.}
+    \label{fig:q4_witness_native}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{ablation/q4/Figure_Q4_WitnessPrecisionRecall.png}
+    \caption{Q4 (witness monitoring only): witness alert
+    precision against recall for the two variants WAP-R scores.
+    Variants A1--A6 are omitted because both rates are undefined
+    ($0/0$) where no classified alerts enter the tally --- a
+    consequence of the metric's scope, not of witness inactivity.}
+    \label{fig:q4_witness_pr}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessDuplicateAlerts.png}
+    \caption{Q4 (witness monitoring only): duplicate witness
+    alerts by attack variant. Variants A5 and A6 accumulate
+    comparable duplicate counts to A7 and A8 while recording no
+    classified alerts, which is examined in the verification
+    status below.}
+    \label{fig:q4_witness_dup}
+\end{figure}
+
+As Figure~\ref{fig:q4_witness_native} shows, the reported
+counters are confined to the passive Hidden Forwarding family.
+This reflects the scope of the metric rather than silence of the
+mechanism, and the distinction matters for interpretation.
+WAP-R is defined against the duplication alert
+(Eq.~\ref{eq:dup_alert_cond}) specifically for Variants~7
+and~8; the non-forwarding alert (Eq.~\ref{eq:nfwd_detect}) is
+formally classified as a severe case of Selective Time Delay
+Variants~1--4 and is excluded from this ablation's scope. The
+witness in fact raised non-forwarding alerts on A1--A4,
+attributable through the detection-source instrumentation to 14,
+115, 4 and 27 correct identifications with no false positives,
+but these are out of scope for WAP-R and are consequently
+not tabulated. Within the family the metric does cover,
+detection is substantial. A7 attains 92.31\% recall and A8
+89.24\%, with only 3 and 17 missed positives respectively.
+Passive Hidden Forwarding produces neither a timing anomaly nor
+a verification failure, and is therefore the one attack family
+for which no other layer in the framework provides coverage;
+the witness mechanism supplies it.
+
+The precision of those alerts is considerably weaker, as
+Figure~\ref{fig:q4_witness_pr} records. A8 reaches 62.39\%,
+while A7 attains only 15.06\%, corresponding to 203 false
+positives against 36 true positives. The combination of high
+recall with low precision indicates that the mechanism is
+observing the attack reliably and reporting it too readily,
+rather than that detection has failed. This result bears
+directly on a stated claim: $P_W$ is defined to validate the
+false-accusation resistance of the $2f{+}1$ threshold
+(Eq.~\ref{eq:bft_penalty}), and at 15.06\% on A7 that
+validation is not achieved, with 203 false accusations against
+36 correct ones. The remedy is constrained, because $f$ is not
+a free parameter here: $R_W$ is defined to validate the
+feasibility claim that $f{=}1$, requiring three witnesses, is
+achievable at the mean vehicle density of the scenario, so
+raising the quorum to improve precision would undermine the
+claim the companion metric establishes. The disparity between
+A7 and A8 further suggests that any acceptable setting may
+differ between the control-plane and data-plane variants.
+Reconciling false-accusation resistance with $f{=}1$
+feasibility is therefore an open item rather than a tuning
+exercise.
+
+\textbf{Verification status.} Three observations qualify the
+results above. First, the per-node confusion matrix recorded
+during this configuration reports non-zero true positives for
+A1--A6. Detection-source instrumentation attributes every one of
+these events to the witness itself --- the non-forwarding alert
+on A1--A4 and the duplication alert on A5--A8 --- and none to
+any other layer, confirming that the component-isolation
+switches gate correctly and that no disabled signature
+contributed. The per-node matrix is nonetheless the wrong
+instrument for this configuration, for the reason given above:
+it counts witness-driven quarantine rather than witness alerts,
+and its A1--A4 entries fall outside the scope of WAP-R.
+The witness-native counters reported here are the applicable
+measure. Second, as
+Figure~\ref{fig:q4_witness_dup} shows, A5 and A6 accumulate 1542
+and 1465 duplicate alerts respectively while recording no
+classified alerts of any kind, indicating that witness reports
+are generated on the active Hidden Forwarding variants but are
+suppressed as duplicates before classification; whether this
+represents correct deduplication or a loss of genuine detections
+has not been established. Third, all values derive from a single
+seed, so no dispersion is reported.
+
+\subsection{Component-Isolation Ablation: Rule and Cryptographic
+Layers Combined (Q5)}
+\label{sec:q5_results}
+
+In Q5 the rule-based signatures S1--S8 are all live and
+signature verification runs naturally, so genuine
+cryptographic evidence contributes to detection for the first
+time in this grid. The \ac{LSTM} detector, the witness
+mechanism and the \texttt{BTMM} trust update remain disabled.
+Simulation parameters are otherwise identical to Q1 and Q4:
+every attack variant at a 60\% attacker fraction over a 90\,s
+\ac{SUMO}-derived urban trace with 200 vehicles, 64 \ac{RSU}s
+and 4 controllers, at a single seed, with variants A1 and A2
+injecting a fixed 80\,ms delay.
+
+The contrast with Q1 is the point of this configuration. In
+Q1 signature verification was forced to pass, which makes the
+cryptographic conjuncts of Signatures~S5--S8 unsatisfiable:
+S5 requires $\neg b_{batch}$ and S7--S8 require $b_{hop}{=}0$,
+neither of which can occur when verification always succeeds.
+Q1 was therefore structurally incapable of detecting Hidden
+Forwarding, and reported zero true positives on A5--A8.
+Results are given in Table~\ref{tab:q5_confusion}.
+
+\begin{table}[H]
+\centering
+\caption{Q5 (rule and cryptographic layers combined): per-node
+confusion matrix and detection quality per attack variant. 268
+nodes, 60\% attacker fraction, seed 1, 90\,s, final evaluation
+cycle. The final column gives the corresponding Q1 \ac{MCC}
+from Table~\ref{tab:q1_confusion}.}
+\label{tab:q5_confusion}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{3.5cm}|p{0.7cm}|p{0.7cm}|p{0.7cm}|p{0.7cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|}
+\hline
+\textbf{Attack} & \textbf{TP} & \textbf{FP} & \textbf{TN} &
+\textbf{FN} & \textbf{MCC} & \textbf{DR (\%)} &
+\textbf{FPR (\%)} & \textbf{Q1 MCC} \\
+\hline
+A1 CP-Selective Delay & 23 & 53 & 192 & 0 & 0.487 & 100.00 & 21.63 & 0.483 \\
+\hline
+A2 DP-Selective Delay & 143 & 80 & 45 & 0 & 0.480 & 100.00 & 64.00 & 0.480 \\
+\hline
+A3 TCAM Exhaustion (Control plane) & 32 & 0 & 236 & 0 & 1.000 & 100.00 & 0.00 & 1.000 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 37 & 0 & 223 & 8 & 0.891 & 82.22 & 0.00 & 0.891 \\
+\hline
+A5 Active HF Attack (Control plane) & 39 & 0 & 228 & 1 & 0.985 & 97.50 & 0.00 & 0.000 \\
+\hline
+A6 Active HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 0.000 \\
+\hline
+A7 Passive HF Attack (Control plane) & 39 & 0 & 229 & 0 & 1.000 & 100.00 & 0.00 & 0.000 \\
+\hline
+A8 Passive HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 0.000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_MCC.png}
+    \caption{Q5 (rule and cryptographic layers combined):
+    detection quality by attack variant. The four Hidden
+    Forwarding variants, which Q1 could not detect at all,
+    reach 0.985--1.000.}
+    \label{fig:q5_mcc}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_DR_vs_FPR.png}
+    \caption{Q5: detection rate against false-positive rate by
+    attack variant. Detection is at or near 100\% throughout;
+    false positives occur only on A1 and A2, the two variants
+    whose signatures depend on the forwarding-claim path.}
+    \label{fig:q5_dr_fpr}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_ConfusionByVariant.png}
+    \caption{Q5: per-node confusion matrix by attack variant.}
+    \label{fig:q5_confusion}
+\end{figure}
+
+As Figure~\ref{fig:q5_mcc} shows, enabling genuine
+cryptographic verification does not merely improve Hidden
+Forwarding detection --- it establishes it. A6, A7 and A8
+attain an \ac{MCC} of 1.000, classifying every node correctly
+with no false positives and no missed attackers, and A5
+attains 0.985 with a single false negative. Against Q1's zero
+on all four variants, this is the clearest evidence in the
+grid that the rule and cryptographic layers are complementary
+rather than overlapping: the rule layer supplies the
+behavioural conditions and the cryptographic layer supplies
+the evidence that discriminates a hidden forward from a
+legitimate one, and neither is sufficient alone.
+
+The result also exceeds the expectation set for this
+configuration, which anticipated improvement on the active
+Hidden Forwarding variants A5 and A6. Improvement is observed
+across all four variants, including the passive pair A7 and
+A8, which Section~\ref{sec:q4_results} shows the witness
+mechanism also detects. Passive Hidden Forwarding is therefore
+covered twice over in the deployed framework, by two
+independent mechanisms.
+
+Two further observations support the internal consistency of
+the experiment. A3 and A4 are unchanged from Q1 to three
+decimal places, which is the expected outcome since the
+\ac{TCAM} occupancy signal does not depend on cryptographic
+verification; their invariance across a configuration change
+that transformed four other variants is a useful control.
+Conversely A1 and A2 are also unchanged (0.487 and 0.480
+against Q1's 0.483 and 0.480), which is examined below.
 
 \subsection{AB1 --- Rule-Based Signature Layer in Isolation}
 \label{sec:q1_results}
