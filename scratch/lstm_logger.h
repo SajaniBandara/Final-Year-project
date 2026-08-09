@@ -850,6 +850,7 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         + "_" + std::to_string(attack_percentage)
         + g_delay_suffix
         + "_seed" + std::to_string(sim_seed)
+        + (g_run_tag.empty() ? "" : "_" + g_run_tag)
         + ".csv";
 
     lstm_migrate_stale_header(path);   // Fix 20 — no-op if already current/new

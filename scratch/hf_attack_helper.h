@@ -143,7 +143,8 @@ inline void export_hf_event_log()
         "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
     std::string path = base_dir + "hf_events_Attack" + std::to_string(attack_id) + "_" +
                        std::to_string(attack_percentage) + "_seed" +
-                       std::to_string(sim_seed) + ".csv";
+                       std::to_string(sim_seed)
+                       + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv";
 
     std::ofstream fout(path, std::ios::trunc);
     fout << "t,flow_id,packet_id,malicious_node,eavesdropper,is_active,is_cp\n";

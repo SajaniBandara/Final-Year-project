@@ -591,7 +591,8 @@ inline void tcam_snapshot_dump()
     int mode_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
     std::string mode = "Attack" + std::to_string(mode_id)
                       + "_" + std::to_string(attack_percentage)
-                      + "_seed" + std::to_string(sim_seed);
+                      + "_seed" + std::to_string(sim_seed)
+                      + (g_run_tag.empty() ? "" : "_" + g_run_tag);
     // For Attack 4 multi-attacker sweeps append _nN so each run
     // produces a distinct file: ..._n1.csv, ..._n8.csv, …
     if (active_attack_variant == 3 && num_attackers > 1)
@@ -724,7 +725,8 @@ inline void export_tcam_snapshot_baseline()
     int mode_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
     std::string mode = "Attack" + std::to_string(mode_id)
                       + "_" + std::to_string(attack_percentage)
-                      + "_seed" + std::to_string(sim_seed);
+                      + "_seed" + std::to_string(sim_seed)
+                      + (g_run_tag.empty() ? "" : "_" + g_run_tag);
     // Mirror the _nN / _cpintN suffix logic from tcam_snapshot_dump().
     // NOTE: _cpintN comes from cp_attack_intensity, NOT the report's
     // attack_percentage (see extern declaration near top of file).

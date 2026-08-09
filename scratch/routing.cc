@@ -137,6 +137,14 @@ int attack_percentage = 0;
 // Set in main() after cmd.Parse() so parallel runs never collide on
 // optimization_link_lifetime_data.csv / link_lifetime_solution.csv.
 std::string g_sim_tag;
+// Ablation/run tag appended to EVERY output filename (--run_tag, default empty).
+// The simulator otherwise names files by (attack, pct, delay, seed) only, so two
+// ablation configurations sharing those four values overwrite each other and
+// cannot run concurrently -- run_q1q6_ablation.py works around this with one
+// sequential lane per attack plus an immediate rename after each run. With a run
+// tag the names are unique at the source, so configurations can run in parallel
+// and no rename is needed. Empty by default: existing filenames are unchanged.
+std::string g_run_tag = "";
 // Suffix appended to every result CSV filename to encode the delay used,
 // e.g. "_d80ms". Set in main() after cmd.Parse() from attack_delay_ms.
 std::string g_delay_suffix;
@@ -114906,18 +114914,6 @@ double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 // 2*flows to match the flow_id domain used everywhere else (routing.cc:116729,
 // 117079 iterate flow_id < 2*flows); ~955 KB.
 double t_claimed_packet[total_size][2*flows][Flow_size+2];
-// Keyed by (node, flow, packet) — the flow dimension is REQUIRED, not optional.
-// packet_id is a PER-FLOW index bounded by Flow_size+2, so every flow reuses the
-// same ids 0..Flow_size+1. Without the flow dimension, node n's packet #5 on flow 0
-// and its packet #5 on flow 7 shared one slot; combined with the "stamp only if
-// still 0.0" guard at the forwarding site (first-write-wins, never cleared), the
-// second flow read a claim stamped seconds earlier. S2/S1/TAP then computed
-// hop_delay = now - (stale claim) and saw delays of 200ms-21s on perfectly benign
-// nodes. Measured on the 2026-08-08 Q1 run: 409 of 975 S2 triggers (42%) were this
-// artifact, and 52 of the 53 false-positive nodes had NO other trigger. Sized
-// 2*flows to match the flow_id domain used everywhere else (routing.cc:116729,
-// 117079 iterate flow_id < 2*flows); ~955 KB.
-double t_claimed_packet[total_size][2*flows][Flow_size+2];
 
 
 // node_local_time() — defined in crypto_layer.h (included below); forward
@@ -117867,7 +117863,8 @@ void write_security_metrics_csv()
 	filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
 	           + to_string(attack_id)
 	           + "_" + to_string(attack_percentage)
-	           + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
+	           + g_delay_suffix + "_seed" + to_string(sim_seed)
+	           + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv";
 
 	fout.open(filename, ios::out|ios::app);
 
@@ -118060,7 +118057,8 @@ void fade_write_per_cycle_csv(std::string dir)
 		else if (attack_percentage <= 60)  pct = 60;
 		else if (attack_percentage <= 80)  pct = 80;
 		else                               pct = 100;
-		filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed) + ".csv";
+		filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed)
+		           + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv";
 
 		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
 		for (auto &entry : fade_flow_config)
@@ -142087,6 +142085,7 @@ int main(int argc, char *argv[])
 
     // Phase 1 / D1: Reproducibility.
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
+    cmd.AddValue("run_tag", "suffix appended to every output filename (e.g. Q6); lets ablation configs run concurrently without colliding", g_run_tag);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
@@ -144024,7 +144023,8 @@ if (architecture == 3 && N_Vehicles > 0)
 				g_sim_tag = "_Attack" + std::to_string(g_sim_tag_id)
 				          + "_" + std::to_string(attack_percentage)
 				          + g_delay_suffix
-				          + "_seed" + std::to_string(sim_seed);
+				          + "_seed" + std::to_string(sim_seed)
+				          + (g_run_tag.empty() ? "" : "_" + g_run_tag);
 			}
 			
 			if (routing_test) {
@@ -144610,7 +144610,8 @@ if (fade_detection_active)
       int _dw_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
       dw_write_csv(lstm_make_base_dir() + "detector_windows_Attack" + std::to_string(_dw_v)
                    + "_" + std::to_string(attack_percentage) + g_delay_suffix
-                   + "_seed" + std::to_string(sim_seed) + ".csv");
+                   + "_seed" + std::to_string(sim_seed)
+                   + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
   }
   Simulator::Destroy();
   
