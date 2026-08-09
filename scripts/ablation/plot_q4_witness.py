@@ -141,7 +141,11 @@ def fig_pr(d, out):
         t.set_color(INK_2)
     ax.set_title("Q4 — witness precision vs recall", fontsize=11.5, color=INK,
                  loc="left", pad=30, fontweight="600")
-    ax.annotate("variants with no witness activity omitted (rates undefined)",
+    # NB: "no activity" would be wrong -- the witness fires on every variant
+    # (A5/A6 alone raise >1400 duplication alerts). WAP-R simply does not
+    # score them: it is scoped to the duplication alert on variants 7-8, so
+    # the omitted variants have 0/0 rates, not zero rates.
+    ax.annotate("A1-A6 omitted: WAP-R scores variants 7-8 only, rates undefined (0/0)",
                 xy=(0, -0.17), xycoords="axes fraction", fontsize=7,
                 color=INK_MUTED, ha="left", va="top")
     fig.tight_layout()

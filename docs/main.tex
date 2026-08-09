@@ -6662,7 +6662,9 @@ Table~\ref{tab:q4_witness}.
 \caption{Q4 (witness monitoring only): witness-native detection
 counters per attack variant. 60\% attacker fraction, seed 1,
 90\,s, final evaluation cycle. Precision and recall are
-undefined for A1--A6, for which the witness recorded no alerts.}
+undefined for A1--A6: WAP-R scores only the duplication alert on
+Variants~7 and~8, so no classified alerts enter the tally there
+and both ratios reduce to $0/0$ rather than to zero.}
 \label{tab:q4_witness}
 \renewcommand{\arraystretch}{1.1}
 \footnotesize
@@ -6707,9 +6709,10 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
     \centering
     \includegraphics[width=0.65\textwidth]{Figure_Q4_WitnessPrecisionRecall.png}
     \caption{Q4 (witness monitoring only): witness alert
-    precision against recall for the two variants on which the
-    mechanism was active. Variants A1--A6 are omitted because
-    both rates are undefined when no alerts are recorded.}
+    precision against recall for the two variants WAP-R scores.
+    Variants A1--A6 are omitted because both rates are undefined
+    ($0/0$) where no classified alerts enter the tally --- a
+    consequence of the metric's scope, not of witness inactivity.}
     \label{fig:q4_witness_pr}
 \end{figure}
 
