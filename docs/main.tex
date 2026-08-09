@@ -5697,18 +5697,13 @@ average mitigation latency of 50\,ms.
 \label{sec:lstm_validation}
 
 The federated LSTM detector (Section~\ref{sec:fed_lstm}) is evaluated per
-attack variant in Table~\ref{tab:lstm_detection}. For the Hidden Forwarding
-variants (A5--A8), the detector is trained on benign traffic only (seeds
-1--3) and calibrated/evaluated on the seed-partitioned validation and
-held-out test splits (seeds 4 and 5 respectively, attack percentage
-100\%), following the 10\,s/5\,s windowing and per-RSU threshold calibration
-(Eq.~\ref{eq:lstm_threshold}) specified above. Selective Time Delay and TCAM
-exhaustion values (A1--A4) are reported at the same attack percentage and
-split methodology. Extending Hidden Forwarding coverage to the full
-$\{0,20,40,60,80,100\}\%$ attack-percentage sweep across all five seeds, and
-collecting a matching sweep for A1--A4 under the current 10-feature input
-(Eq.~\ref{eq:lstm_input}), remains outstanding before the complete
-$6\times8\times5=240$ run-instance dataset described above is realised.
+attack variant in Table~\ref{tab:lstm_detection}. All eight variants are
+trained on benign traffic only (seeds 1--3) and evaluated on the
+seed-partitioned validation and held-out test splits (seeds 4 and 5
+respectively) across the full $\{0,20,40,60,80,100\}\%$ attack-percentage
+sweep, following the 10\,s/5\,s windowing and per-RSU threshold calibration
+(Eq.~\ref{eq:lstm_threshold}) specified above, completing the
+$6\times8\times5=240$ run-instance dataset described above.
 
 \begin{table}[H]
 \centering
@@ -5722,11 +5717,7 @@ $6\times8\times5=240$ run-instance dataset described above is realised.
 \hline
 A1 CP-Selective Delay & 0.562 & 40.84 & 0.92 \\
 \hline
-A2 DP-Selective Delay & 0.971 & 98.50 & 1.40 \\
-\hline
-A3 TCAM Exhaustion (Control plane) & 0.643 & 94.53 & 26.30 \\
-\hline
-A4 TCAM Exhaustion (Data plane) & 0.801 & 97.57 & 14.59 \\
+A2 DP-Selective Delay & 0.559 & 44.15 & 1.71 \\
 \hline
 A3 CP-TCAM Exhaustion$^{*}$ & 0.905 & 91.53 & 0.30 \\
 \hline
@@ -5755,44 +5746,37 @@ A8 Passive HF Attack (Data plane) & 0.921 & 98.27 & 4.20 \\
     \label{fig:lstm_mcc} 
 \end{figure}
 
-As shown in Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_mcc},
-detection quality separates into two regimes. Selective Time Delay and
-Hidden Forwarding attacks (A1, A2, A5--A8) combine high MCC (0.78--0.97)
-with a low false-positive rate (0.5--1.9\%), while the TCAM exhaustion
-attacks (A3, A4) achieve very high detection rates (94.53--97.57\%) at a higher
-false-positive cost (14.59--26.30\%) -- a consequence of the ground-truth labelling
-any RSU holding even one malicious TCAM entry as attack-positive for its
-entire observation window, since installed entries persist; the same
-$U_{TCAM}$ signal also rises under organic, non-malicious traffic surges that
-saturate the table, which a utilisation threshold alone cannot distinguish
-from an attack as sharply as the timing- and reception-based signals used by
-the other six variants. The primary structural cause of elevated A3/A4
-\ac{FPR} is \ac{LSTM}-specific: \ac{TCAM} residual
-occupancy from attack traffic persists throughout
-the simulation run, shifting the benign
-reconstruction error distribution above the
-calibrated threshold even at non-attacking
-\ac{RSU}s. This is addressed by the \ac{LSTM}
-gating condition (Eq.~\ref{eq:lstm_gate}), which
-suppresses the \ac{LSTM} path when S3 or S4 is
-the sole active signature and relies exclusively
-on the blockchain endorsement check
-(Eq.~\ref{eq:rule_s3}, $\approx$100\% DR at
-0\% \ac{FPR}) and \ac{TCAM} utilisation threshold
-(Eq.~\ref{eq:rule_s4}); the A3/A4 figures in
-Table~\ref{tab:lstm_detection} represent pre-gating
-\ac{LSTM}-only results and will be superseded once
-gating is applied. Within the Selective Time Delay pair, the data-plane
-variant outperforms its control-plane sibling on MCC (A2: 0.971 vs.\ A1:
-0.939), consistent with a data-plane attacker acting more directly on
-observed traffic and leaving a cleaner per-RSU delay signal than a
-control-plane attacker acting indirectly through a compromised controller;
-the same pattern holds for TCAM exhaustion (A4: 0.801 vs.\ A3: 0.643).
-Within Hidden Forwarding, passive variants (A7, A8 -- no packet content is
-modified) score within 0.05 MCC of their active counterparts (A5, A6),
-showing that the unauthorized-reception signal ($R_{anom}$, Eq.~\ref{eq:feat_ranom})
-remains discriminative even for attacks that leave no volume or content trace
-for conventional monitoring to observe.
+Table~\ref{tab:lstm_detection} and Figure~\ref{fig:lstm_mcc} show three
+fairly distinct bands of performance. Hidden Forwarding (A5--A8) sits at
+the top, with MCC between 0.888 and 0.944 and detection rates of
+96.46--98.44\%; the \ac{FPR} stays close to 0.89\% for three of the four
+variants and only opens up for A8, at 4.20\%. TCAM exhaustion (A3, A4)
+looks strong too, but for a different reason -- these two rows are not the
+\ac{LSTM} at all. The blockchain endorsement check (Eq.~\ref{eq:rule_s3})
+and the \ac{TCAM} utilisation threshold (Eq.~\ref{eq:rule_s4}) are already
+sufficient on their own for S3/S4, so the \ac{LSTM} is gated off for these
+variants (Eq.~\ref{eq:lstm_gate}) rather than asked to reconstruct a
+signal that its own residual-occupancy sensitivity would otherwise
+mislabel. On that rule-based path, A3/A4 reach MCC 0.776--0.905 at DR
+72.47--91.53\%, with \ac{FPR} held under 0.5\%. Selective Time Delay (A1,
+A2) is the weak point of the table: MCC of only 0.559--0.562 and DR of
+40.84--44.15\%, meaning the detector misses a majority of these attacks
+outright. It does at least fail quietly -- \ac{FPR} stays low at
+0.92--1.71\%, so the cost of the miss is reduced sensitivity rather than
+noisy alarms on benign traffic. The control- and data-plane variants
+within that pair are essentially indistinguishable from each other (A1:
+0.562 vs.\ A2: 0.559, a 0.003 MCC gap that shows up on none of the three
+metrics), which is not the case for TCAM exhaustion, where control-plane
+clearly beats data-plane on the rule-based detector (A3: 0.905 vs.\ A4:
+0.776). That gap is a property of the rule, not of attack severity: the
+blockchain endorsement check behind S3 does not see the data-plane
+forwarding noise that erodes the S4 utilisation threshold. Within Hidden
+Forwarding itself, the passive variants (A7, A8 -- no packet content is
+altered) come within 0.05 MCC of their active counterparts (A5, A6),
+confirming that the unauthorized-reception signal ($R_{anom}$,
+Eq.~\ref{eq:feat_ranom}) still carries a usable signal even for attacks
+that leave no volume or content trace for conventional monitoring to pick
+up.
 
 \begin{figure}[H]
     \centering
@@ -6790,8 +6774,9 @@ configuration, and the per-variant deltas are negative on six of
 the eight variants. The largest single movement, A5 at $-0.029$,
 is a degradation rather than a gain. What the added features do
 produce is a small, consistent shift along the operating curve
-rather than an improvement of it: detection rate rises on six
-variants (overall $80.27 \rightarrow 80.80$\%) while the
+rather than an improvement of it: detection rate rises on five of the
+eight variants and holds steady on a sixth (A4), pulling the overall
+figure from $80.27$ to $80.80$\%, while the
 false-positive rate rises with it (overall $15.12 \rightarrow
 15.59$\%), which is the signature of a slightly more permissive
 decision boundary rather than of a more discriminative
