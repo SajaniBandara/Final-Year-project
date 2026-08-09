@@ -6603,12 +6603,26 @@ false-positive rate grows with simulated duration rather than
 converging. Second, these results derive from the inline
 per-node confusion matrix, which is a different statistic from
 the per-window \ac{MCC} of Eq.~\ref{eq:mcc} computed over the
-detector window grid; the two do not currently agree, and the
+detector window grid; the two do not currently agree. The
 per-window grid additionally registers detections for A5--A8
-where the inline matrix registers none, indicating that the
-window grid may not honour the component-isolation switches.
-Reconciling the two is outstanding. Third, all values come from
-a single seed, so no dispersion is reported.
+where the inline matrix registers none. This is not a failure of
+the component-isolation switches: the window grid records the
+composite \ac{OBU} and \ac{RSU} decisions, and the \ac{OBU}
+composite is the disjunction of S1 and the S2 partial check,
+both of which are live in Q1 by construction. Those entries are
+therefore S1/S2 firing on Hidden Forwarding traffic, which the
+inline matrix does not record because it attributes events per
+signature to their home variant. Reconciling the two statistics
+remains outstanding. Third, all values come from a single seed,
+so no dispersion is reported. Fourth, the A1 and A2 rows of
+Table~\ref{tab:q1_confusion} predate two subsequent corrections
+to the delay-detection path --- a forwarding-timestamp indexing
+fault that allowed one flow to read another's stale claim, and a
+mobility-baseline floor preventing the fitted speed coefficient
+from driving the expected delay negative at low speed. Both
+inflate false positives on the Selective Time Delay variants
+specifically, and the false-positive columns for A1 and A2
+should be regarded as upper bounds pending regeneration.
 
 \subsection{Component-Isolation Ablation: Witness Monitoring
 Configuration (Q4)}
@@ -6630,10 +6644,15 @@ explanation, because the per-node confusion matrix reported for
 Q1 is not applicable here. The witness mechanism does not record
 detection events directly; it reaches the confusion matrix only
 indirectly, by lowering a node's trust score until the node
-falls below the quarantine threshold. With the \texttt{BTMM}
-trust update disabled in this configuration, that path is
-severed, and the per-node matrix therefore measures quarantine
-behaviour rather than witness detection. Q4 is consequently
+falls below the quarantine threshold. The \texttt{BTMM} switch
+disabled in this configuration suppresses only the per-packet
+trust update; witness-driven trust updates are deliberately left
+active, since they are the mechanism under test. That indirect
+path therefore remains open, and the per-node matrix for this
+configuration measures witness-driven quarantine rather than
+witness detection: it counts the nodes whose trust fell far
+enough to be quarantined, not the alerts that were raised. Q4 is
+consequently
 evaluated using the witness-native counters of the witness
 alert precision and recall metric, reported in
 Table~\ref{tab:q4_witness}.
@@ -6676,10 +6695,11 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
     \centering
     \includegraphics[width=0.95\textwidth]{Figure_Q4_WitnessNative.png}
     \caption{Q4 (witness monitoring only): witness-native
-    detection counters by attack variant. The mechanism responds
-    only to the passive Hidden Forwarding variants A7 and A8,
-    and records no alerts on the six variants it is not designed
-    to observe.}
+    detection counters by attack variant. Counters are confined to
+    the passive Hidden Forwarding variants A7 and A8 because
+    WAP-R is scoped to the duplication alert for those two
+    variants; alerts raised on other variants by the
+    non-forwarding path are out of scope and not tabulated here.}
     \label{fig:q4_witness_native}
 \end{figure}
 
@@ -6704,14 +6724,21 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
     \label{fig:q4_witness_dup}
 \end{figure}
 
-As Figure~\ref{fig:q4_witness_native} shows, the witness
-mechanism isolates cleanly along attack family. No alerts are
-recorded on A1--A6, which is the intended result: the mechanism
-observes forwarding behaviour and has no visibility of injected
-delay, \ac{TCAM} occupancy, or the cryptographic evidence that
-distinguishes the active Hidden Forwarding variants. Detection
-is confined to the passive Hidden Forwarding family, and within
-that family it is substantial. A7 attains 92.31\% recall and A8
+As Figure~\ref{fig:q4_witness_native} shows, the reported
+counters are confined to the passive Hidden Forwarding family.
+This reflects the scope of the metric rather than silence of the
+mechanism, and the distinction matters for interpretation.
+WAP-R is defined against the duplication alert
+(Eq.~\ref{eq:dup_alert_cond}) specifically for Variants~7
+and~8; the non-forwarding alert (Eq.~\ref{eq:nfwd_detect}) is
+formally classified as a severe case of Selective Time Delay
+Variants~1--4 and is excluded from this ablation's scope. The
+witness in fact raised non-forwarding alerts on A1--A4,
+attributable through the detection-source instrumentation to 14,
+115, 4 and 27 correct identifications with no false positives,
+but these are out of scope for WAP-R and are consequently
+not tabulated. Within the family the metric does cover,
+detection is substantial. A7 attains 92.31\% recall and A8
 89.24\%, with only 3 and 17 missed positives respectively.
 Passive Hidden Forwarding produces neither a timing anomaly nor
 a verification failure, and is therefore the one attack family
@@ -6722,29 +6749,39 @@ The precision of those alerts is considerably weaker, as
 Figure~\ref{fig:q4_witness_pr} records. A8 reaches 62.39\%,
 while A7 attains only 15.06\%, corresponding to 203 false
 positives against 36 true positives. The combination of high
-recall with low precision indicates that the Byzantine
-fault-tolerant quorum governing when a witness report is
-accepted is too permissive at its present setting, rather than
-that detection has failed: the mechanism is observing the
-attack reliably and reporting it too readily. The quorum
-threshold is therefore a candidate for tuning, and the
-disparity between A7 and A8 suggests that the appropriate
-setting may differ between the control-plane and data-plane
-variants.
+recall with low precision indicates that the mechanism is
+observing the attack reliably and reporting it too readily,
+rather than that detection has failed. This result bears
+directly on a stated claim: $P_W$ is defined to validate the
+false-accusation resistance of the $2f{+}1$ threshold
+(Eq.~\ref{eq:bft_penalty}), and at 15.06\% on A7 that
+validation is not achieved, with 203 false accusations against
+36 correct ones. The remedy is constrained, because $f$ is not
+a free parameter here: $R_W$ is defined to validate the
+feasibility claim that $f{=}1$, requiring three witnesses, is
+achievable at the mean vehicle density of the scenario, so
+raising the quorum to improve precision would undermine the
+claim the companion metric establishes. The disparity between
+A7 and A8 further suggests that any acceptable setting may
+differ between the control-plane and data-plane variants.
+Reconciling false-accusation resistance with $f{=}1$
+feasibility is therefore an open item rather than a tuning
+exercise.
 
 \textbf{Verification status.} Three observations qualify the
 results above. First, the per-node confusion matrix recorded
 during this configuration reports non-zero true positives for
-A1--A6, where every signature is disabled and the witness
-records no alerts. Detections arising in a configuration in
-which no detection layer is enabled indicate that the
-component-isolation switches do not gate every path that reaches
-the confusion matrix. The witness-native counters reported here
-are unaffected, as they are recorded by the witness mechanism
-directly, but the discrepancy is unresolved and the per-node
-matrix for this configuration should not be interpreted until it
-is. This observation is consistent with the reconciliation noted
-for Q1 in Section~\ref{sec:q1_results}. Second, as
+A1--A6. Detection-source instrumentation attributes every one of
+these events to the witness itself --- the non-forwarding alert
+on A1--A4 and the duplication alert on A5--A8 --- and none to
+any other layer, confirming that the component-isolation
+switches gate correctly and that no disabled signature
+contributed. The per-node matrix is nonetheless the wrong
+instrument for this configuration, for the reason given above:
+it counts witness-driven quarantine rather than witness alerts,
+and its A1--A4 entries fall outside the scope of WAP-R.
+The witness-native counters reported here are the applicable
+measure. Second, as
 Figure~\ref{fig:q4_witness_dup} shows, A5 and A6 accumulate 1542
 and 1465 duplicate alerts respectively while recording no
 classified alerts of any kind, indicating that witness reports
