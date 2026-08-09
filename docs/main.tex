@@ -6479,7 +6479,8 @@ confusion matrix. The six configurations are: rule-based
 signatures only (Q1), cryptographic layer only (Q2), \ac{LSTM}
 anomaly detector only (Q3), witness monitoring only (Q4),
 rule and cryptographic layers combined (Q5), and the complete
-deployed framework (Q6). This section reports Q1; the remaining
+deployed framework (Q6). This section reports Q1 and
+Section~\ref{sec:q4_results} reports Q4; the remaining
 configurations are evaluated in the same grid.
 
 In Q1, signatures S1--S4 are live while S5--S8, the \ac{LSTM}
@@ -6587,8 +6588,11 @@ forwarding behaviour, and the 40 to 158 ground-truth positive
 nodes per variant are recorded as false negatives. The rule
 layer alone is therefore blind to this family, establishing the
 detection gap that the cryptographic, witness and \ac{LSTM}
-layers are introduced to close, and which the remaining
-configurations Q2--Q6 quantify.
+layers are introduced to close. Section~\ref{sec:q4_results}
+shows that the witness mechanism closes the passive component of
+this gap, detecting A7 and A8 at 92.31\% and 89.24\% recall
+respectively; the remaining configurations Q2, Q3, Q5 and Q6
+quantify the balance.
 
 \textbf{Verification status.} Three caveats qualify the figures
 above and are stated here so that later configurations are read
@@ -6605,6 +6609,150 @@ where the inline matrix registers none, indicating that the
 window grid may not honour the component-isolation switches.
 Reconciling the two is outstanding. Third, all values come from
 a single seed, so no dispersion is reported.
+
+\subsection{Component-Isolation Ablation: Witness Monitoring
+Configuration (Q4)}
+\label{sec:q4_results}
+
+In Q4, the witness monitoring mechanism is the only active
+detection layer. Signatures S1--S8, the \ac{LSTM} detector and
+the \texttt{BTMM} trust update are disabled, and signature
+verification is forced to pass, so that no rule-based or
+cryptographic evidence contributes to a detection. The
+simulation parameters are otherwise identical to Q1: every
+attack variant is evaluated at a 60\% attacker fraction over a
+90\,s \ac{SUMO}-derived urban trace with 200 vehicles, 64
+\ac{RSU}s and 4 controllers, at a single seed, with variants A1
+and A2 injecting a fixed 80\,ms delay.
+
+The instrument used to evaluate this configuration requires
+explanation, because the per-node confusion matrix reported for
+Q1 is not applicable here. The witness mechanism does not record
+detection events directly; it reaches the confusion matrix only
+indirectly, by lowering a node's trust score until the node
+falls below the quarantine threshold. With the \texttt{BTMM}
+trust update disabled in this configuration, that path is
+severed, and the per-node matrix therefore measures quarantine
+behaviour rather than witness detection. Q4 is consequently
+evaluated using the witness-native counters of the witness
+alert precision and recall metric, reported in
+Table~\ref{tab:q4_witness}.
+
+\begin{table}[H]
+\centering
+\caption{Q4 (witness monitoring only): witness-native detection
+counters per attack variant. 60\% attacker fraction, seed 1,
+90\,s, final evaluation cycle. Precision and recall are
+undefined for A1--A6, for which the witness recorded no alerts.}
+\label{tab:q4_witness}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{3.9cm}|p{1.0cm}|p{1.0cm}|p{1.0cm}|p{1.6cm}|p{1.4cm}|p{1.5cm}|}
+\hline
+\textbf{Attack} & \textbf{TP$_W$} & \textbf{FP$_W$} &
+\textbf{FN$_W$} & \textbf{Precision (\%)} & \textbf{Recall
+(\%)} & \textbf{Duplicate alerts} \\
+\hline
+A1 CP-Selective Delay & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A2 DP-Selective Delay & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A3 TCAM Exhaustion (Control plane) & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 0 & 0 & 0 & --- & --- & 0 \\
+\hline
+A5 Active HF Attack (Control plane) & 0 & 0 & 0 & --- & --- & 1542 \\
+\hline
+A6 Active HF Attack (Data plane) & 0 & 0 & 0 & --- & --- & 1465 \\
+\hline
+A7 Passive HF Attack (Control plane) & 36 & 203 & 3 & 15.06 & 92.31 & 1551 \\
+\hline
+A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_Q4_WitnessNative.png}
+    \caption{Q4 (witness monitoring only): witness-native
+    detection counters by attack variant. The mechanism responds
+    only to the passive Hidden Forwarding variants A7 and A8,
+    and records no alerts on the six variants it is not designed
+    to observe.}
+    \label{fig:q4_witness_native}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Figure_Q4_WitnessPrecisionRecall.png}
+    \caption{Q4 (witness monitoring only): witness alert
+    precision against recall for the two variants on which the
+    mechanism was active. Variants A1--A6 are omitted because
+    both rates are undefined when no alerts are recorded.}
+    \label{fig:q4_witness_pr}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{Figure_Q4_WitnessDuplicateAlerts.png}
+    \caption{Q4 (witness monitoring only): duplicate witness
+    alerts by attack variant. Variants A5 and A6 accumulate
+    comparable duplicate counts to A7 and A8 while recording no
+    classified alerts, which is examined in the verification
+    status below.}
+    \label{fig:q4_witness_dup}
+\end{figure}
+
+As Figure~\ref{fig:q4_witness_native} shows, the witness
+mechanism isolates cleanly along attack family. No alerts are
+recorded on A1--A6, which is the intended result: the mechanism
+observes forwarding behaviour and has no visibility of injected
+delay, \ac{TCAM} occupancy, or the cryptographic evidence that
+distinguishes the active Hidden Forwarding variants. Detection
+is confined to the passive Hidden Forwarding family, and within
+that family it is substantial. A7 attains 92.31\% recall and A8
+89.24\%, with only 3 and 17 missed positives respectively.
+Passive Hidden Forwarding produces neither a timing anomaly nor
+a verification failure, and is therefore the one attack family
+for which no other layer in the framework provides coverage;
+the witness mechanism supplies it.
+
+The precision of those alerts is considerably weaker, as
+Figure~\ref{fig:q4_witness_pr} records. A8 reaches 62.39\%,
+while A7 attains only 15.06\%, corresponding to 203 false
+positives against 36 true positives. The combination of high
+recall with low precision indicates that the Byzantine
+fault-tolerant quorum governing when a witness report is
+accepted is too permissive at its present setting, rather than
+that detection has failed: the mechanism is observing the
+attack reliably and reporting it too readily. The quorum
+threshold is therefore a candidate for tuning, and the
+disparity between A7 and A8 suggests that the appropriate
+setting may differ between the control-plane and data-plane
+variants.
+
+\textbf{Verification status.} Three observations qualify the
+results above. First, the per-node confusion matrix recorded
+during this configuration reports non-zero true positives for
+A1--A6, where every signature is disabled and the witness
+records no alerts. Detections arising in a configuration in
+which no detection layer is enabled indicate that the
+component-isolation switches do not gate every path that reaches
+the confusion matrix. The witness-native counters reported here
+are unaffected, as they are recorded by the witness mechanism
+directly, but the discrepancy is unresolved and the per-node
+matrix for this configuration should not be interpreted until it
+is. This observation is consistent with the reconciliation noted
+for Q1 in Section~\ref{sec:q1_results}. Second, as
+Figure~\ref{fig:q4_witness_dup} shows, A5 and A6 accumulate 1542
+and 1465 duplicate alerts respectively while recording no
+classified alerts of any kind, indicating that witness reports
+are generated on the active Hidden Forwarding variants but are
+suppressed as duplicates before classification; whether this
+represents correct deduplication or a loss of genuine detections
+has not been established. Third, all values derive from a single
+seed, so no dispersion is reported.
 
 \chapter{Timeline and Resource Required}
 
