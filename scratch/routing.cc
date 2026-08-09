@@ -114906,6 +114906,18 @@ double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 // 2*flows to match the flow_id domain used everywhere else (routing.cc:116729,
 // 117079 iterate flow_id < 2*flows); ~955 KB.
 double t_claimed_packet[total_size][2*flows][Flow_size+2];
+// Keyed by (node, flow, packet) — the flow dimension is REQUIRED, not optional.
+// packet_id is a PER-FLOW index bounded by Flow_size+2, so every flow reuses the
+// same ids 0..Flow_size+1. Without the flow dimension, node n's packet #5 on flow 0
+// and its packet #5 on flow 7 shared one slot; combined with the "stamp only if
+// still 0.0" guard at the forwarding site (first-write-wins, never cleared), the
+// second flow read a claim stamped seconds earlier. S2/S1/TAP then computed
+// hop_delay = now - (stale claim) and saw delays of 200ms-21s on perfectly benign
+// nodes. Measured on the 2026-08-08 Q1 run: 409 of 975 S2 triggers (42%) were this
+// artifact, and 52 of the 53 false-positive nodes had NO other trigger. Sized
+// 2*flows to match the flow_id domain used everywhere else (routing.cc:116729,
+// 117079 iterate flow_id < 2*flows); ~955 KB.
+double t_claimed_packet[total_size][2*flows][Flow_size+2];
 
 
 // node_local_time() — defined in crypto_layer.h (included below); forward
