@@ -371,13 +371,6 @@ fault-tolerant alert consensus.
 % accuracy, ${\leq}1\%$ false positive rate, and end-to-end latency below
 % 85\,ms across all eight attack variants, satisfying the strict
 % requirements of safety-critical vehicular applications.
-MOBIGUARD is evaluated across twelve performance
-metrics under five benchmarking experiments---varying
-attack penetration, mobility speed from 10 to
-140\,km/h, network scale from 100 to 400 vehicles,
-and attack stealthiness---alongside thirteen ablation
-experiments isolating each security component's
-individual contribution.
 
 
 
@@ -461,12 +454,9 @@ Objective 1: Design and simulate realistic Selective Time Delay and Hidden Forwa
 Objective 2: Develop a multi-layered security architecture that integrates blockchain for tamper-proof logging, cryptographic protocols for identity verification, and Federated LSTM models for decentralized anomaly detection.
 
 
-Objective 3: Evaluate MOBIGUARD against three
-state-of-the-art baselines across twelve performance
-metrics spanning detection quality, attack-specific
-containment (TVR, UCR), overhead, and privacy, using
-five benchmarking experiments and thirteen ablation
-experiments that isolate each component's contribution.
+Objective 3:Evaluate the effectiveness of the proposed defense mechanism by
+measuring detection accuracy, false positive rates, and the computational overhead
+introduced by blockchain/crypto operations.
 
 
 
@@ -475,31 +465,9 @@ experiments that isolate each component's contribution.
 
 \begin{enumerate}
     
-    \item \textbf{RQ1:}
-    How does MOBIGUARD's detection quality, threshold
-    violation containment, and mitigation responsiveness
-    change as attack penetration increases from 0\% to
-    100\% of network nodes across three attack intensity
-    levels, compared against state-of-the-art defenses
-    that assume a fixed or single-adversary threat model?
     
-    \item \textbf{RQ2:}
-    Does the mobility-adjusted threshold design maintain
-    detection quality and safety-critical packet
-    protection across the full vehicular speed range
-    from 10\,km/h to 140\,km/h, where increasing speed
-    progressively raises handoff-induced latency jitter
-    that masks attack signatures and causes
-    static-threshold baselines to fail?
-    
-    \item \textbf{RQ3:}
-    Can the \ac{MLDSA} + randomized batch verification
-    + \ac{STARK} cryptographic layer and blockchain
-    consensus pipeline maintain detection quality,
-    mitigation latency, and end-to-end latency within
-    the 100\,ms safety-critical bound as the network
-    scales from 100 to 400 vehicles?
-    
+  
+  
     \item \textbf{RQ4:}
     How does MOBIGUARD's detection quality and
     unauthorized copy containment degrade as attack
@@ -2180,7 +2148,7 @@ committed to the blockchain by \ac{RSU} consensus at
 regular intervals to provide a tamper-evident audit
 trail for all detection decisions.
 
-\subsection{Rule-Based Detection Engine}
+\subsection{the anomalous Rule-Based Detection Engine}
 \label{sec:rule_based}
 
 The lightweight detection engine evaluates Signatures~S1
@@ -5223,7 +5191,7 @@ evaluated under a compromised controller.
 controller with false proving keys suppress valid
 $\pi_{hop}$ proofs and enable undetected hidden
 forwarding?), M11 (UFCR — can false keys allow
-unauthorized FlowMods to appear compliant?).
+unauthorized FlowMods to appear compliant?). 
 
 
 % ----------------------------------------------------------------
@@ -5385,11 +5353,7 @@ $\lfloor 0.01p \times 264 \rfloor$ attacker nodes are
 allocated among the 200 vehicles and 64 \ac{RSU}s
 plane-specifically per attack variant; controller
 compromise follows the threshold rule defined in
-Section~\ref{sec:simulation} automatically. For Hidden
-Forwarding (Variants~5--8), attacker candidates are
-additionally restricted to nodes lying on an active
-flow's routing path, since an off-path node can neither
-observe nor duplicate traffic it never relays.
+Section~\ref{sec:simulation} automatically.
 
 \textbf{Second dimension — Attack Intensity $\mathcal{I}$:}
 Three discrete levels produce three lines per metric
@@ -5932,11 +5896,20 @@ operational model.
     variance across seeds), each \ac{RSU} applies a
     30-second warm-up period at the start of each
     simulation run during which live benign
-    reconstruction errors update the threshold online,
-    as defined in Equation~\eqref{eq:theta_adapt}
-    (Section~\ref{sec:fed_lstm}). Warm-up windows
-    are excluded from all \ac{FPR} and \ac{DR}
-    computations.
+    reconstruction errors update the threshold online:
+    \begin{equation}
+    \theta^{(k)}_{adapted} =
+    \text{pct}_{99}\!\left(
+    \mathcal{A}_{benign}^{(k)}
+    \cup
+    \mathcal{A}_{warmup}^{(k)}
+    \right)
+    \label{eq:theta_adapt}
+    \end{equation}
+    where $\mathcal{A}_{warmup}^{(k)}$ is the set of
+    anomaly scores collected during the warm-up window.
+    Warm-up windows are excluded from all \ac{FPR}
+    and \ac{DR} computations.
 
     \item \textbf{BRFA-v2 trust gate and hash verification         (Algorithm~\ref{alg:brfa_v2}, Steps~1--2):} Trust gate applies $T_{min}$
             (Eq.~\ref{eq:quarantine}) as the RSU eligibility threshold before Krum filtering; aggregation aborts if eligible RSUs $< 2f{+}1$. Hash verification confirms $H(\mathbf{W}_{local}^{(k)})$ matches the blockchain-committed hash
@@ -6174,7 +6147,7 @@ One-time ceremony among 64 RSUs pre-simulation
             Train/val/test split & 70\% / 15\% / 15\% (by seed, stratified by attack class \& \%) \\
             \hline
             LSTM detection threshold $\theta^{(k)}$ (Eq.~\ref{eq:lstm_threshold}) &
-            $z = 3.5$ (one-tailed Gaussian); $\theta^{(k)} = \mu_{\mathcal{A}}^{(k)} + 3.5 \cdot \sigma_{\mathcal{A}}^{(k)}$;
+            $z = 3.5$ (one-tailed Gaussian); $\theta^{(k)} = \mu_{\mathcal{A}}^{(k)} + 2.326 \cdot \sigma_{\mathcal{A}}^{(k)}$;
             validated for $\geq$95\% precision and $\leq$1\% FPR jointly on validation split \\           
             \hline
               $\gamma$ (Krum outlier rejection threshold, Eq.~\ref{eq:fed_robust}) & [tbd: $\{1.5, 2.0, 2.5, 3.0\}$] multiples of coordinate-wise std.\ of weight updates;   selected for best poisoning resistance (M8) under 25\% malicious RSU fraction (AB5) \\
@@ -6465,7 +6438,6 @@ Krum-filtering advantage over unconditional averaging.
 % low-density/high-speed stratum contains no attack-positive test windows 
 % reflecting the evaluated scenario rather than a detection failure.
 
-
 \subsection{Component-Isolation Ablation: Rule-Based Configuration (Q1)}
 \label{sec:q1_results}
 
@@ -6528,7 +6500,7 @@ A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{Figure_Q1_ConfusionByVariant.png}
+    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_ConfusionByVariant.png}
     \caption{Q1 (rule-based signatures only): per-node confusion
     matrix by attack variant. S5--S8 are disabled in this
     configuration, so the Hidden Forwarding variants A5--A8
@@ -6538,7 +6510,7 @@ A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{Figure_Q1_MCC.png}
+    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_MCC.png}
     \caption{Q1 (rule-based signatures only): detection quality
     (\ac{MCC}, Eq.~\ref{eq:mcc}) by attack variant.}
     \label{fig:q1_mcc}
@@ -6546,7 +6518,7 @@ A8 Passive HF Attack (Data plane) & 0 & 0 & 110 & 158 & 0.000 & 0.00 & 0.00 \\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{Figure_Q1_DR_vs_FPR.png}
+    \includegraphics[width=0.95\textwidth]{ablation/q1/Figure_Q1_DR_vs_FPR.png}
     \caption{Q1 (rule-based signatures only): detection rate
     against false-positive rate by attack variant. Both series
     share a single percentage axis. The underlying counters
@@ -6695,7 +6667,7 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{Figure_Q4_WitnessNative.png}
+    \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessNative.png}
     \caption{Q4 (witness monitoring only): witness-native
     detection counters by attack variant. Counters are confined to
     the passive Hidden Forwarding variants A7 and A8 because
@@ -6707,7 +6679,7 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.65\textwidth]{Figure_Q4_WitnessPrecisionRecall.png}
+    \includegraphics[width=0.65\textwidth]{ablation/q4/Figure_Q4_WitnessPrecisionRecall.png}
     \caption{Q4 (witness monitoring only): witness alert
     precision against recall for the two variants WAP-R scores.
     Variants A1--A6 are omitted because both rates are undefined
@@ -6718,7 +6690,7 @@ A8 Passive HF Attack (Data plane) & 141 & 85 & 17 & 62.39 & 89.24 & 1034 \\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.95\textwidth]{Figure_Q4_WitnessDuplicateAlerts.png}
+    \includegraphics[width=0.95\textwidth]{ablation/q4/Figure_Q4_WitnessDuplicateAlerts.png}
     \caption{Q4 (witness monitoring only): duplicate witness
     alerts by attack variant. Variants A5 and A6 accumulate
     comparable duplicate counts to A7 and A8 while recording no
