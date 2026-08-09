@@ -527,10 +527,77 @@ comparing "before and after the fix" must say that the denominator moved.
 
 ---
 
-## 10. Consequences for already-published results
+## 10. What must be re-run after the fix
 
-The A1/A2 rows of the Q1 table in `main.tex` (and the equivalent Q5 rows) were
-produced with this defect present and **overstate false positives**. They are
-already flagged there as upper bounds pending regeneration. Q1 and Q5 must be
-re-run after this fix before those rows are final. A3–A8 rows are unaffected
-and need no regeneration.
+### 10.1 Scope — only the delay variants are contaminated
+
+The defect is confined to signatures that read `t_claimed_packet`: **S1, S2 and
+TAP**. No other detector touches that array. This is not a theoretical
+boundary — it was confirmed empirically on the Q5 run, where after 71 minutes
+under identical conditions:
+
+```
+false positives, A1+A2 (read t_claimed_packet):  109
+false positives, A3-A8 (do not read it):           0
+```
+
+A perfect partition, widening in one direction only. Anything outside A1/A2 is
+therefore unaffected and **must not** be regenerated — re-running it would cost
+hours and change nothing.
+
+### 10.2 Re-run matrix
+
+| Config | Variants | Re-run? | Reason |
+|---|---|---|---|
+| **Q1** | **A1, A2** | **YES** | S1/S2 live; rows currently flagged as upper bounds in `main.tex` |
+| Q1 | A3–A8 | no | S3–S8 never read the claim; A5–A8 are structurally zero in Q1 anyway |
+| **Q5** | **A1, A2** | **YES** | S1/S2 live under natural crypto |
+| Q5 | A3–A8 | no | MCC 0.889–1.000 at zero FP; publication-ready as produced |
+| Q4 | all | no | witness-native counters never read the claim |
+| Q2, Q3, Q6 | — | n/a | not yet run; run post-fix so the question does not arise |
+
+The runner has no per-variant switch, so a `--configs Q1` invocation re-runs all
+eight lanes. That is acceptable — the A3–A8 lanes simply reproduce values
+already known — but **only the A1/A2 rows should be taken from the new run**.
+Substituting freshly generated A3–A8 numbers would silently mix two binaries
+into one table.
+
+### 10.3 Commands
+
+```bash
+cd "final yr project updated/Final-Year-project"
+python3 scripts/run_q1q6_ablation.py --sim-time 90 --configs Q1 --workers 8
+# then the same with --configs Q5
+
+# NS3_DIR defaults to the shared cluster path. Override it locally WITHOUT
+# committing the change, exactly as the Q1-Q6 runbook describes:
+#   NS3_DIR=/some/other/path python3 scripts/run_q1q6_ablation.py ...
+```
+
+Each is ~3.5–4.5 h. Preconditions, in order: Q5 finished; tree on local paths;
+`./waf build` clean; `results_routing/` and `logs/q1q6_ablation/*.log` cleared;
+previous outputs archived to `backups/`.
+
+### 10.4 Numbers are NOT adjustable — they must be regenerated
+
+Per §6.5 the ground-truth positive set moves as well as the detections, because
+the S2 latch reads the same `hop_delay`. Post-fix A1/A2 figures therefore
+cannot be derived from the old ones by subtracting the artefact count or
+applying a ratio. Both must come from a clean run, and any narrative comparing
+before and after must state that the denominator changed.
+
+### 10.5 Document updates that follow the re-run
+
+| Element | Action |
+|---|---|
+| `tab:q1_confusion` A1/A2 rows | replace with post-fix values |
+| Q1 verification status, caveat four | **delete** — the caveat is discharged, not amended |
+| Q5 section (when written) | write A1/A2 from post-fix data, A3–A8 from the current run |
+| This document | mark §5.0 applied, record measured before/after |
+
+### 10.6 Do not re-run before the fix is verified
+
+Run the §7 smoke test first — a 20 s single-variant run whose maximum
+`hop_delay` must collapse to ~82 ms. A full sweep launched against an
+unverified fix costs 3.5–4.5 h and produces numbers that cannot be trusted
+either way.
