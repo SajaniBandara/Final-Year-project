@@ -5739,22 +5739,28 @@ $6\times8\times5=240$ run-instance dataset described above is realised.
 \hline
 \textbf{Attack} & \textbf{M1 MCC} & \textbf{DR (\%)} & \textbf{FPR (\%)} \\
 \hline
-A1 CP-Selective Delay & 0.939 & 95.70 & 1.90 \\
+A1 CP-Selective Delay & 0.562 & 40.84 & 0.92 \\
 \hline
-A2 DP-Selective Delay & 0.971 & 98.50 & 1.40 \\
+A2 DP-Selective Delay & 0.559 & 44.15 & 1.71 \\
 \hline
-A5 Active HF Attack (Control plane) & 0.782 & 81.10 & 0.50 \\
+A3 CP-TCAM Exhaustion$^{*}$ & 0.905 & 91.53 & 0.30 \\
 \hline
-A6 Active HF Attack (Data Plane) & 0.900 & 92.60 & 1.00 \\
+A4 DP-TCAM Exhaustion$^{*}$ & 0.776 & 72.47 & 0.45 \\
 \hline
-A7 Passive HF Attack (Control plane) & 0.834 & 86.50 & 0.50 \\
+A5 Active HF Attack (Control plane) & 0.891 & 96.57 & 0.89 \\
 \hline
-A8 Passive HF Attack (Data plane) & 0.849 & 84.70 & 0.80 \\
+A6 Active HF Attack (Data Plane) & 0.944 & 98.44 & 0.89 \\
+\hline
+A7 Passive HF Attack (Control plane) & 0.888 & 96.46 & 0.89 \\
+\hline
+A8 Passive HF Attack (Data plane) & 0.921 & 98.27 & 4.20 \\
 \hline
 
-\textbf{Mean (A1--A8)} & \textbf{0.831} & \textbf{90.80} & \textbf{7.80} \\
+\textbf{Mean (A1--A8)} & \textbf{0.806} & \textbf{79.84} & \textbf{1.28} \\
 \hline
 \end{tabular}
+\vspace{2pt}
+\footnotesize{$^{*}$A3/A4 report the dedicated rule-based S3/S4 TCAM detector (Section~\ref{sec:tcam_detection}), not the LSTM, since it outperforms the LSTM on TCAM exhaustion; all other rows are the LSTM detector.}
 \end{table}
 
 \begin{figure}[H]

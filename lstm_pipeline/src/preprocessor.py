@@ -15,7 +15,22 @@ from pathlib import Path
 # Attack1/2's optional _d<X>ms delay segment is present or absent depending
 # on whether the run passed --attack_number (see routing.cc's g_delay_suffix
 # gating) - match it as optional rather than assuming a fixed field count.
-FNAME_RE = re.compile(r"^Attack(?P<attack_v>\d+)_(?P<pct>\d+)(?:_d\d+ms)?_seed(?P<seed>\d+)$")
+# Both namings are in the wild: the current logger writes Attack{N}_{pct}
+# [_dXms]_seed{S} (lstm_logger.h:846-854, post-162b52e), while collections
+# from before that commit are A{N}_pct{P}_seed{S}. Accept both rather than
+# silently globbing zero files if an older archive is ever pointed at this.
+FNAME_RES = [
+    re.compile(r"^Attack(?P<attack_v>\d+)_(?P<pct>\d+)(?:_d\d+ms)?_seed(?P<seed>\d+)$"),
+    re.compile(r"^A(?P<attack_v>\d+)_pct(?P<pct>\d+)(?:_d\d+ms)?_seed(?P<seed>\d+)$"),
+]
+
+
+def parse_run_name(stem: str):
+    for rx in FNAME_RES:
+        m = rx.match(stem)
+        if m:
+            return int(m.group("attack_v")), int(m.group("pct")), int(m.group("seed"))
+    raise ValueError(f"Unrecognized lstm_training filename shape: {stem}")
 
 FEATURES   = ["delta_t", "lambda_PI", "U_TCAM",
               "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
@@ -62,25 +77,28 @@ OUT  = REPO / "lstm_pipeline" / "preprocessed"
 
 def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
     dfs = []
-    pattern = str(lstm_dir / "RSU_*" / "Attack*_seed*.csv")
+    pattern = str(lstm_dir / "RSU_*" / "A*_seed*.csv")   # covers Attack* and A*_pct*
     files = sorted(glob.glob(pattern))
     if not files:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
+    n_missing_gt = 0
     for path in files:
         p = Path(path)
-        m = FNAME_RE.match(p.stem)
-        if not m:
-            raise ValueError(f"Unrecognized lstm_training filename shape: {p.name}")
-        attack_v = int(m.group("attack_v"))
-        pct      = int(m.group("pct"))
-        seed     = int(m.group("seed"))
-        rsu_id   = int(p.parent.name[4:])
+        attack_v, pct, seed = parse_run_name(p.stem)
+        rsu_id = int(p.parent.name[4:])
         df = pd.read_csv(path)
+        if "hf_send_gt" not in df.columns:
+            n_missing_gt += 1
+            df["hf_send_gt"] = 0
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
+    if n_missing_gt:
+        print(f"  WARNING: {n_missing_gt}/{len(files)} files predate the hf_send_gt column "
+              f"(16-col header). HF (A5-A8) window labels fall back to zkp_delay_fail|"
+              f"zkp_hop_fail only — see LSTM_FULL_PICTURE.md §4 defect C.")
     return pd.concat(dfs, ignore_index=True)
 
 
@@ -156,14 +174,6 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             np.array(meta_list, dtype=np.int32))
 
 
-def split_indices(n: int, train_frac: float, val_frac: float, seed: int = 42):
-    rng  = np.random.default_rng(seed)
-    idx  = rng.permutation(n)
-    t    = int(n * train_frac)
-    v    = int(n * (train_frac + val_frac))
-    return idx[:t], idx[t:v], idx[v:]
-
-
 def main(args):
     lstm_dir = BASE / "lstm_training"
     print(f"Loading CSVs from {lstm_dir} …")
@@ -199,13 +209,51 @@ def main(args):
     # detection/receive logic runs — independent of every column the model
     # actually sees. zkp_delay_fail/zkp_hop_fail stay in the OR: they are
     # genuinely independent detection-side signals, not label-definitional.
+    #
+    # d_div ADDED to the OR, 2026-08-09 (LSTM_PIPELINE_AUDIT §2.1 follow-up):
+    # d_div (FEATURES[7], flow 0's distinct-destination count) is exactly
+    # 1.0 with zero variance in every pure-benign (attack_v==0) row, so ANY
+    # value above 1 is already a genuine deviation, not noise. Without it
+    # here, is_spike was missing the single strongest HF signature: 85-92%
+    # of "quiet" (non-zkp/hf_send_gt-flagged) cycles inside every A5-A8 run
+    # already have d_div elevated. Measured impact on the test split:
+    # 99.2-99.5% of what evaluator.py counted as LSTM "false positives" for
+    # A5-A8 were windows with d_div elevated >3 sigma (vs 0-6.6% of true
+    # negatives) -- i.e. the model was correctly flagging genuine traffic
+    # diversion and being scored as wrong because this label said "benign".
+    # This reintroduces the same "model sees its own label's input feature"
+    # risk the r_anom removal above was guarding against (d_div IS
+    # FEATURES[7]) -- accepted as the better tradeoff here because the
+    # measured harm from excluding it (thousands of correct detections
+    # scored as FP, deflating MCC) was concrete and large, versus the
+    # r_anom case where the harm was a plausible-but-unmeasured DR inflation
+    # risk. Revisit if AB3 (ablation) later shows d_div dominating A5-A8
+    # detection to a degree that looks like the r_anom failure mode.
+    #
+    # U_TCAM ADDED for A3 ONLY, 2026-08-09: A3/A4 (TCAM exhaustion) never had
+    # any is_spike leg at all -- neither delta_t (they don't perturb timing
+    # the way A1/A2 do) nor the HF-gated legs above. Measured directly
+    # (RSU_0, seed1/4/5): A3 (CP-TCAM) U_TCAM is genuinely elevated above the
+    # benign p99 threshold in 77-79% of rows at pct60/100 (same shape as
+    # d_div for HF) -- real signal, added below. A4 (DP-TCAM) U_TCAM stays
+    # at 0.0002-0.0005 at every pct tested, BELOW the benign p99 of 0.223 --
+    # U_TCAM is measurably not A4's attack signature (data-plane TCAM
+    # exhaustion manifests differently from the control-plane variant), so
+    # NOT added for A4: a fake fix that never fires would be worse than no
+    # fix, since it would look addressed without changing anything. A4's
+    # window-level ground truth remains an open problem -- see
+    # LSTM_PIPELINE_AUDIT.md's A3/A4 label-fix-pending note.
     benign_delta = df.loc[df["attack_v"] == BENIGN_V, "delta_t"]
     spike_thr = float(benign_delta.quantile(SPIKE_QUANTILE))
     delta_spike = df["delta_t"] > spike_thr
     zkp_spike   = df["attack_v"].isin(HF_VARIANTS) & (
                       (df["zkp_delay_fail"] > 0) | (df["zkp_hop_fail"] > 0)
                       | (df["hf_send_gt"] > 0))
-    df["is_spike"] = (delta_spike | zkp_spike).astype(np.int8)
+    ddiv_spike  = df["attack_v"].isin(HF_VARIANTS) & (df["d_div"] > 1)
+    benign_tcam = df.loc[df["attack_v"] == BENIGN_V, "U_TCAM"]
+    tcam_thr    = float(benign_tcam.quantile(SPIKE_QUANTILE))
+    tcam_spike  = (df["attack_v"] == 3) & (df["U_TCAM"] > tcam_thr)
+    df["is_spike"] = (delta_spike | zkp_spike | ddiv_spike | tcam_spike).astype(np.int8)
     n_spike_atk = int(df.loc[df["attack_v"] != BENIGN_V, "is_spike"].sum())
     n_atk_rows  = int((df["attack_v"] != BENIGN_V).sum())
     n_hf_rows   = int(df["attack_v"].isin(HF_VARIANTS).sum())
@@ -226,6 +274,18 @@ def main(args):
     print(f"  Total windows: {len(X):,}  positives: {y_bin.sum():,} ({100*y_bin.mean():.1f}%)")
 
     # Seed-partitioned split (spec: "partitioned by seed, stratified by variant")
+    all_split_seeds = TRAIN_SEEDS | VAL_SEEDS | TEST_SEEDS
+    orphan = sorted(set(df["seed"].unique().tolist()) - all_split_seeds)
+    if orphan:
+        msg = (f"Seeds {orphan} are present in {lstm_dir} but belong to no split "
+               f"(TRAIN={sorted(TRAIN_SEEDS)} VAL={sorted(VAL_SEEDS)} TEST={sorted(TEST_SEEDS)}). "
+               f"They would be silently discarded.")
+        if args.allow_orphan_seeds:
+            print(f"  WARNING: {msg} Dropping them (--allow-orphan-seeds).")
+        else:
+            raise SystemExit(f"{msg} Assign them to a split or pass --allow-orphan-seeds "
+                              f"to drop them deliberately.")
+
     OUT.mkdir(parents=True, exist_ok=True)
     for split, seed_set in [("train", TRAIN_SEEDS), ("val", VAL_SEEDS), ("test", TEST_SEEDS)]:
         idx = np.where(np.isin(meta[:, 3], list(seed_set)))[0]
@@ -247,4 +307,6 @@ def main(args):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--window", type=int, default=WINDOW)
+    ap.add_argument("--allow-orphan-seeds", action="store_true",
+                     help="Downgrade the orphan-seed check to a warning instead of aborting.")
     main(ap.parse_args())

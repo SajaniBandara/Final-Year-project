@@ -42,7 +42,8 @@ int main(int argc, char** argv)
     }
     char magic[4];
     vf.read(magic, 4);
-    if (std::memcmp(magic, "MGV1", 4) != 0)
+    const bool has_norm_block = (std::memcmp(magic, "MGV2", 4) == 0);
+    if (std::memcmp(magic, "MGV1", 4) != 0 && !has_norm_block)
     {
         std::fprintf(stderr, "FAIL: bad magic in validation case\n");
         return 1;
@@ -70,21 +71,37 @@ int main(int argc, char** argv)
 
     // Normalisation parity check (independent of the validation_case.bin
     // reconstruction test above, which operates in already-normalised
-    // space) — cross-checked by hand against Python's (raw-mu)/std for
-    // the same raw vector.
+    // space). For an MGV2 case this is data-driven: raw/norm_ref come
+    // from the validation case itself (generated from scaler_params.json),
+    // so a weights.bin whose embedded scaler disagrees with the current
+    // scaler_params.json is caught here instead of silently degrading
+    // the live path.
+    if (has_norm_block)
     {
-        std::vector<float> raw   = {0.0025f, 2.0f, 0.05f, 1.0f, 0.0f, 15.0f, 9.5f};
-        std::vector<float> expected = {1.2666517f, 2.0f, 4.6224618f, 1.0f, 0.0f, 0.4240047f, 0.4206752f};
+        std::vector<float> raw(n_features), norm_ref(n_features);
+        vf.read(reinterpret_cast<char*>(raw.data()),      n_features * sizeof(float));
+        vf.read(reinterpret_cast<char*>(norm_ref.data()), n_features * sizeof(float));
+        if (!vf)
+        {
+            std::fprintf(stderr, "FAIL: truncated MGV2 validation case\n");
+            return 1;
+        }
         auto norm = lstm_normalize_features(model, raw);
         float max_norm_diff = 0.0f;
-        for (size_t i = 0; i < expected.size(); ++i)
-            max_norm_diff = std::max(max_norm_diff, std::fabs(norm[i] - expected[i]));
+        for (size_t i = 0; i < norm_ref.size(); ++i)
+            max_norm_diff = std::max(max_norm_diff, std::fabs(norm[i] - norm_ref[i]));
         std::printf("normalize_features max diff vs Python reference = %.8g\n", max_norm_diff);
         if (max_norm_diff > 1e-4f)
         {
-            std::fprintf(stderr, "FAIL: normalization mismatch\n");
+            std::fprintf(stderr,
+                "FAIL: scaler in weights.bin disagrees with scaler_params.json — "
+                "the .bin was exported from a different preprocessing run\n");
             return 1;
         }
+    }
+    else
+    {
+        std::printf("NOTE: MGV1 case, no normalisation block — skipping scaler check\n");
     }
 
     std::vector<std::vector<float>> x_hat_cpp;
