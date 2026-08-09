@@ -266,9 +266,17 @@ Q4 it reflects the quarantine path.
   `scripts/local_path_swap.sh local` before running and `... hpc` before any
   `git add`. On the cluster no swapping is needed.
 * **Result files collide.** `write_security_metrics_csv()` names by
-  `(attack_number, pct)` only — the ablation tag is not in the name. The runner
-  therefore runs one **sequential lane per attack** and renames immediately after
-  each run. Do not parallelise within a lane.
+  `(attack_number, pct, delay, seed)` via `g_sim_tag` (`routing.cc:143958`) —
+  the **ablation tag is not in the name**. The runner therefore runs one
+  **sequential lane per attack** and renames immediately after each run. Do not
+  parallelise within a lane.
+  The runner's `result_filename()` must mirror `g_sim_tag` *exactly*, seed
+  included. It did not until 2026-08-08: `_seed{S}` entered the simulator's
+  names in #87 but was never added here, so every lookup missed, the rename
+  silently never fired, each config overwrote the previous one under the shared
+  name, and `--analyse` reported `MISSING` for all 48 cells. A full sweep can
+  therefore run to completion and yield nothing. If `g_sim_tag` gains another
+  component, update `result_filename()` in the same commit.
 * **Clear stale lane logs** before a re-run (`logs/q1q6_ablation/*.log`). The
   LSTM suppression count is parsed from them, and stale files give wrong counts.
 * **The CSV header is multi-line.** `write_security_metrics_csv()` emits several

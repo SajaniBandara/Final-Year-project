@@ -114894,7 +114894,18 @@ double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 // (PAT - propagation_delay); the mismatch between what the node claims
 // and what physics implies is the signal TAP is designed to catch.
 //
-double t_claimed_packet[total_size][Flow_size+2];
+// Keyed by (node, flow, packet) — the flow dimension is REQUIRED, not optional.
+// packet_id is a PER-FLOW index bounded by Flow_size+2, so every flow reuses the
+// same ids 0..Flow_size+1. Without the flow dimension, node n's packet #5 on flow 0
+// and its packet #5 on flow 7 shared one slot; combined with the "stamp only if
+// still 0.0" guard at the forwarding site (first-write-wins, never cleared), the
+// second flow read a claim stamped seconds earlier. S2/S1/TAP then computed
+// hop_delay = now - (stale claim) and saw delays of 200ms-21s on perfectly benign
+// nodes. Measured on the 2026-08-08 Q1 run: 409 of 975 S2 triggers (42%) were this
+// artifact, and 52 of the 53 false-positive nodes had NO other trigger. Sized
+// 2*flows to match the flow_id domain used everywhere else (routing.cc:116729,
+// 117079 iterate flow_id < 2*flows); ~955 KB.
+double t_claimed_packet[total_size][2*flows][Flow_size+2];
 
 
 // node_local_time() — defined in crypto_layer.h (included below); forward
@@ -114916,9 +114927,25 @@ inline double node_local_time(uint32_t node);
 // TIME_REF_DELTA_ATTACK, M9) is genuinely wrong — eq:delay_updated's
 // "t_send anchored to T_ref(t)" only has something to correct if the claim
 // itself can disagree with ground truth (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
-inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
+// flow_id is bounded here rather than at the call sites: crypto_log_event() shows
+// sentinel flow ids (UINT32_MAX) reaching neighbouring code paths, so an unguarded
+// index would be an out-of-bounds write into adjacent globals.
+inline void record_claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
 {
-    t_claimed_packet[node][packet_id] = node_local_time(node);
+    if (node >= (uint32_t)total_size) return;
+    if (flow_id >= (uint32_t)(2*flows)) return;
+    if (packet_id >= (uint32_t)(Flow_size + 2)) return;
+    t_claimed_packet[node][flow_id][packet_id] = node_local_time(node);
+}
+
+// Single read accessor so every consumer (S1/S2/TAP/LRAD) applies identical bounds
+// checks and returns the same 0.0 "no claim recorded" sentinel they already test for.
+inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
+{
+    if (node >= (uint32_t)total_size) return 0.0;
+    if (flow_id >= (uint32_t)(2*flows)) return 0.0;
+    if (packet_id >= (uint32_t)(Flow_size + 2)) return 0.0;
+    return t_claimed_packet[node][flow_id][packet_id];
 }
 
 // Detection functions and the array they read (t_claimed_packet):
@@ -117842,7 +117869,14 @@ void write_security_metrics_csv()
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
 			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
-			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
+			68.0,              // lambda_pi_thresh — benign p99 (rule_calibrator.py Step 5, 2026-08-08),
+			                   // benign exceedance at p99 = 0.98%. Supersedes the 15.0 placeholder, whose
+			                   // comment ("benign lambda_PI all zero") described the pre-fix logging bug,
+			                   // not the signal: λ_PI is now logged and has a real distribution.
+			                   // INERT — ComputeTcamDetection (void)-casts this parameter; S4 fires on
+			                   // occupancy alone (see the eq:rule_s4 DEVIATION note in tcam_detection.h).
+			                   // Kept in sync with calibrated_params.json so the code and the calibration
+			                   // record agree if S4 is ever restored to the paper's rate-based conjunct.
 			0.216667,          // tcam_util_thresh — S4 OCCUPANCY gate. Recalibrated 2026-08-08 on
 			                   // lambda_PI-fixed benign data (seeds 1-3, 120s) using the PAPER'S rule:
 			                   // benign 99th percentile (FPR <= 1% budget per signal), same method as
@@ -121279,7 +121313,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// report the delay it is about to introduce, so this timestamp
 						// must NOT be deferred to total_tx_delay the way the actual send
 						// timestamp below is.
-						record_claimed_forward_timestamp(current_hop, packet_id);
+						record_claimed_forward_timestamp(current_hop, flow_id, packet_id);
 						// S2-partial HMAC tag: same reasoning — stamp pre-delay so
 						// lrad_s2_partial_check() sees (t_recv - t_stamp) = attack_delay + propagation.
 						lrad_hmac_tag_packet(current_hop, packet_id, packet_id);
@@ -121931,7 +121965,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					crypto_log_event("stark_hop", prev_sender, packet_ID, fid, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
-					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					                       ? claimed_forward_timestamp(prev_sender, fid, packet_ID) : 0.0;
 					// eq:delay_updated — anchor the sender's claim using its own known
 					// clock offset (node_clock_offset), so a Byzantine-compromised
 					// sender (M9 TIME_REF_F_BAD/TIME_REF_DELTA_ATTACK) cannot hide a
@@ -122050,7 +122084,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						// delta_p anchored to T_ref per eq:time_consensus
 						double _t_claimed = (_prev < (uint32_t)total_size &&
 						                     packet_ID < (uint32_t)(Flow_size + 2))
-						                     ? t_claimed_packet[_prev][packet_ID] : 0.0;
+						                     ? claimed_forward_timestamp(_prev, fid, packet_ID) : 0.0;
 						// eq:delay_updated — anchor _prev's claim using its own known
 						// clock offset (was: "Now()-g_T_ref minus t_claimed-g_T_ref",
 						// which cancels g_T_ref algebraically and is a no-op; see
@@ -124096,8 +124130,8 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline.
     // Guard: skip if already stamped pre-delay by the vehicle attack path so
     // S2 hop_delay = attack_delay + propagation rather than propagation only.
-    if (t_claimed_packet[source][packet_ID] == 0.0)
-        record_claimed_forward_timestamp(source, packet_ID);
+    if (claimed_forward_timestamp(source, flow_id, packet_ID) == 0.0)
+        record_claimed_forward_timestamp(source, flow_id, packet_ID);
     // Guard: skip if already stamped pre-delay by the vehicle attack path.
     if (g_hmac_tags.find({source, packet_ID}) == g_hmac_tags.end())
         lrad_hmac_tag_packet(source, packet_ID, packet_ID);
@@ -124628,7 +124662,7 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						// records the post-delay timestamp inside routing_dsrc_data_unicast and
 						// both S2-full (t_claimed_packet) and S2-partial (HMAC ts) see only
 						// propagation delay, never triggering.
-						record_claimed_forward_timestamp(source, packet_id);
+						record_claimed_forward_timestamp(source, fid, packet_id);
 						lrad_hmac_tag_packet(source, packet_id, packet_id);
 
 						bool attacked = schedule_unified_selective_delay_attack(

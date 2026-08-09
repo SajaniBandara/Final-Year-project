@@ -118,6 +118,35 @@ inline void dw_end_cycle()
     for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
         rt[r] = (uint8_t)lstm_rsu_ground_truth_label((uint32_t)N_Vehicles + r);
 
+    // S3/S4 fold-in — REQUIRED for M1 to see the TCAM family at all.
+    // dw_mark_rsu() is only ever called from lrad_rsu() when D_RSU fires, and
+    // D_RSU deliberately excludes flag_S3/flag_S4 (see LRADRSUFlags, lrad.h:72-79:
+    // the TCAM signatures are evaluated independently by ComputeTcamDetection()).
+    // main.tex:2544-2546 defines D_RSU *with* S3/S4, so the window grid was
+    // structurally blind to every TCAM detection: measured on Q1/2026-08-08,
+    // A3 scored MCC 1.000 per-node against 0.103 per-window, and A4 0.891
+    // against 0.360 — the per-window figure was reading S2f alone on a TCAM
+    // attack. Fold the published per-RSU flags in here rather than changing
+    // D_RSU itself, because D_RSU also gates BC.Write, the BTMM trust penalty
+    // and quarantine; widening it would change simulation behaviour, not just
+    // the measurement.
+    //
+    // Gated by g_disable_s3_s4 so Q1-Q6 ablation isolation still holds (a
+    // config with S3/S4 "off" must not gain TCAM detections in M1). This is
+    // the confusion-matrix gating semantics, NOT the LSTM gate's — that one
+    // reads the RAW flags on purpose (runbook §3), so the two must not be
+    // collapsed into one decision.
+    if (!g_disable_s3_s4)
+    {
+        for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
+        {
+            uint32_t nid = (uint32_t)N_Vehicles + r;
+            if (nid < 300 && (g_tcam_flag_s3_last[nid] || g_tcam_flag_s4_last[nid])
+                && r < g_dw_rsu_fired.size())
+                g_dw_rsu_fired[r] = 1;
+        }
+    }
+
     g_dw_obu_hist.push_back(g_dw_obu_fired);
     g_dw_rsu_hist.push_back(g_dw_rsu_fired);
     g_dw_obu_truth.push_back(ot);

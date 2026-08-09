@@ -42,8 +42,12 @@ inline void tap_report_to_controller(uint32_t attacker_current_hop)
 }
 
 // Function 3: tap_run_detection
+// flow_id added 2026-08-08: t_claimed_packet is keyed by (node, flow, packet)
+// because packet_id is only unique WITHIN a flow — see its declaration comment
+// in routing.cc. Without it PPAT could read another flow's stale claim.
 inline void tap_run_detection(uint32_t receiver_current_hop,
 					   uint32_t sender_current_hop,
+					   uint32_t flow_id,
 					   uint32_t packet_id)
 {
 	if (!enable_tap) return;
@@ -62,7 +66,7 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 	// clean regardless of whether an attack occurred — defeating TAP's
 	// detection purpose. See t_claimed_packet's declaration comment in
 	// routing.cc for the full rationale.
-	double PPAT = t_claimed_packet[sender_current_hop][packet_id];
+	double PPAT = claimed_forward_timestamp(sender_current_hop, flow_id, packet_id);
 	if (PPAT <= 0.0) return;
 
 	// Receiver position
@@ -255,7 +259,7 @@ inline void tap_process_packet(uint32_t receiver_current_hop,
 	    sender_current_hop   <  (uint32_t)total_size &&
 	    packet_id            <  (uint32_t)(Flow_size + 2))
 	{
-		double t_fwd_claimed = t_claimed_packet[sender_current_hop][packet_id];
+		double t_fwd_claimed = claimed_forward_timestamp(sender_current_hop, flow_id, packet_id);
 		if (t_fwd_claimed > 0.0) {
 			double t_fwd_claimed_anchored = t_fwd_claimed - node_clock_offset(sender_current_hop);
 			bool timing_ok = (Simulator::Now().GetSeconds() - t_fwd_claimed_anchored) <= S2_DELTA_MAX;
@@ -274,7 +278,7 @@ inline void tap_process_packet(uint32_t receiver_current_hop,
 	else
 	{
 		// Lines 11-18: run timing-based detection
-		tap_run_detection(receiver_current_hop, sender_current_hop, packet_id);
+		tap_run_detection(receiver_current_hop, sender_current_hop, flow_id, packet_id);
 	}
 }
 
