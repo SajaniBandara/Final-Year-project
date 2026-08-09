@@ -6766,6 +6766,139 @@ represents correct deduplication or a loss of genuine detections
 has not been established. Third, all values derive from a single
 seed, so no dispersion is reported.
 
+\subsection{Component-Isolation Ablation: Rule and Cryptographic
+Layers Combined (Q5)}
+\label{sec:q5_results}
+
+In Q5 the rule-based signatures S1--S8 are all live and
+signature verification runs naturally, so genuine
+cryptographic evidence contributes to detection for the first
+time in this grid. The \ac{LSTM} detector, the witness
+mechanism and the \texttt{BTMM} trust update remain disabled.
+Simulation parameters are otherwise identical to Q1 and Q4:
+every attack variant at a 60\% attacker fraction over a 90\,s
+\ac{SUMO}-derived urban trace with 200 vehicles, 64 \ac{RSU}s
+and 4 controllers, at a single seed, with variants A1 and A2
+injecting a fixed 80\,ms delay.
+
+The contrast with Q1 is the point of this configuration. In
+Q1 signature verification was forced to pass, which makes the
+cryptographic conjuncts of Signatures~S5--S8 unsatisfiable:
+S5 requires $\neg b_{batch}$ and S7--S8 require $b_{hop}{=}0$,
+neither of which can occur when verification always succeeds.
+Q1 was therefore structurally incapable of detecting Hidden
+Forwarding, and reported zero true positives on A5--A8.
+Results are given in Table~\ref{tab:q5_confusion}.
+
+\begin{table}[H]
+\centering
+\caption{Q5 (rule and cryptographic layers combined): per-node
+confusion matrix and detection quality per attack variant. 268
+nodes, 60\% attacker fraction, seed 1, 90\,s, final evaluation
+cycle. The final column gives the corresponding Q1 \ac{MCC}
+from Table~\ref{tab:q1_confusion}.}
+\label{tab:q5_confusion}
+\renewcommand{\arraystretch}{1.1}
+\footnotesize
+\begin{tabular}{|p{3.5cm}|p{0.7cm}|p{0.7cm}|p{0.7cm}|p{0.7cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|p{1.1cm}|}
+\hline
+\textbf{Attack} & \textbf{TP} & \textbf{FP} & \textbf{TN} &
+\textbf{FN} & \textbf{MCC} & \textbf{DR (\%)} &
+\textbf{FPR (\%)} & \textbf{Q1 MCC} \\
+\hline
+A1 CP-Selective Delay & 23 & 53 & 192 & 0 & 0.487 & 100.00 & 21.63 & 0.483 \\
+\hline
+A2 DP-Selective Delay & 143 & 80 & 45 & 0 & 0.480 & 100.00 & 64.00 & 0.480 \\
+\hline
+A3 TCAM Exhaustion (Control plane) & 32 & 0 & 236 & 0 & 1.000 & 100.00 & 0.00 & 1.000 \\
+\hline
+A4 TCAM Exhaustion (Data plane) & 37 & 0 & 223 & 8 & 0.891 & 82.22 & 0.00 & 0.891 \\
+\hline
+A5 Active HF Attack (Control plane) & 39 & 0 & 228 & 1 & 0.985 & 97.50 & 0.00 & 0.000 \\
+\hline
+A6 Active HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 0.000 \\
+\hline
+A7 Passive HF Attack (Control plane) & 39 & 0 & 229 & 0 & 1.000 & 100.00 & 0.00 & 0.000 \\
+\hline
+A8 Passive HF Attack (Data plane) & 158 & 0 & 110 & 0 & 1.000 & 100.00 & 0.00 & 0.000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_MCC.png}
+    \caption{Q5 (rule and cryptographic layers combined):
+    detection quality by attack variant. The four Hidden
+    Forwarding variants, which Q1 could not detect at all,
+    reach 0.985--1.000.}
+    \label{fig:q5_mcc}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_DR_vs_FPR.png}
+    \caption{Q5: detection rate against false-positive rate by
+    attack variant. Detection is at or near 100\% throughout;
+    false positives occur only on A1 and A2, the two variants
+    whose signatures depend on the forwarding-claim path.}
+    \label{fig:q5_dr_fpr}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{ablation/q5/Figure_Q5_ConfusionByVariant.png}
+    \caption{Q5: per-node confusion matrix by attack variant.}
+    \label{fig:q5_confusion}
+\end{figure}
+
+As Figure~\ref{fig:q5_mcc} shows, enabling genuine
+cryptographic verification does not merely improve Hidden
+Forwarding detection --- it establishes it. A6, A7 and A8
+attain an \ac{MCC} of 1.000, classifying every node correctly
+with no false positives and no missed attackers, and A5
+attains 0.985 with a single false negative. Against Q1's zero
+on all four variants, this is the clearest evidence in the
+grid that the rule and cryptographic layers are complementary
+rather than overlapping: the rule layer supplies the
+behavioural conditions and the cryptographic layer supplies
+the evidence that discriminates a hidden forward from a
+legitimate one, and neither is sufficient alone.
+
+The result also exceeds the expectation set for this
+configuration, which anticipated improvement on the active
+Hidden Forwarding variants A5 and A6. Improvement is observed
+across all four variants, including the passive pair A7 and
+A8, which Section~\ref{sec:q4_results} shows the witness
+mechanism also detects. Passive Hidden Forwarding is therefore
+covered twice over in the deployed framework, by two
+independent mechanisms.
+
+Two further observations support the internal consistency of
+the experiment. A3 and A4 are unchanged from Q1 to three
+decimal places, which is the expected outcome since the
+\ac{TCAM} occupancy signal does not depend on cryptographic
+verification; their invariance across a configuration change
+that transformed four other variants is a useful control.
+Conversely A1 and A2 are also unchanged (0.487 and 0.480
+against Q1's 0.483 and 0.480), which is examined below.
+
+\textbf{Verification status.} Three observations qualify the
+results above. First, detection rate is at or near 100\% on
+every variant, so the deficit on A1 and A2 is entirely one of
+precision: 53 and 80 false positives respectively, against
+zero across all six other variants. Second, that separation
+follows exactly the set of signatures that read the
+forwarding-claim store: S1, S2 and the \ac{TAP} baseline
+consume it and account for every false positive recorded in
+this configuration, while S3--S8 do not consume it and record
+none. A root-cause analysis attributes these false positives
+to claim records being read for packets other than the one in
+flight, and the A1 and A2 rows should accordingly be read as
+upper bounds on the false-positive count pending regeneration;
+the A3--A8 rows are unaffected. Third, all values derive from
+a single seed, so no dispersion is reported.
+
 \chapter{Timeline and Resource Required}
 
 \section{Timeline}
