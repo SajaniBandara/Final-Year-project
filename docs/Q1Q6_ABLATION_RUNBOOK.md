@@ -35,11 +35,68 @@ cd ~/ns3_g13/ns-allinone-3.35/ns-3.35        # NS3_DIR default matches this
 ./waf build                                   # or via the launcher, see below
 ```
 
-Checklist — all four must hold or results are silently wrong:
+Checklist — all five must hold or results are silently wrong:
 
-1. **Binary built** at `$NS3_DIR/build/scratch/routing/routing`.
+1. **Binary built in `optimized` profile, not `debug`.** Check before
+   anything else:
+   ```bash
+   grep BUILD_PROFILE build/c4che/_cache.py
+   ```
+   `ns-3`'s default/first-time `./waf configure` produces a **`debug`**
+   build (`-O0`, plus `NS3_ASSERT_ENABLE` and `NS3_LOG_ENABLE` compiled in).
+   Measured 2026-08-10 on a single lane, same config, same machine, only the
+   build profile differed:
+
+   | Profile | Wall-s per simulated second |
+   |---|---|
+   | `debug` (`-O0`) | **88.6** |
+   | `optimized` | **7.43** |
+
+   **≈12× faster.** That is *not* the naive `-O0`→`-O2` codegen difference
+   alone (typically 2–5×) — most of it comes from `NS3_ASSERT_ENABLE` and
+   `NS3_LOG_ENABLE` being fully compiled out in `optimized`, and those checks
+   run on nearly every packet/event throughout ns-3's core, not just in
+   `routing.cc`. Detection correctness was spot-checked post-switch (MCC,
+   DR, FPR in the expected range for the config tested) — the numbers below
+   are unaffected, only wall-clock is.
+
+   To build in `optimized`:
+   ```bash
+   ./waf configure --build-profile=optimized --enable-examples --disable-werror
+   ./waf build
+   ```
+   `--disable-werror` is required on this checkout as of 2026-08-10: an
+   `optimized` build recompiles the whole tree from scratch (a `debug` build
+   here had been incremental for a long time), and that surfaces
+   pre-existing `-Wunused-result` warnings (unchecked `std::system()` return
+   values in `routing.cc`, `lstm_logger.h`, `efade_detection.h`) that
+   `-Werror` turns into hard failures. These are unrelated to detection
+   logic — safe to suppress for the build, not worth fixing line-by-line
+   under a time constraint. Before reaching for it, one real bug **was**
+   found and fixed this way: `routing.cc`'s `size_channel.CW` (a
+   `custom_struct` field) was read without ever being assigned. Traced and
+   confirmed harmless — `check_and_transmit()`, the only function this
+   struct reaches, overwrites `.CW` as its first statement before ever
+   reading it, so the uninitialized value was always dead — but it's exactly
+   the class of bug `-O0` silently tolerates and `optimized`'s stricter
+   data-flow analysis correctly flags. Fixed by zero-initializing at the
+   declaration site.
+
+   **Do not test the binary by invoking it directly**
+   (`./build/scratch/routing/routing ...`) — it will fail with
+   `error while loading shared libraries: libns3.35-*-optimized.so: cannot
+   open shared object file`, because the optimized `.so`s are named
+   differently and only `./waf --run`/`--run-no-build` sets up the correct
+   `LD_LIBRARY_PATH`. That failure is a testing-methodology mistake, not a
+   build problem.
+
+   **Provenance note:** the Q1/Q4/Q5 results already in the report were
+   measured on a `debug` binary. This does not affect their validity — same
+   source, same arithmetic — but if asked, that's the honest answer to "were
+   all results produced under identical build conditions."
+2. **Binary present** at `$NS3_DIR/build/scratch/routing/routing`.
    The runner refuses to start if it is missing.
-2. **Scratch synced.** The real source lives in
+3. **Scratch synced.** The real source lives in
    `~/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/scratch/`; `scratch/routing/` in
    the ns-3 tree is symlinks/copies. Sync + build with:
    ```bash
@@ -48,11 +105,11 @@ Checklist — all four must hold or results are silently wrong:
    ```
    A plain `./waf build` does **not** copy the `.py` helpers and the sim will
    abort mid-run with "Solution not found".
-3. **Mobility traces present** at the paths compiled into `routing.cc`
-   (`/home/sdvn_hidden_attacks/ns3_g13/mobility/...`). On the cluster these are
+4. **Mobility traces present** at the paths compiled into `routing.cc`
+   (`/home/nipuni/mobility/...`). On the cluster these are
    the real paths — no swapping needed. Seeds 1–5 use
    `mobility_urban_150_seed{N}.tcl`.
-4. **`lstm_pipeline/lstm_weights_cpp.bin` exists.** Q3 and Q6 set
+5. **`lstm_pipeline/lstm_weights_cpp.bin` exists.** Q3 and Q6 set
    `--enable_lstm_inference=1`, but if the weights file is absent the LSTM
    **silently no-ops**, `flag_LSTM` stays false, and Q3/Q6 look like a wiring
    failure when they are actually a missing file. Check it explicitly:
@@ -93,12 +150,33 @@ redo earlier ones.
 
 ### Sizing
 
-Each run is `simTime=30`, 200 vehicles, 64 RSUs. Measured on an 8-core laptop:
-**~58–61 min per run**, essentially unchanged between 4 and 8 workers (the sims
-are single-threaded, so throughput scales with worker count, not per-sim speed).
+**Check the build profile before trusting any of these numbers** — see §1
+item 1. Everything below assumes `optimized`.
 
-Wall time ≈ `ceil(48 / workers) × ~60 min`. With 16 workers, ~3 h. Give each
-worker one physical core; oversubscribing hyperthreads did not help locally.
+Throughput is expressed as wall-seconds per simulated second, since `simTime`
+varies by spec (30 s originally, 90 s for Q1/Q4/Q5 so `detector_windows.csv`
+clears the M1 evaluator's 30-cycle warm-up exclusion, 75 s tried for Q6):
+
+| Build | Wall-s / sim-s | 90 s run, 8-lane config |
+|---|---|---|
+| `debug` (measured on Q1/Q4/Q5) | 143–158 | 3 h 34 m – 3 h 57 m |
+| `optimized` (single-lane measurement) | **7.43** | plausibly **20–40 min** |
+
+The `optimized` figure is a **single isolated lane**, not an 8-lane run under
+full contention — expect the real 8-lane number to land somewhat above the
+naive scaling, and re-measure once an actual 90 s config has been run on this
+binary rather than trusting the projection. Configs with natural crypto (Q2,
+Q5, Q6) may benefit less than this ratio suggests: `liboqs` is a separately
+built, already-optimized library, so its ML-DSA-87 calls don't speed up
+further — only the ns-3/`routing.cc` glue code around them does.
+
+Old rule of thumb, for reference only (`simTime=30`, `debug` build, unclear
+worker count): ~58–61 min/run. That resolves to ~116–122 wall-s/sim-s, roughly
+consistent with the 143–158 figure above once accounted for.
+
+Sims are single-threaded, so wall time ≈
+`ceil(48 / workers) × (per-run time at the chosen simTime)`. Give each worker
+one physical core; oversubscribing hyperthreads did not help locally.
 
 ---
 
