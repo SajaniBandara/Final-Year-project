@@ -1,11 +1,18 @@
 #ifndef S1_DETECTION_H
 #define S1_DETECTION_H
 
-// Normal runs: DETECTION_DEBUG_LOG = false -> zero per-packet terminal noise.
-// Mirrors crypto_layer.h's CRYPTO_DEBUG_LOG: high-frequency routine-outcome
-// prints are gated on this; rare/important events (TRIGGERED, detection
-// events recorded) still fire unconditionally regardless of this flag.
-static bool DETECTION_DEBUG_LOG = true;
+// Normal runs: DETECTION_DEBUG_LOG_S1 = false -> zero per-packet terminal
+// noise from the routine "no violation"/diagnostic lines below. The rare
+// "TRIGGERED"/record_detection_event lines stay unconditional regardless —
+// those are the ones that matter for verification. Same convention as
+// crypto_layer.h's CRYPTO_DEBUG_LOG / s2_detection.h's DETECTION_DEBUG_LOG_S2.
+static bool DETECTION_DEBUG_LOG_S1 = false;
+
+// Defined in crypto_layer.h, which routing.cc includes AFTER this header, so it
+// must be forward-declared here. Used below to gate S1's record_detection_event()
+// while leaving the g_s1_gt_delay_exceeded[] GROUND-TRUTH latch untouched — see
+// the note at that latch for why the two must be separable.
+extern bool g_disable_s1_s2;
 
 // =========================================================================
 // s1_detection.h — MOBIGUARD Signature S1 Detection
@@ -66,16 +73,23 @@ using namespace std;
 // rule_calibrator.py steps: OLS → β sweep {0.7,0.8,0.9,0.95} → k sweep {1,2,3} → robustness ±30%.
 // R²=0.0004: α_ρ and α_v are near-zero — delay in NS-3 DSRC is dominated by crypto/routing
 // overhead rather than vehicle density/speed; baseline effectively collapses to δ₀.
-// Recalibrated 2026-07-25 (rule_calibrator.py) on fresh benign SUMO traces
-// collected post S1-sigma-fix: 192 CSVs, 64 RSUs × 3 seeds, 300 s each.
-// k held at 3.0 (still smallest k with FPR ≤ 1%); β moved 0.7 → 0.8.
-// OLS R² ≈ 0.0008 — the ρ/v̄ regressors barely fit delay (near-zero α terms),
-// so delta_bar is dominated by the intercept δ₀; robustness max|ΔFPR| = 0.0447.
-double s1_delta0    = 0.00195355;   // s  — OLS intercept (≈1.954 ms)
-double s1_alpha_rho = -7.9e-07;     // s/vehicle — density term (near-zero, kept for completeness)
-double s1_alpha_v   = 2.17e-06;     // s²/m — speed term (near-zero, kept for completeness)
+// Recalibrated 2026-08-08 (rule_calibrator.py) on lambda_PI-fixed benign SUMO
+// traces, seeds 1-3, 120s each (22,087 traffic rows, rho>0). Supersedes the
+// 2026-07-25 values above -- that run's delta0=0.00195355 was later traced to
+// a corrupted manual test-run CSV (constant delta_t), not real benign data.
+// beta: empirical 1% convergence test never latches on real (non-stationary)
+// traffic (confirmed again on this data: all of {0.7,0.8,0.9,0.95} exceed the
+// 22s ceiling) -- selected instead via the analytic N_eff=1/(1-beta) criterion
+// against main.tex:6049's actual design bound (9s minimum RSU zone residence):
+// beta=0.8 (N_eff=5) is the largest candidate still within that budget.
+// k unchanged at 3.0 (still smallest k with FPR <= 1%, though no candidate
+// actually clears 1% on this data -- FPR=0.0287 at k=3.0, robustness
+// max|ΔFPR| = 0.0051). OLS R² ≈ 0.0074.
+double s1_delta0    = 0.00447305;   // s  — OLS intercept (≈4.473 ms)
+double s1_alpha_rho = 0.00011315;   // s/vehicle — density term
+double s1_alpha_v   = -0.00150238;  // s²/m — speed term
 double s1_k         = 3.0;          // sigma multiplier — k sweep: smallest k with FPR ≤ 1%
-double s1_beta      = 0.8;          // EWMA factor — β sweep: fastest σ²(t) convergence in 9s window
+double s1_beta      = 0.8;          // EWMA factor — analytic N_eff=1/(1-β)=5 <= 9s zone-residence bound (main.tex:6049)
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
 // Sized dynamically at runtime by s1_init_state(N_RSUs) — no hardcoded ceiling.
@@ -120,7 +134,32 @@ inline void s1_update_baseline(uint32_t rsu_idx,
 
     // Eq. 3.11: δ̄_r(t) = δ₀ + α_ρ·ρ(t) + α_v·v̄(t)⁻¹
     double inv_v = (v_bar_t > 0.1) ? (1.0 / v_bar_t) : 10.0;
-    s1_delta_bar[rsu_idx] = s1_delta0 + s1_alpha_rho * rho_t + s1_alpha_v * inv_v;
+    double db = s1_delta0 + s1_alpha_rho * rho_t + s1_alpha_v * inv_v;
+
+    // Floor at delta_0 (added 2026-08-08). main.tex:2205-2211 states the baseline
+    // "increases linearly with vehicle density" and "decreases with mean speed" --
+    // i.e. eq:mobility_baseline intends alpha_rho > 0 AND alpha_v > 0, since the
+    // speed term is alpha_v * v_bar^-1 and only a POSITIVE alpha_v decays toward
+    // delta_0 as v_bar rises. With both coefficients sign-correct, v_bar^-1 > 0
+    // makes both correction terms positive, so delta_bar >= delta_0 identically:
+    // the baseline decays TOWARD delta_0, never below it.
+    //
+    // The 2026-08-08 calibration violates that: alpha_v = -0.00150238 (negative).
+    // Because inv_v is capped at 10.0 for stopped vehicles (v_bar <= 0.1 m/s,
+    // 14.9% of RSU-cycles on the seed-1 trace), alpha_v*inv_v reaches -15.02ms and
+    // swamps delta_0 = +4.47ms, driving delta_bar NEGATIVE in 15.2% of samples
+    // (min -10.44ms; confirmed in the live Q1 logs). A negative expected delay is
+    // physically meaningless, and since threshold = delta_bar + k*sigma it DEPRESSES
+    // the firing threshold precisely in stopped/congested traffic -- where benign
+    // delays are highest -- inflating S1 false positives.
+    //
+    // This floor enforces the constraint the fitted coefficients should have
+    // satisfied. It is a guard, not a model change: with sign-correct coefficients
+    // it never binds. The real fix is a sign-constrained (non-negative) re-fit in
+    // rule_calibrator.py -- with R^2 = 0.0074 the OLS is fitting noise, so the
+    // coefficient signs are essentially arbitrary. Remove this floor once the
+    // calibration is re-run under that constraint.
+    s1_delta_bar[rsu_idx] = (db > s1_delta0) ? db : s1_delta0;
     (void)observed_delay;   // no longer feeds sigma2 here — see s1_detect_packet()
 }
 
@@ -215,10 +254,11 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     {
         double jitter_s = s1_sample_handoff_jitter();
         effective_delay_s += jitter_s;
-        cout << "[S1] Handoff jitter: vehicle " << vehicle_id
-             << " handed off this cycle — adding " << jitter_s * 1000.0
-             << "ms (raw delay=" << packet_delay_s * 1000.0
-             << "ms, effective=" << effective_delay_s * 1000.0 << "ms)." << endl;
+        if (DETECTION_DEBUG_LOG_S1)
+            cout << "[S1] Handoff jitter: vehicle " << vehicle_id
+                 << " handed off this cycle — adding " << jitter_s * 1000.0
+                 << "ms (raw delay=" << packet_delay_s * 1000.0
+                 << "ms, effective=" << effective_delay_s * 1000.0 << "ms)." << endl;
     }
 
     // Condition 2: Priority(p) = HIGH — mandatory conjunction (Eq. 3.4).
@@ -282,12 +322,29 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     double delta_best   = s1_delta_best[rsu_idx];
     bool   selective_ok  = (delta_best <= threshold);
 
-    if (DETECTION_DEBUG_LOG)
+    // Issue 5 fix (2026-08-02, ground truth vs detection decision): latch
+    // g_s1_gt_delay_exceeded independently of selective_ok/detection dedup —
+    // this is "did the packet's delay genuinely exceed Eq. 3.4's own
+    // threshold," not "did S1 fire." See its declaration (routing.cc) for
+    // why calculate_security_detection_metrics() needs this instead of the
+    // static is_malicious_node[0] identity flag.
+    //
+    // 2026-08-05: this latch is also why g_disable_s1_s2 must NOT skip the
+    // call to this function (see lrad.h). It is A1's GROUND TRUTH, read at
+    // routing.cc:117328. When the ablation skipped the call, the latch never
+    // set, every A1 node scored benign, and A1 reported TP+FN=0 in Q2/Q3/Q4 —
+    // which reads as "the attack produced no detectable event" when the real
+    // meaning is "nothing was measuring whether it did." Ground truth must
+    // never depend on which detector a diagnostic flag switches off.
+    if (effective_delay_s > threshold && sender_node_id < (uint32_t)total_size)
+        g_s1_gt_delay_exceeded[sender_node_id] = true;
+
+    if (DETECTION_DEBUG_LOG_S1)
         cout << "[S1] RSU_idx=" << rsu_idx
              << " node=" << current_hop
              << " flow=" << flow_id
              << " pkt=" << packet_id
-             << " delay=" << packet_delay_s * 1000.0 << "ms"
+             << " delay=" << effective_delay_s * 1000.0 << "ms"
              << " baseline=" << delta_bar * 1000.0 << "ms"
              << " sigma=" << sigma * 1000.0 << "ms"
              << " threshold=" << threshold * 1000.0 << "ms"
@@ -324,11 +381,15 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // whichever OTHER attack's confusion matrix was being measured —
         // confirmed 2026-07-14: S1 contributed 22 of 221 detection events
         // recorded into Attack 6's own bucket during an A6-only run.
+        // g_disable_s1_s2 gates the DETECTION RECORD only, never the ground-truth
+        // latch above — the same asymmetry, for the same reason, as
+        // g_disable_s3_s4 in tcam_detection.h.
         const int S1_HOME_VARIANT = 0;   // Attack 1, per main.tex Signature S1
-        if (sender_node_id < (uint32_t)total_size &&
+        if (!g_disable_s1_s2 &&
+            sender_node_id < (uint32_t)total_size &&
             !is_detected_node[S1_HOME_VARIANT][sender_node_id])
         {
-            record_detection_event(S1_HOME_VARIANT, sender_node_id);
+            record_detection_event(S1_HOME_VARIANT, sender_node_id, DSRC_RULE_S1);
             cout << "[S1] record_detection_event fired for sender node "
                  << sender_node_id << " (detected at RSU " << current_hop
                  << ") variant=" << S1_HOME_VARIANT
@@ -339,15 +400,17 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
 
     if (effective_delay_s > threshold && !selective_ok)
     {
-        cout << "[S1] Threshold exceeded but selectivity conjunct failed: "
-             << "delta_best=" << delta_best * 1000.0 << "ms > threshold "
-             << threshold * 1000.0 << "ms — best-effort traffic also delayed, "
-             << "treating as genuine congestion, not Attack 1." << endl;
+        if (DETECTION_DEBUG_LOG_S1)
+            cout << "[S1] Threshold exceeded but selectivity conjunct failed: "
+                 << "delta_best=" << delta_best * 1000.0 << "ms > threshold "
+                 << threshold * 1000.0 << "ms — best-effort traffic also delayed, "
+                 << "treating as genuine congestion, not Attack 1." << endl;
     }
-    else if (DETECTION_DEBUG_LOG)
+    else
     {
-        cout << "[S1] No violation: delay " << effective_delay_s * 1000.0
-             << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
+        if (DETECTION_DEBUG_LOG_S1)
+            cout << "[S1] No violation: delay " << effective_delay_s * 1000.0
+                 << "ms within threshold " << threshold * 1000.0 << "ms" << endl;
     }
     return false;
 }

@@ -2,7 +2,7 @@
 #define S2_DETECTION_H
 
 // See s1_detection.h — same DETECTION_DEBUG_LOG gating convention.
-static bool DETECTION_DEBUG_LOG_S2 = false;
+static bool DETECTION_DEBUG_LOG_S2 = false; // set true to log every S2 evaluation (spammy)
 
 // =========================================================================
 // s2_detection.h — MOBIGUARD Signature S2 Detection
@@ -76,7 +76,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // Per thesis §1637: "the forwarding node's claimed timestamp."
     // Using t_claimed_packet ensures hop_delay = attack_delay + propagation,
     // correctly exceeding Δ_max for malicious nodes.
-    double t_fwd_by_sender = t_claimed_packet[sender_sim_index][packet_id];
+    double t_fwd_by_sender = claimed_forward_timestamp(sender_sim_index, flow_id, packet_id);
     if (t_fwd_by_sender <= 0.0) return false;
 
     // eq:delay_updated — t_fwd_by_sender is the sender's own (possibly
@@ -91,6 +91,12 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
 
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
     bool delay_exceeds = (hop_delay > S2_DELTA_MAX);
+
+    // Issue 5 fix (2026-08-02) -- see g_s1_gt_delay_exceeded's comment
+    // (s1_detection.h) for the full rationale; same pattern here, latched
+    // independently of the ZKP conjunct below.
+    if (delay_exceeds && sender_sim_index < (uint32_t)total_size)
+        g_s2_gt_delay_exceeded[sender_sim_index] = true;
 
     // Eq. 3.5 — Conjunction 2: π_delay(u) = ⊥  (eq:stark_delay_verify)
     // Must use the same anchored timestamp as hop_delay above — otherwise a
@@ -126,11 +132,14 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
         // Bucket is S2's OWN designated variant (1 = Attack 2, Selective Delay
         // DP), NOT active_attack_variant — same misattribution fix as S1
         // (see s1_detection.h). main.tex: "one primary signature per variant."
+        // g_disable_s1_s2 gates the DETECTION RECORD only, never the
+        // g_s2_gt_delay_exceeded ground-truth latch above — see s1_detection.h.
         const int S2_HOME_VARIANT = 1;   // Attack 2, per main.tex Signature S2
-        if (sender_sim_index < (uint32_t)total_size &&
+        if (!g_disable_s1_s2 &&
+            sender_sim_index < (uint32_t)total_size &&
             !is_detected_node[S2_HOME_VARIANT][sender_sim_index])
         {
-            record_detection_event(S2_HOME_VARIANT, sender_sim_index);
+            record_detection_event(S2_HOME_VARIANT, sender_sim_index, DSRC_RULE_S2);
             cout << "[S2] record_detection_event fired for node "
                  << sender_sim_index << " variant=" << S2_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;

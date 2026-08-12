@@ -91,7 +91,7 @@ uint32_t flow_size = 55;
 // Normal runs: ROUTING_DEBUG_LOG = false -> zero per-node-pair terminal noise
 // from the delta/flow-scheduling table dump. Same gating convention as
 // CRYPTO_DEBUG_LOG (crypto_layer.h) / DETECTION_DEBUG_LOG (s1_detection.h).
-static bool ROUTING_DEBUG_LOG = true;
+static bool ROUTING_DEBUG_LOG = false;
 
 // Set to true to run exactly one packet per flow — useful for isolating
 // a single attack cycle in the logs without noise from retransmissions.
@@ -137,6 +137,14 @@ int attack_percentage = 0;
 // Set in main() after cmd.Parse() so parallel runs never collide on
 // optimization_link_lifetime_data.csv / link_lifetime_solution.csv.
 std::string g_sim_tag;
+// Ablation/run tag appended to EVERY output filename (--run_tag, default empty).
+// The simulator otherwise names files by (attack, pct, delay, seed) only, so two
+// ablation configurations sharing those four values overwrite each other and
+// cannot run concurrently -- run_q1q6_ablation.py works around this with one
+// sequential lane per attack plus an immediate rename after each run. With a run
+// tag the names are unique at the source, so configurations can run in parallel
+// and no rename is needed. Empty by default: existing filenames are unchanged.
+std::string g_run_tag = "";
 // Suffix appended to every result CSV filename to encode the delay used,
 // e.g. "_d80ms". Set in main() after cmd.Parse() from attack_delay_ms.
 std::string g_delay_suffix;
@@ -114660,6 +114668,61 @@ bool is_malicious_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 // Set to true when your detection logic fires for that variant/node
 bool is_detected_node[NUM_ATTACK_VARIANTS][total_size] = {{false}};
 
+// Detection SOURCE attribution (added 2026-08-06, supervisor Fix 5).
+// is_detected_node[][] records THAT a node was flagged but not BY WHAT, so a
+// signature detection and a trust-decay quarantine side-effect are
+// indistinguishable in the confusion matrix. That ambiguity is what made the
+// Q4 analysis contestable: TP+FP matched the TRUST-QUARANTINE count exactly on
+// 7 of 8 variants, but the counters alone could not say which caller of
+// trust_update_negative() was responsible. With this tag, every Q-config's
+// TP/FP can be broken down per component and the per-component MCC table
+// becomes meaningful.
+//
+// Bit-set, not a scalar: a node can legitimately be flagged by more than one
+// component in the same run (e.g. S7 and the witness both firing on A7), and
+// collapsing that to "first writer wins" would under-report the others.
+enum DetectionSource : uint16_t {
+    DSRC_NONE        = 0,
+    DSRC_RULE_S1     = 1u << 0,
+    DSRC_RULE_S2     = 1u << 1,
+    DSRC_RULE_S3     = 1u << 2,
+    DSRC_RULE_S4     = 1u << 3,
+    DSRC_RULE_S5     = 1u << 4,
+    DSRC_RULE_S6     = 1u << 5,
+    DSRC_RULE_S7     = 1u << 6,
+    DSRC_RULE_S8     = 1u << 7,
+    DSRC_LSTM        = 1u << 8,
+    DSRC_WITNESS_DA  = 1u << 9,   // α_w duplication alert (eq:dup_alert_cond)
+    DSRC_WITNESS_NFA = 1u << 10,  // β_w non-forwarding alert (eq:nfwd_detect)
+    DSRC_BTMM_PACKET = 1u << 11,  // per-packet trust decay (eq:trust_update)
+    DSRC_QUARANTINE  = 1u << 12,  // trust < T_min, caller not otherwise identified
+};
+uint16_t detection_source[NUM_ATTACK_VARIANTS][total_size] = {{0}};
+
+// Set by whichever path is about to call trust_update_negative(), so the
+// quarantine that may follow can be attributed to its real cause rather than
+// to the generic DSRC_QUARANTINE bucket. Reset to DSRC_NONE by the caller.
+uint16_t g_current_trust_source = DSRC_NONE;
+
+// Issue 5 fix (2026-08-02): event-gated ground truth for A1/A2 only.
+// is_malicious_node[0]/[1] above are static per-run identity flags (true for
+// the whole run for a designated attacker RSU, set once in
+// declare_attackers() before Simulator::Run() even starts) — they do NOT
+// reflect whether that node's poisoned delay has actually manifested on any
+// packet yet. calculate_security_detection_metrics() previously used
+// is_malicious_node directly, so every cycle before the first genuine
+// Δ_max-exceeding delay (including the whole pre-attack_start_time warm-up)
+// was scored as a false negative rather than a true negative, understating
+// DR and overstating FN for early cycles.
+// Latched true (never reset) the first time s1_detect_packet()/
+// s2_detect_packet() observes a safety-critical packet's delay genuinely
+// exceed the signature's own threshold (S1: adaptive δ̄+kσ; S2: fixed
+// Δ_max=50ms) for that sender node — independent of whether the detector's
+// OTHER conjuncts (selectivity/ZKP) also fired, i.e. "did the attack
+// actually manifest," not "did the detector catch it."
+bool g_s1_gt_delay_exceeded[total_size] = {false};
+bool g_s2_gt_delay_exceeded[total_size] = {false};
+
 // Which variant is active for this run (set at simulation start)
 // -1 means no attack (baseline run)
 int active_attack_variant = -1;
@@ -114839,7 +114902,18 @@ double   dp_attack_pct           = 0.0;    // CLI: --dp_attack_pct
 // (PAT - propagation_delay); the mismatch between what the node claims
 // and what physics implies is the signal TAP is designed to catch.
 //
-double t_claimed_packet[total_size][Flow_size+2];
+// Keyed by (node, flow, packet) — the flow dimension is REQUIRED, not optional.
+// packet_id is a PER-FLOW index bounded by Flow_size+2, so every flow reuses the
+// same ids 0..Flow_size+1. Without the flow dimension, node n's packet #5 on flow 0
+// and its packet #5 on flow 7 shared one slot; combined with the "stamp only if
+// still 0.0" guard at the forwarding site (first-write-wins, never cleared), the
+// second flow read a claim stamped seconds earlier. S2/S1/TAP then computed
+// hop_delay = now - (stale claim) and saw delays of 200ms-21s on perfectly benign
+// nodes. Measured on the 2026-08-08 Q1 run: 409 of 975 S2 triggers (42%) were this
+// artifact, and 52 of the 53 false-positive nodes had NO other trigger. Sized
+// 2*flows to match the flow_id domain used everywhere else (routing.cc:116729,
+// 117079 iterate flow_id < 2*flows); ~955 KB.
+double t_claimed_packet[total_size][2*flows][Flow_size+2];
 
 
 // node_local_time() — defined in crypto_layer.h (included below); forward
@@ -114861,9 +114935,25 @@ inline double node_local_time(uint32_t node);
 // TIME_REF_DELTA_ATTACK, M9) is genuinely wrong — eq:delay_updated's
 // "t_send anchored to T_ref(t)" only has something to correct if the claim
 // itself can disagree with ground truth (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
-inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
+// flow_id is bounded here rather than at the call sites: crypto_log_event() shows
+// sentinel flow ids (UINT32_MAX) reaching neighbouring code paths, so an unguarded
+// index would be an out-of-bounds write into adjacent globals.
+inline void record_claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
 {
-    t_claimed_packet[node][packet_id] = node_local_time(node);
+    if (node >= (uint32_t)total_size) return;
+    if (flow_id >= (uint32_t)(2*flows)) return;
+    if (packet_id >= (uint32_t)(Flow_size + 2)) return;
+    t_claimed_packet[node][flow_id][packet_id] = node_local_time(node);
+}
+
+// Single read accessor so every consumer (S1/S2/TAP/LRAD) applies identical bounds
+// checks and returns the same 0.0 "no claim recorded" sentinel they already test for.
+inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
+{
+    if (node >= (uint32_t)total_size) return 0.0;
+    if (flow_id >= (uint32_t)(2*flows)) return 0.0;
+    if (packet_id >= (uint32_t)(Flow_size + 2)) return 0.0;
+    return t_claimed_packet[node][flow_id][packet_id];
 }
 
 // Detection functions and the array they read (t_claimed_packet):
@@ -114879,6 +114969,10 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t packet_id)
 // explicitly requires "all eight attack variants operate simultaneously" —
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
+bool enable_netanim = false;   // master enable for NetAnim trace output (routing.xml) — off by
+                                // default since every run builds a full per-run trace file
+                                // (hundreds of MB for a real simTime); opt in only for the runs
+                                // that actually need a NetAnim video/screenshot.
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
 // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
 bool passive_hf_malicious_nodes[total_size] = {false};
@@ -115008,7 +115102,7 @@ void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
 #include "attack_declaration.h"
-void record_detection_event(int v, int n); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
+void record_detection_event(int v, int n, uint16_t src); // defined at ~line 115476; forward-declared so s1/s2 headers compile here
 void handoff_tracker_cycle_update(); // defined after lrad.h (needs lookup_vehicle_associated_rsu_local_idx); forward-declared so calculate_performance_evaluation_metrics() can schedule it
 #include "handoff_tracker.h"        // Per-vehicle serving-RSU handoff detection (mobility amplification fix §4.1)
 #include "s1_detection.h"           // S1 (CP) MOBIGUARD detection — Signature S1, Eq. 3.4
@@ -115033,6 +115127,33 @@ inline void hf_init_attack7_cp(uint32_t flow_id, uint32_t test_rsu_node, uint32_
 inline void hf_init_attack8_dp(uint32_t flow_id, uint32_t test_rsu_node, uint32_t test_eavesdropper);
 inline bool hf_delta_entry_active(uint32_t flow_id, uint32_t rsu_node, uint32_t eavesdropper_node);
 inline uint32_t hf_resolve_eavesdropper(uint32_t rsu_node);
+// Forward declaration -- real definition in lrad.h (included after
+// check_delivery_and_retransmit, same "declare early / define via later
+// header" pattern as hf_resolve_eavesdropper above).
+inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
+
+// Supervisor review fix (2026-08-03): per-RSU HF ground-truth counters
+// (g_lstm_hf_sendgt_count, g_lstm_ranom_count) are only ever READ by
+// lstm_log_rsu_cycle() via RSU-indexed keys (map[N_Vehicles + r]). For A6/A8
+// (DP variants), the attacker chosen by hf_declare_malicious_rsus() can be a
+// VEHICLE relay, not an RSU (on_path_nodes includes "RSUs + intermediate
+// vehicle relays" for DP -- see hf_attack_helper.h). Incrementing these maps
+// under a vehicle's own node index silently orphans the entry -- never read
+// by any RSU's CSV row -- so A6/A8 ground truth was firing zero times
+// whenever the attacker happened to be a vehicle relay rather than an RSU.
+// Attributes to the RSU with the strongest current DSRC link to that
+// vehicle (the RSU whose zone currently observes/covers it), matching how a
+// real IDS would only see this evidence via the covering RSU's vantage
+// point. Returns UINT32_MAX if no RSU is currently in range -- correctly no
+// ground truth fires anywhere in that case, since no RSU actually observes
+// the attacking vehicle at that instant.
+inline uint32_t hf_gt_attribution_node(uint32_t node)
+{
+    if (node >= (uint32_t)N_Vehicles) return node; // already an RSU node id
+    uint32_t rsu_local = lookup_vehicle_associated_rsu_local_idx(node);
+    if (rsu_local >= (uint32_t)N_RSUs) return UINT32_MAX; // no RSU in range
+    return (uint32_t)N_Vehicles + rsu_local;
+}
 void initialise_stub_attack_state()
 {
     // Demonstration ground-truth for variant 4 (Active Hidden Forwarding
@@ -115262,9 +115383,13 @@ void record_attack_onset(int v, int n)
 }
 
 // Call when detection/quarantine fires — v=variant(0-7), n=node index
-void record_detection_event(int v, int n)
+// src: which component decided this (supervisor Fix 5). Defaults to
+// DSRC_QUARANTINE so the trust-decay path, which has no single owning
+// signature, still lands in a named bucket rather than an unlabelled one.
+void record_detection_event(int v, int n, uint16_t src)
 {
 	is_detected_node[v][n] = true;
+	detection_source[v][n] |= src;
 	t_quarantine[n] = Simulator::Now().GetSeconds();
 }
 
@@ -117269,7 +117394,18 @@ void calculate_security_detection_metrics()
 
         for (int n = 0; n < active_topology_nodes; n++)
         {
+            // Issue 5 fix (2026-08-02): for A1 (v==0)/A2 (v==1), AND the
+            // static attacker-identity flag with the event-gated "has this
+            // node's delay actually exceeded the signature's threshold at
+            // least once" latch, so pre-first-exceedance cycles (including
+            // the whole pre-attack_start_time warm-up) score as true
+            // negatives rather than false negatives. Other variants (A3-A8)
+            // already have event-driven ground truth (FlowMod issuance /
+            // first attacker packet / unauthorized-FlowMod checks — see
+            // their own ground-truth wiring) and are unaffected.
             bool malicious = is_malicious_node[v][n];
+            if (v == 0) malicious = malicious && g_s1_gt_delay_exceeded[n];
+            else if (v == 1) malicious = malicious && g_s2_gt_delay_exceeded[n];
             bool detected  = is_detected_node[v][n];
 
             if (malicious  && detected)  sec_TP[v]++;
@@ -117321,6 +117457,41 @@ void calculate_security_detection_metrics()
                   << " TP=" << sec_TP[v] << " FP=" << sec_FP[v]
                   << " TN=" << sec_TN[v] << " FN=" << sec_FN[v]
                   << std::endl;
+
+        // Per-source TP/FP breakdown (supervisor Fix 5). Emitted only for the
+        // variant actually under test, and only once it has any detections, to
+        // keep the per-cycle log readable. Without this, a Q-config's TP/FP
+        // cannot be split between a genuine signature firing and a trust-decay
+        // quarantine side-effect — the ambiguity that made Q4 contestable.
+        if (v == active_attack_variant && (sec_TP[v] + sec_FP[v]) > 0)
+        {
+            static const struct { uint16_t bit; const char* name; } kSources[] = {
+                {DSRC_RULE_S1,     "S1"},     {DSRC_RULE_S2,     "S2"},
+                {DSRC_RULE_S3,     "S3"},     {DSRC_RULE_S4,     "S4"},
+                {DSRC_RULE_S5,     "S5"},     {DSRC_RULE_S6,     "S6"},
+                {DSRC_RULE_S7,     "S7"},     {DSRC_RULE_S8,     "S8"},
+                {DSRC_LSTM,        "LSTM"},   {DSRC_WITNESS_DA,  "witness_DA"},
+                {DSRC_WITNESS_NFA, "witness_NFA"},
+                {DSRC_BTMM_PACKET, "btmm_packet"},
+                {DSRC_QUARANTINE,  "quarantine_unattributed"},
+            };
+            std::cout << "[SECURITY-SRC] Variant " << v << " |";
+            for (auto& s : kSources)
+            {
+                uint32_t tp_s = 0, fp_s = 0;
+                for (int n = 0; n < active_topology_nodes; n++)
+                {
+                    if (!(detection_source[v][n] & s.bit)) continue;
+                    bool mal = is_malicious_node[v][n];
+                    if (v == 0) mal = mal && g_s1_gt_delay_exceeded[n];
+                    else if (v == 1) mal = mal && g_s2_gt_delay_exceeded[n];
+                    if (mal) tp_s++; else fp_s++;
+                }
+                if (tp_s || fp_s)
+                    std::cout << " " << s.name << "(TP=" << tp_s << ",FP=" << fp_s << ")";
+            }
+            std::cout << std::endl;
+        }
     }
 }
 
@@ -117568,6 +117739,22 @@ void calculate_witness_wapr_metric()
               << " FN_W=" << g_witness_FN_W
               << " P_W=" << 100.0 * current_WAP_precision << "%"
               << " R_W=" << 100.0 * current_WAP_recall << "%" << std::endl;
+
+    // eq:local_quarantine observability. Printed only when the mechanism is
+    // enabled, so the default build's log is unchanged. mean_hold is the mean
+    // deferral actually applied per suspended packet — the quantity that says
+    // whether HOLD_FORWARD has any material effect on delivery, which is the
+    // open question the with/without arms exist to answer.
+    if (enable_local_quarantine) {
+        double mean_hold = (g_fwd_suspended_pkts > 0)
+                         ? (g_fwd_suspended_time_sum / (double)g_fwd_suspended_pkts) : 0.0;
+        std::cout << "[SECURITY] HOLD-FORWARD: holds=" << g_fwd_hold_events
+                  << " suspended_pkts=" << g_fwd_suspended_pkts
+                  << " mean_hold_ms=" << mean_hold * 1000.0
+                  << " released_confirm=" << g_fwd_release_confirm
+                  << " released_timeout=" << g_fwd_release_timeout
+                  << " T_hold=" << T_HOLD << "s" << std::endl;
+    }
 }
 
 // Single canonical TCAM capacity constant — every check that reads
@@ -117596,6 +117783,9 @@ int TCAM_CAPACITY = 1500;  // 2026-07-17: production capacity. Floor of the cite
                            // captures the full stealthy-climb -> exhaustion lifecycle.
 #include "tcam_detection.h"
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
+#include "detector_windows.h"        // M1 per-window grid (detector_windows.csv).
+                                     // AFTER lstm_logger.h: reuses lstm_rsu_ground_truth_label().
+                                     // BEFORE lrad.h: supplies its dw_mark_obu/dw_mark_rsu hooks.
                                      // g_slowpath_hit_count extern'd inside header;
                                      // defined below at line ~120273 in this file.
 
@@ -117639,48 +117829,15 @@ void write_security_metrics_csv()
 
 	int selected_variant = (active_attack_variant >= 0) ? active_attack_variant : 0;
 
-	int attack_id = 1;
-	switch (active_attack_variant)
-	{
-		case (-1):
-			filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_baseline.csv";
-			break;
-		case (0):
-			attack_id = 1;
-			break;
-		case (1):
-			attack_id = 2;
-			break;
-		case (2):
-			attack_id = 3;
-			break;
-		case (3):
-			attack_id = 4;
-			break;
-		case (4):
-			attack_id = 5;
-			break;
-		case (5):
-			attack_id = 6;
-			break;
-		case (6):
-			attack_id = 7;
-			break;
-		case (7):
-			attack_id = 8;
-			break;
-		default:
-			attack_id = 1;
-			break;
-	}
-
-	if (active_attack_variant != -1)
-	{
-		filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
-		           + to_string(attack_id)
-		           + "_" + to_string(attack_percentage)
-		           + g_delay_suffix + ".csv";
-	}
+	// Baseline (-1) folded into the same Attack0 shape everything else
+	// uses (bc_run_suffix(), g_sim_tag), rather than a separate
+	// "MOBIGUARD_baseline_*.csv" filename.
+	int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+	filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/MOBIGUARD_Attack"
+	           + to_string(attack_id)
+	           + "_" + to_string(attack_percentage)
+	           + g_delay_suffix + "_seed" + to_string(sim_seed)
+	           + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv";
 
 	fout.open(filename, ios::out|ios::app);
 
@@ -117721,14 +117878,21 @@ void write_security_metrics_csv()
 		tcam_metrics = ComputeTcamDetection(
 			N_Vehicles, N_RSUs,
 			10.0,              // lambda_fm_thresh — initial estimate (FlowMod rate not benign-logged)
-			15.0,              // lambda_pi_thresh — initial estimate (benign lambda_PI all zero)
-			0.213,             // tcam_util_thresh — S4 OCCUPANCY gate. Recalibrated 2026-07-20 on the
-			                   // post-07-16 benign baseline (cap=1500) using the PAPER'S rule: benign
-			                   // 99th percentile (FPR <= 1% budget per signal), same method as S1/S3.
-			                   // benign util p99=0.213 (max=0.289); attacked RSUs saturate to 1.0 ->
-			                   // 0.213 gives ~91% TPR at ~1% benign FPR. (A stricter 0.30 = benign max
-			                   // would give ~88% TPR at 0% FPR but departs from the p99 methodology.)
-			                   // Replaces the stale 0.054688 (a different pre-arch util measure).
+			68.0,              // lambda_pi_thresh — benign p99 (rule_calibrator.py Step 5, 2026-08-08),
+			                   // benign exceedance at p99 = 0.98%. Supersedes the 15.0 placeholder, whose
+			                   // comment ("benign lambda_PI all zero") described the pre-fix logging bug,
+			                   // not the signal: λ_PI is now logged and has a real distribution.
+			                   // INERT — ComputeTcamDetection (void)-casts this parameter; S4 fires on
+			                   // occupancy alone (see the eq:rule_s4 DEVIATION note in tcam_detection.h).
+			                   // Kept in sync with calibrated_params.json so the code and the calibration
+			                   // record agree if S4 is ever restored to the paper's rate-based conjunct.
+			0.216667,          // tcam_util_thresh — S4 OCCUPANCY gate. Recalibrated 2026-08-08 on
+			                   // lambda_PI-fixed benign data (seeds 1-3, 120s) using the PAPER'S rule:
+			                   // benign 99th percentile (FPR <= 1% budget per signal), same method as
+			                   // S1/S3 (rule_calibrator.py Step 5). benign util p99=0.216667
+			                   // (max=0.576667), benign exceedance at p99 = 0.99%.
+			                   // Supersedes the 2026-07-20 value (0.213, pre-07-16 baseline) — close
+			                   // numerically but recomputed on current, corrected traffic data.
 			                   // *** FLAGGED deviation from paper eq:rule_s4 (rate-alone): S4 is util-driven
 			                   // here -- see the DEVIATION note in ComputeTcamDetection (tcam_detection.h). ***
 			rho_per_rsu
@@ -117819,7 +117983,7 @@ void write_security_metrics_csv()
 // ============================================================
 // FADE per-cycle CSV writer. Mirrors write_security_metrics_csv() so FADE
 // output files share the SAME shape: one file per scenario
-// (FADE_baseline.csv / FADE_AttackN_PCT.csv), one row per cycle. The MOBIGUARD
+// (FADE_AttackN_PCT_seedS.csv, Attack0 for baseline), one row per cycle. The MOBIGUARD
 // columns are reproduced position-for-position; cur_PIR and avg_PIR are appended
 // as two trailing columns. FADE has no mitigation stage so those two columns
 // are always 0 (kept for positional compatibility).
@@ -117854,36 +118018,20 @@ void fade_write_per_cycle_csv(std::string dir)
 		if (cycle < 1.0)
 			cycle = 1.0;
 
-		int attack_id = 1;
-		switch (active_attack_variant)
-		{
-			case (-1): break;
-			case (0): attack_id = 1; break;
-			case (1): attack_id = 2; break;
-			case (2): attack_id = 3; break;
-			case (3): attack_id = 4; break;
-			case (4): attack_id = 5; break;
-			case (5): attack_id = 6; break;
-			case (6): attack_id = 7; break;
-			case (7): attack_id = 8; break;
-			default:  attack_id = 1; break;
-		}
-
-		if (active_attack_variant == -1)
-		{
-			filename = dir + "FADE_baseline.csv";
-		}
-		else
-		{
-			int pct = 0;
-			if      (attack_percentage <= 0)   pct = 0;
-			else if (attack_percentage <= 20)  pct = 20;
-			else if (attack_percentage <= 40)  pct = 40;
-			else if (attack_percentage <= 60)  pct = 60;
-			else if (attack_percentage <= 80)  pct = 80;
-			else                               pct = 100;
-			filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + ".csv";
-		}
+		// Baseline (-1) folded into the same Attack0 shape everything else
+		// uses, rather than a separate "FADE_baseline_*.csv" filename.
+		// attack_percentage is 0 for a baseline run, so the bucketing below
+		// naturally lands on pct=0 without any special-casing needed.
+		int attack_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+		int pct = 0;
+		if      (attack_percentage <= 0)   pct = 0;
+		else if (attack_percentage <= 20)  pct = 20;
+		else if (attack_percentage <= 40)  pct = 40;
+		else if (attack_percentage <= 60)  pct = 60;
+		else if (attack_percentage <= 80)  pct = 80;
+		else                               pct = 100;
+		filename = dir + "FADE_Attack" + to_string(attack_id) + "_" + to_string(pct) + g_delay_suffix + "_seed" + to_string(sim_seed)
+		           + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv";
 
 		uint32_t tp = 0, fp = 0, tn = 0, fn = 0;
 		for (auto &entry : fade_flow_config)
@@ -117994,7 +118142,10 @@ void fade_write_per_cycle_csv(std::string dir)
 			pp_level_fn = pp_fn_global;
 		}
 
-		std::string filename = dir + "routing_fade_per_cycle.csv";
+		// Tagged with g_sim_tag: this file previously had no attack/pct/seed
+		// tag at all, so every concurrent run of any attack/pct/seed appended
+		// to the identical shared file.
+		std::string filename = dir + "routing_fade_per_cycle" + g_sim_tag + ".csv";
 		std::fstream fout;
 		fout.open(filename, std::ios::out | std::ios::app);
 		fout << cycle_id << ", "
@@ -118113,6 +118264,8 @@ void calculate_performance_evaluation_metrics()
 		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
 	}
+	// M1 window grid: snapshot this cycle's OBU/RSU decisions + ground truth.
+	dw_end_cycle();
 	// [density-logging] flush this cycle's rows so data survives any exit path.
 	if (g_rsu_density_csv.is_open()) g_rsu_density_csv.flush();
 	// Resolve the results directory dynamically using the user or HOME environment variable
@@ -120913,6 +121066,14 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 extern int g_tcam_rule_count[300];
 int g_slowpath_hit_count[300] = {0}; // satisfies the extern in lstm_logger.h
 int g_packetin_count[300] = {0}; // satisfies the extern in tcam_detection.h (PACKET_IN/table-miss rate source for S4 λ_PI)
+// Issue 6 fix (2026-08-02): per-(RSU, source vehicle) PACKET_IN counts,
+// cumulative -- [rsu_node_id][src_vehicle_node_id] -> count. g_packetin_count
+// above only tracks the RSU-level total, which cannot support the paper's
+// v_atk = argmax_v λ_PI(v,r,t) attacker attribution (eq:s4_attribution) --
+// see tcam_detection.h for the windowed per-source rate and argmax that
+// consume this. Populated at every g_packetin_count[...]++ site (this file
+// and tcam_attack_helper.h) with the source vehicle available at that site.
+std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
 // Fixed controller round-trip delay applied when TCAM is at or above capacity.
 // This is a step function: 0ms when the RSU still has free TCAM slots
 // (packet matched immediately), TCAM_SLOWPATH_S when the table is full
@@ -121146,6 +121307,8 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    total_tx_delay += tcam_slowpath_s;
 						    g_slowpath_hit_count[current_hop]++;
 						    g_packetin_count[current_hop]++;  // full-table miss is also a PACKET_IN (eq:sig_s4 λ_PI)
+						    // Issue 6 fix: attribute this PACKET_IN to its source vehicle.
+						    g_packetin_by_source[current_hop][(delta_at_nodes_inst+flow_id)->source_f]++;
 						    std::cout << "[TCAM-SLOWPATH] RSU " << current_hop
 						              << " rules=" << g_tcam_rule_count[current_hop]
 						              << "/" << TCAM_CAPACITY
@@ -121160,7 +121323,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// report the delay it is about to introduce, so this timestamp
 						// must NOT be deferred to total_tx_delay the way the actual send
 						// timestamp below is.
-						record_claimed_forward_timestamp(current_hop, packet_id);
+						record_claimed_forward_timestamp(current_hop, flow_id, packet_id);
 						// S2-partial HMAC tag: same reasoning — stamp pre-delay so
 						// lrad_s2_partial_check() sees (t_recv - t_stamp) = attack_delay + propagation.
 						lrad_hmac_tag_packet(current_hop, packet_id, packet_id);
@@ -121236,6 +121399,18 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    // scheduled copy (matches the passive-HF block bookkeeping).
 						    g_hdup_intentional = true;
 						    g_total_copies_scheduled++;
+						    // HF ground-truth (Issue 1 fix): fires at send/scheduling time,
+						    // independent of r_anom's receive-side counter -- see
+						    // g_lstm_hf_sendgt_count's declaration (crypto_layer.h).
+						    // current_hop can be a vehicle relay for A6 (DP) -- attribute to
+						    // its covering RSU (hf_gt_attribution_node), not the vehicle's
+						    // own index, which no RSU's CSV row ever reads (supervisor
+						    // review fix, 2026-08-03).
+						    {
+						        uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
+						        if (_hf_gt_node != UINT32_MAX)
+						            g_lstm_hf_sendgt_count[_hf_gt_node]++;
+						    }
 						    // eFADE: count the hidden duplicate as an extra forward event at
 						    // scheduling time so it lands in the same epoch as the legitimate
 						    // forward already counted above (~line 120833). Together that's
@@ -121285,6 +121460,14 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             // MacRx can distinguish it from ambient Wi-Fi overhear.
                             g_hdup_intentional    = true;
                             g_total_copies_scheduled++;   // PIR FIX: track scheduled copies
+                            // HF ground-truth (Issue 1 fix) -- see active-HF block above.
+                            // current_hop can be a vehicle relay for A8 (DP) -- same
+                            // covering-RSU attribution fix (supervisor review, 2026-08-03).
+                            {
+                                uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
+                                if (_hf_gt_node != UINT32_MAX)
+                                    g_lstm_hf_sendgt_count[_hf_gt_node]++;
+                            }
                             // eFADE: count the hidden duplicate as an extra forward event
                             // (see the active-HF block above for the full explanation —
                             // count-based tracking no longer needs the marker-stripping or
@@ -121302,7 +121485,15 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    <<" at t="<<Now().GetSeconds()<<endl;
 						// Record hit: install on first forward, then increment counters.
 						tcam_hit(current_hop, flow_id, (uint32_t)arguments.p_size);
-						Simulator::Schedule (Seconds(total_tx_delay), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
+						// eq:local_quarantine / HOLD_FORWARD — if this node's OBU flagged
+						// this flow (D_OBU=1) and the RSU has not yet confirmed, suspend
+						// the forward for the remainder of the hold window. Returns 0.0
+						// when the mechanism is disabled (the default), when the hold has
+						// been released by RSU.Confirm, when T_hold has expired, or when
+						// the flow does not match the flagged signature — so the default
+						// build is bit-identical to before this change.
+						double _hold_defer = fwd_hold_remaining(current_hop, flow_id);
+						Simulator::Schedule (Seconds(total_tx_delay + _hold_defer), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
 						bool apply_attack_delay = (total_tx_delay > 0.0);   
 						double retry_delay = tg + 0.000100 + rand_delay;
@@ -121607,13 +121798,40 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     // cycle — the intended signal for detecting A7/A8 via the
                     // federated LSTM. Attributed to prev_sender (the malicious
                     // forwarder), which is the is_malicious_node-labelled RSU.
-                    g_lstm_stark_counts[prev_sender].second++;
-                    g_lstm_pkt_counts[prev_sender]++;
-                    // R_anom (eq:feat_ranom): this unauthorized reception is
-                    // exactly the "H(p) received at unauthorized destination"
-                    // event the equation counts -- attribute it to the
-                    // malicious forwarder, same as the hop-fail counter above.
-                    g_lstm_ranom_count[prev_sender]++;
+                    //
+                    // Supervisor review fix (2026-08-03): prev_sender can be a
+                    // VEHICLE relay for A8 (DP) -- hf_declare_malicious_rsus()
+                    // includes vehicle relays in the DP compromise pool. All
+                    // three counters below are only ever read by
+                    // lstm_log_rsu_cycle() via RSU-indexed keys, so a
+                    // vehicle-indexed increment was silently orphaned (never
+                    // surfacing in any RSU's CSV row) for vehicle-attacker A8
+                    // runs -- same root cause as the hf_send_gt fix above.
+                    // Attribute to the covering RSU instead of prev_sender
+                    // directly; skip (UINT32_MAX) if no RSU is in range.
+                    {
+                    uint32_t _lstm_gt_node = hf_gt_attribution_node(prev_sender);
+                    if (_lstm_gt_node != UINT32_MAX)
+                    {
+                        g_lstm_stark_counts[_lstm_gt_node].second++;
+                        g_lstm_pkt_counts[_lstm_gt_node]++;
+                        // R_anom (eq:feat_ranom): this unauthorized reception is
+                        // exactly the "H(p) received at unauthorized destination"
+                        // event the equation counts -- attribute it to the
+                        // malicious forwarder's covering RSU, same as above.
+                        g_lstm_ranom_count[_lstm_gt_node]++;
+                    }
+                    }
+                    // D_div/A_tp (eq:feat_ddiv, eq:feat_atp): this is an
+                    // additional (unauthorized) delivery of flow 0's packet to
+                    // a destination beyond destination_f -- the counterpart to
+                    // g_lstm_flow0_legit_count's fid==0 gate below. Was never
+                    // wired up despite the counters existing (2026-07-28), so
+                    // D_div/A_tp silently defaulted to 1.0 every cycle.
+                    if (fid == 0) {
+                        g_lstm_flow0_dest_set.insert(current_hop);
+                        g_lstm_flow0_total_delivery_count++;
+                    }
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -121672,10 +121890,24 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         // the malicious RSU. Populate its LSTM hop-fail counter so
                         // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal
                         // for detecting A5/A6 via the federated LSTM.
-                        g_lstm_stark_counts[prev_sender].second++;
-                        g_lstm_pkt_counts[prev_sender]++;
-                        // R_anom (eq:feat_ranom) -- see passive-HF block above.
-                        g_lstm_ranom_count[prev_sender]++;
+                        // Supervisor review fix (2026-08-03): prev_sender can be a
+                        // VEHICLE relay for A6 (DP) -- same covering-RSU
+                        // attribution as the passive-HF block above.
+                        {
+                        uint32_t _lstm_gt_node = hf_gt_attribution_node(prev_sender);
+                        if (_lstm_gt_node != UINT32_MAX)
+                        {
+                            g_lstm_stark_counts[_lstm_gt_node].second++;
+                            g_lstm_pkt_counts[_lstm_gt_node]++;
+                            // R_anom (eq:feat_ranom) -- see passive-HF block above.
+                            g_lstm_ranom_count[_lstm_gt_node]++;
+                        }
+                        }
+                        // D_div/A_tp -- see passive-HF block above.
+                        if (fid == 0) {
+                            g_lstm_flow0_dest_set.insert(current_hop);
+                            g_lstm_flow0_total_delivery_count++;
+                        }
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {
@@ -121704,8 +121936,15 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 				// final-destination delivery event. See g_lstm_flow0_legit_count's
 				// declaration (crypto_layer.h) for why this dedicated counter
 				// exists instead of reusing fade_received_count directly.
-				if (fid == 0 && current_hop == destination)
+				if (fid == 0 && current_hop == destination) {
 					g_lstm_flow0_legit_count++;
+					// D_div/A_tp: the legitimate final-destination delivery
+					// counts as one delivery event to one destination -- was
+					// never wired up (see the two HF receive blocks above),
+					// so both features silently defaulted to 1.0 every cycle.
+					g_lstm_flow0_dest_set.insert(current_hop);
+					g_lstm_flow0_total_delivery_count++;
+				}
 
 				// S6: log this delivery for cross-destination duplication detection.
 				// Uses (fid & 0xFFFFu) as key so the legitimate copy (clean fid) and
@@ -121736,7 +121975,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					crypto_log_event("stark_hop", prev_sender, packet_ID, fid, _t_hop, hop_ok);
 					// Timing ok: compare claimed forward timestamp against S2 threshold
 					double t_fwd_claimed = (prev_sender < (uint32_t)total_size)
-					                       ? t_claimed_packet[prev_sender][packet_ID] : 0.0;
+					                       ? claimed_forward_timestamp(prev_sender, fid, packet_ID) : 0.0;
 					// eq:delay_updated — anchor the sender's claim using its own known
 					// clock offset (node_clock_offset), so a Byzantine-compromised
 					// sender (M9 TIME_REF_F_BAD/TIME_REF_DELTA_ATTACK) cannot hide a
@@ -121778,10 +122017,20 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						// §BTMM — per-packet trust update (Algorithm BTMM, eq:trust_update).
 						// b_batch = sig_ok ∧ g_batch_passed (eq:batch_challenge);
 						// sig_ok gate excludes overheard broadcast packets.
-						if (hop_ok && timing_ok && g_batch_passed)
-							trust_update_positive(prev_sender);
-						else
-							trust_update_negative(prev_sender);
+						// g_disable_btmm_trust: diagnostic ablation gate — see its
+						// declaration in crypto_layer.h for why this branch needed
+						// one of its own (it reached the confusion matrix in every
+						// Q1-Q6 config, including the ones claiming to isolate
+						// something else).
+						if (!g_disable_btmm_trust) {
+							if (hop_ok && timing_ok && g_batch_passed)
+								trust_update_positive(prev_sender);
+							else {
+								g_current_trust_source = DSRC_BTMM_PACKET;
+								trust_update_negative(prev_sender);
+								g_current_trust_source = DSRC_NONE;
+							}
+						}
 					}
 				}
 				// === END ML-DSA-87 VERIFY + STARK HOP PROOF ===
@@ -121797,8 +122046,34 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// Only fire duplication alert during HF attack variants (S5-S8).
 					// Flow destinations change during routing updates causing false positives
 					// in non-HF scenarios.
+					uint32_t _dup_prev_dst = UINT32_MAX;
+					double   _dup_age      = -1.0;
 					if ((present_active_hf_attack || present_passive_hf_attack) &&
-					    witness_check_duplication(current_hop, pkt_hash, destination)) {
+					    witness_check_duplication(current_hop, pkt_hash, destination,
+					                              &_dup_prev_dst, &_dup_age)) {
+						// DIAGNOSTIC (2026-08-06): characterise eq:dup_alert_cond's
+						// false positives before redesigning the hash. Prints the two
+						// destinations that collided, how far apart in time, and whether
+						// the accused node is genuinely a hidden-forwarding attacker.
+						// The paper's justification for this condition is "under
+						// single-path routing, the same hash at two distinct
+						// destinations is impossible for legitimate traffic" — this
+						// line measures how often that precondition actually holds.
+						if (g_dup_diag_log) {
+							bool _gt_mal = (_w_prev < (uint32_t)total_size) &&
+							               (passive_hf_malicious_nodes[_w_prev] ||
+							                active_hf_malicious_nodes[_w_prev]);
+							std::cout << "[DUP-DIAG]"
+							          << " witness=" << current_hop
+							          << " accused=" << _w_prev
+							          << " gt_malicious=" << (_gt_mal ? 1 : 0)
+							          << " fid=" << fid
+							          << " pkt=" << packet_ID
+							          << " dst_now=" << destination
+							          << " dst_prev=" << _dup_prev_dst
+							          << " dt=" << _dup_age
+							          << " t=" << Now().GetSeconds() << std::endl;
+						}
 						witness_submit_duplication_alert(current_hop, _w_prev,
 						                                 packet_ID, fid, destination, current_hop);
 					}
@@ -121819,7 +122094,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						// delta_p anchored to T_ref per eq:time_consensus
 						double _t_claimed = (_prev < (uint32_t)total_size &&
 						                     packet_ID < (uint32_t)(Flow_size + 2))
-						                     ? t_claimed_packet[_prev][packet_ID] : 0.0;
+						                     ? claimed_forward_timestamp(_prev, fid, packet_ID) : 0.0;
 						// eq:delay_updated — anchor _prev's claim using its own known
 						// clock offset (was: "Now()-g_T_ref minus t_claimed-g_T_ref",
 						// which cancels g_T_ref algebraically and is a no-op; see
@@ -123865,8 +124140,8 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // Stamp t_claimed_packet so S1/S2/TAP detectors have a forwarding baseline.
     // Guard: skip if already stamped pre-delay by the vehicle attack path so
     // S2 hop_delay = attack_delay + propagation rather than propagation only.
-    if (t_claimed_packet[source][packet_ID] == 0.0)
-        record_claimed_forward_timestamp(source, packet_ID);
+    if (claimed_forward_timestamp(source, flow_id, packet_ID) == 0.0)
+        record_claimed_forward_timestamp(source, flow_id, packet_ID);
     // Guard: skip if already stamped pre-delay by the vehicle attack path.
     if (g_hmac_tags.find({source, packet_ID}) == g_hmac_tags.end())
         lrad_hmac_tag_packet(source, packet_ID, packet_ID);
@@ -124397,7 +124672,7 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						// records the post-delay timestamp inside routing_dsrc_data_unicast and
 						// both S2-full (t_claimed_packet) and S2-partial (HMAC ts) see only
 						// propagation delay, never triggering.
-						record_claimed_forward_timestamp(source, packet_id);
+						record_claimed_forward_timestamp(source, fid, packet_id);
 						lrad_hmac_tag_packet(source, packet_id, packet_id);
 
 						bool attacked = schedule_unified_selective_delay_attack(
@@ -141773,12 +142048,17 @@ int main(int argc, char *argv[])
                   "instead of MOBIGUARD S1-S8 (default 0=off). Pass alongside --enable_lrad_obu=0 "
                   "--enable_lrad_rsu=0 to disable MOBIGUARD's own signature detectors for a clean "
                   "TAP-only baseline run.", enable_tap);
-    
+    cmd.AddValue ("enable_netanim", "1 = write a NetAnim trace (routing<tag>.xml) for this run "
+                  "(default 0=off). Every run builds the full trace unconditionally when on -- "
+                  "hundreds of MB for a real simTime -- so leave off for sweeps and only enable "
+                  "for the specific single run you want to visualize.", enable_netanim);
+
     int attack_number_cli = -1; // sentinel: "not provided"
     cmd.AddValue("attack_number", "Top-level attack selector (1=CP, 2=DP, ...)", attack_number_cli);
 
     // Phase 1 / D1: Reproducibility.
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
+    cmd.AddValue("run_tag", "suffix appended to every output filename (e.g. Q6); lets ablation configs run concurrently without colliding", g_run_tag);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
@@ -142350,7 +142630,20 @@ int main(int argc, char *argv[])
 	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_60.tcl";
 	  		break;
 	  	case (150):
-	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150.tcl";
+	  		// Issue 4 fix (2026-08-02): previously a single fixed trace file
+	  		// reused for every --sim_seed, so "5 seeds" only varied the NS-3
+	  		// RNG, not the SUMO mobility realisation the proposal's 5-seed
+	  		// methodology is meant to capture (main.tex: each seed produces
+	  		// a distinct SUMO trace). mobility_urban_150_seed{1..5}.tcl are 5
+	  		// independently-generated SUMO runs (distinct randomTrips.py seeds
+	  		// per vehicle class + distinct sumo --seed; same osm.net.xml road
+	  		// network) -- see sumo_sim/seed{1..5}/ for the generation record.
+	  		// sim_seed outside 1-5 falls back to the original single trace.
+	  		if (sim_seed >= 1 && sim_seed <= 5)
+	  			trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150_seed"
+	  			           + std::to_string(sim_seed) + ".tcl";
+	  		else
+	  			trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_150.tcl";
 	  		break;
 	  	default:
 	  		break;
@@ -143689,16 +143982,23 @@ if (architecture == 3 && N_Vehicles > 0)
 			declare_attack_states();
 			declare_attackers();
 			lrad_reset_state(); // reset LRAD counters/queues each run (lrad.h in scope here)
+			dw_init();          // M1 window grid — clear per-cycle history
 
 			// Set unique tag for all per-run scratch-level CSV files AFTER
 			// declare_attack_states() has resolved active_attack_variant from
 			// either --attack_number (new path) or --active_attack_variant
 			// (legacy path). Using active_attack_variant means every variant —
 			// including those that never set attack_number — gets a distinct tag.
-			g_sim_tag = "_V" + std::to_string(active_attack_variant)
-			          + "_pct" + std::to_string(attack_percentage)
-			          + "_s" + std::to_string(sim_seed)
-			          + g_delay_suffix;
+			// 1-indexed to match MOBIGUARD/TAP/FADE/bc_* (id = variant+1, 0 for
+			// baseline) rather than the raw 0-indexed variant this used to carry.
+			{
+				int g_sim_tag_id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
+				g_sim_tag = "_Attack" + std::to_string(g_sim_tag_id)
+				          + "_" + std::to_string(attack_percentage)
+				          + g_delay_suffix
+				          + "_seed" + std::to_string(sim_seed)
+				          + (g_run_tag.empty() ? "" : "_" + g_run_tag);
+			}
 			
 			if (routing_test) {
 			    hardcode_test_network_attackers();
@@ -144068,14 +144368,22 @@ if (architecture == 3 && N_Vehicles > 0)
   Config::ConnectFailSafe("/NodeList/*/$ns3::Ipv4L3Protocol/Tx", MakeCallback (&Ipv4Tx));
   //Config::ConnectFailSafe("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/ns3::RegularWifiMac/DcaTxop/Queue/Dequeue",MakeCallback (&Dequeue)); 
   
-  AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml");  
+  // NetAnim trace is opt-in (enable_netanim, default off): it's a full per-run
+  // trace file that grows unbounded with simTime, so leaving it on for every
+  // sweep run would silently fill the disk. The path is tagged with g_sim_tag
+  // so that when it IS enabled, concurrent runs each get their own file instead
+  // of racing to write the same one.
+  if (enable_netanim)
+  {
+  std::string anim_path = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing" + g_sim_tag + ".xml";
+  AnimationInterface anim(anim_path);
   anim.SetMaxPktsPerTraceFile(0xFFFFFFFF); // unlimited
-  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation               
+  // NOTE: do NOT call anim.EnablePacketMetadata(true) here. This simulation
   // builds custom raw packets (manual WifiMacHeader + custom tags in the
   // ARCH 3 send path), and NetAnim's metadata parser cannot walk them — it
   // underflows the packet buffer and aborts (Buffer::Iterator::Prev assert).
   // NetAnim still animates packet movement fine without metadata.
-          
+
   if (N_RSUs > 0)
   {
 	  for (uint32_t i=0; i<RSU_Nodes.GetN() ; i++)
@@ -144086,7 +144394,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeDescription(RSU_Nodes.Get(i), "RSU-" + std::to_string(i+1));
 	  }
   }
-  
+
   if (N_Vehicles > 0)
   {
 	  for (uint32_t i=0; i<Vehicle_Nodes.GetN() ; i++)
@@ -144096,7 +144404,7 @@ if (architecture == 3 && N_Vehicles > 0)
 	  	anim.UpdateNodeSize(ni->GetId(),20.0,20.0);
 	  	anim.UpdateNodeDescription(Vehicle_Nodes.Get(i), "V-" + std::to_string(i+1));
 	  }
-	   
+
 	  if (architecture !=1)
 	  {
 		  for (uint32_t i=0; i<other_stationary_LTE_nodes.GetN() ; i++)
@@ -144107,7 +144415,7 @@ if (architecture == 3 && N_Vehicles > 0)
 		  }
 	  }
   }
-  
+
     if (architecture != 1)
     {
       // Color and label all N_Controllers controller nodes
@@ -144120,7 +144428,8 @@ if (architecture == 3 && N_Vehicles > 0)
             "CTRL-" + std::to_string(ci+1));
       }
     }
- 
+  } // enable_netanim
+
   //AnimationInterface anim("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/routing.xml"); 
   
   /*
@@ -144266,6 +144575,17 @@ if (fade_detection_active)
 // and is called once per data-gathering cycle — no post-simulation call needed.
 
   crypto_log_close();  // flush and close crypto_timing_log.csv
+  // M1: emit the per-window detector grid (metrics/m01_detection_quality.py).
+  // Tagged with attack number + percentage + seed so a sweep's runs do not
+  // overwrite one another, mirroring the MOBIGUARD_*.csv naming convention.
+  if (enable_detector_windows)
+  {
+      int _dw_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
+      dw_write_csv(lstm_make_base_dir() + "detector_windows_Attack" + std::to_string(_dw_v)
+                   + "_" + std::to_string(attack_percentage) + g_delay_suffix
+                   + "_seed" + std::to_string(sim_seed)
+                   + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
+  }
   Simulator::Destroy();
   
  

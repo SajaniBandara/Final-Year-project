@@ -156,7 +156,7 @@ The proposal (§Simulation settings) requires:
    ```
    δ̄(t) = δ₀ + α_ρ · ρ(t) + α_v · v̄(t)⁻¹
    ```
-   Data source: benign LSTM CSVs (`lstm_training/RSU_*/A0_pct0_seed*.csv`) — columns
+   Data source: benign LSTM CSVs (`lstm_training/RSU_*/Attack0_0_seed*.csv`) — columns
    `delta_t`, `rho`, `v_bar` are already in the output of `lstm_log_rsu_cycle()`.
 
 2. **β sweep** — run benign simulations at each β ∈ {0.7, 0.8, 0.9, 0.95}; select
@@ -402,7 +402,7 @@ destinations via blockchain-committed forwarding policy.
 Reads benign LSTM CSVs and calibrates the three rule-based parameters:
 
 ```python
-# Inputs: lstm_training/RSU_*/A0_pct0_seed*.csv
+# Inputs: lstm_training/RSU_*/Attack0_0_seed*.csv
 # Outputs: calibrated_params.json  { "delta0": ..., "alpha_rho": ..., "alpha_v": ...,
 #                                     "beta": ..., "k": ... }
 
@@ -431,7 +431,7 @@ double s1_beta      = <selected_beta>;
 ### 6.2 `lstm_pipeline/src/preprocessor.py` (Step 4)
 
 ```python
-# Inputs:  lstm_training/RSU_*/A{v}_pct{p}_seed{s}.csv
+# Inputs:  lstm_training/RSU_*/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 # Outputs: lstm_pipeline/data/processed/RSU_{id}/{train,val,test}.npz
 
 # 1. Load all CSVs per RSU

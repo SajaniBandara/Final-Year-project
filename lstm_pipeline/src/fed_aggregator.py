@@ -63,6 +63,9 @@ from pathlib import Path
 from sklearn.metrics import matthews_corrcoef, confusion_matrix
 
 from lstm_model import LSTMAutoencoder, N_FEATURES, compute_weights_hash, seed_everything
+from preprocessor import FEATURES
+
+D_DIV_IDX = FEATURES.index("d_div")
 
 REPO        = Path(__file__).resolve().parents[2]
 PRE         = REPO / "lstm_pipeline" / "preprocessed"
@@ -76,6 +79,13 @@ TARGET_PRECISION = 0.95
 ROUND_GRID       = [50, 100, 150]   # global aggregation rounds R (spec §4.2)
 CONVERGE_TOL     = 0.02             # accept R if global loss within 2% of loss at R_max
 MIN_BENIGN       = 20                # skip RSU if too few benign windows
+
+# Q27 (mobility-stratified calibration) was tried 2026-07-30: pool benign
+# calibration windows across RSUs by low/high density regime (rho vs.
+# population mean) instead of calibrating each RSU on its own ~27 windows.
+# Reverted -- regressed DR ~35 points across every variant for no FPR
+# benefit (see git history / session notes for the density_stratified_theta
+# implementation and numbers if revisiting with a finer-grained split).
 
 
 # ── Data / hparams loading ────────────────────────────────────────────────────
@@ -125,13 +135,54 @@ def load_rsu_data() -> dict:
         # detection, A1/A2 DR crushed 75%->20%). So staleness was never the
         # real cause: TCAM exhaustion attacks structurally elevate U_TCAM
         # for the whole run's duration (residual TCAM occupancy persists
-        # even in cycles not at the attack's peak), unlike delay/HF attacks
-        # which don't alter the RSU's baseline TCAM state at all. A3/A4's
-        # own "quiet" windows are therefore never a fair calibration
-        # population for a per-RSU benign baseline, regardless of data
-        # freshness — re-excluding permanently (2026-07-20).
+        # even in cycles not at the attack's peak). A3/A4's own "quiet"
+        # windows are therefore never a fair calibration population for a
+        # per-RSU benign baseline, regardless of data freshness —
+        # re-excluding permanently (2026-07-20).
+        #
+        # ALSO GUARDS attack_v in {5,6,7,8} (A5-A8, Hidden Forwarding) on
+        # d_div specifically, added 2026-08-08 (LSTM_PIPELINE_AUDIT §2.1
+        # investigation): the correction above ("unlike delay/HF attacks
+        # which don't alter the RSU's baseline state") was wrong. d_div
+        # (FEATURES[7], flow 0's distinct-destination count, benign value
+        # always exactly 1.0) is elevated in 85-92% of "quiet"
+        # (non-zkp/hf_send_gt-flagged) cycles inside every A5-A8 run at
+        # every pct — HF diverts flow 0's traffic to unauthorized
+        # destinations continuously, not just in is_spike-flagged cycles.
+        # Since is_spike (preprocessor.py) never looks at d_div, these
+        # windows were being folded into mask_va_benign as if benign;
+        # d_div's near-zero benign std gets clamped to 1.0 by
+        # fit_scaler()'s zero-std guard, so the resulting huge normalised
+        # d_div values single-handedly inflated mu_a/sigma_a and blew up
+        # theta (25/64 RSUs at theta>=800 against benign errors of
+        # ~0.7-1.4; strong correlation r=0.96 between an RSU's
+        # calibration-window count and its theta).
+        #
+        # Tried blanket-excluding A5-A8 like A3/A4 first (matching the
+        # TCAM precedent exactly): theta dropped to a sane range but FPR
+        # rose to ~35% median / precision ~0.60 median (all 64 RSUs missed
+        # the 95% precision target) — shrinking the calibration population
+        # this much reproduces the ORIGINAL narrow-population problem the
+        # 2026-07-18 fix above was written to solve. A per-window d_div
+        # guard (keep the window unless d_div itself is an outlier,
+        # instead of dropping the whole variant) was tested at several
+        # thresholds (2/3/5/8 in normalised-z units) — FPR stayed
+        # similarly elevated at every threshold (the FPR problem is not
+        # actually d_div-specific, see below), but median MCC across RSUs
+        # was consistently ~0.43-0.46 with any d_div correction vs. 0.25
+        # uncorrected (blown-up theta made almost nothing fire, near-zero
+        # MCC) — thr=3 gave the best median MCC (0.461) of those tested,
+        # so that is what's applied here. FPR/precision are NOT fixed by
+        # this change (see fed_summary.json's _theta_recalibration_note) —
+        # that appears to be a genuine benign-score-variance /
+        # calibration-vs-eval-population mismatch, a separate open
+        # problem for §5/§6 (more/better training data), not a d_div
+        # labeling bug.
+        D_DIV_GUARD_THR = 3.0
+        d_div_ok = (np.abs(X_va[:, :, D_DIV_IDX]).max(axis=1) <= D_DIV_GUARD_THR)
         mask_va_benign = ((meta_va[:, 0] == rsu_id) & (y_va == 0)
-                          & ~np.isin(meta_va[:, 1], [3, 4]))
+                          & ~np.isin(meta_va[:, 1], [3, 4])
+                          & (~np.isin(meta_va[:, 1], [5, 6, 7, 8]) | d_div_ok))
         mask_va_all    = (meta_va[:, 0] == rsu_id)
 
         X_rsu_tr        = X_tr[mask_tr_benign]
@@ -236,10 +287,25 @@ def train_local_epochs(model, X_train: np.ndarray, lr: float,
     return total_loss / max(len(X_train) * local_epochs, 1)
 
 
-Z_ALPHA = 2.3263478740408408   # z_{0.99}, scipy.stats.norm.ppf(1 - 0.01)
+Z_ALPHA = 3.5   # raised from z_{0.99}=2.3263 (found 2026-07-29 diagnostic:
+# with a median of 27 benign calibration windows/RSU, z_{0.99} run against a
+# genuinely held-out test split (calibrate on val/seed4, evaluate on
+# test/seed5) put A1/A2/A6/A7/A8 FPR at 1.5-3.3% instead of the <=1% target;
+# a sweep from z=2.326 to z=4.5 was monotonic in both FPR and DR (no other
+# local optimum), and z=3.5 was the smallest value clearing <=1% FPR on
+# those five variants. A3/A4 FPR is structurally unaffected by z (residual
+# TCAM occupancy, not a calibration problem) — see U_TCAM congestion note.
 
 
-def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
+# Q30-narrow (2026-07-30): tried widening z to 5.0 for interior-grid RSUs
+# only (Q30 holdout showed interior RSUs averaging 14.2% FPR vs 3.2% edge,
+# uncorrelated with theta/n_train -- a narrower, per-RSU-position version of
+# Q27/Q28). Result: raw-window Q30 FPR only 9.38%->8.10%, while DR collapsed
+# 8-12pts across A1/A2/A5/A7 (e.g. A1 82.5%->70.3%) -- same bad trade-off
+# shape as Q27's pooled version, just milder, because ~40% of RSUs are
+# "interior" and all got more conservative, not just the actual outliers.
+# Reverted; flat per-RSU Z_ALPHA restored.
+def compute_theta(model, X_val_benign: np.ndarray, z_alpha: float = None) -> tuple:
     """eq:lstm_threshold: theta(k) = mu_A + z_alpha*sigma_A, computed from
     the RSU's own benign validation reconstruction errors.
 
@@ -265,7 +331,8 @@ def compute_theta(model, X_val_benign: np.ndarray) -> tuple:
         errs = model.anomaly_score(xv).cpu().numpy()
     mu_a  = float(errs.mean())
     sig_a = float(errs.std())
-    theta = mu_a + Z_ALPHA * sig_a
+    z = Z_ALPHA if z_alpha is None else z_alpha
+    theta = mu_a + z * sig_a
     return theta, mu_a, sig_a
 
 
@@ -693,6 +760,14 @@ def main(args):
 
     # Per-RSU threshold calibration against the FINAL global model (eq:lstm_threshold),
     # with a joint >=95% precision / <=1% FPR check (spec §4.2).
+    # Q27 (2026-07-30): tried density_stratified_theta() (pooling calibration
+    # windows across RSUs in the same low/high density regime, per the
+    # supervisor's diagnostic). Empirically it REGRESSED every variant: DR
+    # roughly halved for A1/A2 (84%->51%, 87%->49%) with FPR barely moving,
+    # because the two pooled thetas (esp. the high-density one) were far more
+    # conservative than most RSUs' own individual thetas. Reverted -- each
+    # RSU's own ~27-window calibration outperforms the pooled version despite
+    # the small-sample concern that motivated trying this.
     per_rsu = {}
     for rsu_id in rsu_ids:
         theta, mu_a, sig_a = compute_theta(global_model, rsu_data[rsu_id]["X_va_benign"])

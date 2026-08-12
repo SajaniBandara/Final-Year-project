@@ -19,6 +19,11 @@ import torch.nn as nn
 N_FEATURES = 10
 HIDDEN1    = 64
 HIDDEN2    = 32
+DROPOUT    = 0.2   # Q25: Q30 holdout (seeds 6/7/8) showed 11-15% FPR on the
+# trained model vs <1% target, on data the model was never fit/calibrated
+# against -- a generalization/overfitting symptom, not a threshold problem.
+# Applied between stacked LSTM stages (encoder and decoder), not inside a
+# single nn.LSTM's internal gates.
 
 
 def seed_everything(seed: int = 0) -> None:
@@ -44,10 +49,12 @@ class LSTMAutoencoder(nn.Module):
         # Encoder — eq:lstm_hidden
         self.enc1 = nn.LSTM(n_features, hidden1, batch_first=True)
         self.enc2 = nn.LSTM(hidden1,    hidden2, batch_first=True)
+        self.drop_enc = nn.Dropout(DROPOUT)
 
         # Decoder (autoencoder reconstruction head — eq:anomaly_score)
         self.dec1 = nn.LSTM(hidden2, hidden1, batch_first=True)
         self.dec2 = nn.LSTM(hidden1, hidden1, batch_first=True)
+        self.drop_dec = nn.Dropout(DROPOUT)
         self.fc_recon = nn.Linear(hidden1, n_features)
 
         # Classification head — FC sigmoid for binary detection (spec §4.1)
@@ -61,6 +68,7 @@ class LSTMAutoencoder(nn.Module):
     def encode(self, x: torch.Tensor):
         """x: (B, W, F) → latent: (B, hidden2)"""
         out, _ = self.enc1(x)
+        out = self.drop_enc(out)
         _, (h, _) = self.enc2(out)
         return h.squeeze(0)                          # (B, hidden2)
 
@@ -68,6 +76,7 @@ class LSTMAutoencoder(nn.Module):
         """latent: (B, hidden2) → reconstruction: (B, W, F)"""
         rep  = latent.unsqueeze(1).expand(-1, seq_len, -1)
         out, _ = self.dec1(rep)
+        out = self.drop_dec(out)
         out, _ = self.dec2(out)
         return self.fc_recon(out)                    # (B, W, F)
 

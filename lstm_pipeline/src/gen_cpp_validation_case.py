@@ -7,18 +7,21 @@ model, BEFORE wiring it into the live NS-3 simulation.
 Writes validation_case.bin: a flat float32 file the standalone C++
 validation harness reads directly (see scratch/lstm_inference_test.cpp).
 
-Format:
-  magic        : 4 bytes = b"MGV1"
+Format (MGV2):
+  magic        : 4 bytes = b"MGV2"
   window       : uint32  (= 10, matches preprocessor.py's WINDOW)
-  n_features   : uint32  (= 7)
+  n_features   : uint32  (= 10)
   x            : window * n_features float32 (row-major: [t][f])
   x_hat_ref    : window * n_features float32 (PyTorch's reconstruction)
   anomaly_ref  : 1 float32 (PyTorch's anomaly_score for this x)
+  raw          : n_features float32 (fixed raw, unnormalised feature vector)
+  norm_ref     : n_features float32 (PyTorch's (raw-mu)/std using scaler_params.json)
 
 Usage:
   python3 gen_cpp_validation_case.py
 """
 
+import json
 import struct
 from pathlib import Path
 
@@ -29,6 +32,7 @@ from lstm_model import LSTMAutoencoder, N_FEATURES
 
 REPO = Path(__file__).resolve().parents[2]
 MODEL_DIR = REPO / "lstm_pipeline" / "models"
+SCALER_PATH = REPO / "lstm_pipeline" / "scaler_params.json"
 WINDOW = 10
 
 
@@ -51,13 +55,26 @@ def main():
     x_hat_np = x_hat.squeeze(0).numpy().astype("<f4")
     anomaly_val = float(anomaly.item())
 
+    sc = json.load(open(SCALER_PATH))
+    mu = np.array([sc["mu"][f] for f in sc["features"]], dtype=np.float64)
+    std = np.array([sc["std"][f] for f in sc["features"]], dtype=np.float64)
+    assert len(sc["features"]) == N_FEATURES, \
+        f"scaler has {len(sc['features'])} features, model has {N_FEATURES}"
+
+    # Fixed raw probe vector — same RNG discipline as x_np: reproducible,
+    # not random per-run. Values are in raw feature units, NOT normalised.
+    raw = rng.uniform(0.0, 2.0, size=N_FEATURES).astype("float32")
+    norm_ref = ((raw.astype(np.float64) - mu) / std).astype("<f4")
+
     out_path = REPO / "lstm_pipeline" / "validation_case.bin"
     with open(out_path, "wb") as f:
-        f.write(b"MGV1")
+        f.write(b"MGV2")
         f.write(struct.pack("<II", WINDOW, N_FEATURES))
         f.write(x_np.astype("<f4").tobytes())
         f.write(x_hat_np.tobytes())
         f.write(struct.pack("<f", anomaly_val))
+        f.write(raw.astype("<f4").tobytes())
+        f.write(norm_ref.tobytes())
 
     print(f"x[0] = {x_np[0]}")
     print(f"x_hat[0] (PyTorch) = {x_hat_np[0]}")

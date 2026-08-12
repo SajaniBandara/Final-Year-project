@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-08-02 18:40:28.653288 by Eclipse SUMO randomTrips.py v1.27.0
+<configuration>
+    <net-file value="osm.net.xml"/>
+    <output-trip-file value="trips_car.trips.xml"/>
+    <prefix value="car"/>
+    <vehicle-class value="passenger"/>
+    <random-factor value="20.0"/>
+    <seed value="111111"/>
+    <random value="True"/>
+    <min-distance value="1000.0"/>
+    <random-routing-factor value="25.0"/>
+    <end value="30.0"/>
+    <period value="0.3"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="car_passenger" vClass="passenger" maxSpeed="41.67"/>
+    <trip id="car0" depart="0.00" from="172996350#1" to="185948945#3" type="car_passenger"/>
+    <trip id="car1" depart="0.30" from="161688462#1" to="-286995327" type="car_passenger"/>
+    <trip id="car2" depart="0.60" from="-172996350#1" to="186070723#1" type="car_passenger"/>
+    <trip id="car3" depart="0.90" from="-382215621#1" to="161687300#2" type="car_passenger"/>
+    <trip id="car4" depart="1.20" from="-398735949#0" to="358727540#0" type="car_passenger"/>
+    <trip id="car5" depart="1.50" from="47805886#1" to="161689804#13" type="car_passenger"/>
+    <trip id="car6" depart="1.80" from="399241939#1" to="382237279#1" type="car_passenger"/>
+    <trip id="car7" depart="2.10" from="-1002549048#1" to="1131104906#1" type="car_passenger"/>
+    <trip id="car8" depart="2.40" from="399312995#0" to="-603568538#2" type="car_passenger"/>
+    <trip id="car9" depart="2.70" from="45536815#4" to="399313003#1" type="car_passenger"/>
+    <trip id="car10" depart="3.00" from="185948943#0" to="-382490911#2" type="car_passenger"/>
+    <trip id="car11" depart="3.30" from="161809364#1" to="438274649#8" type="car_passenger"/>
+    <trip id="car12" depart="3.60" from="-382237279#0" to="438274649#2" type="car_passenger"/>
+    <trip id="car13" depart="3.90" from="-524499802#1" to="185948979#0" type="car_passenger"/>
+    <trip id="car14" depart="4.20" from="-167700743#3" to="-13393640#1" type="car_passenger"/>
+    <trip id="car15" depart="4.50" from="205861285#1" to="-438255394#2" type="car_passenger"/>
+    <trip id="car16" depart="4.80" from="404995542#1" to="-172996350#1" type="car_passenger"/>
+    <trip id="car17" depart="5.10" from="648606647" to="274749927#1" type="car_passenger"/>
+    <trip id="car18" depart="5.40" from="382492647#1" to="1059564337#1" type="car_passenger"/>
+    <trip id="car19" depart="5.70" from="382248461#3" to="-438274650#1" type="car_passenger"/>
+    <trip id="car20" depart="6.00" from="-1014457434#0" to="405170518#2" type="car_passenger"/>
+    <trip id="car21" depart="6.30" from="603942759#0" to="524499802#1" type="car_passenger"/>
+    <trip id="car22" depart="6.60" from="-382248461#6" to="-398815739#0" type="car_passenger"/>
+    <trip id="car23" depart="6.90" from="-13279089#4" to="-405162747#0" type="car_passenger"/>
+    <trip id="car24" depart="7.20" from="399313031#0" to="1014457434#6" type="car_passenger"/>
+    <trip id="car25" depart="7.50" from="185948939#1" to="438274649#9" type="car_passenger"/>
+    <trip id="car26" depart="7.80" from="45536227#0" to="-185948943#1" type="car_passenger"/>
+    <trip id="car27" depart="8.10" from="1061721186" to="382237279#1" type="car_passenger"/>
+    <trip id="car28" depart="8.40" from="185948939#1" to="1065901547#0" type="car_passenger"/>
+    <trip id="car29" depart="8.70" from="45536815#0" to="-13334660#1" type="car_passenger"/>
+    <trip id="car30" depart="9.00" from="-399312997" to="-381265874#0" type="car_passenger"/>
+    <trip id="car31" depart="9.30" from="-382237279#0" to="438274649#8" type="car_passenger"/>
+    <trip id="car32" depart="9.60" from="524499802#1" to="382248461#3" type="car_passenger"/>
+    <trip id="car33" depart="9.90" from="1121980512#0" to="-382450785#1" type="car_passenger"/>
+    <trip id="car34" depart="10.20" from="404983742" to="-381265874#0" type="car_passenger"/>
+    <trip id="car35" depart="10.50" from="381204957#4" to="161689804#3" type="car_passenger"/>
+    <trip id="car36" depart="10.80" from="358727539#1" to="161688464#18" type="car_passenger"/>
+    <trip id="car37" depart="11.10" from="-172996350#0" to="-398740654#1" type="car_passenger"/>
+    <trip id="car38" depart="11.40" from="205861285#1" to="-1123281736#1" type="car_passenger"/>
+    <trip id="car39" depart="11.70" from="404983742" to="-185948958#0" type="car_passenger"/>
+    <trip id="car40" depart="12.00" from="161687304#0" to="398740654#0" type="car_passenger"/>
+    <trip id="car41" depart="12.30" from="-1019999137" to="-382248461#2" type="car_passenger"/>
+    <trip id="car42" depart="12.60" from="-161687499#1" to="398815740#1" type="car_passenger"/>
+    <trip id="car43" depart="12.90" from="-518201969#0" to="-399241939#2" type="car_passenger"/>
+    <trip id="car44" depart="13.20" from="-399313016#1" to="-1014457434#7" type="car_passenger"/>
+    <trip id="car45" depart="13.50" from="185948941#0" to="-603568537#2" type="car_passenger"/>
+    <trip id="car46" depart="13.80" from="523623581#3" to="997441685" type="car_passenger"/>
+    <trip id="car47" depart="14.10" from="-13458280#3" to="1499979792#0" type="car_passenger"/>
+    <trip id="car48" depart="14.40" from="399238814#1" to="404995540#8" type="car_passenger"/>
+    <trip id="car49" depart="14.70" from="399243265#1" to="404995542#0" type="car_passenger"/>
+    <trip id="car50" depart="15.00" from="-185948949#2" to="-382209442" type="car_passenger"/>
+    <trip id="car51" depart="15.30" from="438274649#3" to="-405164503" type="car_passenger"/>
+    <trip id="car52" depart="15.60" from="-603568544#2" to="185948945#3" type="car_passenger"/>
+    <trip id="car53" depart="15.90" from="-399243265#1" to="30527893#1" type="car_passenger"/>
+    <trip id="car54" depart="16.20" from="185948949#1" to="234662681#3" type="car_passenger"/>
+    <trip id="car55" depart="16.50" from="185948941#1" to="-398737421#0" type="car_passenger"/>
+    <trip id="car56" depart="16.80" from="286995327" to="-382492648#1" type="car_passenger"/>
+    <trip id="car57" depart="17.10" from="-161808942#1" to="-438274649#6" type="car_passenger"/>
+    <trip id="car58" depart="17.40" from="-1418606926" to="398735949#2" type="car_passenger"/>
+    <trip id="car59" depart="17.70" from="1394546775#1" to="-382209442" type="car_passenger"/>
+    <trip id="car60" depart="18.00" from="-382248461#2" to="274749927#2" type="car_passenger"/>
+    <trip id="car61" depart="18.30" from="603568538#3" to="399313004#2" type="car_passenger"/>
+    <trip id="car62" depart="18.60" from="-524499803#1" to="13334660#2" type="car_passenger"/>
+    <trip id="car63" depart="18.90" from="603531506#6" to="1254830072#1" type="car_passenger"/>
+    <trip id="car64" depart="19.20" from="25448307#2" to="381458682#1" type="car_passenger"/>
+    <trip id="car65" depart="19.50" from="405170522#0" to="206372068#3" type="car_passenger"/>
+    <trip id="car66" depart="19.80" from="-398815740#0" to="405180169#0" type="car_passenger"/>
+    <trip id="car67" depart="20.10" from="-382490910#1" to="186076402#1" type="car_passenger"/>
+    <trip id="car68" depart="20.40" from="-603942772#1" to="-185948943#1" type="car_passenger"/>
+    <trip id="car69" depart="20.70" from="-1046059233" to="1394546775#0" type="car_passenger"/>
+    <trip id="car70" depart="21.00" from="185948954#1" to="438274649#6" type="car_passenger"/>
+    <trip id="car71" depart="21.30" from="185948997#4" to="161687300#4" type="car_passenger"/>
+    <trip id="car72" depart="21.60" from="-398737426#0" to="25448307#2" type="car_passenger"/>
+    <trip id="car73" depart="21.90" from="1059564337#1" to="-381204958#0" type="car_passenger"/>
+    <trip id="car74" depart="22.20" from="-399179069#3" to="1065901547#0" type="car_passenger"/>
+    <trip id="car75" depart="22.50" from="-344355078#1" to="-603568538#2" type="car_passenger"/>
+    <trip id="car76" depart="22.80" from="398815739#0" to="399313003#1" type="car_passenger"/>
+    <trip id="car77" depart="23.10" from="438274649#6" to="25448307#2" type="car_passenger"/>
+    <trip id="car78" depart="23.40" from="-399313001#0" to="-161716057#3" type="car_passenger"/>
+    <trip id="car79" depart="23.70" from="45536811#1" to="186076381#3" type="car_passenger"/>
+    <trip id="car80" depart="24.00" from="-438274649#8" to="405164502#0" type="car_passenger"/>
+    <trip id="car81" depart="24.30" from="-405162741#1" to="382215621#0" type="car_passenger"/>
+    <trip id="car82" depart="24.60" from="510562261#1" to="382210034#0" type="car_passenger"/>
+    <trip id="car83" depart="24.90" from="399312997" to="886540950#2" type="car_passenger"/>
+    <trip id="car84" depart="25.20" from="518201969#1" to="-603568537#0" type="car_passenger"/>
+    <trip id="car85" depart="25.50" from="382218111#1" to="524499802#1" type="car_passenger"/>
+    <trip id="car86" depart="25.80" from="185948954#1" to="603568538#1" type="car_passenger"/>
+    <trip id="car87" depart="26.10" from="161689787#5" to="604086177#2" type="car_passenger"/>
+    <trip id="car88" depart="26.40" from="607802950#2" to="-381265874#0" type="car_passenger"/>
+    <trip id="car89" depart="26.70" from="185948941#0" to="-1014457434#0" type="car_passenger"/>
+    <trip id="car90" depart="27.00" from="161688464#14" to="606916054#0" type="car_passenger"/>
+    <trip id="car91" depart="27.30" from="405168266#1" to="381204958#0" type="car_passenger"/>
+    <trip id="car92" depart="27.60" from="-382238064#5" to="206372071#1" type="car_passenger"/>
+    <trip id="car93" depart="27.90" from="-172996350#0" to="25448307#1" type="car_passenger"/>
+    <trip id="car94" depart="28.20" from="1463043665#3" to="-399179069#3" type="car_passenger"/>
+    <trip id="car95" depart="28.50" from="-13315907#1" to="-13334660#1" type="car_passenger"/>
+    <trip id="car96" depart="28.80" from="-405169152#0" to="-399241939#2" type="car_passenger"/>
+    <trip id="car97" depart="29.10" from="399313003#1" to="161688464#13" type="car_passenger"/>
+    <trip id="car98" depart="29.40" from="-399312997" to="185948949#3" type="car_passenger"/>
+    <trip id="car99" depart="29.70" from="161714128#1" to="-358727540#0" type="car_passenger"/>
+</routes>

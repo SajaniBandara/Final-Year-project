@@ -13,6 +13,39 @@ extern int                    g_tcam_rule_count[300];
 extern std::vector<TcamEntry> g_tcam_table;
 extern int                    g_slowpath_hit_count[300];
 extern int                    g_packetin_count[300];   // PACKET_IN (table-miss) rate source for S4 λ_PI
+// Issue 6 fix (2026-08-02): per-(RSU, source vehicle) companion to
+// g_packetin_count -- see its declaration in routing.cc. Consumed below by
+// s4_attribute_attacker() to compute v_atk = argmax_v λ_PI(v,r,t)
+// (eq:s4_attribution), replacing the RSU-only aggregate this file previously
+// had no way to disaggregate.
+extern std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
+// Previous-cycle cumulative snapshot per (rsu, vehicle), mirroring
+// g_prev_packetin's per-RSU delta pattern below.
+static std::map<uint32_t, std::map<uint32_t, uint32_t>> g_prev_packetin_by_source;
+
+// s4_attribute_attacker(): v_atk = argmax_v λ_PI(v,r,t) -- the source vehicle
+// with the highest windowed (this-cycle) PACKET_IN rate at RSU r. Advances
+// g_prev_packetin_by_source[r] as a side effect (call at most once per RSU
+// per cycle, matching every other per-RSU counter's advance-once discipline
+// in calculate_security_detection_metrics() below). Returns UINT32_MAX if
+// no PACKET_IN activity from any source this cycle (nothing to attribute).
+inline uint32_t s4_attribute_attacker(uint32_t rsu_node_id)
+{
+    uint32_t best_v = UINT32_MAX;
+    int      best_delta = 0;
+    auto&    cur_by_src  = g_packetin_by_source[rsu_node_id];
+    auto&    prev_by_src = g_prev_packetin_by_source[rsu_node_id];
+    for (const auto& kv : cur_by_src)
+    {
+        uint32_t src   = kv.first;
+        uint32_t cur   = kv.second;
+        uint32_t prev  = prev_by_src.count(src) ? prev_by_src[src] : 0;
+        int      delta = (cur >= prev) ? (int)(cur - prev) : 0;
+        if (delta > best_delta) { best_delta = delta; best_v = src; }
+    }
+    prev_by_src = cur_by_src;   // advance snapshot for next cycle
+    return best_v;
+}
 
 // Monotone cumulative install counters (defined in tcam_attack_helper.h, never
 // reset). S3 windows over (new + reinstall) — a slow-TCAM attacker refreshes
@@ -58,6 +91,16 @@ static const uint32_t S3_HIST_MAX        = 128;  // ring capacity (>= window)
 static uint64_t g_s3_cum_hist[300][S3_HIST_MAX] = {{0}}; // per-node cum(new+reinstall) history
 static uint32_t g_s3_hist_count = 0;             // cycles recorded so far (shared clock)
 static bool     g_tcam_dbg_trace = true;         // print per-RSU (ρ,E,λ) validation tuples
+
+// Latest per-RSU S3/S4 detection state, indexed by sim node_id (same space
+// as g_tcam_rule_count[]) -- populated once per cycle by ComputeTcamDetection()
+// below. Read by lrad_rsu() (lrad.h) to gate flag_LSTM: per the supervisor's
+// LSTM/S3/S4 diagnosis, when S3 or S4 fires at an RSU the rule-based layer is
+// already the definitive detector there, so the LSTM's contribution to D_RSU
+// is suppressed for that RSU this cycle to avoid stacking a structurally
+// noisy signal (residual TCAM occupancy) on top of an already-covered event.
+static bool g_tcam_flag_s3_last[300] = {false};
+static bool g_tcam_flag_s4_last[300] = {false};
 
 // ── Structs ───────────────────────────────────────────────────────────────────
 
@@ -215,6 +258,17 @@ inline TcamCycleMetrics ComputeTcamDetection(
         //    mechanism later becomes attack-aware enough that an unauthorised entry
         //    could correspond to a real (temporarily unendorsed) active flow.
         (void)lambda_fm_thresh;   // rate excess corroborating/reported only, no longer gates S3
+        // NOTE (2026-08-03): g_disable_s3_s4 is deliberately NOT applied here, to
+        // flag_s3 itself — only to the record_detection_event() call below. Per
+        // eq:lstm_gate (main.tex:3317-3326) the LSTM suppression gate keys on
+        // flag_S3 ∨ flag_S4, and its stated rationale is STRUCTURAL: TCAM residual
+        // occupancy inflates reconstruction error at non-attacking RSUs "throughout
+        // the simulation run", independently of any co-firing signature. That
+        // physical condition is unchanged by a diagnostic ablation flag, so
+        // g_tcam_flag_s3_last/g_tcam_flag_s4_last (published below, read by
+        // lrad_rsu()) must keep tracking the RAW condition. Gating the flag here
+        // would silently un-suppress the LSTM during TCAM saturation windows and
+        // inflate FPR in exactly the ablation runs meant to isolate the LSTM.
         const bool flag_s3 = (unauth_orphan_count > 0);
 
         // Per-RSU per-cycle detector-signal trace. Emits for EVERY RSU (2026-07-17:
@@ -251,12 +305,25 @@ inline TcamCycleMetrics ComputeTcamDetection(
         //    λ_PI is still computed and reported for the [S3-DBG] trace and for naming
         //    the flooding source (attribution), but no longer gates S4.
         (void)lambda_pi_thresh;   // retained in the signature; corroborating/attribution only, not an S4 conjunct
+        // g_disable_s3_s4 deliberately NOT applied to flag_s4 — see the flag_s3
+        // note above (eq:lstm_gate keys on the raw condition, not the ablation).
         const bool flag_s4 = (tcam_util > tcam_util_thresh);
 
         // 8. Advance per-RSU baseline counters for the next cycle
         g_prev_rule_count[node_id]    = g_tcam_rule_count[node_id];
         g_prev_slowpath_hits[node_id] = g_slowpath_hit_count[node_id];
         g_prev_packetin[node_id]      = g_packetin_count[node_id];
+        // Issue 6 fix: v_atk = argmax_v λ_PI(v,r,t) this cycle. Called
+        // unconditionally (not just when flag_s4 fires) so its snapshot
+        // advance stays in lockstep with every other per-RSU counter above —
+        // a strict per-cycle window, not a sparse one that silently spans
+        // multiple cycles whenever S4 didn't fire.
+        const uint32_t v_atk = s4_attribute_attacker(node_id);
+
+        // Publish this cycle's S3/S4 state for lrad_rsu()'s flag_LSTM gate
+        // (see g_tcam_flag_s3_last/g_tcam_flag_s4_last declaration above).
+        g_tcam_flag_s3_last[node_id] = flag_s3;
+        g_tcam_flag_s4_last[node_id] = flag_s4;
 
         // Accumulate into cycle-level aggregate
         util_sum                += tcam_util;
@@ -265,7 +332,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
         metrics.total_lambda_pi += lambda_pi;
         metrics.total_malicious += malicious_count;
         if (flag_s3) {
-            ++metrics.s3_fired_count; record_detection_event(2, node_id);
+            ++metrics.s3_fired_count;
+            if (!g_disable_s3_s4) record_detection_event(2, node_id, DSRC_RULE_S3);
             // S3 (eq:rule_s3): unauthorised-FlowMod rate anomaly — this RSU's
             // FlowMod-install rate λ_FM exceeds the benign threshold with no
             // matching active flow, the control-plane TCAM-exhaustion signature.
@@ -277,7 +345,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
                       << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
         }
         if (flag_s4) {
-            ++metrics.s4_fired_count; record_detection_event(3, node_id);
+            ++metrics.s4_fired_count;
+            if (!g_disable_s3_s4) record_detection_event(3, node_id, DSRC_RULE_S4);
             // S4 (eq:rule_s4): TCAM saturation — utilisation U_TCAM exceeds the
             // threshold; the attacker is the vehicle with the highest packet-in
             // rate (argmax λ_PI), the data-plane TCAM-exhaustion signature.
@@ -286,6 +355,8 @@ inline TcamCycleMetrics ComputeTcamDetection(
                       << " util=" << tcam_util
                       << " (λ_PI=" << lambda_pi
                       << ", malicious=" << malicious_count << ")"
+                      << " v_atk=" << (v_atk == UINT32_MAX ? std::string("none")
+                                                             : std::to_string(v_atk))
                       << " t=" << Simulator::Now().GetSeconds() << "s" << std::endl;
         }
     }

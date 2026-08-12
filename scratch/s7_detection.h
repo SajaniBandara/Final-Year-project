@@ -217,10 +217,11 @@ inline bool s7_detect(uint32_t recv_flow_id,
         // Bucket hardcoded to S7's own variant (6 = Attack 7) — see
         // s6_detection.h for why this is safe/no-op given the existing gate.
         const int S7_HOME_VARIANT = 6;   // Attack 7, per main.tex Signature S7
-        if (prev_sender < (uint32_t)total_size &&
+        if (!g_disable_s7_s8 &&
+            prev_sender < (uint32_t)total_size &&
             !is_detected_node[S7_HOME_VARIANT][prev_sender])
         {
-            record_detection_event(S7_HOME_VARIANT, prev_sender);
+            record_detection_event(S7_HOME_VARIANT, prev_sender, DSRC_RULE_S7);
             cout << "[S7] record_detection_event fired for malicious RSU "
                  << prev_sender << " variant=" << S7_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;

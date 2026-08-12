@@ -1,13 +1,13 @@
 """
 run_tcam_sweep.py
 Automated sweep runner for MOBIGUARD TCAM detection evaluation.
-Run from your ns-3 root directory:
-    python3 run_tcam_sweep.py
+Run from anywhere (NS3_ROOT is a fixed absolute path, not cwd-relative):
+    python3 scripts/run_tcam_sweep.py
 
 Produces per-percentage CSVs in results_routing/:
-    MOBIGUARD_baseline.csv
-    MOBIGUARD_Attack3_20.csv  ...  MOBIGUARD_Attack3_80.csv
-    MOBIGUARD_Attack4_20.csv  ...  MOBIGUARD_Attack4_80.csv
+    MOBIGUARD_Attack0_0_seed1.csv
+    MOBIGUARD_Attack3_20_seed1.csv  ...  MOBIGUARD_Attack3_80_seed1.csv
+    MOBIGUARD_Attack4_20_seed1.csv  ...  MOBIGUARD_Attack4_80_seed1.csv
 """
 
 import subprocess
@@ -17,7 +17,14 @@ import time
 import math
 
 # ── configuration ─────────────────────────────────────────────────────────────
-NS3_ROOT    = os.path.dirname(os.path.abspath(__file__))
+# NS3_ROOT used to be the SCRIPT's own directory (os.path.dirname(__file__)),
+# not the actual ns-3 root -- ./waf doesn't exist there, so both the
+# `./waf build` and `./waf --run` subprocess calls below would have failed
+# immediately, and RESULTS_DIR pointed at a results_routing/ that was never
+# created next to this script rather than the real simulation output
+# directory. Fixed to the same absolute path convention every other script
+# in this codebase uses.
+NS3_ROOT    = os.path.expanduser("~/ns3_g13/ns-allinone-3.35/ns-3.35")
 RESULTS_DIR = os.path.join(NS3_ROOT, "results_routing")
 LOG_DIR     = os.path.join(RESULTS_DIR, "sweep_logs")
 
@@ -64,8 +71,15 @@ SIM_TIMES = {
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 def run(label, args, sim_time, log_path):
+    # "scratch/routing" is not a valid waf program name -- routing.cc lives
+    # in scratch/routing/, so waf registers it as "scratch/routing/routing"
+    # (confirmed: `./waf --run "scratch/routing ..."` errors with "program
+    # 'scratch/routing' not found"). Every run here would have failed before
+    # this fix. --run-no-build since build_simulation() below already builds
+    # once upfront -- no need for each of these to redo its own implicit
+    # build check.
     cmd = (
-        f'./waf --run "scratch/routing {BASE_ARGS} '
+        f'./waf --run-no-build "scratch/routing/routing {BASE_ARGS} '
         f'--simTime={sim_time} {args}"'
     )
     print(f"\n{'='*60}")
@@ -148,7 +162,7 @@ runs.append(dict(
     label      = "baseline",
     args       = "--active_attack_variant=-1 --attack_percentage=0",
     sim_time   = SIM_TIMES["baseline"],
-    out_csv    = os.path.join(RESULTS_DIR, "MOBIGUARD_baseline.csv"),
+    out_csv    = os.path.join(RESULTS_DIR, "MOBIGUARD_Attack0_0_seed1.csv"),
     log        = os.path.join(LOG_DIR, f"{timestamp}_baseline.log"),
 ))
 
@@ -161,7 +175,7 @@ for pct in PERCENTAGES:
             f"--attack_percentage={pct}"
         ),
         sim_time = SIM_TIMES["attack3"],
-        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack3_{pct}.csv"),
+        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack3_{pct}_seed1.csv"),
         log      = os.path.join(LOG_DIR, f"{timestamp}_attack3_{pct}.log"),
     ))
 
@@ -174,7 +188,7 @@ for pct in PERCENTAGES:
             f"--attack_percentage={pct}"
         ),
         sim_time = SIM_TIMES["attack4"],
-        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack4_{pct}.csv"),
+        out_csv  = os.path.join(RESULTS_DIR, f"MOBIGUARD_Attack4_{pct}_seed1.csv"),
         log      = os.path.join(LOG_DIR, f"{timestamp}_attack4_{pct}.log"),
     ))
 

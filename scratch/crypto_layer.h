@@ -17,6 +17,7 @@
 #include <vector>
 #include <array>
 #include <map>
+#include <set>
 #include <algorithm>
 #include <chrono>   // M7: wall-clock timing of batch verification (eq:t_verify)
 #include <openssl/crypto.h>
@@ -56,7 +57,7 @@ inline void crypto_log_event(const char* op, uint32_t node_id, uint32_t pkt_id,
 // High-frequency per-packet ops are gated on this flag.
 // Low-frequency high-importance events (DKG, quarantine, failures, blockchain
 // commits) fire unconditionally regardless of this flag.
-static bool CRYPTO_DEBUG_LOG = true;  // default true for dev/debug, false for normal runs
+static bool CRYPTO_DEBUG_LOG = false;  // default true for dev/debug, false for normal runs
 
 // Formats first 4 bytes of buf as compact hex — evidence token in debug lines.
 static std::string _hex4(const uint8_t* b) {
@@ -144,10 +145,155 @@ bool enable_lrad_rsu               = true;  // AB1: RSU full-mode engine (lrad_r
 // For isolating a single signature's own FPR from S1/S2 cross-signal noise on the
 // shared trust ledger — NOT a replacement for default-settings evaluation numbers.
 bool g_disable_s1_s2                = false;
+// DIAGNOSTIC ONLY (added 2026-08-03, supervisor ablation study Q1-Q6) — three
+// per-signature-group companions to g_disable_s1_s2. All default false: normal/
+// default-settings runs are completely unaffected.
+//
+// NOTE the deliberate asymmetry in WHERE each flag is applied. It is not an
+// inconsistency — it follows from what each signature's flag feeds downstream:
+//
+//   g_disable_s3_s4 — gates ONLY the confusion-matrix record_detection_event()
+//     calls in tcam_detection.h, NOT flag_s3/flag_s4 themselves. S3/S4 fire in
+//     calculate_security_detection_metrics(), architecturally independent of the
+//     OBU/RSU LRAD wrapper (enable_lrad_obu/rsu do not gate them). flag_s3/flag_s4
+//     must keep being computed from the RAW condition because they are published
+//     as g_tcam_flag_s3_last/g_tcam_flag_s4_last and read by lrad_rsu() as the
+//     eq:lstm_gate (main.tex:3317-3326) LSTM suppression gate. That gate's stated
+//     rationale is STRUCTURAL — TCAM residual occupancy inflates reconstruction
+//     error at non-attacking RSUs "throughout the simulation run" — a physical
+//     condition a diagnostic flag does not change. Gating the flag itself would
+//     silently un-suppress the LSTM during TCAM saturation and inflate FPR in
+//     exactly the runs meant to isolate the LSTM (supervisor Q3 requires the
+//     gate stay live while S3/S4's own output is disabled).
+//
+//   g_disable_s5_s6 / g_disable_s7_s8 — gate the SIGNATURE COMPUTATION ITSELF at
+//     the lrad_rsu() call site (the s5_detect()..s8_detect() calls are skipped and
+//     the flags stay false). Unlike S3/S4 these have no structural consumer: per
+//     alg:lrad_rsu (main.tex:2544-2546) flag_S5..flag_S8 feed D_RSU, and through
+//     it the BTMM trust penalty and the BC.Write detection-event record. Gating
+//     only record_detection_event() would leave all three of those still firing,
+//     so a "witness only" (Q4) or "crypto only" (Q2) configuration would not
+//     actually isolate the component — the S7/S8 rule path would keep penalising
+//     trust and writing to the ledger while claiming to be off. S7/S8 are
+//     genuinely independent code from the witness/BFT mechanism
+//     (enable_witness_mechanism, eq:dup_alert_cond/eq:bft_penalty below): both
+//     target A7/A8 but on different evidence (S7/S8: fresh stark_verify_hop() +
+//     volume rate; witness: cross-node alert pooling with its own ML-DSA-87
+//     sign/verify), sharing only trust_update_negative() — which is precisely
+//     why S7/S8 must be switchable off for the witness path to be measured alone.
+bool g_disable_s3_s4                = false;
+bool g_disable_s5_s6                = false;
+bool g_disable_s7_s8                = false;
+// DIAGNOSTIC ONLY (added 2026-08-05) — gates the §BTMM PER-PACKET trust update
+// (eq:trust_update) at routing.cc's ML-DSA-87 verify block, i.e. the
+// "if (hop_ok && timing_ok && g_batch_passed) trust_update_positive(...) else
+// trust_update_negative(...)" pair. Default false: normal runs unaffected.
+//
+// Why this needed its own flag. That else-branch was reachable in EVERY Q1-Q6
+// ablation configuration — none of the seven existing flags gated it — and it
+// feeds trust_update_negative() -> quarantine -> record_detection_event(), the
+// same confusion-matrix counters the ablation reads. timing_ok is a RAW
+// wall-clock comparison with no crypto gate, so it stays live even under
+// disable_crypto=1. Measured 2026-08-05 on Q4: TP+FP equalled the
+// TRUST-QUARANTINE count EXACTLY on 7 of 8 variants (A1 14/14, A2 102/102,
+// A3 0/0, A5 199/199, A6 190/190, A7 200/200, A8 68/68), i.e. not one
+// "detection" in the witness-only config came from a signature or from the
+// witness scoring a node — all of them came from this path. Until it is
+// gated, no Q-config isolates the component named in its own row.
+//
+// NOT gated by this flag: the witness mechanism's own calls to
+// trust_update_negative() (eq:bft_penalty), which are what Q4 exists to
+// measure, and the controller-plane ctrl_trust_update_negative().
+bool g_disable_btmm_trust           = false;
+// DIAGNOSTIC (2026-08-06): per-firing trace of eq:dup_alert_cond, used to
+// characterise the witness false-positive mechanism. Off by default (the
+// alert fires thousands of times per run).
+bool g_dup_diag_log                 = false;
+// Defined in detector_windows.h, which routing.cc includes AFTER this header
+// (it needs lstm_rsu_ground_truth_label from lstm_logger.h). Forward-declared
+// so crypto_register_cli_params() below can register its CLI flag.
+extern bool enable_detector_windows;
 bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
 bool enable_quarantine             = true;  // AB7: trust updates + SC.Quarantine
+// ── eq:local_quarantine / HOLD_FORWARD (added 2026-08-06) ───────────────────
+// alg:lrad_obu (main.tex:2395-2397) specifies TWO actions on D_OBU=1:
+//     HOLD_FORWARD(v,r)   and   ESCALATE(p,v,r,{flag_S1,flag_S2p})
+// Only ESCALATE was implemented. eq:local_quarantine formalises the missing
+// half:
+//     HOLD_FORWARD(v,r) => fwd_state(v) = Hold
+//       until RSU.Confirm(v,r) \/ t > t_detect + T_hold
+// with the prose: "upon D_OBU=1 the OBU suspends forwarding of flows matching
+// the flagged signature for a maximum hold window T_hold, awaiting either RSU
+// confirmation or timeout."
+//
+// DEFAULT OFF, deliberately. Enabling it changes every delivery/latency metric,
+// so switching it on by default would silently invalidate all existing results
+// without anyone choosing to. Off reproduces every run to date; --enable_local_
+// quarantine=1 gives the spec-faithful arm, and the pair is exactly the
+// with/without comparison the thesis needs to justify the mechanism.
+bool   enable_local_quarantine     = false;
+// T_hold is NOT given a numeric value anywhere in main.tex — the symbol table
+// (main.tex:1319) defines it only as "maximum duration for OBU local forwarding
+// suspension pending RSU confirmation". 0.1 s is a placeholder chosen to exceed
+// the 1 ms simulated OBU->RSU escalation delay (lrad.h escalate_to_rsu) by two
+// orders of magnitude, so RSU.Confirm virtually always releases the hold before
+// the timeout does. IT IS NOT CALIBRATED — treat as an open parameter.
+double T_HOLD                      = 0.1;
+double g_fwd_hold_until[268]       = {};          // 0.0 = not held
+uint32_t g_fwd_hold_flow[268]      = {};          // flagged flow id
+uint32_t g_fwd_hold_events         = 0;           // HOLD_FORWARD invocations
+uint32_t g_fwd_suspended_pkts      = 0;           // packets actually deferred
+double   g_fwd_suspended_time_sum  = 0.0;         // total deferral applied (s)
+uint32_t g_fwd_release_confirm     = 0;           // released by RSU.Confirm
+uint32_t g_fwd_release_timeout     = 0;           // released by T_hold expiry
+
+// HOLD_FORWARD(v,r) — set fwd_state(v) = Hold for the flagged flow.
+inline void hold_forward(uint32_t v, uint32_t fid) {
+    if (!enable_local_quarantine) return;
+    if (v >= 268u) return;
+    g_fwd_hold_until[v] = ns3::Simulator::Now().GetSeconds() + T_HOLD;
+    g_fwd_hold_flow[v]  = fid;
+    ++g_fwd_hold_events;
+}
+
+// RSU.Confirm(v,r) — the RSU has completed full-mode analysis; release the hold.
+inline void rsu_confirm_release(uint32_t v) {
+    if (!enable_local_quarantine) return;
+    if (v >= 268u) return;
+    if (g_fwd_hold_until[v] > 0.0) {
+        g_fwd_hold_until[v] = 0.0;
+        ++g_fwd_release_confirm;
+    }
+}
+
+// Remaining suspension for (v, fid), in seconds; 0.0 when not held.
+//
+// APPROXIMATION, stated openly: a packet reaching the forward path while the
+// hold is still active is deferred by the FULL remaining window rather than
+// being released the instant RSU.Confirm arrives, because the ns-3 send is
+// already scheduled by then and cannot be pulled forward. Since confirmation
+// lands ~1 ms after escalation and T_hold is 0.1 s, this over-holds only those
+// packets forwarded inside that 1 ms gap; every packet after the confirm sees
+// 0.0. The error is conservative (over-suspension), never under-suspension.
+inline double fwd_hold_remaining(uint32_t v, uint32_t fid) {
+    if (!enable_local_quarantine) return 0.0;
+    if (v >= 268u) return 0.0;
+    if (g_fwd_hold_until[v] <= 0.0) return 0.0;
+    double now = ns3::Simulator::Now().GetSeconds();
+    if (now >= g_fwd_hold_until[v]) {          // t > t_detect + T_hold
+        g_fwd_hold_until[v] = 0.0;
+        ++g_fwd_release_timeout;
+        return 0.0;
+    }
+    if (g_fwd_hold_flow[v] != fid) return 0.0; // "flows matching the flagged signature"
+    double rem = g_fwd_hold_until[v] - now;
+    ++g_fwd_suspended_pkts;
+    g_fwd_suspended_time_sum += rem;
+    return rem;
+}
+
 bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
 bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
 bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
@@ -259,7 +405,17 @@ struct WitnessAlert {
     uint8_t  signed_digest[64] = {};                              // h_alert signed by witness
     uint8_t  alert_sig[OQS_SIG_ml_dsa_87_length_signature] = {}; // full 4595-byte ML-DSA-87 sig
     size_t   alert_sig_len = 0;
+    double   ts            = 0.0; // submission time — needed to prune the pool by
+                                  // WITNESS_WINDOW (see witness_bft_quorum_reached)
+    // The (v_i, p) EVENT this alert concerns: ((flow_id << 32) | pkt_id).
+    // eq:bft_penalty's quorum is over distinct witnesses reporting "the same
+    // (v_i, p) event" — v_i is already the pool's map key (target_node), so
+    // this supplies p. Derived from the raw identifiers rather than from H(p)
+    // because h_p degrades to all-zeros when no g_packet_crypto record exists,
+    // which would silently collapse every event onto one key.
+    uint64_t event_key     = 0;
 };
+
 
 double g_trust_score[268]       = {};
 double g_trust_last_update[268] = {};
@@ -377,20 +533,67 @@ std::map<uint32_t, uint32_t>                      g_lstm_pkt_counts;
 // the windowed rate the equation actually specifies ("per unit time W").
 std::map<uint32_t, uint32_t> g_lstm_ranom_count;
 
-// 2026-07-26: D_div/A_tp (eq:feat_ddiv, eq:feat_atp) need a "legit deliveries
-// this window" count for flow 0 (the ONLY flow HF ever targets in this sim)
-// to compare against g_lstm_ranom_count's "unauthorized copies this window".
-// fade_received_count (efade_detection.h) is NOT usable directly for this --
-// it's only cleared per-epoch inside fade_detect_anomaly(), which early-
-// returns unless fade_detection_active (requires the FADE-isolated
-// !enable_lrad_obu && !enable_lrad_rsu config) -- in a normal run it's
-// never cleared and grows cumulatively for the whole run, same problem
-// g_lstm_ranom_count would have without the delta pattern. This is a
-// dedicated, always-incrementing global counter (not per-RSU: flow 0 has
-// exactly one final destination reached once per packet, regardless of how
-// many RSUs relayed it), delta'd against g_lstm_prev_flow0_legit once per
-// cycle in lstm_logger.h.
+// 2026-08-02 (Issue 1 fix, HF ground-truth/feature separation): per-RSU
+// count of hidden-duplicate SEND events this malicious RSU has scheduled
+// (incremented at the same two call sites as g_total_copies_scheduled++ in
+// routing.cc, keyed by the sending RSU instead of one global total). This
+// exists ONLY to build an independent ground-truth label for A5-A8 windows
+// in preprocessor.py -- it fires at attack-injection time, before any
+// detection/receive logic runs, so it shares no computation path with
+// r_anom (a receive-side, detection-facing signal that IS fed to the LSTM
+// as input feature #10). Using r_anom>0 to both define the ground-truth
+// window label AND as a raw model input let the model trivially recover
+// the label from its own input for HF variants; this counter breaks that
+// overlap. Logged as a label-only CSV column (hf_send_gt), excluded from
+// FEATURES in preprocessor.py.
+std::map<uint32_t, uint32_t> g_lstm_hf_sendgt_count;
+
+// 2026-07-28 (main.tex:5783-5794 spec correction): D_div/A_tp (eq:feat_ddiv,
+// eq:feat_atp) must be computed from "per-source per-destination byte counts"
+// and "per-flow directional byte rate logs" respectively -- genuinely
+// independent local delivery counters, NOT derived from R_anom/the
+// blockchain receipt log (that separation is the whole point of the
+// three-feature design: R_anom is the only one requiring blockchain read
+// access, so D_div/A_tp must keep working from purely local RSU state).
+// The previous implementation (2026-07-26) computed both as deterministic
+// transforms of R_anom's delta -- a real deviation from spec, not a
+// harmless simplification, since it collapsed three independent evidence
+// channels main.tex explicitly designs for down to one.
+//
+// g_lstm_flow0_legit_count: cumulative count of flow 0's genuine final
+// deliveries (packet reaches its authorized destination_f). This is the
+// A_tp "authorized" numerator. Not per-RSU: flow 0 has exactly one final
+// destination reached once per packet, regardless of how many RSUs relayed
+// it. Delta'd against g_lstm_prev_flow0_legit once per cycle in
+// lstm_logger.h. fade_received_count (efade_detection.h) is NOT usable
+// directly for this -- it's only cleared per-epoch inside
+// fade_detect_anomaly(), which early-returns unless fade_detection_active
+// (requires the FADE-isolated !enable_lrad_obu && !enable_lrad_rsu config)
+// -- in a normal run it's never cleared and grows cumulatively for the
+// whole run, same problem this dedicated counter avoids via the delta
+// pattern.
 uint32_t g_lstm_flow0_legit_count = 0;
+
+// g_lstm_flow0_dest_set: distinct destination node IDs that have received
+// >=1 flow-0 packet this window (both the authorized destination_f AND any
+// unauthorized eavesdropper/duplicate-recipient reached via hidden
+// forwarding). This is the eq:feat_ddiv numerator -- a genuine
+// per-destination delivery count populated directly at the MacRx receive
+// sites in routing.cc, independent of g_lstm_ranom_count. |P(v,.)|=1 in
+// this sim (flow 0 has exactly one authorized destination at any instant),
+// so D_div = |g_lstm_flow0_dest_set| directly, no further normalization
+// needed. Snapshotted then cleared once per cycle in lstm_logger.h (same
+// cadence as g_lstm_flow0_legit_count's delta).
+//
+// g_lstm_flow0_total_delivery_count: total flow-0 delivery events this
+// window (authorized + unauthorized) -- the eq:feat_atp denominator.
+// Packet-count based rather than raw-byte based: this sim already measures
+// every other per-cycle feature (R_anom, lambda_PI, escalation) at
+// packet/event granularity, not byte granularity, and packets on a given
+// flow are uniform size in this model, so a packet-count ratio equals the
+// byte-count ratio main.tex specifies.
+std::set<uint32_t> g_lstm_flow0_dest_set;
+uint32_t            g_lstm_flow0_total_delivery_count = 0;
 
 // ── liboqs Singleton and Zone Helper ─────────────────────────────────────────
 
@@ -787,25 +990,63 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
     return hop_ok;
 }
 
+// Defined in routing.cc (after this header is included) alongside the other HF
+// ground-truth attribution helpers; forward-declared here so stark_update_meta
+// can use it. Same pattern routing.cc itself uses for
+// lookup_vehicle_associated_rsu_local_idx (routing.cc:115058) -- both are inline
+// and defined later in this same translation unit.
+inline uint32_t hf_gt_attribution_node(uint32_t node);
+
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id, uint32_t flow_id,
                                bool timing_ok, bool hop_ok) {
     auto it = g_packet_crypto.find({signer, crypto_msg_key(pkt_id, flow_id)});
     if (it == g_packet_crypto.end()) return;
+    // Packet-level STARK state stays keyed by the SIGNER -- it is read back per
+    // packet by S5-S8 via g_packet_crypto, not by RSU, so it must not be
+    // re-attributed.
     it->second.stark_timing_ok = timing_ok;
     it->second.stark_hop_ok    = hop_ok;
-    g_lstm_pkt_counts[signer]++;
-    if (!timing_ok) g_lstm_stark_counts[signer].first++;
-    if (!hop_ok)    g_lstm_stark_counts[signer].second++;
+
+    // Supervisor review fix (2026-08-03): the LSTM counters below are only ever
+    // READ by lstm_log_rsu_cycle() (lstm_logger.h) and crypto_get_lstm_features()
+    // via RSU-indexed keys. For the DP variants (A2/A4/A6/A8) `signer` is very
+    // often a VEHICLE, so incrementing under the vehicle's own node index
+    // silently orphaned the entry -- never surfacing in any RSU's CSV row -- and
+    // zkp_hop_fail/zkp_delay_fail read a permanent 0 for every DP attacker.
+    // That is a systematically wrong input feature on four of the eight
+    // variants, so it must be fixed before the retrain, not after.
+    // Same covering-RSU attribution already applied to hf_send_gt/r_anom: the
+    // RSU with the strongest current DSRC link to that vehicle, i.e. the vantage
+    // point from which a real IDS would actually observe this failure.
+    // UINT32_MAX => no RSU currently in range, so no RSU observes it and
+    // correctly nothing is counted anywhere.
+    // Both counters are attributed together so crypto_get_lstm_features()'s
+    // fail/total ratio stays consistent.
+    // Measured A/B on A2 (p=60, 30s, seed 7, identical params): attributing to
+    // `signer` directly yielded zkp_delay_fail = 0 RSUs / 0 cycles -- the feature
+    // was dead across the ENTIRE training set. Via the covering RSU: 37 RSUs /
+    // 187 cycles. zkp_hop_fail stayed 0 in both, correctly: per eq:stark_hop
+    // (main.tex:2993-3010) pi_hop encodes next-hop policy compliance, which a
+    // delay attack never violates -- only the misrouting families A5-A8 exercise it.
+    uint32_t lstm_node = hf_gt_attribution_node(signer);
+    if (lstm_node != UINT32_MAX) {
+        g_lstm_pkt_counts[lstm_node]++;
+        if (!timing_ok) g_lstm_stark_counts[lstm_node].first++;
+        if (!hop_ok)    g_lstm_stark_counts[lstm_node].second++;
+    }
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[STARK] signer=" << signer
+                  << " lstm_attrib=" << (lstm_node == UINT32_MAX
+                                          ? std::string("none")
+                                          : std::to_string(lstm_node))
                   << " pkt=" << pkt_id
                   << " flow=" << flow_id
                   << " t=" << ns3::Simulator::Now().GetSeconds()
                   << " timing_ok=" << timing_ok
                   << " hop_ok=" << hop_ok
-                  << " | lstm_t_fails=" << g_lstm_stark_counts[signer].first
-                  << " lstm_h_fails=" << g_lstm_stark_counts[signer].second
-                  << " pkt_count=" << g_lstm_pkt_counts[signer] << "\n";
+                  << " | lstm_t_fails=" << (lstm_node == UINT32_MAX ? 0u : g_lstm_stark_counts[lstm_node].first)
+                  << " lstm_h_fails=" << (lstm_node == UINT32_MAX ? 0u : g_lstm_stark_counts[lstm_node].second)
+                  << " pkt_count="    << (lstm_node == UINT32_MAX ? 0u : g_lstm_pkt_counts[lstm_node]) << "\n";
 }
 
 // ── Randomised Batch Verification — eq:batch_challenge / eq:batch_verify ─────
@@ -946,7 +1187,9 @@ inline void trust_update_negative(uint32_t node) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
         if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
-            record_detection_event(active_attack_variant, (int)node);
+            record_detection_event(active_attack_variant, (int)node,
+                                   g_current_trust_source ? g_current_trust_source
+                                                          : (uint16_t)DSRC_QUARANTINE);
         // Unconditional: quarantine is a high-importance detection event
         std::cout << "[TRUST-QUARANTINE] node=" << node
                   << " trust=" << g_trust_score[node]
@@ -1176,14 +1419,20 @@ inline void witness_log_packet(uint32_t witness, const uint8_t* pkt_hash,
                   << " log_size=" << g_witness_log[witness].size() << "\n";
 }
 
+// matched_dst / matched_age_out: diagnostic outputs (2026-08-06) used to
+// characterise WHY eq:dup_alert_cond fires. Pass nullptr to ignore.
 inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
-                                       uint32_t dst_seen_now) {
+                                       uint32_t dst_seen_now,
+                                       uint32_t* matched_dst = nullptr,
+                                       double*   matched_age = nullptr) {
     auto it = g_witness_log.find(witness);
     if (it == g_witness_log.end()) return false;
     double cutoff = ns3::Simulator::Now().GetSeconds() - WITNESS_WINDOW;
     for (auto& e : it->second)
         if (memcmp(e.pkt_hash, pkt_hash, 64) == 0 &&
             e.dst != dst_seen_now && e.ts >= cutoff) {
+            if (matched_dst) *matched_dst = e.dst;
+            if (matched_age) *matched_age = ns3::Simulator::Now().GetSeconds() - e.ts;
             if (CRYPTO_DEBUG_LOG)
                 std::cout << "[WITNESS-DUP] witness=" << witness
                           << " hash[0..3]=" << _hex4(pkt_hash)
@@ -1193,6 +1442,85 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
             return true;
         }
     return false;
+}
+
+// eq:bft_penalty quorum test — shared by the α_w (DA) and β_w (NFA) paths.
+//
+// main.tex, immediately below eq:bft_penalty, is explicit about three things
+// this function must do, none of which the original inline loop did:
+//   "The cardinality is over DISTINCT witness vehicles w that have each
+//    submitted at least one valid alert (signed under their own pk_w) for the
+//    same (v_i, p) event --- NOT over the total number of alert messages. A
+//    single witness submitting multiple alerts for the same event is counted
+//    as one, preventing any one vehicle from crossing the 2f+1 threshold
+//    unilaterally. The smart contract deduplicates by (w, v_i, H(p)) before
+//    counting..."
+//
+// The previous implementation counted alert MESSAGES with no deduplication and
+// never pruned g_witness_alert_pool, so (a) one witness could cross 2f+1 alone
+// and (b) every alert past the third re-crossed the threshold and re-applied a
+// trust penalty. Measured 2026-08-05 on A7/Q4: 14,284 crossings in a 30 s run,
+// 200 of 268 nodes quarantined, FP_W=202 at 15.5% precision, MCC=-0.051, with
+// the log showing "3 verified", "4 verified", "5 verified" on one target.
+// SCOPED PER (v_i, p) EVENT (corrected 2026-08-06). The first version of this
+// function counted distinct witnesses across the target's WHOLE pool and the
+// caller then cleared the whole pool. Both halves were wrong in the same
+// direction — too strict — because eq:bft_penalty's quorum is per event:
+// "distinct witness vehicles w that have each submitted at least one valid
+// alert ... for the same (v_i, p) event", deduplicated by (w, v_i, H(p)).
+// Alerts about DIFFERENT packets are separate events and must accumulate
+// independently; wiping them together discarded live evidence.
+//
+// Measured cost of the over-strict version on Q4 (30 s, 60 %): every penalty
+// needed a fresh 3-witness quorum, and 6 penalties are required to cross
+// T_min, i.e. 18 distinct witness observations to convict one attacker inside
+// a 20 s attack window. A4 fell from MCC 0.444 to 0.240 (TP 10 -> 3) and A8's
+// recall stayed at 20 % with FN=127. Precision was unaffected (A1/A2/A4 held
+// FP=0 throughout), confirming the loss was pure recall.
+//
+// Returns true only when THIS event reaches quorum; the caller then clears
+// only this event's alerts, leaving other events' evidence intact.
+inline bool witness_bft_quorum_reached(uint32_t target_node, uint64_t event_key,
+                                        OQS_SIG* oqs) {
+    auto it = g_witness_alert_pool.find(target_node);
+    if (it == g_witness_alert_pool.end()) return false;
+
+    // Prune to the observation window W, as g_witness_log already is
+    // (witness_log_packet / witness_check_duplication). An alert pool that
+    // never expires makes the quorum cumulative over the whole run rather
+    // than over a locality-and-window, which is not what eq:bft_penalty means.
+    const double cutoff = ns3::Simulator::Now().GetSeconds() - WITNESS_WINDOW;
+    auto& pool = it->second;
+    pool.erase(std::remove_if(pool.begin(), pool.end(),
+                              [cutoff](const WitnessAlert& a) { return a.ts < cutoff; }),
+               pool.end());
+
+    // Cardinality over DISTINCT witnesses reporting THIS event, each
+    // independently verified under its own pk_w. std::set keyed on witness_id,
+    // restricted to event_key, is exactly the (w, v_i, H(p)) deduplication the
+    // spec assigns to the smart contract.
+    std::set<uint32_t> distinct_witnesses;
+    for (auto& wa : pool) {
+        if (wa.event_key != event_key) continue;
+        if (!g_node_keys[wa.witness_id].keys_generated) continue;
+        if (OQS_SIG_verify(oqs, wa.signed_digest, 64,
+                           wa.alert_sig, wa.alert_sig_len,
+                           g_node_keys[wa.witness_id].pk) == OQS_SUCCESS)
+            distinct_witnesses.insert(wa.witness_id);
+    }
+    return distinct_witnesses.size() >= (size_t)(2 * WITNESS_F + 1);
+}
+
+// Clears only the alerts belonging to one resolved (v_i, p) event.
+inline void witness_clear_event(uint32_t target_node, uint64_t event_key) {
+    auto it = g_witness_alert_pool.find(target_node);
+    if (it == g_witness_alert_pool.end()) return;
+    auto& pool = it->second;
+    pool.erase(std::remove_if(pool.begin(), pool.end(),
+                              [event_key](const WitnessAlert& a) {
+                                  return a.event_key == event_key;
+                              }),
+               pool.end());
 }
 
 // α_w: duplication alert — same packet at two destinations (eq:da_sign)
@@ -1228,6 +1556,8 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
     if (OQS_SIG_sign(oqs, alert.alert_sig, &alert.alert_sig_len,
                      h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
 
+    alert.ts = ts_w;
+    alert.event_key = ((uint64_t)flow_id << 32) | (uint64_t)pkt_id;
     g_witness_alert_pool[target_node].push_back(alert);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
@@ -1239,20 +1569,14 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                   << " t_alert=" << ts_w
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
-    // BFT penalty: count only cryptographically verified alerts (eq:bft_penalty)
-    uint32_t verified = 0;
-    for (auto& wa : g_witness_alert_pool[target_node]) {
-        if (!g_node_keys[wa.witness_id].keys_generated) continue;
-        if (OQS_SIG_verify(oqs, wa.signed_digest, 64,
-                           wa.alert_sig, wa.alert_sig_len,
-                           g_node_keys[wa.witness_id].pk) == OQS_SUCCESS)
-            ++verified;
-    }
-    if (verified >= threshold) {
-        std::cout << "[WITNESS-DA-BFT] " << verified << " verified alerts >= 2f+1=" << threshold
-                  << " → trust_update_negative(target=" << target_node << ")\n";
+    // BFT penalty over DISTINCT verified witnesses for THIS event within W.
+    if (witness_bft_quorum_reached(target_node, alert.event_key, oqs)) {
+        std::cout << "[WITNESS-DA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
+                  << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
+        g_current_trust_source = DSRC_WITNESS_DA;
         trust_update_negative(target_node);
+        g_current_trust_source = DSRC_NONE;
         // M12 — WAP-R: count this threshold-crossing event once per node per run.
         //
         // FIXED 2026-07-11 — main.tex's M12 definition (§"Witness Alert
@@ -1280,6 +1604,12 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                     ++g_witness_FP_W;
             }
         }
+        // The episode is resolved — clear it so the next penalty requires a
+        // FRESH quorum of distinct witnesses rather than the same pooled
+        // alerts re-crossing on every subsequent submission. Without this the
+        // pool only ever grows and trust decays monotonically to quarantine
+        // for any node that ever attracted 2f+1 witnesses.
+        witness_clear_event(target_node, alert.event_key);
     }
 }
 
@@ -1315,6 +1645,8 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
     if (OQS_SIG_sign(oqs, alert.alert_sig, &alert.alert_sig_len,
                      h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
 
+    alert.ts = ts_w;
+    alert.event_key = ((uint64_t)flow_id << 32) | (uint64_t)pkt_id;
     g_witness_alert_pool[target_node].push_back(alert);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
@@ -1327,20 +1659,14 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << " T_fwd=" << T_fwd << "s"
                   << " pool=" << g_witness_alert_pool[target_node].size() << "/" << threshold << "\n";
 
-    // BFT penalty: count only cryptographically verified alerts (eq:bft_penalty)
-    uint32_t verified = 0;
-    for (auto& wa : g_witness_alert_pool[target_node]) {
-        if (!g_node_keys[wa.witness_id].keys_generated) continue;
-        if (OQS_SIG_verify(oqs, wa.signed_digest, 64,
-                           wa.alert_sig, wa.alert_sig_len,
-                           g_node_keys[wa.witness_id].pk) == OQS_SUCCESS)
-            ++verified;
-    }
-    if (verified >= threshold) {
-        std::cout << "[WITNESS-NFA-BFT] " << verified << " verified alerts >= 2f+1=" << threshold
-                  << " → trust_update_negative(target=" << target_node << ")\n";
+    // BFT penalty over DISTINCT verified witnesses for THIS event within W.
+    if (witness_bft_quorum_reached(target_node, alert.event_key, oqs)) {
+        std::cout << "[WITNESS-NFA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
+                  << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
+        g_current_trust_source = DSRC_WITNESS_NFA;
         trust_update_negative(target_node);
+        g_current_trust_source = DSRC_NONE;
         // M12 (WAP-R) intentionally NOT counted here (fixed 2026-07-11).
         // main.tex scopes M12 to the duplication-alert mechanism only
         // (eq:dup_alert_cond, "specifically against Variants 7 and 8") — this
@@ -1353,6 +1679,9 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         // undercounting M12's TP_W. trust_update_negative() above still
         // fires correctly regardless — only the M12-specific bookkeeping is
         // removed from this function.
+        //
+        // Same episode-clear as the α_w path — see witness_submit_duplication_alert().
+        witness_clear_event(target_node, alert.event_key);
     }
 }
 
@@ -1496,12 +1825,20 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     // Ablation gate flags (Phase 3) — all default true (full proposed behavior);
     // flip one to its ablated value per run to reproduce AB1/AB4/AB6/AB7/AB8/AB9/AB11.
     cmd.AddValue("g_disable_s1_s2",               "DIAGNOSTIC: disable S1+S2 only, keep S3-S8 active (isolate a signature's own FPR)", g_disable_s1_s2);
+    cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's eq:lstm_gate LSTM-suppression publishing intact", g_disable_s3_s4);
+    cmd.AddValue("g_disable_s5_s6",               "DIAGNOSTIC: disable S5+S6 (active HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution", g_disable_s5_s6);
+    cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 (passive HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution (isolates the witness pipeline)", g_disable_s7_s8);
+    cmd.AddValue("enable_detector_windows",       "M1: emit detector_windows.csv (per-window OBU/RSU decisions + truth) for metrics/m01_detection_quality.py", enable_detector_windows);
+    cmd.AddValue("g_dup_diag_log",                "DIAGNOSTIC: trace every eq:dup_alert_cond firing (witness, accused, both destinations, ground truth)", g_dup_diag_log);
+    cmd.AddValue("g_disable_btmm_trust",          "DIAGNOSTIC: disable the per-packet BTMM trust update (eq:trust_update); witness-driven and controller-plane trust updates unaffected", g_disable_btmm_trust);
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
     cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
     cmd.AddValue("enable_stark_hop",              "AB4: enable STARK hop-legitimacy proof π_hop",  enable_stark_hop);
     cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
     cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);
+    cmd.AddValue("enable_local_quarantine",       "eq:local_quarantine / HOLD_FORWARD: OBU suspends forwarding of the flagged flow pending RSU.Confirm or T_hold (default OFF — changes all delivery metrics)", enable_local_quarantine);
+    cmd.AddValue("T_hold",                        "eq:local_quarantine max hold window (s). NOT specified numerically in main.tex — uncalibrated placeholder", T_HOLD);
     cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);

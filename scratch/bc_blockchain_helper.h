@@ -68,7 +68,7 @@ static uint8_t       g_prev_anchor_hash[SHA3_512_BYTES] = {};
 static const std::string BC_RESULTS_DIR =
     "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 
-// Per-run filename suffix ("_Attack{id}_{pct}{delay}[_TAP]"), mirrors the
+// Per-run filename suffix ("_Attack{id}_{pct}{delay}[_TAP|_FADE]"), mirrors the
 // scheme write_security_metrics_csv() uses for MOBIGUARD_Attack*.csv. Without
 // this, every run (and every other process pointed at BC_RESULTS_DIR) writes
 // the same bc_*.csv filenames, so concurrent/sequential runs interleave torn
@@ -87,10 +87,24 @@ static const std::string BC_RESULTS_DIR =
 // convention as the A2_pct<P>..._TAP.log run logs) gives the two processes
 // disjoint paths so bc_write_row()'s per-stream fail()/retry logic is no
 // longer defeated by a second process truncating the same file underneath it.
+//
+// run_hf_attacks.py has the identical concurrent-pair pattern for FADE: it
+// submits the normal MOBIGUARD run and an isolated FADE run for the same
+// (attack, pct) to the same thread pool, and FADE_PARAMS never sets
+// enable_tap, so both processes used to collide the same way TAP did before
+// the tag above existed. fade_detection_active (true only during an isolated
+// FADE run: active_attack_variant in [4,7] with both LRAD flags off) is
+// already resolved during one-time setup in main(), before Simulator::Run()
+// starts and therefore before any bc_* file is first opened from a scheduled
+// event — safe to read here without reordering anything, and needs no launch
+// flag of its own.
 inline std::string bc_run_suffix() {
     int id = (active_attack_variant >= 0) ? (active_attack_variant + 1) : 0;
     return "_Attack" + std::to_string(id) + "_" + std::to_string(attack_percentage) + g_delay_suffix
-           + (enable_tap ? "_TAP" : "");
+           + "_seed" + std::to_string(sim_seed)
+           + (enable_tap ? "_TAP" : "")
+           + (fade_detection_active ? "_FADE" : "")
+           + (g_run_tag.empty() ? "" : "_" + g_run_tag);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

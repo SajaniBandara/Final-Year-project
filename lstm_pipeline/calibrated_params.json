@@ -1,18 +1,19 @@
 {
-  "delta0": 0.00195355,
-  "alpha_rho": -7.9e-07,
-  "alpha_v": 2.17e-06,
+  "delta0": 0.00447409,
+  "alpha_rho": 0.00011308,
+  "alpha_v": -0.00150311,
   "beta": 0.8,
   "k": 3.0,
-  "ols_r2": 0.0008,
-  "robustness_max_delta_fpr": 0.0447,
+  "ols_r2": 0.0074,
+  "robustness_max_delta_fpr": 0.005,
   "s3_s4": {
     "lambda_fm_thresh": 10.0,
     "lambda_fm_source": "initial estimate retained (FlowMod rate not logged in LSTM CSVs)",
-    "lambda_pi_thresh": 15.0,
-    "lambda_pi_thresh_source": "default retained (benign signal all zero \u2014 no distribution to calibrate)",
-    "tcam_util_thresh": 0.324567,
+    "lambda_pi_thresh": 68.0,
+    "lambda_pi_thresh_source": "benign p99",
+    "lambda_pi_thresh_benign_exceed": 0.0098,
+    "tcam_util_thresh": 0.216667,
     "tcam_util_thresh_source": "benign p99",
-    "tcam_util_thresh_benign_exceed": 0.01
+    "tcam_util_thresh_benign_exceed": 0.0099
   }
 }

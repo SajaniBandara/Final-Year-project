@@ -1,0 +1,22 @@
+{
+  "n_adapted_runs": 665,
+  "n_total_runs": 3072,
+  "baseline_overall": {
+    "TP": 3824,
+    "TN": 6914,
+    "FP": 1082,
+    "FN": 468,
+    "M1_MCC": 0.7356,
+    "M2_DR": 0.891,
+    "M3_FPR": 0.1353
+  },
+  "adapted_overall": {
+    "TP": 3777,
+    "TN": 7294,
+    "FP": 702,
+    "FN": 515,
+    "M1_MCC": 0.7847,
+    "M2_DR": 0.88,
+    "M3_FPR": 0.0878
+  }
+}

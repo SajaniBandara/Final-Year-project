@@ -17,16 +17,15 @@ confusion-matrix files, which is what this script regenerates.
 
 Covers all 8 attacks x 6 percentages x N seeds, NORMAL mode only (full
 S1-S8 stack active, no TAP/FADE isolation) -- this is the mode that
-writes MOBIGUARD_Attack<N>_<pct>*.csv.
+writes MOBIGUARD_Attack<N>_<pct>[_d<X>ms]_seed<S>.csv.
 
-Seed-collision handling: write_security_metrics_csv() has no seed in its
-output filename and opens with ios::app, so two seeds of the SAME
-(attack, percentage) writing concurrently would interleave into one file
--- the exact contamination bug found and fixed earlier this session.
-Each (attack, percentage) pair therefore runs its seeds SEQUENTIALLY in
-one worker "lane"; the resulting CSV is renamed to embed the seed
-immediately after each run completes, before the next seed in that lane
-starts. Different (attack, percentage) lanes run fully in parallel.
+Seed handling: write_security_metrics_csv() now embeds the seed in the
+filename natively from the moment the file is opened (fixed after this
+script was first written, when the filename was still shared across
+seeds and two seeds writing concurrently would interleave into one
+file). Every (attack, percentage, seed) combination therefore runs as
+its own independent job -- no sequential lanes, no rename-after-the-fact
+needed; each job's output already lands at its own distinct path.
 
 Usage:
   # Sync headers + rebuild only, then exit (run again without --build to sweep):
@@ -105,20 +104,17 @@ def build_simulation() -> bool:
     return True
 
 
-def result_filename(attack_number: int, pct: int) -> str:
+def result_filename(attack_number: int, pct: int, seed: int) -> str:
     suffix = "_d80ms" if attack_number in (1, 2) else ""
-    return f"MOBIGUARD_Attack{attack_number}_{pct}{suffix}.csv"
+    return f"MOBIGUARD_Attack{attack_number}_{pct}{suffix}_seed{seed}.csv"
 
 
 def clean_results(attacks: list, percs: list) -> None:
     removed = 0
     for a in attacks:
         for p in percs:
-            f = RESULTS_DIR / result_filename(a, p)
-            if f.exists():
-                f.unlink()
-                removed += 1
-            # also sweep away any stale per-seed files from a prior partial run
+            # Glob rather than enumerating seeds here: sweeps beyond the
+            # default --seeds list shouldn't leave orphaned prior-run files.
             for stale in RESULTS_DIR.glob(f"MOBIGUARD_Attack{a}_{p}*_seed*.csv"):
                 stale.unlink()
                 removed += 1
@@ -145,42 +141,32 @@ def build_waf_command(attack_number: int, pct: int, sim_time: int,
     return ["./waf", "--run-no-build", f"scratch/routing/routing {param_str}"]
 
 
-def run_lane(attack_number: int, pct: int, seeds: list,
-             sim_time: int, sim_run: int) -> dict:
-    """Runs all seeds for one (attack, pct) pair SEQUENTIALLY (avoids the
-    shared-filename contamination bug), renaming each result immediately."""
-    lane_results = []
-    for seed in seeds:
-        label    = f"A{attack_number}_pct{pct}_seed{seed}"
-        log_path = LOGS_DIR / f"{label}.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        cmd   = build_waf_command(attack_number, pct, sim_time, seed, sim_run)
-        start = datetime.now()
-        print(f"  [{label}] started  {start.strftime('%H:%M:%S')}")
+def run_one(attack_number: int, pct: int, seed: int,
+            sim_time: int, sim_run: int) -> dict:
+    """Runs one (attack, pct, seed) job. No rename needed -- the C++ side
+    writes directly to its final, seed-tagged path."""
+    label    = f"A{attack_number}_pct{pct}_seed{seed}"
+    log_path = LOGS_DIR / f"{label}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd   = build_waf_command(attack_number, pct, sim_time, seed, sim_run)
+    start = datetime.now()
+    print(f"  [{label}] started  {start.strftime('%H:%M:%S')}")
 
-        with open(log_path, "w") as logf:
-            logf.write(f"# Command: {' '.join(cmd)}\n# Started: {start.isoformat()}\n\n")
-            logf.flush()
-            proc = subprocess.run(cmd, cwd=NS3_DIR, stdout=logf,
-                                   stderr=subprocess.STDOUT, text=True)
+    with open(log_path, "w") as logf:
+        logf.write(f"# Command: {' '.join(cmd)}\n# Started: {start.isoformat()}\n\n")
+        logf.flush()
+        proc = subprocess.run(cmd, cwd=NS3_DIR, stdout=logf,
+                               stderr=subprocess.STDOUT, text=True)
 
-        elapsed = (datetime.now() - start).total_seconds()
-        ok      = proc.returncode == 0
+    elapsed = (datetime.now() - start).total_seconds()
+    ok      = proc.returncode == 0
+    out     = RESULTS_DIR / result_filename(attack_number, pct, seed)
+    produced = out.exists() and out.stat().st_size > 0
 
-        # Rename the freshly-written shared-name CSV to embed the seed BEFORE
-        # the next seed in this lane starts and reopens the shared filename.
-        src  = RESULTS_DIR / result_filename(attack_number, pct)
-        dst  = RESULTS_DIR / src.name.replace(".csv", f"_seed{seed}.csv")
-        renamed = False
-        if src.exists():
-            src.rename(dst)
-            renamed = True
-
-        print(f"  [{label}] {'OK' if ok else 'FAILED':<6}  {elapsed:5.0f}s"
-              f"  {'-> ' + dst.name if renamed else '(NO OUTPUT FILE)'}")
-        lane_results.append({"label": label, "ok": ok, "elapsed_s": elapsed,
-                             "renamed": renamed})
-    return {"attack_number": attack_number, "pct": pct, "runs": lane_results}
+    print(f"  [{label}] {'OK' if ok else 'FAILED':<6}  {elapsed:5.0f}s"
+          f"  {out.name if produced else '(NO OUTPUT FILE)'}")
+    return {"attack_number": attack_number, "pct": pct, "seed": seed,
+            "label": label, "ok": ok, "elapsed_s": elapsed, "produced": produced}
 
 
 def main() -> None:
@@ -196,7 +182,7 @@ def main() -> None:
     parser.add_argument("--sim-time", type=int, default=40)
     parser.add_argument("--sim-run", type=int, default=1)
     parser.add_argument("--workers", type=int, default=28,
-                        help="Max concurrent (attack,pct) lanes (default 28).")
+                        help="Max concurrent (attack,pct,seed) jobs (default 28).")
     args = parser.parse_args()
 
     if args.build:
@@ -218,25 +204,25 @@ def main() -> None:
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    lanes = [(a, p) for a in scope_attacks for p in scope_percs]
-    total_runs = len(lanes) * len(args.seeds)
-    print(f"\n-- Launching {len(lanes)} lane(s) x {len(args.seeds)} seed(s) "
-          f"= {total_runs} run(s)  [attacks={scope_attacks}  percentages={scope_percs}  "
+    jobs = [(a, p, s) for a in scope_attacks for p in scope_percs for s in args.seeds]
+    total_runs = len(jobs)
+    print(f"\n-- Launching {total_runs} run(s)  "
+          f"[attacks={scope_attacks}  percentages={scope_percs}  "
           f"seeds={args.seeds}  simTime={args.sim_time}s  "
-          f"workers={min(args.workers, len(lanes))}] --\n")
+          f"workers={min(args.workers, total_runs)}] --\n")
 
     wall_start = datetime.now()
-    lane_summaries = []
-    with ThreadPoolExecutor(max_workers=min(args.workers, len(lanes))) as pool:
+    run_results = []
+    with ThreadPoolExecutor(max_workers=min(args.workers, total_runs)) as pool:
         futures = {
-            pool.submit(run_lane, a, p, args.seeds, args.sim_time, args.sim_run): (a, p)
-            for a, p in lanes
+            pool.submit(run_one, a, p, s, args.sim_time, args.sim_run): (a, p, s)
+            for a, p, s in jobs
         }
         for fut in as_completed(futures):
-            lane_summaries.append(fut.result())
+            run_results.append(fut.result())
 
     wall = (datetime.now() - wall_start).total_seconds()
-    passed = sum(1 for ls in lane_summaries for r in ls["runs"] if r["ok"] and r["renamed"])
+    passed = sum(1 for r in run_results if r["ok"] and r["produced"])
     failed = total_runs - passed
     print(f"\n-- Summary (wall time: {wall:.0f}s) --")
     print(f"  Passed : {passed}/{total_runs}")
@@ -248,7 +234,7 @@ def main() -> None:
     for a in scope_attacks:
         for p in scope_percs:
             for s in args.seeds:
-                base = result_filename(a, p).replace(".csv", f"_seed{s}.csv")
+                base = result_filename(a, p, s)
                 f = RESULTS_DIR / base
                 if not f.exists() or f.stat().st_size == 0:
                     print(f"  MISSING  {base}")

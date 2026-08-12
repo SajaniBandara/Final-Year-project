@@ -8,14 +8,21 @@
 // Writes one CSV row per RSU per 1 Hz cycle when --training=1 is passed.
 //
 // Output path:
-//   $HOME/ns-allinone-3.35/ns-3.35/results_routing/
-//       lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
+//   /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/
+//       lstm_training/RSU_{r}/Attack{v}_{pct}[_d{X}ms]_seed{s}.csv
 //
 // CSV columns (10 features + escalation flag + metadata + live-inference
-// result, full eq:lstm_input order):
+// result + label-only HF ground-truth column, full eq:lstm_input order):
 //   cycle, rsu_id, delta_t, lambda_PI, U_TCAM,
 //   zkp_delay_fail, zkp_hop_fail, rho, v_bar, d_div, a_tp, r_anom,
-//   escalated, label, lstm_anomaly_score, d_lstm
+//   escalated, label, lstm_anomaly_score, d_lstm, hf_send_gt
+//
+// `hf_send_gt` (2026-08-02, Issue 1 fix): per-RSU count of hidden-duplicate
+// SEND events this cycle (Δ(g_lstm_hf_sendgt_count[r]), crypto_layer.h) —
+// fires at attack-injection time, independent of r_anom's receive-side
+// signal. NOT part of FEATURES in preprocessor.py; exists only so the A5-A8
+// ground-truth window label doesn't reuse a value also fed to the model as
+// input feature #10 (r_anom). See g_lstm_hf_sendgt_count's declaration.
 //
 // `r_anom` (2026-07-26, eq:feat_ranom): per-RSU rate of distinct packets
 // received at an unauthorized destination this cycle, attributed to this
@@ -29,15 +36,22 @@
 // instead of inferring it indirectly. Empirically validated (2026-07-26):
 // genuine effect 2.1-5.9 vs. baseline drift 0 across all four HF variants.
 //
-// `d_div`/`a_tp` (2026-07-26, eq:feat_ddiv/eq:feat_atp): added alongside
-// r_anom to complete the originally-proposed 3-feature set. IMPORTANT: in
-// this simulation both are direct, near-deterministic transforms of the
-// SAME r_anom delta (see the computation site below for why — HF only
-// ever targets one demanding flow via one eavesdropper per malicious RSU,
-// so there is no second, independent "diversion" event to observe them
-// from). Expect them to be highly correlated with r_anom, not additive —
-// this is a structural property of the single-flow attack model, not a
-// bug in these two features' implementation.
+// `d_div`/`a_tp` (2026-07-26, eq:feat_ddiv/eq:feat_atp; corrected 2026-07-28
+// per main.tex:5783-5794): added alongside r_anom to complete the
+// originally-proposed 3-feature set. Computed from dedicated local delivery
+// counters (g_lstm_flow0_dest_set / g_lstm_flow0_total_delivery_count /
+// g_lstm_flow0_legit_count, all in crypto_layer.h, populated at the MacRx
+// receive sites in routing.cc) — genuinely independent of r_anom's
+// blockchain-receipt-log source, as main.tex requires ("D_div is computed
+// from per-source per-destination byte counts logged at each RSU"; "A_tp is
+// computed from per-flow directional byte rate logs"). The 2026-07-26
+// version derived both as deterministic transforms of r_anom's delta, which
+// was a spec deviation, not a harmless simplification — it collapsed three
+// features main.tex designs as independent defense-in-depth signals down to
+// one. |P(v,.)|=1 still holds in this sim (HF only ever targets one
+// demanding flow, flow 0, so it has exactly one authorized destination at
+// any instant) — that part of the original reasoning was correct and is
+// kept.
 //
 // `escalated`: whether >=1 OBU rule-engine escalation (D_OBU==1,
 // eq:composite_light) targeted this RSU during this cycle (main.tex
@@ -81,25 +95,40 @@
 #include <iterator>
 #include "lstm_inference.h"   // live in-sim forward pass — main.tex sec:fed_lstm
 
-// Forward declaration — g_slowpath_hit_count is DEFINED in routing.cc at the
-// point where it is declared (int g_slowpath_hit_count[300] = {0}).
-// This extern follows the same pattern used for g_tcam_rule_count in routing.cc
-// (extern int g_tcam_rule_count[300]) so the header can be included before that
-// definition while still accessing the variable at runtime.
-extern int g_slowpath_hit_count[300];
+// g_packetin_count (PACKET_IN/table-miss rate source for S4's λ_PI, same
+// counter S4 already reports) is declared extern in tcam_attack_helper.h and
+// tcam_detection.h, both included before this header per the inclusion-order
+// rule at the top of this file — no local extern needed here (same pattern
+// as g_tcam_rule_count's use below, at U_TCAM).
+//
+// HANDOVER_2026-08-07.md §5: λ_PI previously read g_slowpath_hit_count, which
+// is incremented ONLY on A3/A4 AND only once the TCAM table is completely
+// full (routing.cc:121308's gate) — a condition that can never occur in a
+// benign run, so every training row had λ_PI≡0 and the exported scaler's std
+// was exactly 1.0 (sklearn's zero-variance fallback). g_packetin_count is
+// incremented on every PACKET_IN across all variants (routing.cc:121309 and
+// tcam_attack_helper.h's attack-injection sites), giving real benign-vs-attack
+// variance. Point this feature at the same counter S4 already uses.
 
-// ── Per-RSU slowpath counter from the previous cycle.
-// Used to compute Δ(g_slowpath_hit_count) = λ_PI feature for each cycle.
+// ── Per-RSU PACKET_IN counter from the previous cycle (λ_PI feature).
+// Used to compute Δ(g_packetin_count) for each cycle.
 // Sized by lstm_logger_init(); zero-initialised.
 static std::vector<int> g_lstm_prev_slowpath;
 static bool             g_lstm_logger_ready = false;
 
 // ── Per-RSU R_anom counter from the previous cycle (eq:feat_ranom).
 // Used to compute Δ(g_lstm_ranom_count) the same way λ_PI is computed from
-// Δ(g_slowpath_hit_count) -- a proper per-window rate, not a cumulative
+// Δ(g_packetin_count) -- a proper per-window rate, not a cumulative
 // ever-fired latch (see g_lstm_ranom_count's declaration in crypto_layer.h
 // for why that distinction matters here). Sized by lstm_logger_init().
 static std::vector<uint32_t> g_lstm_prev_ranom;
+
+// ── Per-RSU HF send-side ground-truth counter from the previous cycle
+// (Issue 1 fix, 2026-08-02). Same delta pattern as g_lstm_prev_ranom above,
+// but tracks g_lstm_hf_sendgt_count (crypto_layer.h) -- a send-time signal
+// used ONLY to build preprocessor.py's ground-truth label, never fed to the
+// model. Sized by lstm_logger_init().
+static std::vector<uint32_t> g_lstm_prev_hf_sendgt;
 
 // ── D_div/A_tp (eq:feat_ddiv, eq:feat_atp): flow 0's legit-delivery delta,
 // computed ONCE PER CYCLE (not once per RSU) since lstm_log_rsu_cycle() is
@@ -111,6 +140,17 @@ static std::vector<uint32_t> g_lstm_prev_ranom;
 static uint32_t g_lstm_prev_flow0_legit        = 0;
 static int      g_lstm_flow0_legit_cycle_cached = -1;
 static double   g_lstm_flow0_legit_delta_cached = 0.0;
+
+// ── D_div/A_tp numerator/denominator snapshots (eq:feat_ddiv, eq:feat_atp;
+// main.tex:5783-5794). g_lstm_flow0_dest_set/g_lstm_flow0_total_delivery_count
+// (crypto_layer.h) are global running-window accumulators, not per-RSU, so
+// (like g_lstm_flow0_legit_delta_cached above) they must be snapshotted then
+// reset exactly once per cycle — not once per RSU — even though
+// lstm_log_rsu_cycle() is called once per RSU inside the same cycle's
+// per-RSU loop. Refreshed in the same cache-refresh block as
+// g_lstm_flow0_legit_delta_cached below.
+static uint32_t g_lstm_ddiv_count_cached     = 0;
+static uint32_t g_lstm_total_delivery_cached = 0;
 
 // ── Rule-engine → LSTM escalation counter (main.tex §5039/5307:
 // "Escalation to LSTM detector: immediate escalation occurs when the
@@ -149,13 +189,23 @@ static std::vector<std::vector<std::vector<float>>> g_lstm_rsu_window;
 static std::vector<float> g_lstm_last_score;
 static std::vector<bool>  g_lstm_last_dlstm;
 
-// Canonical CSV header (2026-07-26: eq:feat_ddiv/eq:feat_atp added, 16
-// columns, full eq:lstm_input order). Kept as a single constant so
-// lstm_migrate_stale_header() and the writer below can never drift apart.
+// Canonical CSV header (2026-08-02: hf_send_gt appended, 17 columns, full
+// eq:lstm_input order plus the label-only HF ground-truth column). Kept as
+// a single constant so lstm_migrate_stale_header() and the writer below can
+// never drift apart. hf_send_gt is NOT part of FEATURES in preprocessor.py
+// -- see g_lstm_hf_sendgt_count's declaration (crypto_layer.h) for why it
+// must stay separate from r_anom.
 static const char* LSTM_CSV_HEADER =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm,hf_send_gt";
+// 2026-07-26..2026-08-02 format, 16 columns -- same as current but no
+// hf_send_gt (appended at the very end).
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_16COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
     "lstm_anomaly_score,d_lstm";
+static const size_t LSTM_CSV_16COL_NCOLS = 16;
 // 2026-07-26 R_anom-only format, 14 columns -- same as current but no
 // d_div/a_tp (inserted between v_bar and r_anom).
 [[maybe_unused]] static const char* LSTM_CSV_HEADER_14COL =
@@ -287,7 +337,17 @@ inline void lstm_migrate_stale_header(const std::string& path)
             migrated_rows.push_back(o.str());
             ++n_migrated;
         }
-        else if (f.size() == 16)
+        else if (f.size() == LSTM_CSV_16COL_NCOLS)
+        {
+            // Pre-hf_send_gt row (2026-07-26..2026-08-02): all 16 fields
+            // already in current order, just missing the trailing hf_send_gt
+            // column. Append 0 -- these rows predate the counter's existence,
+            // same "unknown, assume no attack activity" default the rest of
+            // this function uses for absent columns.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == 17)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -296,7 +356,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
         {
             std::cerr << "[LSTM_LOGGER] WARNING: " << path
                        << " has a row with " << f.size()
-                       << " fields (expected 10/13/14 legacy or 16 current) — "
+                       << " fields (expected 10/13/14/16 legacy or 17 current) — "
                        << "left unmigrated: " << row << std::endl;
             migrated_rows.push_back(row);
             ++n_unexpected;
@@ -332,6 +392,12 @@ inline void lstm_migrate_stale_header(const std::string& path)
 
 inline std::string lstm_weights_bin_path()
 {
+    // $HOME-relative into the git repo checkout (g13_project_repo), not the
+    // ns-3.35 tree — the weights file lives in lstm_pipeline/ in this repo.
+    // A prior version hardcoded ".../ns-allinone-3.35/ns-3.35/final yr project
+    // updated/Final-Year-project/..." which never existed on this host and,
+    // even if it had, $HOME/ns-allinone-3.35 is a symlink into a DIFFERENT
+    // group's ns-3 checkout (ns3-workspace) on this shared account.
     std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project/";
     const char* home = std::getenv("HOME");
     if (home)
@@ -344,17 +410,15 @@ inline std::string lstm_weights_bin_path()
 // Resolves the results_routing base directory the same way routing.cc does,
 // so the logger is self-contained and does not depend on the caller passing
 // results_dir (which is set after the per-RSU loop in the original code).
+// Hardcoded rather than $HOME-relative — see lstm_weights_bin_path() above
+// for why: $HOME/ns-allinone-3.35 is a symlink into a different group's
+// checkout on this shared account, so a --training=1 run using the old
+// $HOME-based path would silently write its LSTM training data into that
+// other group's results_routing/ instead of this project's.
 // =========================================================================
 inline std::string lstm_make_base_dir()
 {
-    std::string dir =
-        "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
-    const char* home = std::getenv("HOME");
-    if (home)
-        dir = std::string(home) + "/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
-    if (!dir.empty() && dir.back() != '/')
-        dir += '/';
-    return dir;
+    return "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/";
 }
 
 // =========================================================================
@@ -365,9 +429,12 @@ inline std::string lstm_make_base_dir()
 // =========================================================================
 inline void lstm_logger_init(uint32_t n_rsus)
 {
+    // eq:theta_adapt: clear per-RSU warm-up accumulators for this run.
+    mglstm::lstm_theta_adapt_reset((size_t)N_RSUs);
     if (g_lstm_logger_ready) return;
     g_lstm_prev_slowpath.assign(n_rsus, 0);
     g_lstm_prev_ranom.assign(n_rsus, 0);
+    g_lstm_prev_hf_sendgt.assign(n_rsus, 0);
     g_lstm_escalation_count.assign(n_rsus, 0);
     g_lstm_rsu_window.assign(n_rsus, {});
     g_lstm_last_score.assign(n_rsus, 0.0f);
@@ -441,7 +508,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
 //
 // Features logged (eq:lstm_input):
 //   δ_t          = obs_delay
-//   λ_PI,t       = Δ(g_slowpath_hit_count[rsu_sim_idx]) since last cycle
+//   λ_PI,t       = Δ(g_packetin_count[rsu_sim_idx]) since last cycle
 //   U_TCAM,t     = g_tcam_rule_count[rsu_sim_idx] / TCAM_CAPACITY (clamped 0–1)
 //   𝟙[π_delay=⊥] = 1 if g_lstm_stark_counts[rsu_sim_idx].first  > 0 this cycle
 //   𝟙[π_hop=⊥]   = 1 if g_lstm_stark_counts[rsu_sim_idx].second > 0 this cycle
@@ -451,6 +518,138 @@ inline void lstm_logger_init(uint32_t n_rsus)
 // Label: is_malicious_node[active_attack_variant][rsu_sim_idx] — 1 if the RSU
 //        is a confirmed attacker this cycle under the current attack variant.
 // =========================================================================
+// =========================================================================
+// lstm_rsu_ground_truth_label():
+// Ground-truth label for one RSU cycle row -- 1 if this RSU is attack-affected
+// under the active variant, else 0.
+//
+// EXTRACTED 2026-08-06 from lstm_log_rsu_cycle()'s inline label block, with no
+// behavioural change, so detector_windows.h can reuse the SAME definition of
+// RSU ground truth instead of reimplementing it. That logic carries four
+// hard-won fallbacks (A3/A4 victim-RSU, A2 covering-RSU, A6/A8 covering-RSU)
+// whose rationale is documented inline below; duplicating them would guarantee
+// the two copies drift.
+//   rsu_sim_idx = N_Vehicles + r  (the RSU's global node index)
+// =========================================================================
+inline int lstm_rsu_ground_truth_label(uint32_t rsu_sim_idx)
+{
+int label = 0;
+if (active_attack_variant >= 0 &&
+    active_attack_variant < NUM_ATTACK_VARIANTS)
+{
+    label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
+    // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
+    // variant 2) or attacker vehicles (A4, variant 3), never the RSU
+    // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
+    // positives and A3 only the single representative RSU. Label the
+    // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
+    // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
+    // is declared in tcam_detection.h, included just before this header.
+    if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
+    {
+        for (const auto& entry : g_tcam_table)
+        {
+            if (entry.node_id == rsu_sim_idx && entry.is_malicious)
+            {
+                label = 1;
+                break;
+            }
+        }
+    }
+    // A2 (Selective Time Delay, DP — variant 1): same root cause as the
+    // A3/A4 case above, missed when that fallback was added. Supervisor
+    // review fix (2026-08-03).
+    //
+    // declare_attackers() (attack_declaration.h) picks A2 attackers from the
+    // full var = N_Vehicles + N_RSUs candidate pool and sets
+    // is_malicious_node[1][idx] on the attacker's OWN node index. That is
+    // correct for the S1-S8 confusion matrix, which attributes detections to
+    // prev_sender (itself often the attacking vehicle) -- so it must NOT be
+    // changed at the declaration site. But this label indexes
+    // is_malicious_node[variant][rsu_sim_idx] by RSU, so whenever the A2
+    // attacker lands on a vehicle (200 of the 264 candidates) NO RSU row is
+    // ever labelled 1, and every A2 training row reads label=0 for the whole
+    // run even though the delay attack is firing. That is corrupted ground
+    // truth, not a weak feature.
+    //
+    // Fix mirrors the A3/A4 "victim RSU" idea using the covering-RSU
+    // attribution already used for the HF ground-truth counters: an RSU is
+    // attack-affected if it currently covers (strongest DSRC link to) at
+    // least one malicious A2 node. hf_gt_attribution_node() returns the node
+    // itself for RSU attackers, the covering RSU for vehicle attackers, and
+    // UINT32_MAX when no RSU is in range -- in which case no RSU observes
+    // that attacker at this instant and correctly no row is labelled for it.
+    if (!label && active_attack_variant == 1)
+    {
+        for (uint32_t n = 0; n < (uint32_t)var; ++n)
+        {
+            if (!selective_delay_malicious_nodes[n]) continue;
+            if (hf_gt_attribution_node(n) == rsu_sim_idx)
+            {
+                label = 1;
+                break;
+            }
+        }
+    }
+    // A6 (variant 5, active HF DP) and A8 (variant 7, passive HF DP):
+    // identical root cause to the A2 case above. Supervisor-approved
+    // 2026-08-04, scoped to these two variants ONLY.
+    //
+    // hf_declare_malicious_rsus() draws mal_node from a pool that for DP
+    // variants is "RSUs + intermediate vehicle relays" (hf_attack_helper.h
+    // :417) and sets is_malicious_node[variant][mal_node] on that node's own
+    // index (hf_attack_helper.h:653). When the draw lands on a vehicle, no
+    // RSU row is ever labelled 1 even though the attack is firing.
+    //
+    // This was structurally masked in earlier verification: at p=100% the
+    // entire on-path pool is compromised, so every RSU is directly malicious
+    // and the fallback is never needed. The bug only appears below 100%.
+    //
+    // NOT extended to A5 (variant 4) or A7 (variant 6): those are
+    // control-plane variants whose attacker pool is RSUs/controllers, never
+    // vehicles, so the vehicle-orphaning case cannot arise for them.
+    //
+    // Note this is the LABEL. The hf_gt_attribution_node() calls already
+    // present in routing.cc (~121709 / ~121793) fix the FEATURE counters
+    // (r_anom, hf_send_gt, the ZKP counters) and never touch the label.
+    if (!label && (active_attack_variant == 5 || active_attack_variant == 7))
+    {
+        const bool* mal = (active_attack_variant == 5)
+                            ? active_hf_malicious_nodes
+                            : passive_hf_malicious_nodes;
+        // MEASURED (2026-08-04, supervisor-confirmed scope call (a)): this
+        // fallback is CORRECT BUT INERT for A6/A8 in the current attacker
+        // model, and that is expected -- do not "fix" it by widening scope.
+        // Instrumented across two runs (p=40 %: 67 malicious vehicles;
+        // p=20 %: 24), the covering-RSU lookup resolved 91/91 with ZERO
+        // unmapped, but in every case the covering RSU was already directly
+        // malicious, so the fallback never changed a label.
+        // Cause: A6/A8 draw attackers from the ON-PATH pool
+        // (hf_attack_helper.h:417), which structurally places malicious
+        // vehicle relays inside on-path RSU zones -- and those RSUs are
+        // themselves in the draw. Lowering the attack percentage shrinks
+        // both sets together rather than decoupling them. Physically
+        // necessary: an off-path node never handles the traffic it would
+        // have to duplicate.
+        // Contrast A2 above, which draws from the full 264-node pool
+        // uniformly -- there the identical fallback moved 38 -> 54 RSUs.
+        // Kept as defensive code: it costs one pass over total_size per
+        // logged cycle and would matter immediately if attacker selection
+        // ever stops being on-path constrained.
+        for (uint32_t n = 0; n < (uint32_t)total_size; ++n)
+        {
+            if (!mal[n]) continue;
+            if (hf_gt_attribution_node(n) == rsu_sim_idx)
+            {
+                label = 1;
+                break;
+            }
+        }
+    }
+}
+    return label;
+}
+
 inline void lstm_log_rsu_cycle(uint32_t r,
                                 double   rho_t,
                                 double   v_bar_t,
@@ -471,8 +670,10 @@ inline void lstm_log_rsu_cycle(uint32_t r,
 
     const uint32_t rsu_sim_idx = (uint32_t)N_Vehicles + r;
 
-    // ── Feature 2: λ_PI — Δ PACKET_IN slow-path hits since last cycle
-    int cur_slow  = g_slowpath_hit_count[rsu_sim_idx];
+    // ── Feature 2: λ_PI — Δ PACKET_IN (table-miss) hits since last cycle.
+    // g_packetin_count, not g_slowpath_hit_count — see HANDOVER_2026-08-07.md
+    // §5 / the comment above g_lstm_prev_slowpath's declaration for why.
+    int cur_slow  = g_packetin_count[rsu_sim_idx];
     double lam_PI = (double)(cur_slow - g_lstm_prev_slowpath[r]);
     if (lam_PI < 0.0) lam_PI = 0.0;    // guard: counter reset between cycles
     g_lstm_prev_slowpath[r] = cur_slow;
@@ -499,24 +700,38 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if (r < g_lstm_prev_ranom.size()) g_lstm_prev_ranom[r] = cur_ranom;
     }
 
-    // ── Features 9 & 10 (new): D_div, A_tp (eq:feat_ddiv, eq:feat_atp).
-    // IMPLEMENTATION NOTE: this simulation's HF attacks always target
-    // exactly ONE demanding flow (hf_target_flow_id=0, efade_detection.h)
-    // via exactly one eavesdropper per malicious RSU, so |P(v,.)|=1 (flow 0
-    // has one authorized destination at any instant) and "distinct
-    // destinations" is capped at {legit destination, one eavesdropper}.
-    // Both features are therefore direct, near-deterministic transforms of
-    // the SAME R_anom delta computed above (copies_via_r) -- not
-    // independent observations of a different event, just different
-    // normalizations of it. This is a property of the single-flow attack
-    // model, not an implementation shortcut: there is no second, unrelated
-    // "diversion" signal available to compute these from in this sim.
+    // ── hf_send_gt (label-only, NOT a model feature — Issue 1 fix,
+    // 2026-08-02): Δ(g_lstm_hf_sendgt_count[rsu_sim_idx]) since last cycle,
+    // same delta pattern as R_anom above but from the send/scheduling-side
+    // counter (crypto_layer.h). Logged as a separate CSV column so
+    // preprocessor.py can build the A5-A8 ground-truth window label from
+    // this instead of from r_anom, which is also fed to the LSTM as input
+    // feature #10 — reusing r_anom for both let the model trivially recover
+    // the label from its own input.
+    double HF_SendGT = 0.0;
+    {
+        auto it = g_lstm_hf_sendgt_count.find(rsu_sim_idx);
+        uint32_t cur_sgt = (it != g_lstm_hf_sendgt_count.end()) ? it->second : 0;
+        uint32_t prev_sgt = (r < g_lstm_prev_hf_sendgt.size()) ? g_lstm_prev_hf_sendgt[r] : 0;
+        HF_SendGT = (cur_sgt >= prev_sgt) ? (double)(cur_sgt - prev_sgt) : 0.0;
+        if (r < g_lstm_prev_hf_sendgt.size()) g_lstm_prev_hf_sendgt[r] = cur_sgt;
+    }
+
+    // ── Features 9 & 10: D_div, A_tp (eq:feat_ddiv, eq:feat_atp; corrected
+    // 2026-07-28 per main.tex:5783-5794). Both are computed from dedicated
+    // local delivery counters populated at the MacRx receive sites in
+    // routing.cc (g_lstm_flow0_dest_set, g_lstm_flow0_total_delivery_count,
+    // g_lstm_flow0_legit_count — all crypto_layer.h) — independent of
+    // R_anom's blockchain-receipt-log source, as the spec requires.
     //
     // legit_this_cycle: Δ(g_lstm_flow0_legit_count) since last cycle,
     // computed ONCE per cycle (see g_lstm_flow0_legit_cycle_cached's
     // declaration above for why) — flow 0's legit final-delivery count
-    // this window, used as the shared "authorized" denominator component
-    // for every RSU's A_tp this cycle.
+    // this window, the A_tp "authorized" numerator.
+    //
+    // g_lstm_ddiv_count_cached/g_lstm_total_delivery_cached: snapshotted
+    // and reset in the same once-per-cycle block, for the same reason
+    // (global, not per-RSU, accumulators — see their declaration above).
     int cur_cycle_num = (int)(data_gathering_cycle_number - 1.0);
     if (cur_cycle_num != g_lstm_flow0_legit_cycle_cached)
     {
@@ -525,12 +740,27 @@ inline void lstm_log_rsu_cycle(uint32_t r,
             ? (double)(cur_legit - g_lstm_prev_flow0_legit) : 0.0;
         g_lstm_prev_flow0_legit = cur_legit;
         g_lstm_flow0_legit_cycle_cached = cur_cycle_num;
+
+        g_lstm_ddiv_count_cached     = (uint32_t)g_lstm_flow0_dest_set.size();
+        g_lstm_total_delivery_cached = g_lstm_flow0_total_delivery_count;
+        g_lstm_flow0_dest_set.clear();
+        g_lstm_flow0_total_delivery_count = 0;
     }
     double legit_this_cycle = g_lstm_flow0_legit_delta_cached;
 
-    double D_div = 1.0 + ((R_anom > 0.0) ? 1.0 : 0.0);   // |P(v,.)|=1, see note above
-    double A_tp  = (legit_this_cycle + R_anom > 0.0)
-                   ? (legit_this_cycle / (legit_this_cycle + R_anom))
+    // D_div = |{distinct destinations reached}| / |P(v,.)|, |P(v,.)|=1 in
+    // this sim (flow 0 has exactly one authorized destination at any
+    // instant — HF only ever targets this one demanding flow). No traffic
+    // this window -> default to the "no attack" resting value 1.0 (matches
+    // the historical CSV migration default for this column, see
+    // lstm_migrate_stale_header() above), not 0 (0 would misleadingly read
+    // as "zero distinct destinations reached", not "no traffic").
+    double D_div = (g_lstm_total_delivery_cached > 0)
+                   ? (double)g_lstm_ddiv_count_cached
+                   : 1.0;
+    // A_tp = authorized deliveries / total deliveries this window.
+    double A_tp  = (g_lstm_total_delivery_cached > 0)
+                   ? (legit_this_cycle / (double)g_lstm_total_delivery_cached)
                    : 1.0;   // no traffic this cycle -> default "fully authorized"
 
     // ── Features 4 & 5: ZKP failure indicators (binary {0, 1})
@@ -585,7 +815,8 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if ((int)win.size() == LSTM_WINDOW)
         {
             float score = mglstm::lstm_forward_and_score(g_lstm_model, win);
-            bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score);
+            bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score,
+                                               ns3::Simulator::Now().GetSeconds());
             g_lstm_last_score[r] = score;
             g_lstm_last_dlstm[r] = d_lstm;
             if (CRYPTO_DEBUG_LOG)
@@ -600,42 +831,26 @@ inline void lstm_log_rsu_cycle(uint32_t r,
 
     if (!do_training_log) return;
 
-    // ── Label (ground truth)
-    int label = 0;
-    if (active_attack_variant >= 0 &&
-        active_attack_variant < NUM_ATTACK_VARIANTS)
-    {
-        label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
-        // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
-        // variant 2) or attacker vehicles (A4, variant 3), never the RSU
-        // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
-        // positives and A3 only the single representative RSU. Label the
-        // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
-        // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
-        // is declared in tcam_detection.h, included just before this header.
-        if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
-        {
-            for (const auto& entry : g_tcam_table)
-            {
-                if (entry.node_id == rsu_sim_idx && entry.is_malicious)
-                {
-                    label = 1;
-                    break;
-                }
-            }
-        }
-    }
+    // ── Label (ground truth) — see lstm_rsu_ground_truth_label() above.
+    int label = lstm_rsu_ground_truth_label(rsu_sim_idx);
 
-    // ── File path: lstm_training/RSU_{r}/A{v}_pct{p}_seed{s}.csv
-    // attack_v maps internal variant index (-1=benign→0, 0→1, 1→2, ...) to
-    // the proposal's attack number (0=benign, 1–8=attacks).
+    // ── File path: lstm_training/RSU_{r}/Attack{N}_{pct}[_d{X}ms]_seed{S}.csv
+    // attack_v (local variable name, holds the same value the rest of the
+    // codebase calls N) maps internal variant index (-1=benign→0, 0→1,
+    // 1→2, ...) to the proposal's attack number (0=benign, 1–8=attacks).
+    // Matches the same Attack{N}_{pct}[_d{X}ms]_seed{S} shape MOBIGUARD/TAP/
+    // FADE/bc_*/g_sim_tag all use. g_delay_suffix is only ever non-empty
+    // for attack_v 1/2 (Selective Time Delay), same gating as everywhere
+    // else that uses it.
     int attack_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
     std::string base = lstm_make_base_dir();
     std::string path = base
-        + "lstm_training/RSU_" + std::to_string(r) + "/A"
+        + "lstm_training/RSU_" + std::to_string(r) + "/Attack"
         + std::to_string(attack_v)
-        + "_pct" + std::to_string(attack_percentage)
+        + "_" + std::to_string(attack_percentage)
+        + g_delay_suffix
         + "_seed" + std::to_string(sim_seed)
+        + (g_run_tag.empty() ? "" : "_" + g_run_tag)
         + ".csv";
 
     lstm_migrate_stale_header(path);   // Fix 20 — no-op if already current/new
@@ -670,6 +885,7 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << label
       << "," << g_lstm_last_score[r]
       << "," << (g_lstm_last_dlstm[r] ? 1 : 0)
+      << "," << HF_SendGT
       << "\n";
     f.close();
 }

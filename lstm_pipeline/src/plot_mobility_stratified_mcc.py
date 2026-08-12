@@ -17,6 +17,7 @@ Usage:
 """
 import glob
 import os
+import re
 from pathlib import Path
 
 import matplotlib
@@ -34,7 +35,10 @@ REPO = Path(__file__).resolve().parents[2]
 PRE = REPO / "lstm_pipeline" / "preprocessed"
 MODEL_DIR = REPO / "lstm_pipeline" / "models"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BASE = Path(os.environ.get("HOME", "/home/sdvn_hidden_attacks")) / \
+# Must include "ns3_g13": HOME/ns-allinone-3.35 resolves through a
+# symlink into a DIFFERENT group's ns-3 checkout on this shared account
+# (same issue found and fixed in lstm_logger.h's C++ path helpers).
+BASE = Path(os.environ.get("HOME", "/home/nipuni")) / \
        "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
 WINDOW = 10
 
@@ -54,15 +58,20 @@ def load_global_model():
     return model, per_rsu_theta, float(fed["global_theta"])
 
 
+FNAME_RE = re.compile(r"^Attack(?P<av>\d+)_(?P<pct>\d+)(?:_d\d+ms)?_seed(?P<seed>\d+)$")
+
+
 def build_raw_lookup():
     """(rsu, attack_v, pct, seed, cycle) -> (rho, v_bar), read from the raw
-    per-cycle CSVs (pre-Z-score), restricted to A5-A8 seed=5 (test split)."""
+    per-cycle CSVs (pre-Z-score), restricted to Attack5-8 seed=5 (test split)."""
     lookup = {}
-    pattern = str(BASE / "lstm_training" / "RSU_*" / "A[5-8]_pct*_seed5.csv")
+    pattern = str(BASE / "lstm_training" / "RSU_*" / "Attack[5-8]_*_seed5.csv")
     for path in glob.glob(pattern):
         p = Path(path)
-        parts = p.stem.split("_")
-        av = int(parts[0][1:]); pct = int(parts[1][3:]); seed = int(parts[2][4:])
+        m = FNAME_RE.match(p.stem)
+        if not m:
+            continue
+        av = int(m.group("av")); pct = int(m.group("pct")); seed = int(m.group("seed"))
         rsu = int(p.parent.name[4:])
         df = pd.read_csv(path)
         for row in df.itertuples():

@@ -44,9 +44,17 @@
 struct LRADOBUFlags {
     bool flag_S1  = false;  // Selective delay CP: δp > δ̄ + k·σr ∧ HIGH priority
     bool flag_S2p = false;  // S2-partial: (t_now - ts_recv) > Δmax (HMAC path)
-    bool flag_S3  = false;  // TCAM exhaustion CP: λ̂a > λthresh ∧ U_TCAM > U_thresh
-    bool flag_S4  = false;  // TCAM exhaustion DP: λPI > λPI,thresh ∧ U_TCAM > U_thresh
-    bool D_OBU    = false;  // flag_S1 ∨ flag_S2p ∨ flag_S3 ∨ flag_S4
+    bool D_OBU    = false;  // flag_S1 ∨ flag_S2p (eq:composite_light, main.tex:2354-2357).
+    // S3/S4 are NOT OBU-side signatures per spec — main.tex:2364-2368 is explicit
+    // that they require RSU-observable infrastructure metrics (FlowMod rate,
+    // TCAM utilisation, PACKET_IN rate per source) unavailable to OBUs, and
+    // are evaluated exclusively at the RSU via tcam_detection.h's
+    // ComputeTcamDetection(). A previous OBU-side rate-based approximation
+    // (λ̂a>10 for S3, λPI>15∧U_TCAM>0.80 for S4) was removed 2026-08-03: it
+    // contradicted both eq:composite_light (which excludes S3/S4 from D_OBU)
+    // and the thesis's own S3/S4 formulas (eq:rule_s3 is the blockchain
+    // f_unauth check, not a rate threshold; eq:rule_s4 is U_TCAM alone, with
+    // PACKET_IN rate explicitly barred from gating per main.tex:2346-2347).
 };
 
 // RSU-side detection results (alg:lrad_rsu output).
@@ -61,14 +69,13 @@ struct LRADRSUFlags {
     // see docs/DEV_MERGE_SPEC_CHANGES.md item #10). Complementary signal,
     // "covers residual anomalies" not caught by S2f/S5-S8.
     bool flag_LSTM = false;
-    // D_RSU = flag_S2f ∨ flag_S3 ∨ flag_S4 ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨
-    //         flag_S8 ∨ flag_LSTM per the current spec. flag_S3/flag_S4 are
-    // NOT yet members here — main.tex's post-merge S3/S4 redefinition
-    // (drop U_TCAM, add f_unauth conjunct, RSU-only) hasn't been
-    // implemented yet (DEV_MERGE_SPEC_CHANGES.md items #3/#4); the OLD
-    // OBU-side S3/S4 (lrad_obu(), still spec-stale themselves) must not be
-    // folded in here under the NEW composite's name. This struct currently
-    // implements only the flag_LSTM addition.
+    // D_RSU = flag_S2f ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨ flag_S8 ∨ flag_LSTM.
+    // S3/S4 are intentionally NOT members here: they are evaluated and
+    // recorded independently by tcam_detection.h's ComputeTcamDetection()
+    // (the RSU-cycle detector using the blockchain f_unauth check for S3 and
+    // U_TCAM-only threshold for S4, matching eq:rule_s3/eq:rule_s4), not by
+    // lrad_rsu(). See the LRADOBUFlags comment above for why the older
+    // OBU-side S3/S4 approximation was removed rather than folded in here.
     bool D_RSU    = false;  // flag_S2f ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨ flag_S8 ∨ flag_LSTM
 };
 
@@ -80,13 +87,11 @@ struct EscalationEvent {
     uint32_t     flow_id;
     double       t_escalate;
     LRADOBUFlags obu_flags;
-    // Suspects for per-signal BC.Write (eq:rsu_write) at the RSU:
-    //   orig_prev_sender   — forwarding node suspected by S1/S2p
-    //   assoc_rsu_node_id  — associated RSU node ID suspected by S3/S4
-    // Without these, lrad_rsu() only has vehicle_id (the OBU reporter),
+    // Suspect for per-signal BC.Write (eq:rsu_write) at the RSU:
+    //   orig_prev_sender — forwarding node suspected by S1/S2p
+    // Without this, lrad_rsu() only has vehicle_id (the OBU reporter),
     // which is NOT the suspect and must not be logged on the ledger.
     uint32_t     orig_prev_sender;    // UINT32_MAX = unknown/not applicable
-    uint32_t     assoc_rsu_node_id;   // UINT32_MAX = no RSU in range
 };
 
 // Per-RSU queue of pending escalation events.
@@ -96,9 +101,6 @@ static std::map<uint32_t, std::vector<EscalationEvent>> g_escalation_queue;
 // HmacTag, g_hmac_tags, lrad_hmac_tag_packet — defined in lrad_hmac.h
 // (included early in routing.cc so the RSU routing loop can stamp pre-delay).
 
-// Per-RSU lightweight TCAM snapshot result (for S3/S4 in lrad_obu).
-struct LRADTcamSnapshot { bool flag_s3; bool flag_s4; };
-
 // Detection event counters — written to CSV in Phase 8.
 // Defined in routing.cc (before write_security_metrics_csv) so they are
 // visible both to the CSV writer (included before lrad.h) and to lrad.h
@@ -106,6 +108,10 @@ struct LRADTcamSnapshot { bool flag_s3; bool flag_s4; };
 extern uint32_t g_d_obu_count;
 extern uint32_t g_d_rsu_count;
 extern uint32_t g_escalation_count;
+
+// Counts flag_LSTM firings actually suppressed by the S3/S4 gate below
+// (lrad_rsu()) -- diagnostic only, not written to the security-metrics CSV.
+static uint32_t g_lstm_gate_suppressed_count = 0;
 
 // =========================================================================
 // lrad_reset_state():
@@ -128,18 +134,15 @@ inline void lrad_reset_state()
 // =========================================================================
 inline void    escalate_to_rsu(uint32_t vehicle, uint32_t pkt_id,
                                 uint32_t fid, LRADOBUFlags obu_flags,
-                                uint32_t orig_prev_sender,
-                                uint32_t assoc_rsu_node_id);
+                                uint32_t orig_prev_sender);
 inline void    process_escalation_at_rsu(uint32_t rsu_id);
 inline LRADRSUFlags lrad_rsu(uint32_t rsu, uint32_t prev_sender,
                               uint32_t pkt_id, uint32_t fid,
                               LRADOBUFlags obu_flags, double t_now,
-                              uint32_t obu_orig_prev_sender  = UINT32_MAX,
-                              uint32_t obu_assoc_rsu_node_id = UINT32_MAX);
+                              uint32_t obu_orig_prev_sender  = UINT32_MAX);
 inline void    btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok);
 inline bool    lrad_s2_partial_check(uint32_t vehicle,
                                      uint32_t pkt_id, double t_now);
-inline LRADTcamSnapshot lrad_tcam_snapshot(uint32_t rsu_node_id);
 inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
 
 // =========================================================================
@@ -170,53 +173,6 @@ inline bool lrad_s2_partial_check(uint32_t vehicle, uint32_t pkt_id, double t_no
     if (memcmp(recomputed, it->second.tag, 64) != 0) return false;
 
     return (t_now - it->second.ts) > S2_DELTA_MAX;
-}
-
-// =========================================================================
-// Phase 2.6 — Lightweight per-RSU TCAM snapshot (S3/S4 in lrad_obu)
-//
-// Read-only view over the same globals ComputeTcamDetection() owns.
-// Does NOT advance g_prev_rule_count / g_prev_slowpath_hits — only the
-// periodic cycle-level ComputeTcamDetection() does that. Calling this
-// per-packet is therefore safe: no side-effects on the baseline counters.
-// =========================================================================
-
-inline LRADTcamSnapshot lrad_tcam_snapshot(uint32_t rsu_node_id)
-{
-    LRADTcamSnapshot snap{false, false};
-    if (rsu_node_id >= 300) return snap;
-
-    // TCAM utilisation: rules currently installed vs hardware capacity.
-    double tcam_util = g_tcam_rule_count[rsu_node_id] / (double)TCAM_CAPACITY;
-    if (tcam_util < 0.0) tcam_util = 0.0;
-    if (tcam_util > 1.0) tcam_util = 1.0;
-
-    // Rules and slow-path hits accumulated since the last periodic baseline
-    // update (g_prev_* advanced only by ComputeTcamDetection()).
-    int rules_delta = g_tcam_rule_count[rsu_node_id] - g_prev_rule_count[rsu_node_id];
-    int hits_delta  = g_slowpath_hit_count[rsu_node_id] - g_prev_slowpath_hits[rsu_node_id];
-    double lambda_fm = (rules_delta > 0) ? (double)rules_delta : 0.0;
-    double lambda_pi = (hits_delta  > 0) ? (double)hits_delta  : 0.0;
-
-    // Count legitimate (non-malicious) active flows at this RSU.
-    // Thesis eq:sig_s3 second conjunct: ¬∃v: flow(r) ∈ F_active(v)
-    // i.e. S3 fires only when there are NO legitimate active vehicle flows —
-    // the excess FlowMods cannot be attributed to real traffic.
-    int legit_flow_count = 0;
-    for (const auto& e : g_tcam_table)
-        if (e.node_id == rsu_node_id && !e.is_malicious) ++legit_flow_count;
-
-    // Expected legitimate FlowMod rate at current vehicle density.
-    // Using N_Vehicles as the density proxy, consistent with the existing
-    // ComputeTcamDetection() call site at routing.cc:117172.
-    double E_lambda_l   = 1.0 + 0.8 * (double)N_Vehicles;
-    double lambda_hat_a = lambda_fm - E_lambda_l;
-
-    // Thresholds match ComputeTcamDetection()'s call-site values.
-    snap.flag_s3 = (lambda_hat_a > 10.0) && (legit_flow_count == 0);  // S3: CP flooding, no legit flows
-    snap.flag_s4 = (lambda_pi    > 15.0) && (tcam_util > 0.80);     // S4: DP injection
-
-    return snap;
 }
 
 // =========================================================================
@@ -260,8 +216,11 @@ inline void btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok)
 {
     if (b_batch && b_hop && timing_ok)
         trust_update_positive(node);
-    else
+    else {
+        g_current_trust_source = DSRC_BTMM_PACKET;
         trust_update_negative(node);
+        g_current_trust_source = DSRC_NONE;
+    }
 }
 
 // =========================================================================
@@ -281,8 +240,7 @@ inline LRADRSUFlags lrad_rsu(
     uint32_t     fid,
     LRADOBUFlags obu_flags,                        // from escalation (zero if not escalated)
     double       t_now,
-    uint32_t     obu_orig_prev_sender   /* = UINT32_MAX */,  // S1/S2p suspect
-    uint32_t     obu_assoc_rsu_node_id  /* = UINT32_MAX */)  // S3/S4 suspect
+    uint32_t     obu_orig_prev_sender   /* = UINT32_MAX */)  // S1/S2p suspect
 {
     LRADRSUFlags flags;
     if (!enable_lrad_rsu) return flags; // AB1-A: RSU engine off — all-false, no escalation processing
@@ -290,42 +248,99 @@ inline LRADRSUFlags lrad_rsu(
 
     // Use .find() — never operator[] — to avoid silently inserting a
     // default-constructed "verification failed" record for unsigned packets.
-    auto it         = g_packet_crypto.find({prev_sender, pkt_id});
+    //
+    // KEY MUST BE crypto_msg_key(pkt_id, fid), NOT the raw pkt_id (fixed
+    // 2026-08-06). g_packet_crypto is written by mldsa87_sign() as
+    // {signer, crypto_msg_key(pkt_id, seq)} (crypto_layer.h:585) and read
+    // everywhere else with the same composite key. Since
+    // crypto_msg_key = ((flow_id & 0xFFF) << 12) | (pkt_id & 0xFFF), a raw
+    // pkt_id lookup only ever matched flow_id == 0 (and pkt_id < 4096), so
+    // have_crypto was false for essentially all traffic. Consequences while
+    // this was live: the RSU-side BTMM update below never fired, and S2f /
+    // S5-S8 lost the sig_valid / stark_hop_ok evidence they read from `it`.
+    // Matches the sibling verify call at routing.cc:121857, which passes the
+    // same `fid` in the same scope.
+    auto it         = g_packet_crypto.find({prev_sender, crypto_msg_key(pkt_id, fid)});
     bool have_crypto = (it != g_packet_crypto.end() && it->second.sig_len > 0);
 
     // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
     // s2_detect_packet() internally evaluates both the delay threshold AND
     // the STARK timing proof, covering the full eq:stark_delay_verify check.
-    // g_disable_s1_s2: diagnostic-only skip, see crypto_layer.h declaration.
-    flags.flag_S2f = g_disable_s1_s2 ? false :
-                      s2_detect_packet(prev_sender, t_now,
+    // g_disable_s1_s2 is applied to the FLAG, not to the call — s2_detect_packet()
+    // latches g_s2_gt_delay_exceeded[], which is A2's ground truth at
+    // routing.cc:117329. Skipping the call zeroed that ground truth, so A2
+    // reported TP+FN=0 in every config with the flag set (Q2/Q3/Q4). The
+    // record_detection_event() inside is separately gated on the same flag.
+    // Same asymmetry as g_disable_s3_s4; see crypto_layer.h.
+    const bool _s2f = s2_detect_packet(prev_sender, t_now,
                                        is_safety_critical_flow[fid],
                                        rsu, pkt_id, fid);
+    flags.flag_S2f = g_disable_s1_s2 ? false : _s2f;
 
     // ── S5–S8 (lines 5–8 of alg:lrad_rsu) ──────────────────────────────────
     // recv_flow_id approximated as fid: these functions prefer g_packet_crypto
     // evidence over the 0xDEAD0000 marker whenever a crypto record exists.
+    // g_disable_s5_s6 / g_disable_s7_s8: diagnostic ablation gates (crypto_layer.h).
+    // Applied HERE, to the flag itself, rather than to the record_detection_event()
+    // call inside each detector — because per alg:lrad_rsu (main.tex:2544-2546)
+    // these flags feed D_RSU, and through D_RSU the BTMM trust penalty and the
+    // BC.Write detection-event record below. Gating only the confusion-matrix call
+    // would leave a "disabled" signature still penalising trust and writing to the
+    // ledger, so Q4 ("witness only") and Q2 ("crypto only") would not actually
+    // isolate their component. Contrast g_disable_s3_s4, which is deliberately NOT
+    // applied to flag_s3/flag_s4 — those have a structural consumer (the
+    // eq:lstm_gate suppression below) that must keep seeing the raw condition.
     uint32_t base_fid = fid & 0xFFFFu;
-    flags.flag_S5 = s5_detect(fid, prev_sender, rsu, pkt_id, base_fid);
-    flags.flag_S6 = s6_detect(fid, prev_sender, rsu, pkt_id, base_fid);
-    flags.flag_S7 = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
-    flags.flag_S8 = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S5 = g_disable_s5_s6 ? false : s5_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S6 = g_disable_s5_s6 ? false : s6_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S7 = g_disable_s7_s8 ? false : s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S8 = g_disable_s7_s8 ? false : s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
 
-    // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection) ──────────────────────────
+    // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection), gated for S3/S4 ─────────
     // `rsu` is the sim node id (N_Vehicles + local RSU index, per
     // process_escalation_at_rsu()/every call site below); g_lstm_last_dlstm[]
     // is indexed by local index (lstm_logger.h convention). g_lstm_last_dlstm
     // is only populated once --enable_lstm_inference=1 AND the per-RSU
     // window has bootstrapped (LSTM_WINDOW cycles) — defaults to false
     // (fail-closed: no live LSTM signal available yet) otherwise.
+    //
+    // Gate (supervisor diagnosis, 2026-07-30): when this RSU's most recent
+    // TCAM cycle had S3 or S4 fire (g_tcam_flag_s3_last/s4_last,
+    // tcam_detection.h -- the RSU-side, spec-correct rule-based TCAM
+    // detector, independent of the LSTM), suppress flag_LSTM for this RSU.
+    // S3/S4 are architecturally definitive for TCAM exhaustion (blockchain
+    // endorsement / TCAM-utilisation threshold); the LSTM's reconstruction
+    // error is structurally elevated by residual TCAM occupancy during
+    // these events and adds false positives without adding coverage the
+    // rule-based layer doesn't already have. main.tex's alg:lrad_rsu was
+    // updated (2026-08-03) to match this gated behaviour exactly -- no
+    // longer a deviation from the paper's literal flat OR of flag_LSTM
+    // into D_RSU.
     if (rsu >= (uint32_t)N_Vehicles) {
         uint32_t rsu_local_idx = rsu - (uint32_t)N_Vehicles;
-        if (rsu_local_idx < g_lstm_last_dlstm.size())
-            flags.flag_LSTM = g_lstm_last_dlstm[rsu_local_idx];
+        bool tcam_covers_this_rsu = (rsu < 300) &&
+            (g_tcam_flag_s3_last[rsu] || g_tcam_flag_s4_last[rsu]);
+        bool lstm_would_fire = rsu_local_idx < g_lstm_last_dlstm.size() &&
+            g_lstm_last_dlstm[rsu_local_idx];
+        if (tcam_covers_this_rsu && lstm_would_fire) {
+            // Gate actually suppressed a would-be flag_LSTM firing this
+            // cycle -- rare/high-importance event, printed unconditionally
+            // like TRIGGERED/detection-event lines elsewhere in this file.
+            ++g_lstm_gate_suppressed_count;
+            std::cout << "[LSTM-GATE] suppressed flag_LSTM at RSU " << rsu
+                      << " (S3=" << g_tcam_flag_s3_last[rsu]
+                      << " S4=" << g_tcam_flag_s4_last[rsu] << ")"
+                      << " t=" << Simulator::Now().GetSeconds() << "s"
+                      << " total_suppressed=" << g_lstm_gate_suppressed_count
+                      << std::endl;
+        } else if (!tcam_covers_this_rsu) {
+            flags.flag_LSTM = lstm_would_fire;
+        }
     }
 
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
                   flags.flag_S7 || flags.flag_S8 || flags.flag_LSTM;
+    if (flags.D_RSU) dw_mark_rsu(rsu);   // M1 window grid (detector_windows.h)
 
     // ── BC.Write per-signal + BTMM (eq:rsu_write, alg:lrad_rsu) ─────────────
     // Per thesis alg:lrad_rsu: BTMM and BC.Write are BOTH inside the D_RSU gate.
@@ -336,7 +351,14 @@ inline LRADRSUFlags lrad_rsu(
         // trust_update_negative fires when sig or hop proof fails; for volume-based
         // signals (S7/S8) the negative path is forced via have_crypto being true
         // but the detection having already confirmed attack behaviour.
-        if (have_crypto)
+        // g_disable_btmm_trust also gates THIS BTMM site, not just the one at
+        // routing.cc:121919 (fixed 2026-08-06 — the first pass missed it). Both
+        // reach trust_update_negative() -> quarantine -> record_detection_event(),
+        // so leaving either ungated re-contaminates the ablation's confusion
+        // matrix. This one was previously unreachable anyway because the
+        // g_packet_crypto lookup above used the wrong key; with that fixed it
+        // becomes live, which is exactly why it now needs the gate.
+        if (have_crypto && !g_disable_btmm_trust)
             btmm(prev_sender, it->second.sig_valid && g_batch_passed,
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
@@ -384,24 +406,20 @@ inline LRADRSUFlags lrad_rsu(
             prev_sender < (uint32_t)total_size &&
             !is_detected_node[active_attack_variant][prev_sender])
         {
-            record_detection_event(active_attack_variant, prev_sender);
+            record_detection_event(active_attack_variant, prev_sender, DSRC_LSTM);
         }
         if (flags.flag_LSTM) bc_write_detection_event(rsu, prev_sender, 9, t_now);
         if (flags.flag_S8)  bc_write_detection_event(rsu, prev_sender, 8, t_now);
     }
 
-    // OBU-escalated signals (S1/S2p/S3/S4): RSU writes on behalf of the OBU
-    // observation, using the correct suspects carried through EscalationEvent.
+    // OBU-escalated signals (S1/S2p): RSU writes on behalf of the OBU
+    // observation, using the correct suspect carried through EscalationEvent.
     // Guards against UINT32_MAX (sentinel = unknown) before writing.
     if (obu_flags.D_OBU) {
         if (obu_flags.flag_S1  && obu_orig_prev_sender  != UINT32_MAX)
             bc_write_detection_event(rsu, obu_orig_prev_sender,  1, t_now);
         if (obu_flags.flag_S2p && obu_orig_prev_sender  != UINT32_MAX)
             bc_write_detection_event(rsu, obu_orig_prev_sender,  2, t_now);
-        if (obu_flags.flag_S3  && obu_assoc_rsu_node_id != UINT32_MAX)
-            bc_write_detection_event(rsu, obu_assoc_rsu_node_id, 3, t_now);
-        if (obu_flags.flag_S4  && obu_assoc_rsu_node_id != UINT32_MAX)
-            bc_write_detection_event(rsu, obu_assoc_rsu_node_id, 4, t_now);
     }
 
     crypto_log_event("lrad_rsu", prev_sender, pkt_id, fid, _t0, flags.D_RSU);
@@ -421,10 +439,16 @@ inline LRADRSUFlags lrad_rsu(
 inline void process_escalation_at_rsu(uint32_t rsu_id)
 {
     auto& queue = g_escalation_queue[rsu_id];
-    for (auto& ev : queue)
+    for (auto& ev : queue) {
         lrad_rsu(rsu_id, ev.vehicle_id, ev.pkt_id, ev.flow_id,
                  ev.obu_flags, ns3::Simulator::Now().GetSeconds(),
-                 ev.orig_prev_sender, ev.assoc_rsu_node_id);
+                 ev.orig_prev_sender);
+        // RSU.Confirm(v,r) — full-mode analysis for this escalation is complete,
+        // so eq:local_quarantine's hold on the vehicle is released. This is the
+        // release arm of "until RSU.Confirm(v,r) ∨ t > t_detect + T_hold"; the
+        // timeout arm is handled lazily in fwd_hold_remaining().
+        rsu_confirm_release(ev.vehicle_id);
+    }
 
     // main.tex §5039/5307 "Escalation to LSTM detector": the same D_OBU
     // escalation that reaches LRAD-RSU above must also reach the LSTM side
@@ -455,7 +479,7 @@ inline void process_escalation_at_rsu(uint32_t rsu_id)
 
 inline void escalate_to_rsu(
     uint32_t vehicle, uint32_t pkt_id, uint32_t fid, LRADOBUFlags obu_flags,
-    uint32_t orig_prev_sender, uint32_t assoc_rsu_node_id)
+    uint32_t orig_prev_sender)
 {
     auto _t0 = crypto_log_start();
 
@@ -475,7 +499,6 @@ inline void escalate_to_rsu(
     ev.t_escalate        = ns3::Simulator::Now().GetSeconds();
     ev.obu_flags         = obu_flags;
     ev.orig_prev_sender  = orig_prev_sender;
-    ev.assoc_rsu_node_id = assoc_rsu_node_id;
 
     g_escalation_queue[rsu_id].push_back(ev);
     g_escalation_count++;
@@ -518,8 +541,13 @@ inline LRADOBUFlags lrad_obu(
     // ── S1: δp > δ̄_r(t) + k·σ_r(t)  ∧  Priority(p)=HIGH  (Eq. 3.4) ──────
     // Reads the associated RSU's existing EWMA baseline/variance state
     // directly — simulation shortcut documented in the LRAD plan.
-    if (!g_disable_s1_s2 && assoc_rsu_local_idx < (uint32_t)N_RSUs) {
-        flags.flag_S1 = s1_detect_packet(
+    // g_disable_s1_s2 applied to the FLAG, not the call — s1_detect_packet()
+    // latches g_s1_gt_delay_exceeded[] (A1's ground truth, routing.cc:117328)
+    // and maintains the per-RSU EWMA baseline, both of which must stay live
+    // across every ablation config. Its record_detection_event() is gated on
+    // the same flag internally. See s1_detection.h.
+    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
+        const bool _s1 = s1_detect_packet(
             assoc_rsu_local_idx, vehicle, delta_p, is_high_priority,
             // sender_node_id → fed into record_detection_event. Must be the
             // associated RSU (matching alg:lrad_obu's ESCALATE(p,v,r,...)
@@ -534,35 +562,33 @@ inline LRADOBUFlags lrad_obu(
             N_Vehicles + assoc_rsu_local_idx,
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
+        flags.flag_S1 = g_disable_s1_s2 ? false : _s1;
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
     // Tag was stamped by the SENDER (prev_sender) not by the receiving vehicle.
     flags.flag_S2p = g_disable_s1_s2 ? false : lrad_s2_partial_check(prev_sender, pkt_id, t_now);
 
-    // ── S3 / S4: TCAM flooding / injection (lightweight snapshot) ───────────
-    uint32_t assoc_rsu_node_id = UINT32_MAX; // sentinel: no RSU in range
-    if (assoc_rsu_local_idx < (uint32_t)N_RSUs) {
-        assoc_rsu_node_id = N_Vehicles + assoc_rsu_local_idx;
-        LRADTcamSnapshot snap = lrad_tcam_snapshot(assoc_rsu_node_id);
-        flags.flag_S3 = snap.flag_s3;
-        flags.flag_S4 = snap.flag_s4;
-    }
-
-    // ── D_OBU (Eq. composite_light) ─────────────────────────────────────────
-    flags.D_OBU = flags.flag_S1 || flags.flag_S2p ||
-                  flags.flag_S3 || flags.flag_S4;
+    // ── D_OBU (Eq. composite_light, main.tex:2354-2357) ─────────────────────
+    // S3/S4 are not OBU-side signatures — see the LRADOBUFlags comment for
+    // why the previous rate-based OBU snapshot was removed rather than
+    // included here; they are evaluated exclusively at the RSU via
+    // tcam_detection.h's ComputeTcamDetection().
+    flags.D_OBU = flags.flag_S1 || flags.flag_S2p;
 
     crypto_log_event("lrad_obu", vehicle, pkt_id, fid, _t0, flags.D_OBU);
 
     if (flags.D_OBU) {
         g_d_obu_count++;
-        // Pass suspects explicitly so the RSU can write correct BC.Write records
-        // for each OBU-side signal (eq:rsu_write):
-        //   prev_sender       → suspect for S1/S2p (the forwarding node)
-        //   assoc_rsu_node_id → suspect for S3/S4  (the TCAM-anomalous RSU)
-        escalate_to_rsu(vehicle, pkt_id, fid, flags,
-                        prev_sender, assoc_rsu_node_id);
+        dw_mark_obu(vehicle);   // M1 window grid (detector_windows.h)
+        // alg:lrad_obu line 1 of the D_OBU branch: HOLD_FORWARD(v,r).
+        // eq:local_quarantine — suspend forwarding of the flagged flow pending
+        // RSU confirmation or T_hold timeout. Gated by enable_local_quarantine
+        // (default off; see its declaration in crypto_layer.h for why).
+        hold_forward(vehicle, fid);
+        // prev_sender → suspect for S1/S2p (the forwarding node), passed so
+        // the RSU can write the correct BC.Write record (eq:rsu_write).
+        escalate_to_rsu(vehicle, pkt_id, fid, flags, prev_sender);
     }
     return flags;
 }

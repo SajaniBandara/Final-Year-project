@@ -203,10 +203,91 @@ inline float lstm_forward_and_score(const LSTMAutoencoderWeights& m,
     return lstm_anomaly_score(x, x_hat);
 }
 
-// D_LSTM (eq:lstm_detection): binary detection flag for RSU `rsu_idx`.
-inline bool lstm_detect(const LSTMAutoencoderWeights& m, uint32_t rsu_idx, float score)
+// ── eq:theta_adapt — online warm-up threshold adaptation ────────────────────
+//
+// main.tex:3425 specifies:
+//     theta^(k)_adapted = max( theta^(k),  mu_warmup^(k) + z * sigma_warmup^(k) )
+// with z = 3.5, mu/sigma taken from anomaly scores observed during a 30 s
+// warm-up window at RSU r_k, and the max() ensuring the threshold is only ever
+// RAISED, never lowered by a thin or noisy warm-up sample.
+//
+// WHY THIS WAS ADDED (2026-08-07). Commit 77318f5 implemented this adaptation
+// in lstm_pipeline/src/evaluator.py ONLY -- the offline scorer -- and never in
+// this file, the live in-simulation detector. The reported improvement (A2 FPR
+// 2.42% -> 1.00%, A1 0.78% -> 0.40%) was therefore an OFFLINE result that the
+// simulator never reproduced: every live run has been deciding with the static
+// per-RSU theta baked into lstm_weights_cpp.bin. Measured 2026-08-07 on Q6, the
+// live LSTM contributed 828 false positives against 65 true positives.
+// It is also a spec-compliance gap, not merely a missed optimisation: the
+// thesis defines eq:theta_adapt as part of the detector.
+//
+// Rationale for the calibration seed being per-run rather than per-deployment:
+// theta calibrated on training seeds underestimates the benign tail on a fresh
+// mobility realisation (seed-to-seed variance at interior RSUs), which is the
+// diagnostic that motivated the equation in the first place.
+double LSTM_WARMUP_S = 30.0;   // main.tex: "30-second warm-up window"
+double LSTM_THETA_Z  = 3.5;    // main.tex: same Gaussian multiplier as eq:lstm_threshold
+uint32_t LSTM_WARMUP_MIN_N = 5; // guard: too thin a sample -> keep base theta
+
+// Per-RSU warm-up accumulators (sized on first use).
+static std::vector<uint32_t> g_lstm_warm_n;
+static std::vector<double>   g_lstm_warm_sum;
+static std::vector<double>   g_lstm_warm_sumsq;
+static std::vector<float>    g_lstm_theta_adapted;   // <0 => not yet computed
+static std::vector<uint8_t>  g_lstm_warm_done;
+
+inline void lstm_theta_adapt_reset(size_t n_rsus)
 {
-    float theta = (rsu_idx < m.theta.size()) ? m.theta[rsu_idx] : m.global_theta;
+    g_lstm_warm_n.assign(n_rsus, 0);
+    g_lstm_warm_sum.assign(n_rsus, 0.0);
+    g_lstm_warm_sumsq.assign(n_rsus, 0.0);
+    g_lstm_theta_adapted.assign(n_rsus, -1.0f);
+    g_lstm_warm_done.assign(n_rsus, 0);
+}
+
+// True while RSU rsu_idx is still inside its warm-up window. main.tex: "Warm-up
+// windows are excluded from all FPR and DR computations" -- exposed so the
+// evaluation path can honour that; it does NOT suppress the detector.
+inline bool lstm_in_warmup(double t_now) { return t_now < LSTM_WARMUP_S; }
+
+// D_LSTM (eq:lstm_detection): binary detection flag for RSU `rsu_idx`.
+// During warm-up the base theta is used and the score is accumulated; at the
+// first evaluation after the window closes, theta_adapted is computed once and
+// used from then on.
+inline bool lstm_detect(const LSTMAutoencoderWeights& m, uint32_t rsu_idx,
+                        float score, double t_now)
+{
+    const float base = (rsu_idx < m.theta.size()) ? m.theta[rsu_idx] : m.global_theta;
+
+    if (rsu_idx >= g_lstm_warm_n.size())          // not initialised -> base only
+        return score > base;
+
+    if (lstm_in_warmup(t_now))
+    {
+        g_lstm_warm_n[rsu_idx]     += 1;
+        g_lstm_warm_sum[rsu_idx]   += (double)score;
+        g_lstm_warm_sumsq[rsu_idx] += (double)score * (double)score;
+        return score > base;                       // decide with base during warm-up
+    }
+
+    if (!g_lstm_warm_done[rsu_idx])
+    {
+        g_lstm_warm_done[rsu_idx] = 1;
+        const uint32_t n = g_lstm_warm_n[rsu_idx];
+        float theta = base;
+        if (n >= LSTM_WARMUP_MIN_N)
+        {
+            const double mu  = g_lstm_warm_sum[rsu_idx] / (double)n;
+            const double var = (g_lstm_warm_sumsq[rsu_idx] / (double)n) - mu * mu;
+            const double sd  = (var > 0.0) ? std::sqrt(var) : 0.0;
+            const float  cand = (float)(mu + LSTM_THETA_Z * sd);
+            if (cand > theta) theta = cand;        // max(): never lower it
+        }
+        g_lstm_theta_adapted[rsu_idx] = theta;
+    }
+
+    const float theta = (g_lstm_theta_adapted[rsu_idx] >= 0.0f)
+                      ? g_lstm_theta_adapted[rsu_idx] : base;
     return score > theta;
 }
 
