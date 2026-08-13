@@ -114946,30 +114946,6 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t flow_id, ui
     t_claimed_packet[node][flow_id][packet_id] = node_local_time(node);
 }
 
-// Freshness bound on a stored claim (seconds). packet_id is a PER-FLOW index
-// bounded by Flow_size+2, so slots recycle: over a 90 s run each (node, flow)
-// pair reuses its 57 slots many times, and a read can land on an earlier
-// packet's claim. The `<= 0.0` sentinel below only rejects NEVER-written slots
-// -- a stale value is a perfectly valid non-zero timestamp and passes it.
-//
-// Measured on the 2026-08-09 Q5 run (A2, 1173 S2 triggers): genuine detections
-// cluster at 82.076-82.088 ms (the 80 ms injected delay plus propagation),
-// while 56.4% exceeded one second, to a maximum of 15.7 s -- physically
-// impossible for a VANET hop. 31.5% of triggers re-read a stamp value already
-// seen for that same (sender, flow).
-//
-// 1.0 s is chosen to clear every legitimate case with margin while excluding
-// the artefact band: the largest honest age is the M9 clock offset
-// (TIME_REF_DELTA_ATTACK = 0.5 s) plus the injected delay (attack_delay_ms,
-// 80 ms by default) plus propagation, i.e. ~0.6 s.
-//
-// INTERIM MEASURE. This is a threshold, not a correctness guarantee: a stale
-// claim younger than the bound still passes. The principled fix is to carry
-// the claimed timestamp in the packet tag and delete this array entirely --
-// see docs/STALE_CLAIM_ROOT_CAUSE_AND_EPOCH_FIX.md section 5.0. Remove this
-// guard when that lands.
-static const double CLAIM_MAX_AGE_S = 1.0;
-
 // Single read accessor so every consumer (S1/S2/TAP/LRAD) applies identical bounds
 // checks and returns the same 0.0 "no claim recorded" sentinel they already test for.
 inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
@@ -114977,10 +114953,7 @@ inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_
     if (node >= (uint32_t)total_size) return 0.0;
     if (flow_id >= (uint32_t)(2*flows)) return 0.0;
     if (packet_id >= (uint32_t)(Flow_size + 2)) return 0.0;
-    const double t = t_claimed_packet[node][flow_id][packet_id];
-    if (t <= 0.0) return 0.0;
-    if (ns3::Simulator::Now().GetSeconds() - t > CLAIM_MAX_AGE_S) return 0.0;
-    return t;
+    return t_claimed_packet[node][flow_id][packet_id];
 }
 
 // Detection functions and the array they read (t_claimed_packet):
