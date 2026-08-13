@@ -79,9 +79,17 @@ using namespace std;
 // a corrupted manual test-run CSV (constant delta_t), not real benign data.
 // beta: empirical 1% convergence test never latches on real (non-stationary)
 // traffic (confirmed again on this data: all of {0.7,0.8,0.9,0.95} exceed the
-// 22s ceiling) -- selected instead via the analytic N_eff=1/(1-beta) criterion
-// against main.tex:6049's actual design bound (9s minimum RSU zone residence):
-// beta=0.8 (N_eff=5) is the largest candidate still within that budget.
+// 22s ceiling) -- selected instead via the analytic N_eff=1/(1-beta) criterion.
+//
+// UPDATED 2026-08-13 (supervisor call): the 9s figure in main.tex:6049 is the
+// MINIMUM RSU zone residence, so it is a FLOOR on N_eff, not a ceiling -- the
+// EWMA must form a useful estimate within that shortest window. The 22s maximum
+// crossing supplies the ceiling. Band: 9 <= N_eff <= 22, i.e. beta in
+// [0.889, 0.955]. That rejects the previous beta=0.8 (N_eff=5) as adapting
+// faster than the shortest crossing -- the baseline tracks the attack and
+// absorbs it -- and selects beta=0.95 (N_eff=20, matching the longest crossing).
+// Empirical A/B 2026-08-13 (40s, 60% attack, seed1, only --s1_beta varied)
+// agreed: beta=0.95 higher MCC and lower FPR on both A1 and A2, DR unchanged.
 // k unchanged at 3.0 (still smallest k with FPR <= 1%, though no candidate
 // actually clears 1% on this data -- FPR=0.0287 at k=3.0, robustness
 // max|ΔFPR| = 0.0051). OLS R² ≈ 0.0074.
@@ -89,7 +97,7 @@ double s1_delta0    = 0.00447305;   // s  — OLS intercept (≈4.473 ms)
 double s1_alpha_rho = 0.00011315;   // s/vehicle — density term
 double s1_alpha_v   = -0.00150238;  // s²/m — speed term
 double s1_k         = 3.0;          // sigma multiplier — k sweep: smallest k with FPR ≤ 1%
-double s1_beta      = 0.8;          // EWMA factor — analytic N_eff=1/(1-β)=5 <= 9s zone-residence bound (main.tex:6049)
+double s1_beta      = 0.95;         // EWMA factor — analytic N_eff=1/(1-β)=20, band 9<=N_eff<=22 (main.tex:6049; supervisor 2026-08-13)
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
 // Sized dynamically at runtime by s1_init_state(N_RSUs) — no hardcoded ceiling.

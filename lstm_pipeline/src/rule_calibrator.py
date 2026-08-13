@@ -104,16 +104,28 @@ CONVERGENCE_CEILING = 22
 #
 # Spec decision (supervisor + project owner, 2026-08-08): select beta via the
 # analytic EWMA effective window N_eff = 1/(1-beta) instead, deterministic and
-# not subject to the non-stationarity problem above. main.tex:6049 states the
-# actual design target for this parameter: "fastest stable convergence...
-# within the 9s minimum RSU zone residence window" -- the MINIMUM bound, not
-# the full 9-22s range some other proposals have cited. N_EFF_CEILING=9 below
-# encodes that. Among BETA_CANDIDATES, this selects beta=0.8 (N_eff=5, inside
-# budget with margin) over beta=0.9 (N_eff=10, marginally over) or beta=0.95
-# (N_eff=20, more than double the bound -- would leave the estimator still
-# adapting when a fast-crossing vehicle has already left the zone).
+# not subject to the non-stationarity problem above.
+#
+# SUPERSEDED 2026-08-13 (supervisor call, with empirical A/B backing). The
+# 2026-08-08 reading treated main.tex:6049's 9 s as a CEILING on N_eff and so
+# picked beta=0.8 (N_eff=5). That is backwards. 9 s is the MINIMUM RSU zone
+# residence time: the EWMA has to form a useful estimate within that shortest
+# window, so N_eff must be at least 9, i.e. beta >= 0.889. The upper bound comes
+# from the 22 s maximum zone crossing: N_eff <= 22, i.e. beta <= 0.955. The
+# constraint is therefore a BAND, not a ceiling:
+#
+#     9 <= N_eff <= 22   <=>   beta in [0.889, 0.955]
+#
+# Among BETA_CANDIDATES this rejects 0.7 (N_eff=3.33) and 0.8 (N_eff=5) as too
+# fast -- they adapt so quickly the estimator tracks the attack itself and the
+# baseline absorbs the anomaly -- and admits 0.9 (N_eff=10) and 0.95 (N_eff=20).
+# beta=0.95 is selected: largest within band, N_eff=20 matching the maximum zone
+# crossing. Empirical A/B on 2026-08-13 (40 s, 60% attack, seed1, only --s1_beta
+# varied) agreed independently: beta=0.95 won on every metric that moved for both
+# A1 and A2 (higher MCC, lower FPR, DR unchanged at 100%).
 CONVERGENCE_TOL = 0.01
-N_EFF_CEILING = STABILITY_WINDOW  # main.tex:6049 — 9s minimum zone residence
+N_EFF_FLOOR   = STABILITY_WINDOW      # 9 s minimum RSU zone residence
+N_EFF_CEILING = CONVERGENCE_CEILING   # 22 s maximum RSU zone crossing
 
 
 # ---------------------------------------------------------------------------
@@ -306,31 +318,40 @@ def sweep_beta(df: pd.DataFrame, delta0: float,
     # (9s minimum zone residence), instead of refusing to select at all.
     print(f"  No β converges under the empirical 1% test on this data — expected on "
           f"non-stationary traffic (σ_r²(t) has no fixed point to settle to).")
-    print(f"  Falling back to analytic N_eff = 1/(1-β) vs. N_EFF_CEILING={N_EFF_CEILING}s "
-          f"(main.tex:6049 — 9s minimum RSU zone residence window):")
+    print(f"  Falling back to analytic N_eff = 1/(1-β) vs. the zone-residence band "
+          f"{N_EFF_FLOOR}s <= N_eff <= {N_EFF_CEILING}s "
+          f"(main.tex:6049 — 9s minimum residence, 22s maximum crossing):")
     n_eff = {b: 1.0 / (1.0 - b) for b in BETA_CANDIDATES}
-    analytic_eligible = {b: n for b, n in n_eff.items() if n <= N_EFF_CEILING}
+    analytic_eligible = {b: n for b, n in n_eff.items()
+                         if N_EFF_FLOOR <= n <= N_EFF_CEILING}
     for b, n in sorted(n_eff.items()):
-        verdict = "OK" if n <= N_EFF_CEILING else f"REJECTED (> {N_EFF_CEILING}s)"
+        if n < N_EFF_FLOOR:
+            verdict = (f"REJECTED (< {N_EFF_FLOOR}s — adapts faster than the shortest "
+                       f"zone crossing; baseline absorbs the attack)")
+        elif n > N_EFF_CEILING:
+            verdict = f"REJECTED (> {N_EFF_CEILING}s — still adapting after the longest crossing)"
+        else:
+            verdict = "OK"
         print(f"  β={b}  N_eff={n:.2f} cycles  {verdict}")
 
     if not analytic_eligible:
         raise SystemExit(
-            f"No β in {BETA_CANDIDATES} satisfies N_eff=1/(1-β) <= {N_EFF_CEILING}s "
-            f"either. Widen BETA_CANDIDATES toward smaller values or re-examine "
-            f"N_EFF_CEILING — do NOT silently pick the least-bad β.")
+            f"No β in {BETA_CANDIDATES} satisfies {N_EFF_FLOOR}s <= N_eff=1/(1-β) <= "
+            f"{N_EFF_CEILING}s. Widen BETA_CANDIDATES within [0.889, 0.955] or "
+            f"re-examine the band — do NOT silently pick the least-bad β.")
 
-    # Largest beta within budget: maximises smoothing (lowest-variance sigma^2
-    # estimate) while still guaranteeing full adaptation within the shortest
-    # zone crossing (the conservative choice — see CONVERGENCE_TOL comment).
+    # Largest beta within the band: maximises smoothing (lowest-variance sigma^2
+    # estimate) while still adapting inside the longest zone crossing. The floor
+    # is what keeps the estimator from tracking the attack itself.
     best_beta = max(analytic_eligible, key=analytic_eligible.__getitem__)
     print(f"  → Selected β = {best_beta} (analytic N_eff fallback)  "
-          f"(N_eff={analytic_eligible[best_beta]:.2f} cycles, "
-          f"ceiling {N_EFF_CEILING}s — largest β within budget)")
+          f"(N_eff={analytic_eligible[best_beta]:.2f} cycles, band "
+          f"{N_EFF_FLOOR}–{N_EFF_CEILING}s — largest β within band)")
     return best_beta, (f"analytic N_eff=1/(1-β) fallback (empirical 1% test never "
                         f"converges on non-stationary traffic), N_eff="
-                        f"{analytic_eligible[best_beta]:.2f} cycles <= "
-                        f"{N_EFF_CEILING}s ceiling (main.tex:6049)")
+                        f"{analytic_eligible[best_beta]:.2f} cycles within the "
+                        f"{N_EFF_FLOOR}–{N_EFF_CEILING}s zone-residence band "
+                        f"(main.tex:6049)")
 
 
 # ---------------------------------------------------------------------------

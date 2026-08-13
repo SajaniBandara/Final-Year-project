@@ -63,13 +63,88 @@ ldd build/scratch/routing/routing | grep -c "debug\.so"       # expect 0
 ls -la build/scratch/routing/routing                          # mtime = your build
 ```
 
+**`ldd` is not sufficient either — also check that C++ actually got `-O3`.** The
+profile controls two independent things: the `DEFINES` (which compile the
+assert/log macros out) and the compiler optimization flags. They can come apart,
+and when they do, `_cache.py`'s `BUILD_PROFILE`, `ldd`, and the `.so` names *all*
+still pass. Two checks that do catch it:
+
+```bash
+grep '^CXXFLAGS =' build/c4che/_cache.py          # must contain -O3
+python3 -c "
+import json,re
+cc=json.load(open('build/compile_commands.json'))
+e=next(e for e in cc if 'routing/routing.cc' in e['file'])
+print('routing.cc -O flag:', re.findall(r'(?<![\w-])-O[0-9sgz](?![\w])', e['command']) or 'NONE (-O0)')
+"
+```
+
+`CXXFLAGS` is the authoritative one. Do **not** audit by counting how many of the
+1522 translation units carry an `-O` flag: `compile_commands.json` accumulates
+entries across builds instead of being fully regenerated, so a correctly built
+tree can show a low count purely from stale pre-reconfigure entries (measured
+2026-08-13: `ns3_g13_apsari`, genuinely `-O3`, reported only 275/1522 — while its
+`routing.cc` entry correctly showed `-O3`). Check the flag source and the TU you
+care about, and confirm `compile_commands.json` is newer than your reconfigure.
+
+#### The exported-`CXXFLAGS` trap
+
+[`waf-tools/cflags.py:199`](../../ns-allinone-3.35/ns-3.35/waf-tools/cflags.py)
+applies the profile's flags **only if `CXXFLAGS` is empty**:
+
+```python
+if cxx and not conf.env['CXXFLAGS']:
+    conf.env.append_value('CXXFLAGS', optimizations)   # -O3
+    conf.env.append_value('CXXFLAGS', debug)           # -g
+    conf.env.append_value('CXXFLAGS', warnings)        # -Wall
+```
+
+So **any** `CXXFLAGS` exported in the shell you run `./waf configure` from — even
+a harmless-looking `-I` include path — silently suppresses `-O3`, `-g`, and
+`-Wall` for every C++ translation unit in the tree. `CCFLAGS` is checked
+separately, so C still gets its `-O3` and `_cache.py` looks correct at a glance.
+Note this is *aggravated* by choosing `optimized`: the block at `wscript:636-643`
+appends `-march=native`/`-fstrict-overflow` to `CXXFLAGS` under that profile
+only, so once anything else is in there the tree keeps the cosmetic optimized
+flags while losing the one that matters.
+
+Measured 2026-08-13, this exact failure in the `ns3_g13` tree (a gurobi `-I` was
+exported at configure time): **64.4 wall-s/sim-s**, versus 3.93 in a correctly
+configured tree and 88.6 in `debug`. The ~1.4× over `debug` is the assert/log
+macro removal alone — none of the ~12× that `-O3` provides. The gurobi include is
+not needed: no C++ source `#include`s a gurobi header (the `Z_gurobi`/`X_gurobi`
+names in `routing.cc` are just arrays holding `optimization.py`'s solver output),
+and the binary links no gurobi libraries.
+
+Configure from a clean environment and let waf supply its own flags:
+
+```bash
+env -u CXXFLAGS ./waf configure --build-profile=optimized \
+    --enable-examples --disable-werror --disable-python
+grep '^CXXFLAGS =' build/c4che/_cache.py
+```
+
+`CXXFLAGS` should come back as exactly:
+
+```
+['-O3', '-g', '-Wall', '-march=native', '-fstrict-overflow',
+ '-Wstrict-overflow=2', '-std=c++17', '-Wno-parentheses',
+ '-fstrict-aliasing', '-Wstrict-aliasing']
+```
+
+Setting `CXXFLAGS="-O3 ..."` by hand is *not* the fix — it is still non-empty, so
+it bypasses the same branch and forfeits `-g -Wall -fstrict-aliasing
+-Wstrict-aliasing`. `CXXFLAGS` is not set in any shell profile on this host, so
+this only bites when someone exports it ad hoc before configuring.
+
 Launchers are unaffected by the switch — those that invoke the binary directly
 set `LD_LIBRARY_PATH` to `build/lib`, which holds both profiles' `.so`s. Only
 bare shell invocation breaks; see the `run_training_attacks.py` note under Sweep
 launchers.
 
-Sizing, wall-seconds per simulated second. **Measured 2026-08-13 on this host,
-`optimized`: 3.93** (157.3 s wall for `simTime=40`, peak RSS 367 MB, using the
+Sizing, wall-seconds per simulated second. **Measured 2026-08-13 in the
+`ns3_g13_apsari` tree, `optimized` with `-O3` confirmed on C++: 3.93** (157.3 s
+wall for `simTime=40`, peak RSS 367 MB, using the
 exact config under "Running a single simulation" below — 200 vehicles, attack 1
 @ 40%, seed 1). That puts a 90 s run at roughly 6 min. For reference, `debug`
 was previously measured at 143–158 on 8-lane 90 s configs (3.5–4 h/run) and 88.6
@@ -87,7 +162,9 @@ than loudly:
 
 1. **Build profile** is `optimized`, not `debug` — check the **binary** via `ldd`,
    not just `_cache.py`, since a failed build leaves the config and the binary
-   disagreeing (above).
+   disagreeing (above). Then audit `-O3` across the translation units too: `ldd`
+   and `_cache.py` both pass on a tree whose C++ is built at `-O0`, and that
+   costs ~16× wall time. See "the exported-`CXXFLAGS` trap" above.
 2. **Binary present** at `build/scratch/routing/routing`; launchers refuse to
    start without it.
 3. **Python helpers resolve.** `routing.cc` hardcodes absolute paths to

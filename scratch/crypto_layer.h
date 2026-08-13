@@ -1480,6 +1480,26 @@ inline bool witness_check_duplication(uint32_t witness, const uint8_t* pkt_hash,
 //
 // Returns true only when THIS event reaches quorum; the caller then clears
 // only this event's alerts, leaving other events' evidence intact.
+//
+// eq:dup_alert_cond fix (2026-08-13, supervisor-directed, option a): event_key
+// used to be ((flow_id<<32)|pkt_id) — a RECYCLING id, same bug class as
+// t_claimed_packet (routing.cc, RC1). pkt_id is bounded by Flow_size+2 and
+// wraps over any run longer than that many packets on a flow, so two
+// witnesses reporting on genuinely DIFFERENT packet events (different H(p),
+// same recycled (flow_id, pkt_id) pair at different times) collided on one
+// event_key. Per this function's own spec comment above — "the smart contract
+// deduplicates by (w, v_i, H(p))" — the dedup dimension was always supposed to
+// be H(p), not (flow_id, pkt_id). event_key_from_hp() folds the first 8 bytes
+// of H(p) (already computed at both call sites, crypto_layer.h ~1560/1649)
+// into the uint64_t key instead: content-based, immune to id recycling, and
+// stable across witnesses/time since it excludes ts_w (unlike h_alert, which
+// would give every submission of the same event a different key).
+inline uint64_t event_key_from_hp(const uint8_t h_p[64]) {
+    uint64_t key;
+    memcpy(&key, h_p, sizeof(key));
+    return key;
+}
+
 inline bool witness_bft_quorum_reached(uint32_t target_node, uint64_t event_key,
                                         OQS_SIG* oqs) {
     auto it = g_witness_alert_pool.find(target_node);
@@ -1557,7 +1577,9 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                      h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
 
     alert.ts = ts_w;
-    alert.event_key = ((uint64_t)flow_id << 32) | (uint64_t)pkt_id;
+    // eq:dup_alert_cond fix — content-hash key, see witness_bft_quorum_reached()
+    // comment for why (flow_id, pkt_id) is a recycling id, not the spec's H(p)).
+    alert.event_key = event_key_from_hp(h_p);
     g_witness_alert_pool[target_node].push_back(alert);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
@@ -1646,7 +1668,9 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                      h_alert, 64, g_node_keys[witness].sk) != OQS_SUCCESS) return;
 
     alert.ts = ts_w;
-    alert.event_key = ((uint64_t)flow_id << 32) | (uint64_t)pkt_id;
+    // eq:dup_alert_cond fix — content-hash key, see witness_bft_quorum_reached()
+    // comment for why (flow_id, pkt_id) is a recycling id, not the spec's H(p)).
+    alert.event_key = event_key_from_hp(h_p);
     g_witness_alert_pool[target_node].push_back(alert);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
