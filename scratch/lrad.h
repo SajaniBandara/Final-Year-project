@@ -69,6 +69,14 @@ struct LRADRSUFlags {
     // see docs/DEV_MERGE_SPEC_CHANGES.md item #10). Complementary signal,
     // "covers residual anomalies" not caught by S2f/S5-S8.
     bool flag_LSTM = false;
+    // Supervisor Fix 2 (2026-08-14): true iff flag_LSTM fired AND the score
+    // cleared the high-confidence tier (score > LSTM_HC_MULT * theta_used,
+    // lstm_logger.h). Confusion-matrix recording (record_detection_event())
+    // still keys on flag_LSTM alone, unchanged, per the fix spec ("confusion
+    // matrix records detections at theta as before") -- this field only
+    // gates whether an LSTM-only D_RSU trigger is allowed to reach the
+    // shared BTMM trust-evaluation call below.
+    bool flag_LSTM_high_conf = false;
     // D_RSU = flag_S2f ∨ flag_S5 ∨ flag_S6 ∨ flag_S7 ∨ flag_S8 ∨ flag_LSTM.
     // S3/S4 are intentionally NOT members here: they are evaluated and
     // recorded independently by tcam_detection.h's ComputeTcamDetection()
@@ -335,6 +343,9 @@ inline LRADRSUFlags lrad_rsu(
                       << std::endl;
         } else if (!tcam_covers_this_rsu) {
             flags.flag_LSTM = lstm_would_fire;
+            flags.flag_LSTM_high_conf = lstm_would_fire &&
+                rsu_local_idx < g_lstm_high_confidence.size() &&
+                g_lstm_high_confidence[rsu_local_idx];
         }
     }
 
@@ -358,7 +369,24 @@ inline LRADRSUFlags lrad_rsu(
         // matrix. This one was previously unreachable anyway because the
         // g_packet_crypto lookup above used the wrong key; with that fixed it
         // becomes live, which is exactly why it now needs the gate.
-        if (have_crypto && !g_disable_btmm_trust)
+        // Supervisor Fix 2 (2026-08-14): if the ONLY reason D_RSU fired is a
+        // soft (sub-2x-theta) flag_LSTM detection -- no S2f/S5-S8 present --
+        // skip the BTMM trust evaluation entirely rather than let it run.
+        // This is the closest faithful mapping onto this codebase of "soft
+        // LSTM detections do not trigger trust_update_negative()": there is
+        // no LSTM-keyed trust_update_negative() call anywhere in the tree
+        // (every call site is crypto/timing-keyed — see
+        // docs/SUPERVISOR_FIXES_2026-08-14.md Fix 2 section) for the literal
+        // instruction to gate, so instead this prevents a soft LSTM firing
+        // from opening the shared BTMM gate at all -- for EITHER outcome,
+        // not just the negative one, since btmm()'s reward/punish decision
+        // here is keyed on crypto/S2f, not on flag_LSTM's own truth value,
+        // so letting it run on a soft-LSTM-only trigger would just as often
+        // hand out an unearned trust_update_positive().
+        bool lstm_only_soft = flags.flag_LSTM && !flags.flag_LSTM_high_conf &&
+            !flags.flag_S2f && !flags.flag_S5 && !flags.flag_S6 &&
+            !flags.flag_S7 && !flags.flag_S8;
+        if (have_crypto && !g_disable_btmm_trust && !lstm_only_soft)
             btmm(prev_sender, it->second.sig_valid && g_batch_passed,
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);

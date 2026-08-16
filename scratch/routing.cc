@@ -118251,6 +118251,16 @@ void calculate_performance_evaluation_metrics()
 		s1_rsu_obs_sum[_r]   = 0.0;
 		s1_rsu_obs_count[_r] = 0;
 
+		// Fix 3 (supervisor, 2026-08-14): LSTM-only replacement for the
+		// diluted mean δ_t feature. Drained from the SAME per-packet
+		// population as obs_delay above, at the same cadence, but into
+		// separate accumulators (s1_detection.h) so S1's own EWMA baseline
+		// (obs_delay, just consumed above) is untouched by this change.
+		double obs_delay_max = s1_rsu_obs_max[_r];
+		bool   obs_exceeded_dmax = s1_rsu_exceeded_dmax[_r];
+		s1_rsu_obs_max[_r] = 0.0;
+		s1_rsu_exceeded_dmax[_r] = false;
+
 		// eq:rule_s1 selectivity conjunct: δ_best(r,t), mean best-effort
 		// packet delay this cycle. No-observation cycles fall back to 0.0
 		// (fail-open — see s1_detection.h's s1_best_obs_sum comment).
@@ -118261,8 +118271,10 @@ void calculate_performance_evaluation_metrics()
 		s1_best_obs_sum[_r]   = 0.0;
 		s1_best_obs_count[_r] = 0;
 
-		// eq:lstm_input: log 7-feature vector for this RSU this cycle.
-		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay);
+		// eq:lstm_input: log the (now 11-feature, Fix 3) vector for this RSU
+		// this cycle. obs_delay_max replaces mean obs_delay as the δ_t
+		// feature; obs_exceeded_dmax is the new 11th binary feature.
+		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay_max, obs_exceeded_dmax);
 	}
 	// M1 window grid: snapshot this cycle's OBU/RSU decisions + ground truth.
 	dw_end_cycle();

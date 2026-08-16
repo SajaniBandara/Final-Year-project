@@ -32,9 +32,16 @@ def parse_run_name(stem: str):
             return int(m.group("attack_v")), int(m.group("pct")), int(m.group("seed"))
     raise ValueError(f"Unrecognized lstm_training filename shape: {stem}")
 
+# Supervisor Fix 3 (2026-08-14): delta_t is now a per-cycle MAX hop delay,
+# not mean (see routing.cc's obs_delay_max / s1_detection.h's
+# s1_rsu_obs_max -- same column name/position, changed meaning, mean-diluted
+# spikes were the diagnosed cause of A1/A2's weak LSTM signal, D3). New 11th
+# feature delta_t_exceeded appended last, matching every prior column
+# addition's convention (hf_send_gt etc.) of appending rather than inserting
+# so old CSVs migrate by appending a default rather than reordering.
 FEATURES   = ["delta_t", "lambda_PI", "U_TCAM",
               "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
-              "d_div", "a_tp", "r_anom"]
+              "d_div", "a_tp", "r_anom", "delta_t_exceeded"]
 WINDOW     = 10      # 10-second sliding window (1 Hz cycles)
 STRIDE     = 5       # 5-second stride = 50% overlap (spec §3)
 TRAIN_FRAC = 0.70

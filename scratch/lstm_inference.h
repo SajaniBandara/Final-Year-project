@@ -89,6 +89,27 @@ struct LSTMAutoencoderWeights {
 inline std::vector<float> lstm_normalize_features(const LSTMAutoencoderWeights& m,
                                                     const std::vector<float>& raw)
 {
+    // Fix 3 (supervisor, 2026-08-14) added an 11th raw feature
+    // (obs_exceeded_dmax). A model checkpoint trained on the OLD 10-feature
+    // eq:lstm_input has m.feat_mu.size()==10, and the loop below used to
+    // silently stop early, leaving out[10] at its zero-initialised default
+    // instead of a real normalised value -- quiet corruption, not a crash,
+    // for exactly one run-length until someone notices the score is
+    // meaningless. Fail loudly instead: this is expected during the window
+    // between this code change landing and the model being retrained on 11
+    // features (lstm_pipeline/src/export_weights_cpp.py); if it fires after
+    // that retrain, the checkpoint being loaded is stale.
+    static bool warned = false;
+    if (raw.size() != m.feat_mu.size() && !warned) {
+        warned = true;
+        std::cerr << "[LSTM-INFER] FATAL: raw feature count (" << raw.size()
+                  << ") != loaded model's feature count (" << m.feat_mu.size()
+                  << "). Model needs retraining/re-export for the current "
+                  << "feature vector (Fix 3, 2026-08-14), or a stale "
+                  << "checkpoint is loaded. Refusing to silently zero-pad."
+                  << std::endl;
+        std::abort();
+    }
     std::vector<float> out(raw.size());
     for (size_t i = 0; i < raw.size() && i < m.feat_mu.size(); ++i)
         out[i] = (raw[i] - m.feat_mu[i]) / m.feat_std[i];
@@ -254,19 +275,30 @@ inline bool lstm_in_warmup(double t_now) { return t_now < LSTM_WARMUP_S; }
 // During warm-up the base theta is used and the score is accumulated; at the
 // first evaluation after the window closes, theta_adapted is computed once and
 // used from then on.
+// theta_used (supervisor Fix 2, 2026-08-14): optional out-param returning
+// the EFFECTIVE per-RSU theta this call decided against (post warm-up
+// adaptation, matching g_lstm_theta_adapted exactly) — so a caller wanting a
+// higher-confidence tier (e.g. score > 2*theta_used) compares against the
+// same threshold this function actually used, not a separately recomputed
+// (and potentially stale/adaptation-unaware) one. Default nullptr, so every
+// existing call site is unaffected.
 inline bool lstm_detect(const LSTMAutoencoderWeights& m, uint32_t rsu_idx,
-                        float score, double t_now)
+                        float score, double t_now, float* theta_used = nullptr)
 {
     const float base = (rsu_idx < m.theta.size()) ? m.theta[rsu_idx] : m.global_theta;
 
     if (rsu_idx >= g_lstm_warm_n.size())          // not initialised -> base only
+    {
+        if (theta_used) *theta_used = base;
         return score > base;
+    }
 
     if (lstm_in_warmup(t_now))
     {
         g_lstm_warm_n[rsu_idx]     += 1;
         g_lstm_warm_sum[rsu_idx]   += (double)score;
         g_lstm_warm_sumsq[rsu_idx] += (double)score * (double)score;
+        if (theta_used) *theta_used = base;
         return score > base;                       // decide with base during warm-up
     }
 
@@ -288,6 +320,7 @@ inline bool lstm_detect(const LSTMAutoencoderWeights& m, uint32_t rsu_idx,
 
     const float theta = (g_lstm_theta_adapted[rsu_idx] >= 0.0f)
                       ? g_lstm_theta_adapted[rsu_idx] : base;
+    if (theta_used) *theta_used = theta;
     return score > theta;
 }
 

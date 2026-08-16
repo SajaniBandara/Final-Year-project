@@ -440,7 +440,17 @@ def analyse(params):
 def main():
     ap = argparse.ArgumentParser(description="Q1-Q6 component-isolation ablation")
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--sim-time", type=int, default=30, help="supervisor spec: 30 s")
+    # Fix 4 (supervisor, 2026-08-14): every Q1-Q6 result up to this point used
+    # 90 s runs. At 1 Hz with 10 s windows, 90 s yields only 9 evaluation
+    # blocks/RSU (6 post-warmup) vs 300 s's 30 (27 post-warmup) -- late-run
+    # detection events (A4 TCAM saturation, A8 witness accumulation) are
+    # invisible in the 90 s window. The original "supervisor spec: 30 s" here
+    # was itself superseded by the 90 s override this session used; both are
+    # now superseded by this 300 s default. lstm_pipeline/src/preprocessor.py's
+    # MAX_CYCLE=310 already anticipated this (set 2026-08-02, "runs are now
+    # simTime=300... any run shorter than this is unaffected") -- no change
+    # needed there, only here.
+    ap.add_argument("--sim-time", type=int, default=300, help="supervisor spec (2026-08-14): 300 s")
     ap.add_argument("--detector-windows", type=int, default=1,
                     help="emit detector_windows.csv for M1 (default on). NOTE: needs "
                          "sim-time >= 90 to survive the evaluator's 30-cycle warm-up "

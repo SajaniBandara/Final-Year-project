@@ -153,6 +153,17 @@ redo earlier ones.
 **Check the build profile before trusting any of these numbers** — see §1
 item 1. Everything below assumes `optimized`.
 
+**Superseded 2026-08-14 (supervisor Fix 4): `--sim-time` default is now 300 s,
+not 30/90.** 90 s runs (used throughout the 2026-08-13 session) yield only 9
+evaluation blocks/RSU (6 post-warmup) against 300 s's 30 (27 post-warmup) —
+late-run detection events (A4 TCAM saturation, A8 witness accumulation) never
+appear in a 90 s window. `lstm_pipeline/src/preprocessor.py`'s `MAX_CYCLE=310`
+already anticipated 300 s runs (set 2026-08-02) and needs no change. Below,
+read every "90 s" figure as the prior (now-superseded) spec — re-measure at
+300 s before trusting wall-clock projections for a real sweep; a 300 s run is
+roughly 3.3x a 90 s one, so the `optimized` single-lane 20-40 min projection
+below becomes plausibly 65-135 min at 300 s.
+
 Throughput is expressed as wall-seconds per simulated second, since `simTime`
 varies by spec (30 s originally, 90 s for Q1/Q4/Q5 so `detector_windows.csv`
 clears the M1 evaluator's 30-cycle warm-up exclusion, 75 s tried for Q6):

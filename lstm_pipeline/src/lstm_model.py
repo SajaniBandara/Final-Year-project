@@ -2,13 +2,22 @@
 lstm_model.py — MOBIGUARD LSTM autoencoder (eq:lstm_hidden, eq:anomaly_score)
 
 Architecture (§Simulation settings):
-  Encoder : LSTM(10→64) → LSTM(64→32)   — produces latent h at final step
-  Decoder : repeat latent W times → LSTM(32→64) → LSTM(64→10) → Linear(10)
+  Encoder : LSTM(11→64) → LSTM(64→32)   — produces latent h at final step
+  Decoder : repeat latent W times → LSTM(32→64) → LSTM(64→11) → Linear(11)
   Score   : A_t = ||x_t − x̂_t||²₂    (eq:anomaly_score, per time-step mean)
 
 N_FEATURES raised 7->10 2026-07-26: d_div, a_tp, r_anom added to
 eq:lstm_input (preprocessor.py's FEATURES list is the single source of
 truth for column order; this must always match its length).
+
+N_FEATURES raised 10->11 2026-08-14 (supervisor Fix 3): delta_t_exceeded
+appended -- binary 1[exists p in window : delta_p > Delta_max], a direct
+attack signal independent of LSTM threshold calibration. delta_t itself
+also changed from mean to per-cycle max in the same fix (same column,
+unchanged position/count). Any checkpoint trained before this change has
+N_FEATURES=10 and is INCOMPATIBLE -- must be retrained, not loaded as-is
+(lstm_inference.h's lstm_normalize_features() aborts loudly on a size
+mismatch rather than silently misaligning).
 """
 
 import hashlib
@@ -16,7 +25,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-N_FEATURES = 10
+N_FEATURES = 11
 HIDDEN1    = 64
 HIDDEN2    = 32
 DROPOUT    = 0.2   # Q25: Q30 holdout (seeds 6/7/8) showed 11-15% FPR on the

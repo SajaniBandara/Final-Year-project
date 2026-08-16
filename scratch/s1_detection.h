@@ -110,6 +110,21 @@ std::vector<double>   s1_sigma2;        // σ²_r(t): EWMA variance per RSU
 std::vector<double>   s1_rsu_obs_sum;
 std::vector<uint32_t> s1_rsu_obs_count;
 
+// Supervisor Fix 3 (2026-08-14): LSTM-only per-cycle MAX hop-delay and Δ_max
+// exceedance flag, accumulated alongside s1_rsu_obs_sum/count at the exact
+// same site (s1_detect_packet()) but NOT consumed by s1_update_baseline() —
+// obs_delay (the mean) still drives S1's own EWMA baseline, unchanged;
+// these feed ONLY the LSTM's replacement δ_t_max feature and its new 11th
+// binary-exceedance feature (eq:lstm_input, both changed per Fix 3). Kept
+// separate rather than reusing s1_rsu_obs_sum/count specifically so S1's
+// rule-based detection logic is untouched by this change.
+std::vector<double> s1_rsu_obs_max;      // max(effective_delay_s) this cycle
+std::vector<bool>   s1_rsu_exceeded_dmax; // true if any packet this cycle had delay > Delta_max (50ms)
+// Same value as S2_DELTA_MAX (s2_detection.h) -- redefined locally rather
+// than depending on it, since s1_detection.h is #include'd before
+// s2_detection.h in routing.cc and S2_DELTA_MAX isn't visible here yet.
+static const double LSTM_DELTA_MAX_S = 0.050;
+
 // Per-RSU δ_best(r,t): mean per-hop delay of best-effort (non-high-priority)
 // packets, the S1 selectivity conjunct (main.tex eq:rule_s1, symbol table
 // ~L1298). Accumulated in s1_detect_packet() for non-safety-critical
@@ -295,6 +310,12 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     {
         s1_rsu_obs_sum[rsu_idx]   += effective_delay_s;
         s1_rsu_obs_count[rsu_idx] += 1;
+        // Fix 3: LSTM-only max/exceedance tracking, same per-packet
+        // population as the mean above, but not fed into S1's own baseline.
+        if (effective_delay_s > s1_rsu_obs_max[rsu_idx])
+            s1_rsu_obs_max[rsu_idx] = effective_delay_s;
+        if (effective_delay_s > LSTM_DELTA_MAX_S)
+            s1_rsu_exceeded_dmax[rsu_idx] = true;
     }
 
     // Eq. 3.12/3.13: σ²_r(t) = β·σ²_r(t-1) + (1-β)·(δ_r(t)-δ̄_r(t))², updated
@@ -450,6 +471,8 @@ inline void s1_init_state(uint32_t n_rsus)
     s1_sigma2.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
+    s1_rsu_obs_max.assign(n_rsus, 0.0);
+    s1_rsu_exceeded_dmax.assign(n_rsus, false);
     // δ_best(r,t) seeded to 0.0 (fail-open — see s1_best_obs_sum/count
     // declaration comment): the first cycle has no prior best-effort
     // observation, and 0.0 ≤ any threshold keeps the selectivity conjunct

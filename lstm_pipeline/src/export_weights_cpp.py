@@ -19,7 +19,10 @@ default dtype, no precision loss from the export):
   n_rsus      : uint32
   hidden1     : uint32   (= 64)
   hidden2     : uint32   (= 32)
-  n_features  : uint32   (= 10, since the 2026-07-27 D_div/A_tp/R_anom expansion)
+  n_features  : uint32   (= 11, since the 2026-08-14 delta_t_exceeded addition
+                          -- was 10 since the 2026-07-27 D_div/A_tp/R_anom
+                          expansion. Derived from the checkpoint itself below,
+                          not hardcoded, so this comment is documentation only.)
   -- then, in this fixed order, each tensor as raw float32 row-major --
   enc1.weight_ih_l0  (4*hidden1, n_features)
   enc1.weight_hh_l0  (4*hidden1, hidden1)

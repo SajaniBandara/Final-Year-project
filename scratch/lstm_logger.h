@@ -188,17 +188,40 @@ static std::vector<std::vector<std::vector<float>>> g_lstm_rsu_window;
 // has filled to LSTM_WINDOW entries — main.tex §5039's bootstrap period).
 static std::vector<float> g_lstm_last_score;
 static std::vector<bool>  g_lstm_last_dlstm;
+// Supervisor Fix 2 (2026-08-14): high-confidence tier, score > LSTM_HC_MULT *
+// theta_used (the SAME effective per-RSU theta lstm_detect() decided
+// g_lstm_last_dlstm against, via its theta_used out-param — not a separately
+// recomputed threshold). Read by lrad.h to decide whether an LSTM-only D_RSU
+// trigger is allowed to reach the shared BTMM trust-evaluation call; see the
+// call site there for why this is the closest faithful mapping of the
+// supervisor's "soft detections don't trigger trust_update_negative()" spec
+// onto this codebase (there is no LSTM-keyed trust_update_negative() call to
+// gate directly — grep confirms every such call site is crypto/timing-keyed,
+// not LSTM-keyed).
+static std::vector<bool>  g_lstm_high_confidence;
+static float               LSTM_HC_MULT = 2.0f;  // supervisor's starting multiplier; raise to 3.0 if Q6 FP stays elevated
 
-// Canonical CSV header (2026-08-02: hf_send_gt appended, 17 columns, full
-// eq:lstm_input order plus the label-only HF ground-truth column). Kept as
-// a single constant so lstm_migrate_stale_header() and the writer below can
-// never drift apart. hf_send_gt is NOT part of FEATURES in preprocessor.py
-// -- see g_lstm_hf_sendgt_count's declaration (crypto_layer.h) for why it
-// must stay separate from r_anom.
+// Canonical CSV header (2026-08-14, supervisor Fix 3: delta_t_exceeded
+// appended, 18 columns. delta_t itself is now a per-cycle MAX, not mean --
+// same column name/position, changed meaning, see routing.cc's
+// obs_delay_max/lstm_log_rsu_cycle() call site). Kept as a single constant
+// so lstm_migrate_stale_header() and the writer below can never drift apart.
+// hf_send_gt is NOT part of FEATURES in preprocessor.py -- see
+// g_lstm_hf_sendgt_count's declaration (crypto_layer.h) for why it must
+// stay separate from r_anom. delta_t_exceeded IS part of FEATURES (the new
+// 11th eq:lstm_input feature) -- appended last so it doesn't disturb any
+// existing column's position, same pattern hf_send_gt used.
 static const char* LSTM_CSV_HEADER =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded";
+// 2026-08-02..2026-08-14 format, 17 columns -- same as current but no
+// delta_t_exceeded (appended at the very end), and delta_t was a mean.
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_17COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
     "lstm_anomaly_score,d_lstm,hf_send_gt";
+static const size_t LSTM_CSV_17COL_NCOLS = 17;
 // 2026-07-26..2026-08-02 format, 16 columns -- same as current but no
 // hf_send_gt (appended at the very end).
 [[maybe_unused]] static const char* LSTM_CSV_HEADER_16COL =
@@ -347,7 +370,20 @@ inline void lstm_migrate_stale_header(const std::string& path)
             migrated_rows.push_back(row + ",0");
             ++n_migrated;
         }
-        else if (f.size() == 17)
+        else if (f.size() == LSTM_CSV_17COL_NCOLS)
+        {
+            // Pre-delta_t_exceeded row (2026-08-02..2026-08-14): all 17
+            // fields already in current order, just missing the trailing
+            // delta_t_exceeded column. Append 0 -- same "unknown, assume no
+            // exceedance" default the rest of this function uses for absent
+            // columns. NOTE: this row's own `delta_t` value is still a MEAN
+            // (pre-Fix-3 semantics), not a max -- the migration only adds
+            // the missing column, it cannot retroactively change what an
+            // old row's delta_t meant when it was collected.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == 18)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -356,7 +392,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
         {
             std::cerr << "[LSTM_LOGGER] WARNING: " << path
                        << " has a row with " << f.size()
-                       << " fields (expected 10/13/14/16 legacy or 17 current) — "
+                       << " fields (expected 10/13/14/16/17 legacy or 18 current) — "
                        << "left unmigrated: " << row << std::endl;
             migrated_rows.push_back(row);
             ++n_unexpected;
@@ -439,6 +475,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_rsu_window.assign(n_rsus, {});
     g_lstm_last_score.assign(n_rsus, 0.0f);
     g_lstm_last_dlstm.assign(n_rsus, false);
+    g_lstm_high_confidence.assign(n_rsus, false);
     g_lstm_logger_ready = true;
 
     // Live inference is independent of --training (which only controls
@@ -653,7 +690,8 @@ if (active_attack_variant >= 0 &&
 inline void lstm_log_rsu_cycle(uint32_t r,
                                 double   rho_t,
                                 double   v_bar_t,
-                                double   obs_delay)
+                                double   obs_delay,        // Fix 3: now max, not mean, per-cycle hop delay
+                                bool     obs_exceeded_dmax) // Fix 3: new 11th feature
 {
     if (!g_lstm_logger_ready)   return;
     if (r >= g_lstm_prev_slowpath.size()) return;
@@ -799,11 +837,20 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     // 2026-07-27, correcting this comment's previous claim otherwise).
     if (do_inference)
     {
+        // Fix 3 (supervisor, 2026-08-14): obs_delay is now the per-cycle MAX
+        // hop delay (was mean); obs_exceeded_dmax is the new 11th feature,
+        // 1[exists p in this cycle's packets : delta_p > Delta_max]. This
+        // vector's length must match the loaded model's mean/std (N_FEATURES,
+        // lstm_normalize_features) -- a model trained on the OLD 10-feature
+        // eq:lstm_input will mismatch here until retrained and re-exported
+        // (see lstm_pipeline/src/export_weights_cpp.py). Bounds-checked
+        // below rather than silently truncating/misaligning.
         std::vector<float> raw_feat = {
             (float)obs_delay, (float)lam_PI, (float)U_TCAM,
             (float)zkp_delay_fail, (float)zkp_hop_fail,
             (float)rho_t, (float)v_bar_t,
-            (float)D_div, (float)A_tp, (float)R_anom
+            (float)D_div, (float)A_tp, (float)R_anom,
+            (float)(obs_exceeded_dmax ? 1.0 : 0.0)
         };
         std::vector<float> norm_feat = mglstm::lstm_normalize_features(g_lstm_model, raw_feat);
 
@@ -815,16 +862,21 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if ((int)win.size() == LSTM_WINDOW)
         {
             float score = mglstm::lstm_forward_and_score(g_lstm_model, win);
+            float theta_used = 0.0f;
             bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score,
-                                               ns3::Simulator::Now().GetSeconds());
+                                               ns3::Simulator::Now().GetSeconds(),
+                                               &theta_used);
             g_lstm_last_score[r] = score;
             g_lstm_last_dlstm[r] = d_lstm;
+            // Fix 2: high-confidence tier against the SAME effective theta
+            // lstm_detect() just decided d_lstm against (post warm-up
+            // adaptation), not the raw base theta.
+            g_lstm_high_confidence[r] = d_lstm && (score > LSTM_HC_MULT * theta_used);
             if (CRYPTO_DEBUG_LOG)
             {
-                float theta = (r < g_lstm_model.theta.size()) ? g_lstm_model.theta[r]
-                                                                : g_lstm_model.global_theta;
                 std::cout << "[LSTM_INFER] rsu=" << r << " score=" << score
-                          << " theta=" << theta << " D_LSTM=" << (d_lstm ? 1 : 0) << std::endl;
+                          << " theta=" << theta_used << " D_LSTM=" << (d_lstm ? 1 : 0)
+                          << " high_conf=" << (g_lstm_high_confidence[r] ? 1 : 0) << std::endl;
             }
         }
     }
@@ -886,6 +938,7 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << g_lstm_last_score[r]
       << "," << (g_lstm_last_dlstm[r] ? 1 : 0)
       << "," << HF_SendGT
+      << "," << (obs_exceeded_dmax ? 1 : 0)
       << "\n";
     f.close();
 }

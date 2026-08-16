@@ -10,7 +10,9 @@ validation harness reads directly (see scratch/lstm_inference_test.cpp).
 Format (MGV2):
   magic        : 4 bytes = b"MGV2"
   window       : uint32  (= 10, matches preprocessor.py's WINDOW)
-  n_features   : uint32  (= 10)
+  n_features   : uint32  (= 11, since 2026-08-14 supervisor Fix 3's
+                          delta_t_exceeded addition -- was 10 before.
+                          Derived from N_FEATURES, not hardcoded here.)
   x            : window * n_features float32 (row-major: [t][f])
   x_hat_ref    : window * n_features float32 (PyTorch's reconstruction)
   anomaly_ref  : 1 float32 (PyTorch's anomaly_score for this x)
