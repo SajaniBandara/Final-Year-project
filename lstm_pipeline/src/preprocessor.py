@@ -253,6 +253,27 @@ def main(args):
     benign_delta = df.loc[df["attack_v"] == BENIGN_V, "delta_t"]
     spike_thr = float(benign_delta.quantile(SPIKE_QUANTILE))
     delta_spike = df["delta_t"] > spike_thr
+    # Supervisor Fix B (2026-08-19), corrected mechanism: the supervisor's
+    # stated diagnosis ("labels use is_malicious_node, not delay exceedance")
+    # doesn't match this code -- delta_spike above IS already exceedance-based,
+    # not node-maliciousness-based (confirmed: Selective-Delay windows are
+    # ALREADY spike-aligned, not node-malicious-for-the-whole-run -- see the
+    # AUC 0.54->0.93 history note in make_windows()'s docstring, predating
+    # this session). The REAL gap: spike_thr above is a data-derived p99
+    # (measured 293.493ms in the 2026-08-19 clean retrain) instead of the
+    # fixed Delta_max=50ms the rest of the system uses for the exact same
+    # concept (S2_DELTA_MAX in scratch/s2_detection.h, LSTM_DELTA_MAX_S in
+    # scratch/s1_detection.h, both 0.050) -- a ~6x gap. Windows with delay in
+    # the 50-293ms range genuinely exceed the attack threshold every other
+    # detector uses, but were being labeled benign here, starving A1/A2's
+    # training signal. Scoped to A1/A2 ONLY (delta_max_spike below) rather
+    # than lowering spike_thr globally, since A4 also depends on delta_spike
+    # for its own is_spike (no dedicated A4 criterion exists -- see the
+    # U_TCAM comment above) and A3 partially does too; changing the global
+    # p99 threshold would have disturbed their already-adequate labeling as
+    # an unintended side effect outside this fix's stated scope.
+    DELTA_MAX_S = 0.050  # matches S2_DELTA_MAX / LSTM_DELTA_MAX_S exactly
+    delta_max_spike = df["attack_v"].isin({1, 2}) & (df["delta_t"] > DELTA_MAX_S)
     zkp_spike   = df["attack_v"].isin(HF_VARIANTS) & (
                       (df["zkp_delay_fail"] > 0) | (df["zkp_hop_fail"] > 0)
                       | (df["hf_send_gt"] > 0))
@@ -260,7 +281,8 @@ def main(args):
     benign_tcam = df.loc[df["attack_v"] == BENIGN_V, "U_TCAM"]
     tcam_thr    = float(benign_tcam.quantile(SPIKE_QUANTILE))
     tcam_spike  = (df["attack_v"] == 3) & (df["U_TCAM"] > tcam_thr)
-    df["is_spike"] = (delta_spike | zkp_spike | ddiv_spike | tcam_spike).astype(np.int8)
+    df["is_spike"] = (delta_spike | delta_max_spike | zkp_spike | ddiv_spike
+                       | tcam_spike).astype(np.int8)
     n_spike_atk = int(df.loc[df["attack_v"] != BENIGN_V, "is_spike"].sum())
     n_atk_rows  = int((df["attack_v"] != BENIGN_V).sum())
     n_hf_rows   = int(df["attack_v"].isin(HF_VARIANTS).sum())

@@ -119,9 +119,19 @@ def main():
         print(f"  wrote {n_rsus} per-RSU thetas + 1 global_theta fallback")
 
         scaler = json.load(open(SCALER_PATH))
+        # Supervisor Fix 3 (2026-08-14) appended delta_t_exceeded as an 11th
+        # feature (preprocessor.py's FEATURES list, scaler_params.json's own
+        # "features" key) -- this assertion was missed in that pass since
+        # retraining hadn't happened yet to surface it. Caught 2026-08-18 on
+        # the first post-Fix-3 export: it still had the old 10-feature list,
+        # crashing (correctly) rather than silently exporting a scaler
+        # misaligned with the model's actual 11-feature input -- but the
+        # crash landed AFTER the tensor/theta writes and BEFORE the mu/std
+        # writes below, so a truncated .bin (missing the scaler entirely) was
+        # left on disk until this fix + a re-run.
         assert scaler["features"] == [
             "delta_t", "lambda_PI", "U_TCAM", "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
-            "d_div", "a_tp", "r_anom"
+            "d_div", "a_tp", "r_anom", "delta_t_exceeded"
         ], "scaler_params.json feature order must match eq:lstm_input exactly"
         mu  = [scaler["mu"][k]  for k in scaler["features"]]
         std = [scaler["std"][k] for k in scaler["features"]]
