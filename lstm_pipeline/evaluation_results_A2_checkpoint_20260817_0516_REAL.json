@@ -1,0 +1,150 @@
+{
+  "Benign": {
+    "TP": 0,
+    "TN": 1659,
+    "FP": 5,
+    "FN": 0,
+    "M1_MCC": 0.0,
+    "M2_DR": 0.0,
+    "M3_FPR": 0.003,
+    "sim_metrics": {}
+  },
+  "A1 CP-SelectiveDelay": {
+    "TP": 19,
+    "TN": 7172,
+    "FP": 38,
+    "FN": 1091,
+    "M1_MCC": 0.0488,
+    "M2_DR": 0.0171,
+    "M3_FPR": 0.0053,
+    "sim_metrics": {
+      "pct20": {
+        "M4_L_mit_ms": 14242.469,
+        "M5_PDR": 66.3812,
+        "M6_L_e2e_ms": 27.8179,
+        "M7_TVR_pct": 2.7125,
+        "M8_UCR_pct": 0.0
+      },
+      "pct40": {
+        "M4_L_mit_ms": 14194.8884,
+        "M5_PDR": 66.1913,
+        "M6_L_e2e_ms": 30.1569,
+        "M7_TVR_pct": 6.2363,
+        "M8_UCR_pct": 0.0
+      },
+      "pct60": {
+        "M4_L_mit_ms": 14194.8884,
+        "M5_PDR": 66.1913,
+        "M6_L_e2e_ms": 30.1569,
+        "M7_TVR_pct": 6.2363,
+        "M8_UCR_pct": 0.0
+      },
+      "pct80": {
+        "M4_L_mit_ms": 13756.1246,
+        "M5_PDR": 66.4274,
+        "M6_L_e2e_ms": 33.3682,
+        "M7_TVR_pct": 9.1891,
+        "M8_UCR_pct": 0.0
+      }
+    }
+  },
+  "A2 DP-SelectiveDelay": {
+    "TP": 33,
+    "TN": 6811,
+    "FP": 60,
+    "FN": 1416,
+    "M1_MCC": 0.0507,
+    "M2_DR": 0.0228,
+    "M3_FPR": 0.0087,
+    "sim_metrics": {
+      "pct20": {
+        "M4_L_mit_ms": 25108.5245,
+        "M5_PDR": 65.0189,
+        "M6_L_e2e_ms": 92.3624,
+        "M7_TVR_pct": 3.7059,
+        "M8_UCR_pct": 0.0
+      },
+      "pct40": {
+        "M4_L_mit_ms": 23508.9973,
+        "M5_PDR": 64.6992,
+        "M6_L_e2e_ms": 146.4491,
+        "M7_TVR_pct": 9.2576,
+        "M8_UCR_pct": 0.0
+      },
+      "pct60": {
+        "M4_L_mit_ms": 23025.0248,
+        "M5_PDR": 62.1385,
+        "M6_L_e2e_ms": 195.8446,
+        "M7_TVR_pct": 14.3497,
+        "M8_UCR_pct": 0.0
+      },
+      "pct80": {
+        "M4_L_mit_ms": 21115.6434,
+        "M5_PDR": 60.85,
+        "M6_L_e2e_ms": 235.5175,
+        "M7_TVR_pct": 20.4782,
+        "M8_UCR_pct": 0.0
+      }
+    }
+  },
+  "A3 CP-TCAM": {
+    "TP": null,
+    "TN": null,
+    "FP": null,
+    "FN": null,
+    "M1_MCC": 0.9128,
+    "M2_DR": 0.9312,
+    "M3_FPR": 0.0039,
+    "n_runs": 23,
+    "source": "rule_based_S3_S4",
+    "sim_metrics": {
+      "pct20": {
+        "M4_L_mit_ms": 39555.8732,
+        "M5_PDR": 65.3517,
+        "M6_L_e2e_ms": 24.0319,
+        "M7_TVR_pct": 0.0,
+        "M8_UCR_pct": 0.0
+      },
+      "pct40": {
+        "M4_L_mit_ms": 47105.8902,
+        "M5_PDR": 65.5463,
+        "M6_L_e2e_ms": 25.4723,
+        "M7_TVR_pct": 0.7015,
+        "M8_UCR_pct": 0.0
+      },
+      "pct60": {
+        "M4_L_mit_ms": 36411.4912,
+        "M5_PDR": 65.6236,
+        "M6_L_e2e_ms": 25.3061,
+        "M7_TVR_pct": 0.4092,
+        "M8_UCR_pct": 0.0
+      },
+      "pct80": {
+        "M4_L_mit_ms": 24749.8084,
+        "M5_PDR": 66.0314,
+        "M6_L_e2e_ms": 25.2933,
+        "M7_TVR_pct": 0.1702,
+        "M8_UCR_pct": 0.0
+      }
+    },
+    "lstm_clf_reference_only": {
+      "TP": 628,
+      "TN": 3155,
+      "FP": 13,
+      "FN": 428,
+      "M1_MCC": 0.7128,
+      "M2_DR": 0.5947,
+      "M3_FPR": 0.0041
+    },
+    "is_rule_based": true
+  },
+  "Overall (LSTM: attacks 1,2,5-8)": {
+    "TP": 52,
+    "TN": 13983,
+    "FP": 98,
+    "FN": 2507,
+    "M1_MCC": 0.051,
+    "M2_DR": 0.0203,
+    "M3_FPR": 0.007
+  }
+}
