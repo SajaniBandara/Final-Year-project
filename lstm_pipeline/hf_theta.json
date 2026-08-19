@@ -1,0 +1,21 @@
+{
+  "theta_hf": 1.0050458312034607,
+  "mu_hf": 0.10505318641662598,
+  "sig_hf": 0.25714075565338135,
+  "z_alpha": 3.5,
+  "n_calibration_windows": 87,
+  "per_variant_window_counts": {
+    "A5": 0,
+    "A6": 0,
+    "A7": 52,
+    "A8": 35
+  },
+  "applies_to_variants": [
+    5,
+    6,
+    7,
+    8
+  ],
+  "note": "Single shared threshold for A5-A8 inference, NOT per-RSU. Computed on pooled HF-context quiet windows because per-RSU HF sample sizes are too sparse to calibrate individually (87 windows / 64 RSUs). A1-A4 are unaffected -- they keep the standard per-RSU theta in fed_summary.json. Validated offline (test_stratified_theta_a8.py, 2026-08-19): A8 FPR 48.28%->0.00%, DR -0.4pt, MCC 0.518->0.805. NOT YET wired into evaluator.py or the C++ inference path -- this file is the calibration artifact only.",
+  "generated": "calibrate_hf_theta.py, 2026-08-20"
+}

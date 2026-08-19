@@ -79,7 +79,30 @@ def load_global_model() -> tuple:
     return model, per_rsu_theta, float(fed["global_theta"])
 
 
-def predict_test(model: LSTMAutoencoder, per_rsu_theta: dict, global_theta: float) -> tuple:
+HF_THETA_PATH = REPO / "lstm_pipeline" / "hf_theta.json"
+
+
+def load_hf_theta() -> dict | None:
+    """Variant-aware theta for A5-A8 (2026-08-20, calibrate_hf_theta.py).
+
+    The standard per-RSU theta is calibrated on a pool that's 94% A1-A4
+    traffic -- structurally different from HF traffic, and the actual cause
+    of A8's 56% FPR / A5-A7's unmeasurable FPR (not a z_alpha problem, a
+    calibration-population problem; see calibrate_hf_theta.py's docstring).
+    hf_theta.json holds a single shared threshold computed on pooled
+    HF-context quiet windows (A5-A8 combined -- per-RSU HF sample sizes are
+    too sparse, 87 windows / 64 RSUs, to calibrate individually). Returns
+    None if the file doesn't exist, so callers that haven't run the
+    calibration step yet fall back to standard per-RSU theta unchanged.
+    """
+    if not HF_THETA_PATH.exists():
+        return None
+    with open(HF_THETA_PATH) as fh:
+        return json.load(fh)
+
+
+def predict_test(model: LSTMAutoencoder, per_rsu_theta: dict, global_theta: float,
+                  hf_theta: dict | None = None) -> tuple:
     X    = np.load(PRE / "test_X.npy")
     y    = np.load(PRE / "test_y.npy")
     meta = np.load(PRE / "test_meta.npy")
@@ -92,6 +115,13 @@ def predict_test(model: LSTMAutoencoder, per_rsu_theta: dict, global_theta: floa
     scores = np.concatenate(scores)
     rsu_ids = meta[:, 0].astype(int)
     theta_arr = np.array([per_rsu_theta.get(r, global_theta) for r in rsu_ids])
+    if hf_theta is not None:
+        # Only overrides rows belonging to the variants hf_theta.json was
+        # calibrated for (A5-A8) -- A1-A4 keep their standard per-RSU theta
+        # untouched, same scoping validated in test_stratified_theta_a8.py.
+        av_ids = meta[:, 1].astype(int)
+        hf_mask = np.isin(av_ids, hf_theta["applies_to_variants"])
+        theta_arr = np.where(hf_mask, hf_theta["theta_hf"], theta_arr)
     y_pred = (scores > theta_arr).astype(np.int8)
     return y, y_pred, scores, meta
 
@@ -103,7 +133,8 @@ MIN_WARMUP_WINDOWS = 2   # skip adaptation if too few benign warm-up samples
 
 
 def compute_adaptive_theta(scores: np.ndarray, meta: np.ndarray, y_true: np.ndarray,
-                            per_rsu_theta: dict, global_theta: float) -> tuple:
+                            per_rsu_theta: dict, global_theta: float,
+                            hf_theta: dict | None = None) -> tuple:
     """
     Q2/A2 diagnostic (2026-07-31): seed-to-seed mobility variance at
     interior RSUs means theta calibrated on training seeds underestimates
@@ -136,6 +167,16 @@ def compute_adaptive_theta(scores: np.ndarray, meta: np.ndarray, y_true: np.ndar
     n_runs = run_idx.max() + 1
 
     theta_arr = np.array([per_rsu_theta.get(r, global_theta) for r in rsu_ids], dtype=float)
+    if hf_theta is not None:
+        # Same scoping as predict_test(): only A5-A8 rows get the pooled
+        # HF-context base theta. Applied BEFORE the warm-up loop below so
+        # "base_theta" (what warm-up compares theta_w against, and only
+        # overrides if it exceeds) is the correct starting point for HF
+        # runs too -- otherwise this function would silently rebuild
+        # theta_arr from per_rsu_theta alone and discard the HF override
+        # predict_test() applied upstream.
+        hf_row_mask = np.isin(av_ids, hf_theta["applies_to_variants"])
+        theta_arr = np.where(hf_row_mask, hf_theta["theta_hf"], theta_arr)
     n_adapted = 0
     for run in range(n_runs):
         run_mask = run_idx == run
@@ -146,7 +187,11 @@ def compute_adaptive_theta(scores: np.ndarray, meta: np.ndarray, y_true: np.ndar
         mu_w, sig_w = float(warm_scores.mean()), float(warm_scores.std())
         theta_w = mu_w + Z_ALPHA * sig_w
         rsu_this_run = int(rsu_ids[run_mask][0])
-        base_theta = per_rsu_theta.get(rsu_this_run, global_theta)
+        av_this_run = int(av_ids[run_mask][0])
+        if hf_theta is not None and av_this_run in hf_theta["applies_to_variants"]:
+            base_theta = hf_theta["theta_hf"]
+        else:
+            base_theta = per_rsu_theta.get(rsu_this_run, global_theta)
         if theta_w > base_theta:
             theta_arr[run_mask] = theta_w
             n_adapted += 1
@@ -313,14 +358,21 @@ def main(args):
           f"median={sorted(theta_vals)[len(theta_vals)//2]:.4f} max={max(theta_vals):.4f}")
     print(f"  Global θ (fallback only) = {global_theta:.6f}")
 
+    hf_theta = load_hf_theta()
+    if hf_theta is not None:
+        print(f"  HF θ (A5-A8, calibrate_hf_theta.py) = {hf_theta['theta_hf']:.6f} "
+              f"(n={hf_theta['n_calibration_windows']} pooled quiet windows)")
+    else:
+        print("  hf_theta.json not found -- A5-A8 using standard per-RSU theta")
+
     print("Running inference on test split …")
-    y_true, y_pred, scores, meta = predict_test(model, per_rsu_theta, global_theta)
+    y_true, y_pred, scores, meta = predict_test(model, per_rsu_theta, global_theta, hf_theta)
 
     # Online threshold warm-up adaptation (A2 diagnostic, see
     # compute_adaptive_theta() docstring) -- recompute y_pred with the
     # adapted per-run theta, then drop warm-up windows from evaluation.
     theta_adapted, keep_mask, n_adapted, n_runs = compute_adaptive_theta(
-        scores, meta, y_true, per_rsu_theta, global_theta)
+        scores, meta, y_true, per_rsu_theta, global_theta, hf_theta)
     print(f"  Warm-up adaptation: {n_adapted}/{n_runs} runs raised theta "
           f"above the base per-RSU value")
     y_pred = (scores > theta_adapted).astype(np.int8)
