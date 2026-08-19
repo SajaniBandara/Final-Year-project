@@ -1186,11 +1186,20 @@ inline void trust_update_negative(uint32_t node) {
     if (g_trust_score[node] < TRUST_T_MIN && !g_quarantined[node]) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
-        if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
-            record_detection_event(active_attack_variant, (int)node,
-                                   g_current_trust_source ? g_current_trust_source
-                                                          : (uint16_t)DSRC_QUARANTINE);
-        // Unconditional: quarantine is a high-importance detection event
+        // Supervisor Fix 1 (2026-08-19): record_detection_event() removed from
+        // this path. Quarantine is a MITIGATION consequence of trust falling
+        // below T_MIN, not a detection event -- the node was already recorded
+        // (is_detected_node[][] set) at whichever signature/LSTM/witness call
+        // first fired to cause the trust drop. Calling record_detection_event()
+        // again here double-counted that same detection AND, independently,
+        // caught benign nodes whose trust collapsed from transient disruption
+        // at attack arming (confirmed: 254 quarantine events for A5 vs its
+        // FP=219 in the sticky-latch table, 57% firing within 10s of
+        // attack_start_time -- see docs/SUPERVISOR_FIXES_2026-08-14.md's A5/A7
+        // root-cause section). The quarantine itself -- trust penalty, T_MIN
+        // check, node isolation, key rotation below -- is completely
+        // unchanged; only the confusion-matrix recording is removed.
+        // Unconditional: quarantine is a high-importance MITIGATION event
         std::cout << "[TRUST-QUARANTINE] node=" << node
                   << " trust=" << g_trust_score[node]
                   << " < T_min=" << TRUST_T_MIN

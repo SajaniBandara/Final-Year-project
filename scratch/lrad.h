@@ -428,7 +428,19 @@ inline LRADRSUFlags lrad_rsu(
         // is a valid bc_write_detection_event() signal_idx as of
         // 2026-07-27 (see docs/LSTM_LIVE_INTEGRATION_STATUS.md) so the
         // blockchain audit trail now covers LSTM detections too.
-        if (flags.flag_LSTM &&
+        // Supervisor Fix A (2026-08-18): gate the sticky per-node latch itself
+        // on high-confidence LSTM detections only (score > 2x theta), not on
+        // flag_LSTM alone. This is the mechanically-correct extension flagged
+        // (not applied) under Fix 2 in docs/SUPERVISOR_FIXES_2026-08-14.md --
+        // now explicitly approved. Scope: LSTM path only. The rule-engine
+        // path (S1-S8, above/below) is untouched and continues to set
+        // is_detected_node[][] unconditionally on its own flags. A soft
+        // (at-theta) LSTM detection still writes to bc_write_detection_event
+        // below and to the per-cycle CSV (lstm_logger.h, unconditional on
+        // flag_LSTM) for the window-level LSTM-only reference metric that
+        // evaluator.py computes independently from raw scores -- only the
+        // permanent TP/FP confusion-matrix latch is withheld from soft hits.
+        if (flags.flag_LSTM && flags.flag_LSTM_high_conf &&
             active_attack_variant >= 0 &&
             active_attack_variant < NUM_ATTACK_VARIANTS &&
             prev_sender < (uint32_t)total_size &&

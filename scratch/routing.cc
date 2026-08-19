@@ -118244,7 +118244,11 @@ void calculate_performance_evaluation_metrics()
 
 		// δ_r(t): use mean of observed hop-delays since the last update tick
 		// (Eq. 3.12). Falls back to s1_delta0 if no packets seen this interval.
-		double obs_delay = (s1_rsu_obs_count[_r] > 0)
+		// Captured BEFORE the reset below so obs_delay_max's own fallback
+		// (Fix 3 bug fix, 2026-08-16) can reuse the same "had any packets
+		// this cycle" test after s1_rsu_obs_count is zeroed out.
+		bool had_obs_this_cycle = s1_rsu_obs_count[_r] > 0;
+		double obs_delay = had_obs_this_cycle
 		                 ? (s1_rsu_obs_sum[_r] / (double)s1_rsu_obs_count[_r])
 		                 : s1_delta0;
 		s1_update_baseline(_r, rho_t, v_bar_t, obs_delay);
@@ -118256,7 +118260,18 @@ void calculate_performance_evaluation_metrics()
 		// population as obs_delay above, at the same cadence, but into
 		// separate accumulators (s1_detection.h) so S1's own EWMA baseline
 		// (obs_delay, just consumed above) is untouched by this change.
-		double obs_delay_max = s1_rsu_obs_max[_r];
+		//
+		// Bug fix (2026-08-16): no-observation cycles used to silently
+		// report obs_delay_max=0.0 -- unlike obs_delay's s1_delta0 fallback
+		// right above -- flooding the LSTM feature with a hard zero in 58%
+		// of all rows (confirmed empirically: identical medians of 0.00ms
+		// in BOTH attack-positive and benign windows), diluting whatever
+		// real signal the windowed-max change was meant to sharpen and
+		// producing wildly inconsistent per-RSU theta calibration (0.0137
+		// to 11.8031, ~860x spread) since each RSU's zero-rate tracks its
+		// local vehicle density, not attack activity. Same fallback pattern
+		// as obs_delay now applied here.
+		double obs_delay_max = had_obs_this_cycle ? s1_rsu_obs_max[_r] : s1_delta0;
 		bool   obs_exceeded_dmax = s1_rsu_exceeded_dmax[_r];
 		s1_rsu_obs_max[_r] = 0.0;
 		s1_rsu_exceeded_dmax[_r] = false;
