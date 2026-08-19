@@ -11,8 +11,8 @@ for its content if needed). This doc tracks implementation of the supervisor's
 |---|---|---|
 | 1. Q3 LSTM gating for A3 | **DISPUTED — see below** | Diagnosed mechanism does not match current code |
 | 2. Two-tier LSTM / trust cascade break | **implemented, verified NULL RESULT** | Zero FP movement on Q6 — the gated path (trust) never drove those FP numbers; see below for the mechanically-correct extension, not yet applied |
-| 3. Windowed-max δ_t + binary exceedance feature | pending | requires retrain |
-| 4. SIM_TIME=300 in ablation runner | **implemented** | `run_q1q6_ablation.py` default now 300s; `MAX_CYCLE=310` was already correct in `preprocessor.py` |
+| 3. Windowed-max δ_t + binary exceedance feature | **implemented, retrained, verified — DOES NOT FIX A1/A2** | Full 205-job grid collected, clean retrain done 2026-08-18 07:22. A1 DR=2.7%, A2 DR=4.6% — barely moved from the earlier confounded interim checkpoint (1.7%/2.3%). See below. |
+| 4. SIM_TIME=300 in ablation runner | **implemented; Q1 complete (8/8), Q2-Q6 pending** | `run_q1q6_ablation.py` default now 300s. Q1 banked 2026-08-18 08:38 before a 09:00 machine handover; resume with `--configs Q2,Q3,Q4,Q5,Q6` |
 
 ---
 
@@ -156,19 +156,89 @@ Implementation:
 
 Rebuilt (`-O3` confirmed, 39/0 `.so` split) — compiles clean.
 
-**Blocking scale decision — not yet started**: retraining needs training
-data collected AFTER this change, with genuinely per-cycle-max `delta_t`
-values, not the old mean-based CSVs migrated to the new column count.
-Existing on-disk training data: **8,064 CSVs, 49 distinct
-(attack, pct, seed) run combinations × 64 RSUs**, collected at a mix of
-40s/90s simTime — all now stale for this purpose (wrong `delta_t` semantics
-*and* short of Fix 4's 300s requirement). Regenerating the full grid at
-300s is a genuinely large job (49 runs × 300s each; even at 8-16 way
-parallelism, likely 1–3+ hours of wall clock on this shared host) —
-**holding here for a scope decision rather than launching it unilaterally**:
-full grid regeneration now, a scoped subset first to validate the mechanism
-before committing to the full grid, or defer. See the note at the end of
-this doc.
+**Scale decision resolved 2026-08-17/18: full grid regenerated, not a
+scoped subset.** Collected the complete 205-job grid (8 attacks × 5
+percentages × 5 seeds + benign, 13,120 CSVs, 3,894,464 rows, all at
+`simTime=300` with genuinely per-cycle-max `delta_t`) — took considerably
+longer than the 1–3h estimate (~19h wall clock across two sessions,
+including a mid-collection worker-count/thermal-throttling detour; see
+git history / conversation log for the operational detail, not repeated
+here). Old 8,064-CSV/49-combo dataset backed up and superseded, not mixed
+into the new one — verified 0% zero-delta_t rate and 0 malformed rows
+across the full new dataset before retraining.
+
+**Retrained 2026-08-18 07:22 on the clean full grid.** Result:
+
+| | TP | FN | M1 MCC | M2 DR | M3 FPR |
+|---|---|---|---|---|---|
+| A1 CP-SelectiveDelay | 30 | 1080 | 0.083 | **2.7%** | 0.51% |
+| A2 DP-SelectiveDelay | 67 | 1382 | 0.129 | **4.6%** | 0.68% |
+| A3 CP-TCAM (rule-based, unaffected by this fix) | — | — | 0.940 | 96.6% | 0.75% |
+| A4 DP-TCAM (rule-based, unaffected by this fix) | — | — | 0.840 | 81.8% | 1.02% |
+| A5 CP-ActiveHF | 7582 | 738 | 0.0\* | 91.1% | 0% |
+| A6 DP-ActiveHF | 8320 | 0 | 0.0\* | 100% | 0% |
+| A7 CP-PassiveHF | 7589 | 731 | 0.0\* | 91.2% | 0% |
+| A8 DP-PassiveHF | 8057 | 90 | 0.437 | 98.9% | **56.1%** |
+| Overall (LSTM: A1,2,5-8, pooled) | 31645 | 4021 | 0.822 | 88.7% | 1.27% |
+
+\*A5-A7's `M1_MCC=0.0` is a TN=0 divide-by-zero artifact in the per-variant
+formula (per the project's MCC reporting convention — report M1 pooled/
+deduped, not per-variant, when TN=0 makes the per-variant formula
+degenerate), not a real failure — their 88-100% DR is the honest
+per-variant signal for those three.
+
+**Conclusion: Fix 3 does not fix the A1/A2 detection collapse.** DR moved
+from 1.7%/2.3% (earlier confounded checkpoint, missing A5-8 data) to
+2.7%/4.6% now — a small, real improvement, but both remain far below any
+usable threshold. The pooled "Overall" MCC=0.822 should **not** be read as
+evidence the system works well across the board — it's dominated by
+A5-A8's much larger sample counts (31,548 of 31,645 total TP) drowning out
+A1/A2's near-total failure; the per-variant breakdown (not the pooled
+number) is what matters here, and it says A1/A2 need real further
+diagnosis, not declared fixed.
+
+**New issue surfaced by this same retrain, not previously visible**: A8's
+FPR is 56.1% — over half of benign windows misclassified as attacks for
+that variant specifically, despite its DR being high (98.9%). Not
+investigated yet; flagging alongside A1/A2 rather than separately, since
+both need attention before Q6 can be called complete.
+
+## Q1 results (2026-08-18, 300s, 60%, seed 1) — complete, 8/8
+
+Q1 = rule signatures only (S1-S4 live, S5-S8 off, LSTM off, crypto forced
+pass, witness off).
+
+| variant | TP | FP | FN | TN | MCC |
+|---|---|---|---|---|---|
+| A1 | 25 | 94 | 0 | 149 | 0.3589 |
+| A2 | 148 | 80 | 0 | 40 | 0.4652 |
+| A3 | 32 | 0 | 0 | 236 | 1.0000 |
+| A4 | 41 | 0 | 6 | 221 | 0.9216 |
+| A5 | 0 | 0 | 40 | 228 | 0.0000 |
+| A6 | 0 | 0 | 158 | 110 | 0.0000 |
+| A7 | 0 | 0 | 39 | 229 | 0.0000 |
+| A8 | 0 | 0 | 158 | 110 | 0.0000 |
+
+A5-A8 at zero is the **correct** isolation result, not a failure: their
+S5-S8 signatures are disabled in Q1 by design, so TP=0/FN=all is what the
+config is supposed to produce. Confirms the Q1 flag isolation works.
+
+**Load-bearing observation for the A1/A2 question (Fix 3):** the rule-based
+S1/S2 path shows **FN=0 on both A1 and A2** — it catches every attack
+window — while the LSTM on the same attacks gets DR=2.7%/4.6%. The
+denominators differ (ablation detector-windows vs. the LSTM evaluator's own
+windows), so this is not a strict like-for-like comparison, but the
+qualitative gap is far too large to be accounted for by that. It argues the
+timing signal is present and detectable, and the failure is in the LSTM's
+labeling/feature/threshold path rather than in signal strength — which cuts
+against the D3 premise that mean δ_t's 0.28σ separation makes A1/A2
+inherently hard. Worth checking before spending effort on feature
+engineering: whether the LSTM's per-window label for A1/A2 actually marks
+the same windows S1/S2 fires on.
+
+Q2-Q6 not yet run (machine handover at 09:00). Resume:
+`python3 scripts/run_q1q6_ablation.py --configs Q2,Q3,Q4,Q5,Q6 --workers 8`
+— `--configs` composes with the banked Q1 CSVs, so Q1 is not redone (~4h).
 
 ## Fix 4 — SIM_TIME 90→300 in `run_q1q6_ablation.py` — implemented
 
@@ -193,10 +263,13 @@ a single-lane `optimized` run, scaling the measured 90s figure by ~3.3x).
    matrices, all 8 variants) — predicted before running, then verified.**
    Root cause and a recommended (not-yet-applied) extension documented above.
 3. Fix 3 → retrain on 11-feature input, then full Q1–Q6 at 300s.
-   **Code implemented and compiles clean. Retraining not started — needs a
-   scope decision (see Fix 3 section) before committing the host to what's
-   likely a 1–3+ hour full-grid regeneration.**
-4. Send updated cumulative MCC table. **Not yet — blocked on 3.**
+   **Retrain done 2026-08-18 07:22 on the full clean 205-job grid — does
+   not fix A1/A2 (DR 2.7%/4.6%, see Fix 3 section above). Q1-Q6 ablation
+   (48 runs, 300s, 60% attack, seed 1, per supervisor's spec) launched
+   2026-08-18, in progress, ETA ~2h.**
+4. Send updated cumulative MCC table. **Partial — LSTM per-variant table
+   above is final; Q6 rule/crypto/witness numbers pending the Q1-Q6 run
+   in progress.**
 
 Target: Q6 macro-MCC ≥ Q5 macro-MCC (0.856), Q6 > Q5 > Q1 on every variant,
 Q6 macro-MCC ≥ 0.85 overall, before final experiments are authorized.
@@ -216,6 +289,15 @@ Three items need a call before this can close out:
    itself) but not applied — it contradicts the "confusion matrix records at
    θ as before" instruction, so it needs explicit sign-off, not a unilateral
    change.
-3. **Fix 3 retraining scale**: full grid (49 run combos × 300s, ~1–3+ hours)
-   vs. a scoped subset to validate the mechanism first vs. defer. Needs a
-   decision before the host commitment is made.
+3. **Fix 3 retraining scale**: resolved — full grid regenerated (205 jobs,
+   not the smaller 49-combo scope originally estimated at 1-3h; actually
+   took ~19h wall clock). Retrain complete, verified NOT to fix A1/A2 (see
+   above). **New open question this raises**: what should the actual
+   diagnosis path be for A1/A2's near-total detection failure (DR 2.7%/
+   4.6%), given the windowed-max feature only produced a marginal
+   improvement over the mean-based one? Candidate directions not yet
+   investigated: per-class training imbalance for these two attack types
+   specifically, θ threshold miscalibration, or a labeling/ground-truth
+   issue specific to Selective Time Delay's window construction. Also
+   flagging A8's 56.1% FPR, newly visible in this same retrain, as a
+   second open item needing attention before Q6 can be called complete.
