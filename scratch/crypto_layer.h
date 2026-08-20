@@ -317,6 +317,14 @@ bool enable_lstm_inference         = false; // main.tex sec:fed_lstm: live in-si
 // call site (lstm_logger.h) -- see lstm_inference.h's theta_override param.
 bool enable_hf_theta                = false;
 
+// Supervisor Fix 2 (2026-08-20): use the trained classification head's
+// P(attack) as the live detection signal instead of reconstruction error.
+// Requires a lstm_weights_cpp.bin exported from a checkpoint containing
+// fc_cls; falls back to the reconstruction path with a warning otherwise.
+// Threshold comes from cls_theta.json (per-RSU, swept on the validation
+// split for FPR<=1% at highest DR), defaulting to P>0.5 where absent.
+bool enable_lstm_cls                = false;
+
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
 // per-packet ML-DSA-87 sign/verify + STARK hop-proof (dkg_run_ceremony,
@@ -1889,6 +1897,8 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
     cmd.AddValue("enable_lstm_inference",         "sec:fed_lstm: live in-sim LSTM inference "
                                                    "(needs lstm_weights_cpp.bin already exported)", enable_lstm_inference);
+    cmd.AddValue("enable_lstm_cls",               "Fix 2 (2026-08-20): detect on the classification head's P(attack) "
+                                                  "instead of reconstruction error", enable_lstm_cls);
     cmd.AddValue("enable_hf_theta",               "Use pooled HF-context theta (hf_theta.json) for "
                                                    "A5-A8 instead of the standard per-RSU value "
                                                    "(supervisor Change 2, 2026-08-20)", enable_hf_theta);

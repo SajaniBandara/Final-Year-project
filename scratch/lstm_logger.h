@@ -457,6 +457,40 @@ inline std::string lstm_hf_theta_json_path()
 // absent or unparsed hf_theta.json degrades to today's behavior exactly.
 float g_hf_theta_value = -1.0f;
 
+inline std::string lstm_cls_theta_json_path()
+{
+    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project/";
+    const char* home = std::getenv("HOME");
+    if (home) dir = std::string(home) + "/ns3_g13/g13_project_repo/Final-Year-project/";
+    return dir + "lstm_pipeline/cls_theta.json";
+}
+
+// Per-RSU P(attack) cut-offs for the classification head (Fix 2, 2026-08-20).
+// Empty => fall back to the spec default of P>0.5 for every RSU.
+static std::vector<float> g_cls_theta;
+
+inline bool lstm_load_cls_theta(const std::string& path, uint32_t n_rsus,
+                                 std::vector<float>& out)
+{
+    std::ifstream f(path);
+    if (!f.is_open()) return false;
+    std::string c((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    out.assign(n_rsus, 0.5f);
+    size_t blk = c.find("\"per_rsu_threshold\"");
+    if (blk == std::string::npos) return false;
+    // entries look like  "17": 0.83
+    for (uint32_t r = 0; r < n_rsus; ++r)
+    {
+        std::string key = "\"" + std::to_string(r) + "\":";
+        size_t k = c.find(key, blk);
+        if (k == std::string::npos) continue;
+        size_t colon = c.find(':', k);
+        if (colon == std::string::npos) continue;
+        try { out[r] = std::stof(c.substr(colon + 1)); } catch (const std::exception&) {}
+    }
+    return true;
+}
+
 // Minimal single-field JSON value extraction -- hf_theta.json is a small,
 // self-written file (calibrate_hf_theta.py), not arbitrary input, so a full
 // JSON parser is unnecessary. Finds "theta_hf": <number> and returns it.
@@ -532,6 +566,22 @@ inline void lstm_logger_init(uint32_t n_rsus)
                       << " (n_rsus_theta=" << g_lstm_model.theta.size()
                       << " global_theta=" << g_lstm_model.global_theta << ")" << std::endl;
 
+            if (enable_lstm_cls)
+            {
+                if (!g_lstm_model.has_cls)
+                    std::cerr << "[LSTM_INFERENCE] WARNING: --enable_lstm_cls set but the "
+                              << "loaded weights contain no fc_cls block -- falling back to "
+                              << "the reconstruction path" << std::endl;
+                else
+                {
+                    std::string cp = lstm_cls_theta_json_path();
+                    bool ok = lstm_load_cls_theta(cp, n_rsus, g_cls_theta);
+                    std::cout << "[LSTM_INFERENCE] classification head ACTIVE (cls_hidden="
+                              << g_lstm_model.cls_hidden << "), per-RSU thresholds "
+                              << (ok ? "from " + cp : std::string("unavailable -- using P>0.5"))
+                              << std::endl;
+                }
+            }
             if (enable_hf_theta)
             {
                 std::string hf_path = lstm_hf_theta_json_path();
@@ -935,15 +985,32 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         {
             float score = mglstm::lstm_forward_and_score(g_lstm_model, win);
             float theta_used = 0.0f;
+            const bool use_cls = enable_lstm_cls && g_lstm_model.has_cls;
             // active_attack_variant 4-7 == attack_number 5-8 (HF variants).
             // g_hf_theta_value stays -1.0f (== "no override") unless
             // --enable_hf_theta was passed AND hf_theta.json loaded
             // successfully at init -- see lstm_logger_init() above.
             bool is_hf_variant = active_attack_variant >= 4 && active_attack_variant <= 7;
             float hf_override = (enable_hf_theta && is_hf_variant) ? g_hf_theta_value : -1.0f;
-            bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score,
-                                               ns3::Simulator::Now().GetSeconds(),
-                                               &theta_used, hf_override);
+            bool  d_lstm;
+            if (use_cls)
+            {
+                // One encoder pass, read out through fc_cls instead of the
+                // decoder: P(attack) vs the per-RSU cut-off. eq:theta_adapt's
+                // warm-up widening is a reconstruction-error concept and does
+                // not apply to a calibrated probability, so it is skipped here.
+                const float p_atk = mglstm::lstm_cls_prob(
+                        g_lstm_model, mglstm::lstm_encode(g_lstm_model, win));
+                theta_used = (r < g_cls_theta.size()) ? g_cls_theta[r] : 0.5f;
+                score  = p_atk;                 // logged column becomes P(attack)
+                d_lstm = p_atk > theta_used;
+            }
+            else
+            {
+                d_lstm = mglstm::lstm_detect(g_lstm_model, r, score,
+                                             ns3::Simulator::Now().GetSeconds(),
+                                             &theta_used, hf_override);
+            }
             g_lstm_last_score[r] = score;
             g_lstm_last_dlstm[r] = d_lstm;
             // Fix 2: high-confidence tier against the SAME effective theta

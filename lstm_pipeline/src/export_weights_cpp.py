@@ -79,6 +79,13 @@ TENSOR_ORDER = [
     "fc_recon.weight", "fc_recon.bias",
 ]
 
+# Supervisor Fix 2 (2026-08-20): the classification head IS now exported, so
+# live inference can use P(attack) instead of reconstruction error. Appended
+# AFTER the scaler block so the layout stays backward compatible -- a reader
+# built before this change stops at the scaler and never sees these bytes,
+# and load_lstm_weights() treats their absence as "no head available".
+CLS_ORDER = ["fc_cls.0.weight", "fc_cls.0.bias", "fc_cls.2.weight", "fc_cls.2.bias"]
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -139,6 +146,18 @@ def main():
         f.write(struct.pack(f"<{n_features}f", *std))
         print(f"  wrote scaler: mu={mu}")
         print(f"                std={std}")
+
+        have_cls = all(k in sd for k in CLS_ORDER)
+        f.write(struct.pack("<I", 1 if have_cls else 0))
+        if have_cls:
+            hid = sd["fc_cls.0.weight"].shape[0]
+            f.write(struct.pack("<I", hid))
+            for name in CLS_ORDER:
+                arr = sd[name].detach().cpu().numpy().astype("<f4")
+                f.write(arr.tobytes())
+                print(f"  wrote {name:22s} shape={tuple(arr.shape)}")
+        else:
+            print("  no fc_cls in checkpoint -- classification head not exported")
 
     print(f"\nExported -> {args.out} ({Path(args.out).stat().st_size} bytes)")
 

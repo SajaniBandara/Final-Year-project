@@ -167,6 +167,10 @@ def fixed_params(args) -> dict:
         # different statistic from the paper's per-window one -- see
         # scratch/detector_windows.h. Cheap: one bit per node per cycle.
         "enable_detector_windows": args.detector_windows,
+        # Supervisor Fix 2 (2026-08-20): detect on the classification head's
+        # P(attack) rather than reconstruction error, wherever the LSTM is on
+        # at all (Q3/Q6). Inert in configs with the LSTM disabled.
+        "enable_lstm_cls": args.lstm_cls,
     }
 
 
@@ -451,6 +455,9 @@ def main():
     # simTime=300... any run shorter than this is unaffected") -- no change
     # needed there, only here.
     ap.add_argument("--sim-time", type=int, default=300, help="supervisor spec (2026-08-14): 300 s")
+    ap.add_argument("--lstm-cls", type=int, default=1,
+                    help="use the trained classification head's P(attack) as the "
+                         "LSTM detection signal (supervisor Fix 2, 2026-08-20)")
     ap.add_argument("--detector-windows", type=int, default=1,
                     help="emit detector_windows.csv for M1 (default on). NOTE: needs "
                          "sim-time >= 90 to survive the evaluator's 30-cycle warm-up "

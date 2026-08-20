@@ -79,6 +79,12 @@ struct LSTMAutoencoderWeights {
     float global_theta = 0.0f;      // fallback for out-of-range RSU indices
     std::vector<float> feat_mu;     // Z-score scaler mean, eq:lstm_input feature order
     std::vector<float> feat_std;    // Z-score scaler std,  eq:lstm_input feature order
+    // Supervisor Fix 2 (2026-08-20): classification head (fc_cls). Optional --
+    // has_cls stays false for any binary exported before this was added, in
+    // which case callers fall back to the reconstruction path unchanged.
+    bool  has_cls = false;
+    int   cls_hidden = 0;
+    std::vector<float> cls_w0, cls_b0, cls_w2, cls_b2;
 };
 
 // Applies the SAME Z-score normalisation the model was trained on
@@ -222,6 +228,26 @@ inline float lstm_forward_and_score(const LSTMAutoencoderWeights& m,
     auto x_hat  = lstm_decode(m, latent, (int)x.size());
     if (x_hat_out) *x_hat_out = x_hat;
     return lstm_anomaly_score(x, x_hat);
+}
+
+// P(attack) from the classification head: Linear(hidden2,H) -> ReLU ->
+// Linear(H,1) -> Sigmoid, matching lstm_model.py's fc_cls exactly. Input is
+// the SAME latent the reconstruction path encodes, so this is an alternative
+// read-out of one encoder pass, not a second model.
+inline float lstm_cls_prob(const LSTMAutoencoderWeights& m,
+                            const std::vector<float>& latent)
+{
+    const int H = m.cls_hidden, L = (int)latent.size();
+    std::vector<float> h(H, 0.0f);
+    for (int i = 0; i < H; ++i)
+    {
+        float acc = m.cls_b0[i];
+        for (int k = 0; k < L; ++k) acc += m.cls_w0[(size_t)i * L + k] * latent[k];
+        h[i] = acc > 0.0f ? acc : 0.0f;              // ReLU
+    }
+    float z = m.cls_b2[0];
+    for (int i = 0; i < H; ++i) z += m.cls_w2[i] * h[i];
+    return 1.0f / (1.0f + std::exp(-z));             // Sigmoid
 }
 
 // ── eq:theta_adapt — online warm-up threshold adaptation ────────────────────
@@ -397,7 +423,28 @@ inline bool load_lstm_weights(const std::string& path, LSTMAutoencoderWeights& o
     read_vec(out.feat_mu,  n_features);
     read_vec(out.feat_std, n_features);
 
-    if (!f)
+    // Everything above is mandatory: capture the stream state BEFORE touching
+    // the optional block, so a genuinely truncated core file is still caught.
+    const bool core_ok = (bool)f;
+
+    // Optional trailing classification-head block (2026-08-20). Absent in any
+    // binary exported before that change -- read failure here is NOT an error,
+    // it just leaves has_cls false and the reconstruction path in charge.
+    uint32_t cls_present = 0;
+    if (f.read(reinterpret_cast<char*>(&cls_present), sizeof(uint32_t)) && cls_present)
+    {
+        uint32_t chid = 0;
+        f.read(reinterpret_cast<char*>(&chid), sizeof(uint32_t));
+        out.cls_hidden = (int)chid;
+        read_vec(out.cls_w0, (size_t)chid * out.hidden2);
+        read_vec(out.cls_b0, chid);
+        read_vec(out.cls_w2, chid);
+        read_vec(out.cls_b2, 1);
+        out.has_cls = (bool)f;
+    }
+    f.clear();   // absence of the optional block is not a failure
+
+    if (!core_ok)
     {
         if (err) *err = "truncated/short read on " + path;
         return false;
