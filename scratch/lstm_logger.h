@@ -898,13 +898,32 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         // eq:lstm_input will mismatch here until retrained and re-exported
         // (see lstm_pipeline/src/export_weights_cpp.py). Bounds-checked
         // below rather than silently truncating/misaligning.
+        // Log1p-transform d_div/a_tp/r_anom (2026-08-20), matching
+        // preprocessor.py exactly -- same reasoning, same three features:
+        // all constant in benign data (zero variance, hitting the scaler's
+        // std=1.0 fallback), with an attack-side raw range large enough
+        // (r_anom up to 1155, measured) that untransformed values dwarf
+        // every other feature's contribution to the reconstruction score
+        // and make theta comparisons meaningless. Training and inference
+        // MUST apply the identical transform or the model sees a input
+        // distribution it was never calibrated against.
         std::vector<float> raw_feat = {
             (float)obs_delay, (float)lam_PI, (float)U_TCAM,
             (float)zkp_delay_fail, (float)zkp_hop_fail,
             (float)rho_t, (float)v_bar_t,
-            (float)D_div, (float)A_tp, (float)R_anom,
+            std::log1p((float)D_div > 0.0f ? (float)D_div : 0.0f),
+            std::log1p((float)A_tp > 0.0f ? (float)A_tp : 0.0f),
+            std::log1p((float)R_anom > 0.0f ? (float)R_anom : 0.0f),
             (float)(obs_exceeded_dmax ? 1.0 : 0.0)
         };
+        if (CRYPTO_DEBUG_LOG)
+            std::cout << "[LSTM_RAWFEAT] rsu=" << r
+                      << " obs_delay=" << obs_delay << " lam_PI=" << lam_PI
+                      << " U_TCAM=" << U_TCAM << " zkp_delay=" << zkp_delay_fail
+                      << " zkp_hop=" << zkp_hop_fail << " rho=" << rho_t
+                      << " v_bar=" << v_bar_t << " D_div=" << D_div
+                      << " A_tp=" << A_tp << " R_anom=" << R_anom
+                      << " dmax_exceed=" << obs_exceeded_dmax << std::endl;
         std::vector<float> norm_feat = mglstm::lstm_normalize_features(g_lstm_model, raw_feat);
 
         auto& win = g_lstm_rsu_window[r];

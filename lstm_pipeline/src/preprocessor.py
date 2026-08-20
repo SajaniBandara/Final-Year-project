@@ -147,11 +147,18 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
     y_multi  : 0=benign, 1-8=attack variant (only where y_binary==1).
     """
     X_list, yb_list, ym_list, meta_list = [], [], [], []
+    # y_indep (2026-08-20): window label built ONLY from hf_send_gt, the
+    # send-side attack-injection counter that is deliberately NOT in
+    # FEATURES (see the r_anom removal note in main() -- same rationale).
+    # Used to train/evaluate the classification head without the label
+    # being trivially recoverable from an input column.
+    yi_list = []
     groups = df.groupby(["rsu_id", "attack_v", "pct", "seed"], sort=False)
     for (rsu, av, pct, seed), grp in groups:
         grp = grp.sort_values("cycle").reset_index(drop=True)
         vals   = grp[FEATURES].values.astype(np.float32)
         spikes = grp["is_spike"].values.astype(np.int8)   # per-row attack-active flag
+        hfgt   = grp["hf_send_gt"].values.astype(np.float64)
         cycles = grp["cycle"].values
         for i in range(0, len(grp) - window + 1, stride):
             # Drop the window starting at cycle 0: SUMO's own startup
@@ -168,17 +175,20 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             win_pos = 1 if (av > 0 and spikes[i:i+window].max() > 0) else 0
             X_list.append(vals[i:i+window])
             yb_list.append(win_pos)
+            yi_list.append(1 if (av > 0 and hfgt[i:i+window].max() > 0) else 0)
             ym_list.append(int(av) if win_pos else 0)
             meta_list.append((rsu, av, pct, seed, int(cycles[i])))
     if not X_list:
         return (np.empty((0, window, len(FEATURES)), dtype=np.float32),
                 np.empty(0, dtype=np.int8),
                 np.empty(0, dtype=np.int8),
-                np.empty((0, 5), dtype=np.int32))
+                np.empty((0, 5), dtype=np.int32),
+                np.empty(0, dtype=np.int8))
     return (np.stack(X_list),
             np.array(yb_list, dtype=np.int8),
             np.array(ym_list, dtype=np.int8),
-            np.array(meta_list, dtype=np.int32))
+            np.array(meta_list, dtype=np.int32),
+            np.array(yi_list, dtype=np.int8))
 
 
 def main(args):
@@ -294,12 +304,44 @@ def main(args):
     print(f"  HF (A5-A8) spike breakdown: {n_hf_spike:,}/{n_hf_rows:,} "
           f"({100*n_hf_spike/max(n_hf_rows,1):.1f}%) rows flagged via ZKP failure")
 
+    # ── Log1p-transform the count/ratio features prone to the zero-variance
+    # scaler fallback (2026-08-20) ─────────────────────────────────────────
+    # d_div, a_tp, r_anom are all exactly a constant (1.0, 1.0, 0.0
+    # respectively) in every pure-benign row -- zero variance, so
+    # fit_scaler()'s "avoid zero-std" guard sets std=1.0 for all three, not
+    # a real empirical scale. Their attack-side raw range is enormous
+    # (r_anom up to 1155, d_div up to ~90 -- measured on live + collected
+    # data), so with std=1.0 a single elevated cycle normalizes to a value
+    # in the hundreds to low thousands, squared into the reconstruction MSE.
+    # Decomposition on the current model confirmed r_anom alone accounts for
+    # 90-94% of the error on the highest-scoring test-split windows,
+    # dwarfing every other feature and making theta comparisons meaningless
+    # once any of these three deviate anywhere in the topology (this is why
+    # neither Fix A's high-confidence gate nor hf_theta.json moved A5/A7's
+    # live FP count at all -- their scores were 40-200+ against thetas
+    # topping out around 10). Applied AFTER is_spike above (which correctly
+    # uses raw d_div for the >1 ground-truth threshold, unaffected by this)
+    # and BEFORE fit_scaler/apply_scaler, so calibration is computed on the
+    # transformed values throughout. Log1p keeps benign at a still-constant
+    # (now 0 or log1p(1)) value -- doesn't remove the zero-variance
+    # fallback, but compresses attack-side dynamic range by ~2 orders of
+    # magnitude (log1p(1155)=7.05, log1p(90)=4.51), bringing it into the
+    # same rough scale as the other features' typical normalized deviations
+    # instead of dwarfing them by 10-1000x. zkp_delay_fail/zkp_hop_fail are
+    # NOT included -- already binary {0,1}, log1p would only compress an
+    # already-bounded range for no benefit.
+    LOG_TRANSFORM_FEATURES = ["d_div", "a_tp", "r_anom"]
+    for f in LOG_TRANSFORM_FEATURES:
+        df[f] = np.log1p(df[f].clip(lower=0))  # clip: guard against any
+                                                  # negative float noise: log1p
+                                                  # is undefined below -1
+
     print(f"Fitting Z-score scaler on benign data from TRAIN_SEEDS={sorted(TRAIN_SEEDS)} only …")
     mu, std = fit_scaler(df)
     df = apply_scaler(df, mu, std)
 
     print(f"Building W={WINDOW} stride={STRIDE} sliding-window sequences …")
-    X, y_bin, y_multi, meta = make_windows(df, WINDOW, STRIDE)
+    X, y_bin, y_multi, meta, y_indep = make_windows(df, WINDOW, STRIDE)
     print(f"  Total windows: {len(X):,}  positives: {y_bin.sum():,} ({100*y_bin.mean():.1f}%)")
 
     # Seed-partitioned split (spec: "partitioned by seed, stratified by variant")
@@ -322,6 +364,7 @@ def main(args):
         np.save(OUT / f"{split}_y.npy",       y_bin[idx])
         np.save(OUT / f"{split}_y_multi.npy", y_multi[idx])
         np.save(OUT / f"{split}_meta.npy",    meta[idx])
+        np.save(OUT / f"{split}_y_indep.npy", y_indep[idx])
         pos = y_bin[idx].sum()
         print(f"  {split:5s}: {len(idx):6,} windows  pos={pos} ({100*pos/max(len(idx),1):.1f}%)"
               f"  seeds={sorted(seed_set)}")
