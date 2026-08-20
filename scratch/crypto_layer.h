@@ -305,6 +305,18 @@ bool enable_lstm_inference         = false; // main.tex sec:fed_lstm: live in-si
                                              // run/script in the repo must keep working
                                              // unchanged without that file present.
 
+// HF-context theta override — CLI: --enable_hf_theta (default false).
+// Supervisor Change 2 (2026-08-20): A5-A8's per-RSU theta is calibrated on
+// a pool that's 94% A1-A4 traffic; loading lstm_pipeline/hf_theta.json
+// (calibrate_hf_theta.py) and using its single pooled HF-context threshold
+// for A5-A8 runs instead fixed A8's live FPR in offline validation
+// (48.28%->0.00%). Default OFF -- A1-A4 runs, and any run without
+// hf_theta.json exported yet, are completely unaffected. Loaded once at
+// LSTM-logger init (lstm_logger.h) alongside the main weights; applied
+// only when active_attack_variant is 4-7 (attacks 5-8) at the lstm_detect()
+// call site (lstm_logger.h) -- see lstm_inference.h's theta_override param.
+bool enable_hf_theta                = false;
+
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
 // per-packet ML-DSA-87 sign/verify + STARK hop-proof (dkg_run_ceremony,
@@ -1877,6 +1889,9 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
     cmd.AddValue("enable_lstm_inference",         "sec:fed_lstm: live in-sim LSTM inference "
                                                    "(needs lstm_weights_cpp.bin already exported)", enable_lstm_inference);
+    cmd.AddValue("enable_hf_theta",               "Use pooled HF-context theta (hf_theta.json) for "
+                                                   "A5-A8 instead of the standard per-RSU value "
+                                                   "(supervisor Change 2, 2026-08-20)", enable_hf_theta);
 }
 
 #endif // CRYPTO_LAYER_H

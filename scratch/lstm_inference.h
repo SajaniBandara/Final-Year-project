@@ -282,10 +282,24 @@ inline bool lstm_in_warmup(double t_now) { return t_now < LSTM_WARMUP_S; }
 // same threshold this function actually used, not a separately recomputed
 // (and potentially stale/adaptation-unaware) one. Default nullptr, so every
 // existing call site is unaffected.
+// theta_override (supervisor Change 2, 2026-08-20): A5-A8's per-RSU theta
+// is calibrated on a pool that's 94% A1-A4 traffic (structurally different
+// from HF traffic) -- the actual cause of A8's 56% live FPR, not a z_alpha
+// problem (validated: sweeping z=2.3..5.0 left FPR at 45-49%, doesn't move).
+// Callers that know the current run is an HF attack (lstm_logger.h, which
+// has active_attack_variant) pass the pooled HF-context threshold
+// (lstm_pipeline/hf_theta.json, loaded once at startup) here instead of
+// relying on this function's own per-RSU lookup. Kept as an explicit
+// parameter rather than reading a global variant flag directly in this
+// file, since lstm_inference.h is also included standalone by
+// lstm_inference_test.cpp, which has no active_attack_variant defined --
+// default -1 preserves that path unchanged.
 inline bool lstm_detect(const LSTMAutoencoderWeights& m, uint32_t rsu_idx,
-                        float score, double t_now, float* theta_used = nullptr)
+                        float score, double t_now, float* theta_used = nullptr,
+                        float theta_override = -1.0f)
 {
-    const float base = (rsu_idx < m.theta.size()) ? m.theta[rsu_idx] : m.global_theta;
+    const float base = (theta_override >= 0.0f) ? theta_override
+                      : (rsu_idx < m.theta.size()) ? m.theta[rsu_idx] : m.global_theta;
 
     if (rsu_idx >= g_lstm_warm_n.size())          // not initialised -> base only
     {

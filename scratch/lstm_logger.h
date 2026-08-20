@@ -441,6 +441,46 @@ inline std::string lstm_weights_bin_path()
     return dir + "lstm_pipeline/lstm_weights_cpp.bin";
 }
 
+inline std::string lstm_hf_theta_json_path()
+{
+    std::string dir = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project/";
+    const char* home = std::getenv("HOME");
+    if (home)
+        dir = std::string(home) + "/ns3_g13/g13_project_repo/Final-Year-project/";
+    return dir + "lstm_pipeline/hf_theta.json";
+}
+
+// Supervisor Change 2 (2026-08-20): pooled HF-context theta for A5-A8,
+// separate from the standard per-RSU theta baked into lstm_weights_cpp.bin.
+// -1.0f = not loaded / not enabled -- lstm_detect()'s theta_override
+// treats any negative value as "use the normal per-RSU lookup", so an
+// absent or unparsed hf_theta.json degrades to today's behavior exactly.
+float g_hf_theta_value = -1.0f;
+
+// Minimal single-field JSON value extraction -- hf_theta.json is a small,
+// self-written file (calibrate_hf_theta.py), not arbitrary input, so a full
+// JSON parser is unnecessary. Finds "theta_hf": <number> and returns it.
+inline bool lstm_load_hf_theta(const std::string& path, float& out)
+{
+    std::ifstream f(path);
+    if (!f.is_open()) return false;
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+    size_t key = content.find("\"theta_hf\"");
+    if (key == std::string::npos) return false;
+    size_t colon = content.find(':', key);
+    if (colon == std::string::npos) return false;
+    try
+    {
+        out = std::stof(content.substr(colon + 1));
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+    return true;
+}
+
 // =========================================================================
 // lstm_make_base_dir():
 // Resolves the results_routing base directory the same way routing.cc does,
@@ -491,6 +531,19 @@ inline void lstm_logger_init(uint32_t n_rsus)
             std::cout << "[LSTM_INFERENCE] Loaded weights from " << path
                       << " (n_rsus_theta=" << g_lstm_model.theta.size()
                       << " global_theta=" << g_lstm_model.global_theta << ")" << std::endl;
+
+            if (enable_hf_theta)
+            {
+                std::string hf_path = lstm_hf_theta_json_path();
+                if (lstm_load_hf_theta(hf_path, g_hf_theta_value))
+                    std::cout << "[LSTM_INFERENCE] Loaded HF theta from " << hf_path
+                              << " (theta_hf=" << g_hf_theta_value
+                              << ", applies to A5-A8)" << std::endl;
+                else
+                    std::cerr << "[LSTM_INFERENCE] WARNING: --enable_hf_theta set but "
+                              << hf_path << " missing or unparseable -- A5-A8 will use "
+                              << "the standard per-RSU theta instead" << std::endl;
+            }
 
             // eq:bc_model_verify (SC.CommitModelHash): each RSU commits the
             // hash of the (shared, federated) global model it is using for
@@ -863,9 +916,15 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         {
             float score = mglstm::lstm_forward_and_score(g_lstm_model, win);
             float theta_used = 0.0f;
+            // active_attack_variant 4-7 == attack_number 5-8 (HF variants).
+            // g_hf_theta_value stays -1.0f (== "no override") unless
+            // --enable_hf_theta was passed AND hf_theta.json loaded
+            // successfully at init -- see lstm_logger_init() above.
+            bool is_hf_variant = active_attack_variant >= 4 && active_attack_variant <= 7;
+            float hf_override = (enable_hf_theta && is_hf_variant) ? g_hf_theta_value : -1.0f;
             bool  d_lstm = mglstm::lstm_detect(g_lstm_model, r, score,
                                                ns3::Simulator::Now().GetSeconds(),
-                                               &theta_used);
+                                               &theta_used, hf_override);
             g_lstm_last_score[r] = score;
             g_lstm_last_dlstm[r] = d_lstm;
             // Fix 2: high-confidence tier against the SAME effective theta
