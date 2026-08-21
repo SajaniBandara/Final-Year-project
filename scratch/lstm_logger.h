@@ -551,6 +551,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_last_dlstm.assign(n_rsus, false);
     g_lstm_high_confidence.assign(n_rsus, false);
     g_ranom_flag_last.assign(n_rsus, 0);   // Decision 2 rule latch
+    g_dw_activity_last.assign(n_rsus, 1);  // Decision 4 activity latch (default: ungated)
     g_lstm_logger_ready = true;
 
     // Live inference is independent of --training (which only controls

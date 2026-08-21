@@ -573,6 +573,20 @@ std::map<uint32_t, uint32_t> g_lstm_ranom_count;
 // config (11,384 of 14,367). R_anom does not inherit that failure mode.
 std::vector<uint8_t> g_ranom_flag_last;
 
+// Supervisor Decision 4 (2026-08-21): per-RSU, per-cycle ATTACK-ACTIVITY
+// latch for detector_windows.csv's ground truth. Window-level detectors must
+// be scored against window-level truth; the previous truth column was
+// is_malicious_node, which is node-level and constant for the whole run, so
+// every window in which a genuine attacker happened to be dormant counted as
+// a positive no detector could catch. Measured: 40.7% of node-level positive
+// windows (30,730 of 75,578) contain no attack activity at all, capping even
+// a perfect zero-FP detector at DR ~59.3%.
+//
+// Populated in routing.cc's per-RSU metrics loop, which runs BEFORE
+// dw_end_cycle() in the same cycle. Latched rather than read live because
+// s1_rsu_exceeded_dmax is reset inside that same loop.
+std::vector<uint8_t> g_dw_activity_last;
+
 // 2026-08-02 (Issue 1 fix, HF ground-truth/feature separation): per-RSU
 // count of hidden-duplicate SEND events this malicious RSU has scheduled
 // (incremented at the same two call sites as g_total_copies_scheduled++ in

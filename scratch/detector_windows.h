@@ -114,9 +114,23 @@ inline void dw_end_cycle()
     // RSU ground truth: reuse lstm_rsu_ground_truth_label() rather than
     // reimplementing it — it carries the A3/A4 victim-RSU, A2 covering-RSU and
     // A6/A8 covering-RSU fallbacks, and a second copy would drift from it.
+    // Supervisor Decision 4 (2026-08-21): window-level truth. The node-level
+    // label alone is constant for the whole run, so a genuine attacker's
+    // DORMANT windows counted as positives no detector could ever catch --
+    // measured at 40.7% of node-level positives (30,730 of 75,578), capping a
+    // perfect zero-FP detector at DR ~59.3%. AND it with this cycle's activity
+    // latch so a window is positive only when the node is malicious AND the
+    // attack actually fired in it.
+    //
+    // g_dw_activity_last defaults to 1 for variants with no per-cycle gate
+    // (A3/A4, benign), so those keep exactly their previous behaviour.
     std::vector<uint8_t> rt((size_t)N_RSUs, 0);
     for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
-        rt[r] = (uint8_t)lstm_rsu_ground_truth_label((uint32_t)N_Vehicles + r);
+    {
+        uint8_t node_lvl = (uint8_t)lstm_rsu_ground_truth_label((uint32_t)N_Vehicles + r);
+        uint8_t active   = (r < g_dw_activity_last.size()) ? g_dw_activity_last[r] : 1;
+        rt[r] = (node_lvl && active) ? 1 : 0;
+    }
 
     // S3/S4 fold-in — REQUIRED for M1 to see the TCAM family at all.
     // dw_mark_rsu() is only ever called from lrad_rsu() when D_RSU fires, and

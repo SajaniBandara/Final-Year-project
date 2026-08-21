@@ -118297,9 +118297,31 @@ void calculate_performance_evaluation_metrics()
 		// this cycle. obs_delay_max replaces mean obs_delay as the δ_t
 		// feature; obs_exceeded_dmax is the new 11th binary feature.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay_max, obs_exceeded_dmax);
+
+		// Decision 4 (2026-08-21): latch whether THIS RSU saw genuine attack
+		// activity this cycle, for dw_end_cycle()'s window-level ground truth.
+		// Must be captured here: s1_rsu_exceeded_dmax was already reset above,
+		// and lstm_log_rsu_cycle() has just consumed the hf_send_gt delta.
+		//   A1/A2 (variants 0/1): a real >Delta_max hop-delay exceedance.
+		//   A5-A8 (variants 4-7): a hidden-duplicate SEND event, taken from
+		//     g_ranom_flag_last, which lstm_log_rsu_cycle() published a moment
+		//     ago from R_anom's own per-cycle delta.
+		//   A3/A4: left to the existing victim-RSU logic in
+		//     lstm_rsu_ground_truth_label() -- TCAM exhaustion persists across
+		//     cycles rather than firing discretely, so a per-cycle activity
+		//     gate would wrongly blank out the sustained-occupancy windows.
+		if (_r < g_dw_activity_last.size()) {
+			uint8_t act = 1;   // default: no per-cycle gate for this variant
+			if (active_attack_variant == 0 || active_attack_variant == 1)
+				act = obs_exceeded_dmax ? 1 : 0;
+			else if (active_attack_variant >= 4 && active_attack_variant <= 7)
+				act = (_r < g_ranom_flag_last.size() && g_ranom_flag_last[_r]) ? 1 : 0;
+			g_dw_activity_last[_r] = act;
+		}
 	}
 	// M1 window grid: snapshot this cycle's OBU/RSU decisions + ground truth.
 	dw_end_cycle();
+	std::fill(g_dw_activity_last.begin(), g_dw_activity_last.end(), (uint8_t)0);
 	// [density-logging] flush this cycle's rows so data survives any exit path.
 	if (g_rsu_density_csv.is_open()) g_rsu_density_csv.flush();
 	// Resolve the results directory dynamically using the user or HOME environment variable
