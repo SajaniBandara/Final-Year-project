@@ -232,8 +232,34 @@ def run_lane(attack_number: int, params: dict, dry_run: bool, configs=None) -> l
         if src.exists():
             src.rename(dst)
             renamed = True
+
+        # Tag the AUXILIARY per-run outputs with the config too (2026-08-21).
+        # Only the MOBIGUARD_* results CSV was being renamed above; every other
+        # file the simulator writes -- detector_windows_*, crypto_timing_log_*,
+        # bc_*_log_*, tcam_*, rsu_density_*, lambda_l_true_*, fade_results_* --
+        # keeps a fixed name built from g_sim_tag alone, with no config in it.
+        # Running Q3 then Q5 then Q6 therefore left each of those holding only
+        # the LAST config's data, silently: the files look current (fresh
+        # mtime, one header, monotonic timestamps) and nothing errors, so the
+        # loss is invisible unless you compare mtimes against the run schedule.
+        # Confirmed on the 2026-08-20 chain -- bc_detection_log_Attack5 held Q1
+        # and rsu_density_Attack5 held Q4 while MOBIGUARD_Attack5 held Q6.
+        # Cannot recover what is already gone; this only protects future runs.
+        sim_tag = src.name.replace("MOBIGUARD", "").replace(".csv", "")
+        n_aux = 0
+        for aux in RESULTS_DIR.glob(f"*{sim_tag}.csv"):
+            if aux.name.startswith("MOBIGUARD") or aux.name.endswith(f"_{tag}.csv"):
+                continue
+            aux_dst = aux.with_name(aux.name.replace(".csv", f"_{tag}.csv"))
+            try:
+                aux.rename(aux_dst)
+                n_aux += 1
+            except OSError:
+                pass
+
         print(f"  [{label}] {'OK' if ok else 'FAILED':<6} {elapsed:5.0f}s "
-              f"{'-> ' + dst.name if renamed else '(NO OUTPUT)'}")
+              f"{'-> ' + dst.name if renamed else '(NO OUTPUT)'}"
+              f"{f'  (+{n_aux} aux)' if n_aux else ''}")
         out.append({"label": label, "ok": ok, "renamed": renamed})
     return out
 
