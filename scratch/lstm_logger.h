@@ -551,6 +551,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_last_dlstm.assign(n_rsus, false);
     g_lstm_high_confidence.assign(n_rsus, false);
     g_ranom_flag_last.assign(n_rsus, 0);   // Decision 2 rule latch
+    g_ranom_rule_prev.assign(n_rsus, 0);   // its own prev-value array
     g_dw_activity_last.assign(n_rsus, 1);  // Decision 4 activity latch (default: ungated)
     g_lstm_logger_ready = true;
 
@@ -841,12 +842,12 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         uint32_t prev_ranom = (r < g_lstm_prev_ranom.size()) ? g_lstm_prev_ranom[r] : 0;
         R_anom = (cur_ranom >= prev_ranom) ? (double)(cur_ranom - prev_ranom) : 0.0;
         if (r < g_lstm_prev_ranom.size()) g_lstm_prev_ranom[r] = cur_ranom;
-        // Decision 2 (2026-08-21): publish the zero-tolerance rule result for
-        // lrad_rsu()'s S7/S8 OR-condition. UNCONDITIONAL -- computed on every
-        // config so the ablation's disable flags gate only the recording, the
-        // same asymmetry already used for g_tcam_flag_s3_last/s4_last.
-        if (r < g_ranom_flag_last.size())
-            g_ranom_flag_last[r] = (R_anom > 0.0) ? 1 : 0;
+        // NOTE: the Decision 2 rule latch is deliberately NOT published here.
+        // This function early-returns when neither --training nor
+        // --enable_lstm_inference is set, so a latch written at this point
+        // would silently stay zero in exactly the ablation configs that need
+        // it. It is computed in routing.cc's per-RSU loop instead, from the
+        // same g_lstm_ranom_count counter but with its own prev-value array.
     }
 
     // ── hf_send_gt (label-only, NOT a model feature — Issue 1 fix,

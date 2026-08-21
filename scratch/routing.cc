@@ -114696,6 +114696,11 @@ enum DetectionSource : uint16_t {
     DSRC_WITNESS_NFA = 1u << 10,  // β_w non-forwarding alert (eq:nfwd_detect)
     DSRC_BTMM_PACKET = 1u << 11,  // per-packet trust decay (eq:trust_update)
     DSRC_QUARANTINE  = 1u << 12,  // trust < T_min, caller not otherwise identified
+    DSRC_RULE_RANOM  = 1u << 13,  // R_anom(r,t) > 0 zero-tolerance rule (Decision 2,
+                                  // 2026-08-21). Its own bit rather than reusing
+                                  // DSRC_RULE_S7: the rule feeds S7/S8 but fires on
+                                  // every HF variant (A5-A8), so tagging it S7 would
+                                  // misreport its contribution in [SECURITY-SRC].
 };
 uint16_t detection_source[NUM_ATTACK_VARIANTS][total_size] = {{0}};
 
@@ -117474,6 +117479,7 @@ void calculate_security_detection_metrics()
                 {DSRC_WITNESS_NFA, "witness_NFA"},
                 {DSRC_BTMM_PACKET, "btmm_packet"},
                 {DSRC_QUARANTINE,  "quarantine_unattributed"},
+                {DSRC_RULE_RANOM,  "R_anom_rule"},
             };
             std::cout << "[SECURITY-SRC] Variant " << v << " |";
             for (auto& s : kSources)
@@ -118297,6 +118303,22 @@ void calculate_performance_evaluation_metrics()
 		// this cycle. obs_delay_max replaces mean obs_delay as the δ_t
 		// feature; obs_exceeded_dmax is the new 11th binary feature.
 		lstm_log_rsu_cycle(_r, rho_t, v_bar_t, obs_delay_max, obs_exceeded_dmax);
+
+		// Decision 2 (2026-08-21): compute the R_anom per-cycle delta HERE,
+		// not inside lstm_log_rsu_cycle(). That function early-returns when
+		// neither --training nor --enable_lstm_inference is set, so a latch
+		// written there stays silently zero in exactly the ablation configs
+		// that need the rule. Uses its own prev-value array so it never
+		// consumes the LSTM feature's delta.
+		{
+			uint32_t _rsu_sim = (uint32_t)N_Vehicles + _r;
+			auto _rit = g_lstm_ranom_count.find(_rsu_sim);
+			uint32_t _cur  = (_rit != g_lstm_ranom_count.end()) ? _rit->second : 0u;
+			uint32_t _prev = (_r < g_ranom_rule_prev.size()) ? g_ranom_rule_prev[_r] : 0u;
+			if (_r < g_ranom_flag_last.size())
+				g_ranom_flag_last[_r] = (_cur > _prev) ? 1 : 0;
+			if (_r < g_ranom_rule_prev.size()) g_ranom_rule_prev[_r] = _cur;
+		}
 
 		// Decision 4 (2026-08-21): latch whether THIS RSU saw genuine attack
 		// activity this cycle, for dw_end_cycle()'s window-level ground truth.

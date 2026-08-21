@@ -572,6 +572,10 @@ std::map<uint32_t, uint32_t> g_lstm_ranom_count;
 // land on vehicle relays that can never be the passive-HF attacker in this
 // config (11,384 of 14,367). R_anom does not inherit that failure mode.
 std::vector<uint8_t> g_ranom_flag_last;
+// Own prev-value array for the rule's per-cycle delta. Separate from
+// g_lstm_prev_ranom so the rule and the LSTM feature never consume each
+// other's delta.
+std::vector<uint32_t> g_ranom_rule_prev;
 
 // Supervisor Decision 4 (2026-08-21): per-RSU, per-cycle ATTACK-ACTIVITY
 // latch for detector_windows.csv's ground truth. Window-level detectors must

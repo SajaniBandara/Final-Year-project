@@ -332,6 +332,35 @@ inline LRADRSUFlags lrad_rsu(
     // computation further down.
     g_ranom_rule_fired_this_pkt = _ranom_rule;
 
+    // Decision 2 (2026-08-21): the rule must REACH the confusion matrix, not
+    // just raise the flag. record_detection_event() lives inside
+    // s7_detect()/s8_detect(), and the OR above is applied to their RETURN
+    // value, so a rule-only firing would otherwise be invisible to
+    // is_detected_node[][] and print no [S7]/[S8] line.
+    //
+    // Recorded against active_attack_variant, NOT S7_HOME_VARIANT: R_anom
+    // fires on every HF variant (A5-A8), while S7_HOME_VARIANT is fixed at 6
+    // (Attack 7). Using the home variant would log Attack-7 detections during
+    // an Attack-5 run and corrupt that variant's matrix. This matches how the
+    // LSTM path already records (same file, flag_LSTM block).
+    //
+    // Attributed to `rsu` -- the RSU this rule fired for -- rather than
+    // prev_sender. That is the whole point of using R_anom: its counter is
+    // keyed by hf_gt_attribution_node(), the malicious forwarder's covering
+    // RSU, so it does not inherit the prev_sender misattribution that puts
+    // 79.2% of the witness path's duplication alerts on vehicle relays.
+    if (_ranom_rule && !g_disable_s7_s8 &&
+        active_attack_variant >= 0 &&
+        active_attack_variant < NUM_ATTACK_VARIANTS &&
+        rsu < (uint32_t)total_size &&
+        !is_detected_node[active_attack_variant][rsu])
+    {
+        record_detection_event(active_attack_variant, rsu, DSRC_RULE_RANOM);
+        std::cout << "[S7-RANOM] R_anom>0 rule fired at RSU " << rsu
+                  << " variant=" << active_attack_variant
+                  << " t=" << t_now << std::endl;
+    }
+
     // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection), gated for S3/S4 ─────────
     // `rsu` is the sim node id (N_Vehicles + local RSU index, per
     // process_escalation_at_rsu()/every call site below); g_lstm_last_dlstm[]
