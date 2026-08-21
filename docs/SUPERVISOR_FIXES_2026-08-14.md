@@ -301,3 +301,189 @@ Three items need a call before this can close out:
    issue specific to Selective Time Delay's window construction. Also
    flagging A8's 56.1% FPR, newly visible in this same retrain, as a
    second open item needing attention before Q6 can be called complete.
+
+---
+
+# Round 3 — 2026-08-19/21: r_anom scale artifact, classification head, ablation
+
+Supervisor's 2026-08-20 message accepted the `r_anom` scale-artifact finding
+as the correct root cause and issued two fixes (selective log1p; train the
+classification head), plus a request for the Q1-Q6 primary-detector table.
+This section records what was measured, including three results that
+contradict assumptions on both sides.
+
+## The root cause the whole round rests on
+
+Live inference was producing anomaly scores of **44-220+** against per-RSU
+thetas topping out near 10. No threshold comparison could discriminate
+anything — which is why *both* the Fix A high-confidence gate and
+`hf_theta.json` had measured zero live effect on A5/A7 earlier.
+
+`r_anom`, `d_div` and `a_tp` are each exactly constant in benign data (zero
+variance), so `fit_scaler()`'s divide-by-zero guard assigns them `std=1.0`
+— not a real scale. Attack-side range is large (`r_anom` measured up to
+**1155**), so one elevated cycle normalises into the hundreds and is then
+squared into the reconstruction MSE. Per-feature decomposition of the 20
+highest-scoring test windows: **`r_anom` alone accounts for 90-94% of the
+error in every one of them.**
+
+Consequence for earlier rounds: A5-A8's ~90-100% DR was this artifact, not
+detection quality. Any attack trivially cleared any threshold.
+
+Fixed by log1p on those three columns only, applied identically in
+`preprocessor.py` and the live C++ path. Confirmed selective — the scaler
+diff shows only `d_div`/`a_tp` change (`r_anom` mu stays 0.0 since
+log1p(0)=0); every other feature keeps its calibration.
+
+## Fix 1 was already satisfied
+
+The transform had never been applied globally. The supervisor's concern
+(that A1/A2's signal features were decalibrated) did not apply — which is
+also why A1/A2 *improved* under log1p rather than degrading.
+
+Outstanding items completed: `hf_theta.json` recomputed (theta_HF 1.005 ->
+0.790), per-RSU statistics regenerated, and `lstm_weights_cpp.bin`
+re-exported. That last step caught a live bug: the deployed binary still
+held the pre-log1p scaler while the C++ path already applied log1p.
+
+**Deviation on record**: a full pipeline retrain (encoder included) had
+already run before the "do not retrain the encoder weights" instruction
+arrived. All Round-3 numbers come from that retrained encoder.
+
+## Fix 2 — the labels are model inputs
+
+The specified targets are themselves input features:
+
+| Specified label | Is | One-line rule on that feature |
+|---|---|---|
+| A5-A8: `r_anom > 0` | `FEATURES[9]` | 100.00% agreement, MCC **1.0000** |
+| A1/A2: delay > 50ms | `FEATURES[10]` (`delta_t_exceeded`) | 100.00% agreement, MCC **1.0000** |
+
+This is the failure mode already fixed on 2026-08-02, when `r_anom` was
+removed from the ground-truth criterion and replaced with `hf_send_gt`
+precisely because reusing an input column as the label "let the model
+trivially recover the label from its own input".
+
+`y_indep` was added to `preprocessor.py` as a leak-free alternative (built
+only from `hf_send_gt`, which is deliberately excluded from `FEATURES`).
+Best single-feature rule against it scores MCC 0.794, not 1.0 — non-trivial.
+It also has a side benefit: the existing `y_binary` marks **99.0%** of
+A5-A8 windows positive, which is the origin of the `TN=0` problem; `y_indep`
+sits at 33.9% and yields real negatives.
+
+## Measured comparison (test split, per-RSU calibrated FPR<=1%)
+
+| Variant | trivial rule | frozen + spec labels | frozen + leak-free | **encoder unfrozen** |
+|---|---|---|---|---|
+| A1 | 1.0000* | 0.5843 | 0.4979 | **0.8198** |
+| A2 | 1.0000* | 0.7121 | 0.6283 | **0.9688** |
+| A5 | 0.5784 | 0.4739 | 0.3019 | 0.5349 |
+| A6 | 0.7824 | 0.6619 | 0.5582 | **0.8237** |
+| A7 | 0.5848 | 0.4757 | 0.3049 | 0.5395 |
+| A8 | 0.7233 | 0.4723 | 0.3596 | **0.7682** |
+| macro | 0.7782 | 0.5634 | 0.4418 | **0.7425** |
+
+\* by construction — the label *is* that feature.
+
+Two conclusions. **As specified (encoder frozen), the head loses to a
+one-line threshold rule on every variant.** And **unfreezing the encoder is
+the only measured lever that improves detection** (+0.30 macro), taking
+A6/A8 past the trivial rule. A5/A7 plateau near 0.54 regardless — a
+consistent control-plane vs data-plane split.
+
+## The node-level evaluation metric has a hard ceiling
+
+`detector_windows.csv` takes its truth from `lstm_rsu_ground_truth_label()`
+= `is_malicious_node[variant][rsu]` — node-level, constant for the whole
+run — while the head is trained on window-level activity. Label rates
+diverge by 40-50pp on A5-A8 and 60-78pp on A1/A2.
+
+**Aligning them was tested and does NOT help** (this contradicts the
+obvious hypothesis, so it is recorded explicitly to stop it being
+re-proposed):
+
+| Setup | macro-MCC |
+|---|---|
+| activity-trained -> activity-evaluated | 0.5634 |
+| activity-trained -> node-evaluated (current live) | 0.2869 (live Q3 measured 0.2792) |
+| node-trained -> node-evaluated (aligned) | **0.2173** — worse |
+
+The reason is structural: **40.7% of node-level positive windows (30,730 of
+75,578) contain no attack activity at all.** Dormant-attacker windows are
+indistinguishable from benign windows in every feature the model sees, so
+they cannot be learned by any training scheme. A perfect detector with zero
+false positives would still cap at **DR ~59.3%** on this metric.
+
+Implication: live ablation numbers cannot be raised past that ceiling by
+model work. Raising them requires `detector_windows.h` to emit
+window-activity truth instead of node identity — a measurement correction,
+which must be reported as such and not as improved detection.
+
+## Ablation results (all five configs, 2026-08-20 21:58 -> 08-21 03:51)
+
+Per-window, eq:eval_dedup 10s blocks, RSU rows only:
+
+| Variant | primary | Q1 | Q3 | Q4 | Q5 | Q6 |
+|---|---|---|---|---|---|---|
+| A1 | LSTM | -- | 0.1830 | -- | -- | 0.3959 |
+| A2 | LSTM | -- | 0.3987 | -- | -- | 0.3338 |
+| A3 | S3/S4 | 0.3635 | -- | -- | 0.3635 | 0.3698 |
+| A4 | S3/S4 | 0.6833 | -- | -- | 0.6833 | 0.6897 |
+| A5 | crypto | -- | -- | -- | 0.3966 | 0.3717 |
+| A6 | crypto | -- | -- | -- | 0.3752 | 0.3730 |
+| A7 | witness | -- | -- | 0.0000* | -- | 0.4285 |
+| A8 | witness | -- | -- | 0.0000* | -- | 0.3789 |
+
+**Q6 macro-MCC = 0.4177** against the >= 0.85 gate. Monotonicity to Q6
+fails on A2 (0.3987 -> 0.3338), A5 (0.3966 -> 0.3717) and A6 (0.3752 ->
+0.3730). The 240-run sweep gate is not met.
+
+Two structural caveats:
+
+- **The dashes cannot be filled.** Each variant is scored by one detector,
+  and that detector is off in most configs (A1/A2's LSTM lives only at
+  Q3/Q6; A7/A8's witness only at Q4/Q6). "Monotonic Q1->Q6 per variant" is
+  not evaluable, and the macro row averages a different variant set per
+  column, so columns are not comparable across Q.
+- **The Q4 witness zeros are plumbing, not detection failure.**
+  `detector_windows.csv` is driven by `D_RSU`, and in Q4 every signature
+  that sets it is disabled, so witness detections never reach the grid. The
+  M12/WAP-R counters show it working: Q4 A8 precision 63.22% / recall
+  96.84% / F1 0.765; A7 15.29% / 94.87% / F1 0.263. A7's low precision at
+  high recall points at `--witness_f` being too permissive. A7/A8 Q4 and Q6
+  values are near-identical — the witness is unaffected by the other
+  components.
+
+## Infrastructure fixes made while producing this
+
+- **Auxiliary outputs were being silently overwritten per config.** Only
+  `MOBIGUARD_*.csv` was renamed with the `_Q<n>` suffix; `detector_windows_*`,
+  `crypto_timing_log_*`, `bc_*_log_*`, `tcam_*`, `rsu_density_*`,
+  `lambda_l_true_*` and `fade_results_*` are named from `g_sim_tag` alone.
+  Running Q3->Q5->Q6 left each holding only the last config's data. Invisible
+  without cross-checking mtimes: each run truncates rather than appends, so
+  stale files carry one header and monotonic timestamps and look healthy.
+  Confirmed on this chain — `bc_detection_log_Attack5` held Q1 and
+  `rsu_density_Attack5` held Q4 while `MOBIGUARD_Attack5` held Q6. Fixed;
+  the runner now tags every file matching the run's sim tag.
+- **`fc_cls` was never exported to C++.** `TENSOR_ORDER` covered
+  enc/dec/fc_recon only, so live inference could not compute P(attack) and
+  the requested Q3 measurement was not executable. Now exported (appended
+  after the scaler block, backward compatible) and validated against
+  PyTorch: bit-exact tensors, forward agreement 1.5e-07.
+- **The security-metrics CSV header was 3-5 `#`-prefixed lines**, so
+  `csv.DictReader` saw 7 names against 52 data fields and every consumer had
+  to index positionally. Now one line, `#` retained for reader compatibility;
+  verified 52 names == 52 fields and `names[13:17] == [TP,FP,TN,FN]`.
+
+## Open decisions (blocking further work)
+
+1. **Labels** — keep input-feature-derived labels (reported as such), or
+   move to `hf_send_gt`.
+2. **Evaluation truth** — node-level truth caps the metric at DR ~59.3%.
+   Changing `detector_windows.h` to emit window-activity truth is the only
+   way to lift reported numbers, and is a measurement correction.
+3. **May the encoder be trained?** The single biggest measured lever
+   (+0.30 macro).
+4. **Which numbers go into `tab:lstm_detection`** — spec-label or leak-free.
+   Not updated pending this call.
