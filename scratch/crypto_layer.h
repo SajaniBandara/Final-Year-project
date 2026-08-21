@@ -553,6 +553,26 @@ std::map<uint32_t, uint32_t>                      g_lstm_pkt_counts;
 // the windowed rate the equation actually specifies ("per unit time W").
 std::map<uint32_t, uint32_t> g_lstm_ranom_count;
 
+// Supervisor Decision 2 (2026-08-21): R_anom as a zero-tolerance rule-based
+// detector feeding S7/S8. Precondition verified before wiring: r_anom is
+// EXACTLY 0 across all 95,360 benign rows of the collected dataset, every
+// seed -- zero exceptions -- so R_anom(r,t) > 0 needs no percentile
+// calibration, architecturally the same as f_unauth for S3.
+//
+// Published per cycle as a "_last" latch (same pattern as
+// g_tcam_flag_s3_last): lstm_log_rsu_cycle() computes the per-cycle delta at
+// the cycle boundary while lrad_rsu() reads it per packet, so the value lrad
+// sees is the previous cycle's. That one-cycle lag is inherent to the
+// existing S3/S4 pattern and accepted for the same reason.
+//
+// Attribution note: g_lstm_ranom_count is keyed by
+// hf_gt_attribution_node(prev_sender) -- the malicious forwarder's COVERING
+// RSU -- not by raw prev_sender. That matters: the witness duplication path
+// accuses prev_sender directly, and measurement showed 79.2% of its alerts
+// land on vehicle relays that can never be the passive-HF attacker in this
+// config (11,384 of 14,367). R_anom does not inherit that failure mode.
+std::vector<uint8_t> g_ranom_flag_last;
+
 // 2026-08-02 (Issue 1 fix, HF ground-truth/feature separation): per-RSU
 // count of hidden-duplicate SEND events this malicious RSU has scheduled
 // (incremented at the same two call sites as g_total_copies_scheduled++ in

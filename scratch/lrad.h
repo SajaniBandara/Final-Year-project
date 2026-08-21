@@ -121,6 +121,13 @@ extern uint32_t g_escalation_count;
 // (lrad_rsu()) -- diagnostic only, not written to the security-metrics CSV.
 static uint32_t g_lstm_gate_suppressed_count = 0;
 
+// Decision 2 (2026-08-21): set per packet in lrad_rsu() when the R_anom
+// zero-tolerance rule fired for this RSU, so the eq:lstm_gate block below can
+// suppress the LSTM's redundant S7/S8 contribution -- the same asymmetric
+// pattern as the S3/S4 gate (rule flag computed unconditionally, only the
+// LSTM's overlap suppressed).
+static bool g_ranom_rule_fired_this_pkt = false;
+
 // =========================================================================
 // lrad_reset_state():
 // Clears all per-run LRAD state. Call from routing.cc's init sequence
@@ -301,8 +308,29 @@ inline LRADRSUFlags lrad_rsu(
     uint32_t base_fid = fid & 0xFFFFu;
     flags.flag_S5 = g_disable_s5_s6 ? false : s5_detect(fid, prev_sender, rsu, pkt_id, base_fid);
     flags.flag_S6 = g_disable_s5_s6 ? false : s6_detect(fid, prev_sender, rsu, pkt_id, base_fid);
-    flags.flag_S7 = g_disable_s7_s8 ? false : s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
-    flags.flag_S8 = g_disable_s7_s8 ? false : s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    // Supervisor Decision 2 (2026-08-21): R_anom > 0 is an additional
+    // OR-condition feeding S7/S8, alongside the existing witness path.
+    // Zero-tolerance, no calibration -- verified r_anom is EXACTLY 0 across
+    // all 95,360 benign rows of the collected dataset, every seed.
+    //
+    // Computed UNCONDITIONALLY (the latch is published every cycle by
+    // lstm_log_rsu_cycle regardless of config); only its contribution to the
+    // FLAG is gated below, the same asymmetry as g_tcam_flag_s3_last/s4_last.
+    const uint32_t _rsu_local = (rsu >= (uint32_t)N_Vehicles)
+                              ? (rsu - (uint32_t)N_Vehicles) : UINT32_MAX;
+    const bool _ranom_rule = (_rsu_local != UINT32_MAX)
+                          && (_rsu_local < g_ranom_flag_last.size())
+                          && (g_ranom_flag_last[_rsu_local] != 0);
+
+    const bool _s7_raw = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid) || _ranom_rule;
+    const bool _s8_raw = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid) || _ranom_rule;
+    flags.flag_S7 = g_disable_s7_s8 ? false : _s7_raw;
+    flags.flag_S8 = g_disable_s7_s8 ? false : _s8_raw;
+
+    // Suppress the LSTM's redundant contribution when the rule already fired,
+    // exactly the S3/S4 pattern (eq:lstm_gate). Published for the flag_LSTM
+    // computation further down.
+    g_ranom_rule_fired_this_pkt = _ranom_rule;
 
     // ── flag_LSTM = D_LSTM^(k) (eq:lstm_detection), gated for S3/S4 ─────────
     // `rsu` is the sim node id (N_Vehicles + local RSU index, per
@@ -328,6 +356,12 @@ inline LRADRSUFlags lrad_rsu(
         uint32_t rsu_local_idx = rsu - (uint32_t)N_Vehicles;
         bool tcam_covers_this_rsu = (rsu < 300) &&
             (g_tcam_flag_s3_last[rsu] || g_tcam_flag_s4_last[rsu]);
+        // Decision 2 (2026-08-21): the R_anom zero-tolerance rule covers S7/S8
+        // the same way S3/S4 cover the TCAM family, so suppress the LSTM's
+        // redundant contribution on those RSUs too. Variable name kept
+        // ("tcam_covers") to avoid churn at the three use sites below; it now
+        // means "a rule-based detector already covers this RSU".
+        tcam_covers_this_rsu = tcam_covers_this_rsu || g_ranom_rule_fired_this_pkt;
         bool lstm_would_fire = rsu_local_idx < g_lstm_last_dlstm.size() &&
             g_lstm_last_dlstm[rsu_local_idx];
         if (tcam_covers_this_rsu && lstm_would_fire) {
