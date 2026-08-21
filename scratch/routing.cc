@@ -117842,13 +117842,20 @@ void write_security_metrics_csv()
 	fout.open(filename, ios::out|ios::app);
 
 	if (fout.tellp() == 0) {
-		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,\n"
-			 << "# cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,\n"
-			 << "# TP, FP, TN, FN, cur_TVR, avg_TVR, cur_UCR, avg_UCR";
+		// Header is ONE line (2026-08-21). It used to be broken across 3-5
+		// '#'-prefixed lines, which made name-based lookup impossible:
+		// csv.DictReader saw only the first line's 7 names while data rows
+		// carried ~52 fields, so every consumer had to index positionally
+		// (see COL_TP/COL_FP in scripts/run_q1q6_ablation.py) and a silent
+		// wrong-column read was one edit away. The leading '#' is KEPT so
+		// existing readers, which skip '#'-prefixed lines, are unaffected.
+		fout << "# cycle, cur_PDR, avg_PDR, cur_lat_ms, avg_lat_ms, cur_MCC, avg_MCC,"
+			 << " cur_DR, avg_DR, cur_FPR, avg_FPR, cur_mit_ms, avg_mit_ms,"
+			 << " TP, FP, TN, FN, cur_TVR, avg_TVR, cur_UCR, avg_UCR";
 		if (active_attack_variant == 2 || active_attack_variant == 3 || active_attack_variant == -1)
-			fout << ",\n# max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,\n"
-				 << "# total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
-		fout << ",\n# sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
+			fout << ", max_tcam_util, avg_tcam_util, total_lambda_fm, total_lambda_pi,"
+				 << " total_malicious, s3_fired_count, s4_fired_count, any_s3, any_s4";
+		fout << ", sig_valid_rate, avg_trust_score, stark_timing_fail_count,"
 			 << " stark_hop_fail_count, flowmod_endorsement_rate,"
 			 << " rsu_chain_len, global_chain_len, witness_da_count, witness_nfa_count,"
 			 << " d_obu_count, d_rsu_count, escalation_count,"
