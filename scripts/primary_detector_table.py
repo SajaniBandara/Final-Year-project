@@ -32,15 +32,17 @@ import csv, glob, math, sys
 from collections import defaultdict
 from pathlib import Path
 
-PRIMARY = {1:"LSTM",2:"LSTM",3:"S3/S4",4:"S3/S4",
-           5:"crypto",6:"crypto",7:"witness",8:"witness"}
+# Supervisor Decision 3 (2026-08-21): A1/A2 move from LSTM to the S1/S2 rule
+# engine. Decision 2 adds the R_anom rule alongside witness for A7/A8.
+PRIMARY = {1:"S1/S2",2:"S1/S2",3:"S3/S4",4:"S3/S4",
+           5:"crypto",6:"crypto",7:"ranom+witness",8:"ranom+witness"}
 ENABLED = {   # Q-config -> which primary-detector families are live
-    "Q1": {"S3/S4"},
-    "Q2": {"crypto"},
+    "Q1": {"S1/S2","S3/S4"},
+    "Q2": {"crypto","ranom+witness"},
     "Q3": {"LSTM"},
-    "Q4": {"witness"},
-    "Q5": {"S3/S4","crypto"},
-    "Q6": {"S3/S4","crypto","LSTM","witness"},
+    "Q4": {"ranom+witness"},
+    "Q5": {"S1/S2","S3/S4","crypto","ranom+witness"},
+    "Q6": {"S1/S2","S3/S4","crypto","ranom+witness","LSTM"},
 }
 
 def mcc(tp,fp,fn,tn):
