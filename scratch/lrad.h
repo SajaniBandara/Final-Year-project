@@ -415,6 +415,35 @@ inline LRADRSUFlags lrad_rsu(
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
                   flags.flag_S7 || flags.flag_S8 || flags.flag_LSTM;
     if (flags.D_RSU) dw_mark_rsu(rsu);   // M1 window grid (detector_windows.h)
+    // Primary-detector grid: ONLY the detector this variant is scored by, per
+    // the supervisor's 2026-08-21 assignment. Excludes the OR-composite so
+    // e.g. S2f firings during an A5 run (measured 1,572-3,313 per run, all
+    // recorded into variant 1's bucket and therefore invisible in A5's own
+    // node-level matrix) can no longer pollute A5's window score.
+    {
+        bool _prim = false;
+        switch (active_attack_variant) {
+            case 0: case 1: _prim = flags.flag_S2f; break;              // A1/A2 -> S1/S2
+            case 4: case 5: _prim = flags.flag_S5 || flags.flag_S6; break; // A5/A6 -> crypto/S5/S6
+            case 6: case 7: _prim = flags.flag_S7 || flags.flag_S8; break; // A7/A8 -> S7/S8 (+R_anom, already OR'd in)
+            default: _prim = flags.D_RSU; break;                        // A3/A4 recorded by tcam_detection.h
+        }
+        // ATTRIBUTION FIX (2026-08-22): mark the SUSPECT, not the observer.
+        //
+        // dw_mark_rsu() above marks `rsu` -- the RSU processing this packet --
+        // while every detector RECORDS against `prev_sender` (the accused;
+        // see record_detection_event(S5_HOME_VARIANT, prev_sender, ...) in
+        // s5_detection.h:259) and the window TRUTH column asks whether that
+        // same RSU index is malicious. Those are three different subjects.
+        //
+        // Consequence, measured on A5: node-level reports S5(TP=39, FP=0)
+        // while the same run's window grid reports FP=186 -- a benign RSU
+        // that correctly detects a malicious neighbour gets score=1 against
+        // its own truth=0, i.e. penalised for detecting. That is why benign
+        // nodes fire in 58/58 windows, and why all six detectors with
+        // node-level FP=0 (S3-S8) still collapse at window level.
+        dw_mark_rsu_primary(prev_sender, _prim);
+    }
 
     // ── BC.Write per-signal + BTMM (eq:rsu_write, alg:lrad_rsu) ─────────────
     // Per thesis alg:lrad_rsu: BTMM and BC.Write are BOTH inside the D_RSU gate.

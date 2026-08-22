@@ -56,6 +56,21 @@ double   DW_STRIDE_S = 5.0;    // must match metrics/config.py detection_stride_
 // Per-cycle latches, reset by dw_end_cycle().
 static std::vector<uint8_t> g_dw_obu_fired;   // [vehicle]
 static std::vector<uint8_t> g_dw_rsu_fired;   // [rsu local idx]
+// Supervisor's primary-detector requirement (2026-08-21): "each variant is
+// scored against its PRIMARY detector's per-window output, not the
+// OR-combination". dw_mark_rsu() is driven by D_RSU, which is that
+// OR-combination, so this grid could not express it.
+//
+// Measured consequence: S2 fires 1,572-3,313 times during A5-A8 runs and
+// records into variant 1's bucket, so it is invisible in those variants'
+// node-level matrices (where S5-S8 all show FP=0) while still setting D_RSU
+// and polluting every one of their window scores. That is what holds A5-A8's
+// window MCC at 0.26-0.35 despite node-level FP=0.
+//
+// Separate latch carrying ONLY the primary detector for the variant under
+// test, so the table can score what the supervisor actually asked for.
+static std::vector<uint8_t> g_dw_rsu_primary;      // [rsu local idx]
+static std::vector<std::vector<uint8_t>> g_dw_rsu_primary_hist;
 // Per-cycle history, appended by dw_end_cycle().
 static std::vector<std::vector<uint8_t>> g_dw_obu_hist;   // [cycle][vehicle]
 static std::vector<std::vector<uint8_t>> g_dw_rsu_hist;   // [cycle][rsu]
@@ -68,6 +83,8 @@ inline void dw_init()
     if (!enable_detector_windows) return;
     g_dw_obu_fired.assign((size_t)N_Vehicles, 0);
     g_dw_rsu_fired.assign((size_t)N_RSUs, 0);
+    g_dw_rsu_primary.assign((size_t)N_RSUs, 0);
+    g_dw_rsu_primary_hist.clear();
     g_dw_obu_hist.clear(); g_dw_rsu_hist.clear();
     g_dw_obu_truth.clear(); g_dw_rsu_truth.clear();
     g_dw_cycle_t.clear();
@@ -87,6 +104,19 @@ inline void dw_mark_rsu(uint32_t rsu)
     if (rsu < (uint32_t)N_Vehicles) return;
     uint32_t r = rsu - (uint32_t)N_Vehicles;
     if (r < g_dw_rsu_fired.size()) g_dw_rsu_fired[r] = 1;
+}
+
+// Called from lrad_rsu() with the PRIMARY detector's own flag for the variant
+// under test -- not D_RSU. Assignment follows the supervisor's 2026-08-21
+// table: A1/A2 -> S1/S2, A3/A4 -> S3/S4 (recorded separately by
+// tcam_detection.h), A5/A6 -> crypto/S5/S6, A7/A8 -> R_anom rule + witness
+// + S7/S8.
+inline void dw_mark_rsu_primary(uint32_t rsu, bool primary_fired)
+{
+    if (!enable_detector_windows || !primary_fired) return;
+    if (rsu < (uint32_t)N_Vehicles) return;
+    uint32_t r = rsu - (uint32_t)N_Vehicles;
+    if (r < g_dw_rsu_primary.size()) g_dw_rsu_primary[r] = 1;
 }
 
 // Called once per simulation cycle, after the per-RSU logging pass.
@@ -163,12 +193,14 @@ inline void dw_end_cycle()
 
     g_dw_obu_hist.push_back(g_dw_obu_fired);
     g_dw_rsu_hist.push_back(g_dw_rsu_fired);
+    g_dw_rsu_primary_hist.push_back(g_dw_rsu_primary);
     g_dw_obu_truth.push_back(ot);
     g_dw_rsu_truth.push_back(rt);
     g_dw_cycle_t.push_back(ns3::Simulator::Now().GetSeconds());
 
     std::fill(g_dw_obu_fired.begin(), g_dw_obu_fired.end(), 0);
     std::fill(g_dw_rsu_fired.begin(), g_dw_rsu_fired.end(), 0);
+    std::fill(g_dw_rsu_primary.begin(), g_dw_rsu_primary.end(), 0);
 }
 
 // Slides the W/stride grid over the cycle history and writes one row per
@@ -185,7 +217,7 @@ inline void dw_write_csv(const std::string& path)
         std::cerr << "[DETECTOR-WINDOWS] WARNING: cannot open " << path << std::endl;
         return;
     }
-    f << "node,mode,variant,w_start,w_end,score,truth\n";
+    f << "node,mode,variant,w_start,w_end,score,truth,score_primary\n";
 
     // variant: the proposal's attack number (0 = benign, 1-8), matching the
     // convention lstm_logger.h uses for its file names.
@@ -219,15 +251,16 @@ inline void dw_write_csv(const std::string& path)
         }
         for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
         {
-            uint8_t fired = 0, truth = 0;
+            uint8_t fired = 0, truth = 0, prim = 0;
             for (size_t c = c0; c < c1; ++c)
             {
                 if (g_dw_rsu_hist[c][r])  fired = 1;
                 if (g_dw_rsu_truth[c][r]) truth = 1;
+                if (c < g_dw_rsu_primary_hist.size() && g_dw_rsu_primary_hist[c][r]) prim = 1;
             }
             f << ((uint32_t)N_Vehicles + r) << ",RSU," << variant << ","
               << ws << "," << we << "," << (fired ? "1.0" : "0.0") << ","
-              << (truth ? "1" : "0") << "\n";
+              << (truth ? "1" : "0") << "," << (prim ? "1.0" : "0.0") << "\n";
             ++rows;
         }
     }
