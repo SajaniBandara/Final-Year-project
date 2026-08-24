@@ -258,7 +258,25 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
                               uint32_t sender_node_id,
                               uint32_t current_hop,
                               uint32_t packet_id,
-                              uint32_t flow_id)
+                              uint32_t flow_id,
+                              // Synthetic-sample opt-out. The TCAM flow generator
+                              // (tcam_flow_generator.h:114) feeds this function a
+                              // hardcoded benign 1.5 ms hop delay attributed to a
+                              // VEHICLE, purely to keep the per-RSU EWMA baseline
+                              // and variance fed. That contradicts this function's
+                              // own contract for sender_node_id (documented above
+                              // as the RSU that applied the delay), and because S1
+                              // always records into S1_HOME_VARIANT = 0 = Attack 1,
+                              // where ground truth marks only RSUs malicious, every
+                              // such firing is a guaranteed false positive. It fired
+                              // often: once the EWMA converges on sub-millisecond
+                              // hops, a 1.5 ms sample clears baseline + k*sigma.
+                              // Measured on A1 @60% seed 1 90 s: 32 distinct
+                              // vehicles accused, 32 of S1's 47 false positives.
+                              // With this true the sample still updates the
+                              // baseline and variance -- all the generator wanted --
+                              // but records no detection event.
+                              bool     suppress_detection = false)
 {
     if (rsu_idx >= (uint32_t)N_RSUs) return false;
 
@@ -414,7 +432,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // latch above — the same asymmetry, for the same reason, as
         // g_disable_s3_s4 in tcam_detection.h.
         const int S1_HOME_VARIANT = 0;   // Attack 1, per main.tex Signature S1
-        if (!g_disable_s1_s2 &&
+        if (!g_disable_s1_s2 && !suppress_detection &&
             sender_node_id < (uint32_t)total_size &&
             !is_detected_node[S1_HOME_VARIANT][sender_node_id])
         {

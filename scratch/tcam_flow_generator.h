@@ -111,9 +111,18 @@ inline void tcam_gen_install_flow(uint32_t v, uint32_t nb, uint32_t gen_fid, boo
     tcam_hit(rsu_node, gen_fid, TCAM_GEN_PKT_BYTES); // RSU relay forwards (density-tracking)
 
     // (D2) real S1 sample for the relay RSU hop.
+    // suppress_detection=true: this is a SYNTHETIC benign sample (a hardcoded
+    // 1.5 ms constant, not a measured hop) attributed to a vehicle. It exists to
+    // keep the per-RSU EWMA baseline/variance fed, and it still does that. It
+    // must not raise an accusation: S1 records into Attack 1's bucket, where
+    // ground truth never marks a vehicle malicious, so any firing here is false
+    // by construction. This generator is ungated and ticks every 100 ms in EVERY
+    // attack variant, so those false positives were landing in A1's confusion
+    // matrix even during runs of other attacks.
     s1_detect_packet(rsu_local, v, TCAM_GEN_BENIGN_HOP_DELAY, sc,
                      /*sender*/ v, /*current_hop*/ rsu_node,
-                     /*packet_id*/ 0, /*flow_id*/ gen_fid & 0xFFFFu);
+                     /*packet_id*/ 0, /*flow_id*/ gen_fid & 0xFFFFu,
+                     /*suppress_detection*/ true);
 
     // Remember install locations for presence-driven eviction on departure.
     g_gen_active[std::make_pair(v, nb)] = std::make_pair(actual_fid, rsu_node);
