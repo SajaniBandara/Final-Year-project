@@ -142198,6 +142198,8 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_alpha_rho",  "S1: density sensitivity α_ρ (s/vehicle, default 0.0001)",   s1_alpha_rho);
     cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
+    cmd.AddValue("s1_robust_sigma", "S1: exclude threshold-breaching packets from the sigma2 update (default 1)", s1_robust_sigma);
+    cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);
 

@@ -97,6 +97,32 @@ double s1_delta0    = 0.00447305;   // s  — OLS intercept (≈4.473 ms)
 double s1_alpha_rho = 0.00011315;   // s/vehicle — density term
 double s1_alpha_v   = -0.00150238;  // s²/m — speed term
 double s1_k         = 3.0;          // sigma multiplier — k sweep: smallest k with FPR ≤ 1%
+
+// ── Robust variance update (2026-08-24) ─────────────────────────────────
+// sigma2 was updated on EVERY packet, attack packets included. Since
+// threshold = delta_bar + k*sigma, a sustained attack inflates the very
+// threshold meant to catch it: the detector masks itself.
+//
+// Measured, A1 @60% seed 1 90 s (attack injects 99.568 ms):
+//     k*sigma at first fire      8.97 ms
+//     k*sigma at last fire      62.05 ms
+//     mean threshold 10-30 s    98.59 ms
+//     mean threshold 50-70 s   114.88 ms   <- ABOVE the injected delay
+// Mean delay at firing was 178-195 ms, roughly double what the attack
+// injects, because once the bar passes ~100 ms only tail packets that
+// queue beyond it can still fire. That is the direct cause of S1's ~53%
+// recall, and it worsens monotonically as an attack persists.
+//
+// Excluding violating packets was tried before and abandoned: it produced
+// "a self-reinforcing feedback loop where a shrinking sigma excludes more
+// packets, shrinking sigma further with no floor" (see the sigma2 update
+// site below). The floor is the missing ingredient, not the exclusion --
+// with sigma2 clamped from below, the loop has a fixed point and cannot
+// collapse. Genuine congestion is still handled, by the separate
+// selectivity conjunct (delta_best <= threshold), which is what
+// distinguishes congestion from a targeted high-priority-only delay.
+bool   s1_robust_sigma = true;      // exclude violating packets from sigma2
+double s1_sigma_floor  = 0.001;     // s — 1 ms floor on sigma (sigma2 >= 1e-6)
 double s1_beta      = 0.95;         // EWMA factor — analytic N_eff=1/(1-β)=20, band 9<=N_eff<=22 (main.tex:6049; supervisor 2026-08-13)
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
@@ -356,9 +382,24 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // more packets, shrinking σ further with no floor — confirmed via FP
     // climbing continuously across an entire benign-only run rather than
     // plateauing after warmup.
+    // s1_robust_sigma (see its declaration for the measured justification):
+    // skip the update for packets that BREACH the current threshold, so an
+    // attack cannot raise the bar that is supposed to catch it, then clamp
+    // from below so the exclusion can never run away downward. threshold
+    // here is the pre-update value computed above, so this tests the packet
+    // against the state that judged it.
     double deviation = effective_delay_s - delta_bar;
-    s1_sigma2[rsu_idx] = s1_beta * s1_sigma2[rsu_idx]
-                       + (1.0 - s1_beta) * deviation * deviation;
+    const bool _sigma_violating = (effective_delay_s > threshold);
+    if (!s1_robust_sigma || !_sigma_violating)
+    {
+        s1_sigma2[rsu_idx] = s1_beta * s1_sigma2[rsu_idx]
+                           + (1.0 - s1_beta) * deviation * deviation;
+    }
+    if (s1_robust_sigma)
+    {
+        const double _sigma2_min = s1_sigma_floor * s1_sigma_floor;
+        if (s1_sigma2[rsu_idx] < _sigma2_min) s1_sigma2[rsu_idx] = _sigma2_min;
+    }
 
     // Condition 3 (selectivity, eq:rule_s1): δ_best(r,t) ≤ δ̄_r(t)+k·σ_r(t).
     // Under genuine congestion, best-effort traffic is delayed alongside
