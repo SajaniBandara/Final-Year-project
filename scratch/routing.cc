@@ -114927,6 +114927,7 @@ double t_claimed_packet[total_size][2*flows][Flow_size+2];
 // tau_j(t) — rather than the raw simulator clock every node would otherwise
 // share identically.
 inline double node_local_time(uint32_t node);
+inline double node_clock_offset(uint32_t node);
 
 // Records the CLAIMED forwarding timestamp for TAP's PPAT calculation,
 // fired immediately at forwarding-decision time — i.e., BEFORE any
@@ -114943,6 +114944,33 @@ inline double node_local_time(uint32_t node);
 // flow_id is bounded here rather than at the call sites: crypto_log_event() shows
 // sentinel flow ids (UINT32_MAX) reaching neighbouring code paths, so an unguarded
 // index would be an out-of-bounds write into adjacent globals.
+// ── Stale-claim fix (2026-08-22) ─────────────────────────────────────────
+// t_claimed_packet[node][flow][packet] is written once (above) and NEVER
+// cleared -- there is no reset anywhere in the tree. packet_id restarts at 0
+// every routing cycle (1 cycle/s), so the key (node, flow, packet) collides
+// across cycles: a read in cycle 40 for a packet this node did NOT forward
+// this cycle silently returns the timestamp it wrote in some EARLIER cycle.
+// hop_delay then measures cycles, not hops. This is why the observed maximum
+// (279,385 ms) approaches the whole run span -- a within-flow slot recycle
+// could never produce that. Measured on A2 @ 60% before
+// this fix: S2's observed hop delays had median 4,105 ms and max 279,385 ms
+// against an 80 ms injected delay and a ~2 ms physical hop -- 76.9% of
+// triggers physically impossible. Those fabricated delays are what drove
+// S1/S2's false positives, not detector error.
+//
+// The packet already carries the claim: the tag sets previous_senderId and
+// previous_timestamp ADJACENTLY at every live tagging site, so the pair
+// cannot mismatch. These two globals publish the received packet's claim at
+// MacRx; claimed_forward_timestamp() below then returns it only when the
+// caller asks about the node the tag actually names, and 0.0 otherwise --
+// which is the existing "no claim recorded" sentinel every reader already
+// handles. Converts all five readers (s2_detection.h, tap_detection.h x2,
+// and two sites here) without touching a single call site.
+//
+// See docs/STALE_CLAIM_ROOT_CAUSE_AND_EPOCH_FIX.md section 5.0b.
+double   g_rx_claimed_ts     = 0.0;
+uint32_t g_rx_claimed_sender = UINT32_MAX;
+
 inline void record_claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
 {
     if (node >= (uint32_t)total_size) return;
@@ -114955,10 +114983,19 @@ inline void record_claimed_forward_timestamp(uint32_t node, uint32_t flow_id, ui
 // checks and returns the same 0.0 "no claim recorded" sentinel they already test for.
 inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_t packet_id)
 {
+    (void)flow_id; (void)packet_id;   // identity now comes from the tag, not a slot key
     if (node >= (uint32_t)total_size) return 0.0;
-    if (flow_id >= (uint32_t)(2*flows)) return 0.0;
-    if (packet_id >= (uint32_t)(Flow_size + 2)) return 0.0;
-    return t_claimed_packet[node][flow_id][packet_id];
+    // Ownership check: only the node the received tag NAMES has a claim here.
+    // Any other node returns the "no claim" sentinel rather than whatever
+    // happens to occupy a recycled array slot.
+    if (node != g_rx_claimed_sender) return 0.0;
+    if (g_rx_claimed_ts <= 0.0) return 0.0;
+    // Contract preserved: the old array stored node_local_time(node), i.e.
+    // sender-LOCAL clock, and all five readers de-skew by subtracting
+    // node_clock_offset(sender) so the skew cancels. The tag carries RAW sim
+    // time, so add the offset back here rather than editing five readers --
+    // the value returned is identical in meaning to what the array held.
+    return g_rx_claimed_ts + node_clock_offset(node);
 }
 
 // Detection functions and the array they read (t_claimed_packet):
@@ -121820,6 +121857,21 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			
 			//uint32_t previous_sender_ID = tagmodified_routing.Getprevious_senderId();
 			Time previous_timestamp = tagmodified_routing.Getprevious_timestamp();
+
+			// ── Stale-claim fix (2026-08-22): publish THIS packet's claim ──
+			// Sourced from the tag, which carries previous_senderId and
+			// previous_timestamp set on adjacent lines at every tagging site,
+			// so the pair cannot mismatch. claimed_forward_timestamp() reads
+			// these instead of the never-cleared t_claimed_packet array, whose
+			// (node, flow, packet) key collides across routing cycles and
+			// returned earlier cycles' timestamps as if they were this hop's.
+			// Set BEFORE any detector runs in this block (LRAD and TAP call
+			// sites are all downstream of this point), and overwritten on every
+			// received packet, so it always describes the packet in hand.
+			// Raw sim time here; the accessor re-applies node_clock_offset()
+			// to preserve the sender-local-clock contract readers expect.
+			g_rx_claimed_sender = tagmodified_routing.Getprevious_senderId();
+			g_rx_claimed_ts     = previous_timestamp.GetSeconds();
 			Time originail_timestamp = tagmodified_routing.Getoriginal_timestamp();
 			//cout<<previous_sender_ID<<endl;
 			
