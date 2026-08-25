@@ -606,6 +606,38 @@ std::vector<uint8_t> g_dw_activity_last;
 // FEATURES in preprocessor.py.
 std::map<uint32_t, uint32_t> g_lstm_hf_sendgt_count;
 
+// Fix 2 (supervisor-approved 2026-08-25): per-RSU count of Selective Time
+// Delay (A1/A2) attack-CONFORMING delay injections scheduled this run --
+// the exact timing equivalent of g_lstm_hf_sendgt_count above, for the same
+// reason. delta_t_exceeded was banned as a training/eval feature (2026-08-14,
+// supervisor Fix 3) because it is derived from the same measured-delay
+// computation the detectors themselves consume, so scoring against it lets a
+// model recover its own label from its input. g_s1_gt_delay_exceeded /
+// g_s2_gt_delay_exceeded are STICKY node-level latches (set once, true for
+// the rest of the run -- see s1_detection.h/s2_detection.h), not per-window
+// signals, so neither is a valid per-window ground truth either.
+//
+// Incremented at the two live injection sites (routing.cc, inside
+// calculate_unified_selective_delay's caller and
+// schedule_unified_selective_delay_attack's caller) at the exact simulation
+// moment a packet is scheduled for attack-conforming delay -- i.e. the
+// return value/the `attacked` flag is non-zero/true -- BEFORE any detector
+// runs, so this shares no computation path with S1/S2's own delay
+// measurement. A1's injecting node is always the RSU holding the poisoned
+// FlowMod (cp_poisoned_flowmod_delay is only ever non-zero at RSU node ids --
+// see reapply_cp_selective_delay(), attack_declaration.h), so no attribution
+// mapping is needed there. A2's malicious-node pool spans the full node
+// space (declare_attackers(), attack_declaration.h: n_candidates =
+// N_Vehicles+N_RSUs) and CAN be a vehicle, which is not a node any RSU's CSV
+// row indexes -- same class of bug g_lstm_hf_sendgt_count exists to avoid
+// for HF, so A2 vehicle injectors are attributed to their covering RSU via
+// hf_gt_attribution_node(), exactly like hf_send_gt. UINT32_MAX (no RSU
+// currently covers the injecting vehicle) correctly latches nothing.
+//
+// Logged as a label-only CSV column (std_send_gt), excluded from FEATURES in
+// preprocessor.py -- same treatment as hf_send_gt.
+std::map<uint32_t, uint32_t> g_lstm_std_sendgt_count;
+
 // 2026-07-28 (main.tex:5783-5794 spec correction): D_div/A_tp (eq:feat_ddiv,
 // eq:feat_atp) must be computed from "per-source per-destination byte counts"
 // and "per-flow directional byte rate logs" respectively -- genuinely
