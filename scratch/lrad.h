@@ -752,6 +752,47 @@ inline LRADOBUFlags lrad_obu(
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
         flags.flag_S1 = g_disable_s1_s2 ? false : _s1;
+
+        // S1 -> RSU primary column (2026-08-27, supervisor item 1, ADAPTED).
+        //
+        // The instruction was "M1 scores OBU rows, not just RSU rows", to give
+        // S1 credit it currently earns nowhere (S1 fires only here, in
+        // lrad_obu(), and the window grid's primary column is written only
+        // from lrad_rsu()). Scoring the OBU rows AS THEY STAND does the
+        // opposite -- measured on the existing Q1 data, pooling OBU into M1
+        // takes A1 from 0.7383 to 0.1746 and A2 from 0.3973 to 0.1754:
+        //
+        //   A1 OBU rows: 11,600 rows, truth=1 on ZERO of them, 5,924 firings
+        //                -> TP=0, FP=5,924, MCC=0.0000
+        //   A2 OBU rows: TP=6,371 FP=4,880 -> MCC=-0.0132 (worse than random)
+        //
+        // A1's OBU truth is all-zero STRUCTURALLY, not incidentally: its
+        // attacker is the controller and the compromised RSU obeying the
+        // poisoned FlowMod, so is_malicious_node[0][vehicle] is false for
+        // every vehicle, and every OBU firing is a false positive by
+        // construction. dw_mark_obu() also marks `vehicle` -- the RECEIVER --
+        // while OBU truth asks whether that receiver is malicious: the same
+        // observer/suspect conflation b718110 fixed for RSU rows, never fixed
+        // here because OBU rows were excluded from scoring. Fixing that
+        // attribution still would not rescue A1, because an OBU row is indexed
+        // by vehicle while A1's suspects are RSUs -- the label space and the
+        // attacker space do not intersect.
+        //
+        // So credit S1 inside the RSU-indexed truth space it already accuses
+        // into. s1_detect_packet() is handed N_Vehicles + assoc_rsu_local_idx
+        // as its sender_node_id (the argument immediately above) and records
+        // its detection event against exactly that RSU -- for the reasons in
+        // the comment there. Marking the same RSU in the primary column makes
+        // the window grid agree with the detection event, needs no invented
+        // OBU ground truth, and leaves dw_mark_obu()/the score column
+        // untouched.
+        //
+        // Scoped to variants 0/1: S1 is A1/A2's primary detector, and for any
+        // other variant it is not, so folding it in would reintroduce exactly
+        // the cross-detector pollution score_primary exists to prevent.
+        if (flags.flag_S1 &&
+            (active_attack_variant == 0 || active_attack_variant == 1))
+            dw_mark_rsu_primary(N_Vehicles + assoc_rsu_local_idx, true);
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────

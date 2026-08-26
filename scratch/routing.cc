@@ -117764,10 +117764,37 @@ void calculate_witness_wapr_metric()
 {
     uint32_t fn_w = 0;
     if (present_passive_hf_attack) {
+        // Supervisor item 4 (2026-08-27): count the MISS against the same
+        // covering-RSU attribution Fix 1 applies on the alert side.
+        //
+        // witness_submit_duplication_alert() now targets
+        // hf_gt_attribution_node(accused) -- an RSU attacker maps to itself,
+        // a vehicle attacker to whichever RSU currently covers it -- so
+        // g_witness_da_threshold_fired[] is keyed by covering RSU. This loop
+        // was still asking whether the RAW attacker node had fired, so a
+        // vehicle attacker correctly detected via its covering RSU was
+        // counted as a false negative anyway: the numerator and denominator
+        // were keyed differently. Measured on A8 @40% seed1 30s, the printed
+        // recall read 36.8% while the same run's alerts scored 95.2% against
+        // the covering-RSU ground truth.
+        //
+        // Dedup by attribution target: several vehicle attackers under one
+        // covering RSU are a single detectable subject at this metric's
+        // granularity (one threshold-crossing event per node per run, per
+        // g_witness_da_threshold_fired's own single-fire guard), so counting
+        // each raw attacker separately would inflate FN_W beyond the number
+        // of misses the witness layer could ever have made.
+        std::set<uint32_t> missed_targets;
         for (int n = 0; n < total_size; n++) {
-            if (passive_hf_malicious_nodes[n] && !g_witness_da_threshold_fired[(uint32_t)n])
-                fn_w++;
+            if (!passive_hf_malicious_nodes[n]) continue;
+            uint32_t tgt = hf_gt_attribution_node((uint32_t)n);
+            // UINT32_MAX: no RSU currently covers this attacker, so no witness
+            // could have observed it -- not a miss, matching the alert side,
+            // which suppresses rather than misattributes in the same case.
+            if (tgt == UINT32_MAX) continue;
+            if (!g_witness_da_threshold_fired[tgt]) missed_targets.insert(tgt);
         }
+        fn_w = (uint32_t)missed_targets.size();
     }
     g_witness_FN_W = fn_w;
 
@@ -142245,6 +142272,14 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
     cmd.AddValue("s1_robust_sigma", "S1: exclude threshold-breaching packets from the sigma2 update (default 1)", s1_robust_sigma);
+    // Item 7 (supervisor, 2026-08-27): non-parametric percentile threshold.
+    // Default ON -- this is the approved replacement for the Gaussian k*sigma
+    // bound, which our own zero-attack data showed cannot fit a heavy-tailed
+    // delay distribution at any k. Flag retained so the two can still be A/B'd
+    // in one binary; set --s1_use_percentile=0 for the old behaviour.
+    cmd.AddValue("s1_use_percentile", "S1: non-parametric percentile threshold instead of delta_bar+k*sigma (default 1)", s1_use_percentile);
+    cmd.AddValue("s1_pctl", "S1: percentile for the threshold, e.g. 0.99 = p99 (default 0.99)", s1_pctl);
+    cmd.AddValue("s1_pctl_min_n", "S1: benign samples required before the percentile is trusted; k*sigma until then (default 200)", s1_pctl_min_n);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);

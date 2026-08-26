@@ -1719,7 +1719,27 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         if (!g_witness_da_threshold_fired[target_node]) {
             g_witness_da_threshold_fired[target_node] = true;
             if (present_passive_hf_attack) {
-                if (passive_hf_malicious_nodes[target_node])
+                // Supervisor item 4 (2026-08-27): score against the same
+                // covering-RSU attribution the alert itself now uses.
+                //
+                // Post-Fix-1 target_node is hf_gt_attribution_node(accused),
+                // so for a VEHICLE attacker it is the covering RSU -- and
+                // passive_hf_malicious_nodes[covering_rsu] is false, because
+                // the RSU is not itself the attacker. Asking that question
+                // directly therefore booked every correct detection of a
+                // vehicle attacker as a false positive. A target is a true
+                // positive when it is the attribution target of at least one
+                // genuinely malicious node, which is exactly what the alert
+                // side computed to pick it.
+                bool _tgt_is_true = false;
+                for (int _n = 0; _n < total_size; ++_n) {
+                    if (!passive_hf_malicious_nodes[_n]) continue;
+                    if (hf_gt_attribution_node((uint32_t)_n) == target_node) {
+                        _tgt_is_true = true;
+                        break;
+                    }
+                }
+                if (_tgt_is_true)
                     ++g_witness_TP_W;
                 else
                     ++g_witness_FP_W;

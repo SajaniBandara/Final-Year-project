@@ -130,6 +130,49 @@ double s1_beta      = 0.95;         // EWMA factor — analytic N_eff=1/(1-β)=2
 std::vector<double>   s1_delta_bar;     // δ̄_r(t): mobility-adjusted baseline per RSU
 std::vector<double>   s1_sigma2;        // σ²_r(t): EWMA variance per RSU
 
+// ── Non-parametric percentile threshold (supervisor item 7, 2026-08-27) ────
+//
+// Replaces the Gaussian delta_bar + k*sigma bound with a cutoff read directly
+// off each RSU's own observed benign delay distribution.
+//
+// Justification, from our own zero-attack measurement (300 s, seed 1, current
+// build): benign hop delay is strongly heavy-tailed, not bell-shaped. Mean and
+// median delay AT FIRING were both ~177 ms against a mean threshold of ~24 ms,
+// with 81% of firings above 100 ms and 99.95% above 50 ms -- 6,156 S1 firings
+// on a run with zero attackers. A symmetric k*sigma bound cannot cover that
+// tail at any k in {1,2,3} without becoming too loose to detect anything; the
+// codebase already recorded that no k cleared the 1% FPR target
+// ("FPR=0.0287 at k=3.0", the calibration note above). That is a distribution-
+// SHAPE mismatch, not a threshold-VALUE mistake, so the fix is to stop
+// assuming a shape.
+//
+// The delay distribution itself is untouched -- it is a real property of the
+// network, not a defect. Only the detector's notion of "unusual" changes.
+//
+// Implementation: a fixed-bin histogram of benign delays per RSU, from which
+// the s1_pctl quantile is read. Chosen over a reservoir because it updates in
+// O(1) per packet with no allocation, and the quantile is recomputed once per
+// cycle in s1_update_baseline() rather than per packet -- the same cadence
+// delta_bar already updates on.
+//
+// Samples are admitted under the SAME robustness gate as sigma2
+// (s1_robust_sigma): a packet that violates the current threshold is excluded,
+// so a sustained attack cannot walk the percentile up to swallow itself --
+// the identical self-masking failure fixed in 033210a. Below the minimum
+// sample count the estimate is not yet meaningful and the detector falls back
+// to the k*sigma bound, so early-run behaviour is unchanged.
+bool     s1_use_percentile = true;    // --s1_use_percentile: item 7 (default ON)
+double   s1_pctl           = 0.99;    // --s1_pctl: quantile, e.g. 0.99 = p99
+uint32_t s1_pctl_min_n     = 200;     // min samples before the percentile is trusted
+// 1 ms bins. 1000 bins covers 0..1 s; anything above lands in the top bin,
+// which is correct for a cutoff estimator (an over-1s benign hop is already
+// far beyond any threshold we would set).
+static const uint32_t S1_HIST_BINS   = 1000;
+static const double   S1_HIST_BIN_S  = 0.001;   // 1 ms per bin
+std::vector<std::vector<uint32_t>> s1_delay_hist;   // [rsu][bin] benign-delay counts
+std::vector<uint32_t> s1_hist_n;                    // [rsu] total admitted samples
+std::vector<double>   s1_pctl_threshold;            // [rsu] cached quantile (s)
+
 // Per-RSU observed-delay accumulators for the EWMA input δ_r(t) (Eq. 3.12).
 // Accumulated inside s1_detect_packet() for every valid packet; drained
 // and reset at each s1_update_baseline() call site in routing.cc.
@@ -210,6 +253,31 @@ inline void s1_update_baseline(uint32_t rsu_idx,
     // calibration is re-run under that constraint.
     s1_delta_bar[rsu_idx] = (db > s1_delta0) ? db : s1_delta0;
     (void)observed_delay;   // no longer feeds sigma2 here — see s1_detect_packet()
+
+    // Item 7: recompute this RSU's percentile cutoff once per cycle, the same
+    // cadence delta_bar updates on. Walking S1_HIST_BINS once per RSU per cycle
+    // is negligible; doing it per packet would not be.
+    //
+    // Cutoff = the upper edge of the bin containing the s1_pctl quantile, so
+    // the returned value is one a genuinely benign delay at that quantile falls
+    // UNDER rather than exactly on -- a strictly-greater-than comparison at the
+    // firing site would otherwise fire on the quantile sample itself.
+    if (s1_use_percentile &&
+        rsu_idx < s1_delay_hist.size() &&
+        rsu_idx < s1_hist_n.size() &&
+        rsu_idx < s1_pctl_threshold.size() &&
+        s1_hist_n[rsu_idx] >= s1_pctl_min_n)
+    {
+        const uint32_t _target = (uint32_t)(s1_pctl * (double)s1_hist_n[rsu_idx]);
+        uint32_t _cum = 0;
+        uint32_t _bin = S1_HIST_BINS - 1;
+        for (uint32_t b = 0; b < S1_HIST_BINS; ++b)
+        {
+            _cum += s1_delay_hist[rsu_idx][b];
+            if (_cum >= _target) { _bin = b; break; }
+        }
+        s1_pctl_threshold[rsu_idx] = (double)(_bin + 1) * S1_HIST_BIN_S;
+    }
 }
 
 // =========================================================================
@@ -346,6 +414,20 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     double sigma     = std::sqrt(s1_sigma2[rsu_idx]);
     double threshold = delta_bar + s1_k * sigma;
 
+    // Item 7: prefer the non-parametric cutoff once this RSU has enough benign
+    // samples for the quantile to mean anything. Falls back to the k*sigma
+    // bound before then, so warm-up behaviour is unchanged. See the
+    // s1_use_percentile declaration for why the shape assumption is the
+    // problem being fixed.
+    if (s1_use_percentile &&
+        rsu_idx < s1_pctl_threshold.size() &&
+        rsu_idx < s1_hist_n.size() &&
+        s1_hist_n[rsu_idx] >= s1_pctl_min_n &&
+        s1_pctl_threshold[rsu_idx] > 0.0)
+    {
+        threshold = s1_pctl_threshold[rsu_idx];
+    }
+
     // Accumulate observed hop-delay for the LSTM per-cycle delta_t log column
     // (cycle-averaged; see s1_update_baseline()'s call site in routing.cc).
     // UNCONDITIONAL regardless of training mode — same "no only-if-compliant
@@ -399,6 +481,22 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     {
         const double _sigma2_min = s1_sigma_floor * s1_sigma_floor;
         if (s1_sigma2[rsu_idx] < _sigma2_min) s1_sigma2[rsu_idx] = _sigma2_min;
+    }
+
+    // Item 7: feed the benign-delay histogram under the SAME admission gate as
+    // sigma2 above -- a packet that breached the current threshold is presumed
+    // attack-or-anomaly and excluded, so a sustained attack cannot walk the
+    // percentile up until it no longer fires (the self-masking failure fixed
+    // in 033210a, which would otherwise reappear here in a new form).
+    // O(1) per packet; the quantile itself is recomputed once per cycle in
+    // s1_update_baseline().
+    if (s1_use_percentile && !_sigma_violating &&
+        rsu_idx < s1_delay_hist.size() && effective_delay_s >= 0.0)
+    {
+        uint32_t _bin = (uint32_t)(effective_delay_s / S1_HIST_BIN_S);
+        if (_bin >= S1_HIST_BINS) _bin = S1_HIST_BINS - 1;   // clamp into top bin
+        s1_delay_hist[rsu_idx][_bin]++;
+        if (rsu_idx < s1_hist_n.size()) s1_hist_n[rsu_idx]++;
     }
 
     // Condition 3 (selectivity, eq:rule_s1): δ_best(r,t) ≤ δ̄_r(t)+k·σ_r(t).
@@ -528,6 +626,10 @@ inline void s1_init_state(uint32_t n_rsus)
     // such recursion to justify starting from zero.
     s1_delta_bar.assign(n_rsus, s1_delta0);
     s1_sigma2.assign(n_rsus, 0.0);
+    // Item 7 percentile-threshold state.
+    s1_delay_hist.assign(n_rsus, std::vector<uint32_t>(S1_HIST_BINS, 0u));
+    s1_hist_n.assign(n_rsus, 0u);
+    s1_pctl_threshold.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
     s1_rsu_obs_max.assign(n_rsus, 0.0);
@@ -553,6 +655,11 @@ inline void s1_reset_state()
     // See s1_init_state() for why delta_bar is seeded to s1_delta0, not 0.0.
     std::fill(s1_delta_bar.begin(),     s1_delta_bar.end(),     s1_delta0);
     std::fill(s1_sigma2.begin(),        s1_sigma2.end(),        0.0);
+    // Item 7 percentile-threshold state -- cleared with the rest so a reset
+    // genuinely restarts the estimate rather than carrying stale counts.
+    for (auto& _h : s1_delay_hist) std::fill(_h.begin(), _h.end(), 0u);
+    std::fill(s1_hist_n.begin(),         s1_hist_n.end(),         0u);
+    std::fill(s1_pctl_threshold.begin(), s1_pctl_threshold.end(), 0.0);
     std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
     std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
     std::fill(s1_best_obs_sum.begin(),   s1_best_obs_sum.end(),   0.0);
