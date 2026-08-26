@@ -76,6 +76,14 @@ static std::vector<std::vector<uint8_t>> g_dw_obu_hist;   // [cycle][vehicle]
 static std::vector<std::vector<uint8_t>> g_dw_rsu_hist;   // [cycle][rsu]
 static std::vector<std::vector<uint8_t>> g_dw_obu_truth;  // [cycle][vehicle]
 static std::vector<std::vector<uint8_t>> g_dw_rsu_truth;  // [cycle][rsu]
+// Supervisor item 2 (2026-08-27): the DECLARED-attacker truth, i.e. the same
+// node-level label WITHOUT the per-cycle activity gate that g_dw_rsu_truth
+// applies. Recall must be reported both ways -- against every declared
+// attacker, and against the acted set (those that actually attacked) -- and
+// the acted-only number cannot be inverted back to the declared one from the
+// gated column alone, because a declared node that never acted is
+// indistinguishable there from a benign node. Emitted as its own column.
+static std::vector<std::vector<uint8_t>> g_dw_rsu_truth_declared;  // [cycle][rsu]
 static std::vector<double>               g_dw_cycle_t;    // [cycle] sim time
 
 inline void dw_init()
@@ -86,7 +94,7 @@ inline void dw_init()
     g_dw_rsu_primary.assign((size_t)N_RSUs, 0);
     g_dw_rsu_primary_hist.clear();
     g_dw_obu_hist.clear(); g_dw_rsu_hist.clear();
-    g_dw_obu_truth.clear(); g_dw_rsu_truth.clear();
+    g_dw_obu_truth.clear(); g_dw_rsu_truth.clear(); g_dw_rsu_truth_declared.clear();
     g_dw_cycle_t.clear();
 }
 
@@ -155,11 +163,13 @@ inline void dw_end_cycle()
     // g_dw_activity_last defaults to 1 for variants with no per-cycle gate
     // (A3/A4, benign), so those keep exactly their previous behaviour.
     std::vector<uint8_t> rt((size_t)N_RSUs, 0);
+    std::vector<uint8_t> rtd((size_t)N_RSUs, 0);   // item 2: declared, ungated
     for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
     {
         uint8_t node_lvl = (uint8_t)lstm_rsu_ground_truth_label((uint32_t)N_Vehicles + r);
         uint8_t active   = (r < g_dw_activity_last.size()) ? g_dw_activity_last[r] : 1;
-        rt[r] = (node_lvl && active) ? 1 : 0;
+        rt[r]  = (node_lvl && active) ? 1 : 0;
+        rtd[r] = node_lvl ? 1 : 0;
     }
 
     // S3/S4 fold-in — REQUIRED for M1 to see the TCAM family at all.
@@ -227,6 +237,7 @@ inline void dw_end_cycle()
     g_dw_rsu_primary_hist.push_back(g_dw_rsu_primary);
     g_dw_obu_truth.push_back(ot);
     g_dw_rsu_truth.push_back(rt);
+    g_dw_rsu_truth_declared.push_back(rtd);
     g_dw_cycle_t.push_back(ns3::Simulator::Now().GetSeconds());
 
     std::fill(g_dw_obu_fired.begin(), g_dw_obu_fired.end(), 0);
@@ -248,7 +259,7 @@ inline void dw_write_csv(const std::string& path)
         std::cerr << "[DETECTOR-WINDOWS] WARNING: cannot open " << path << std::endl;
         return;
     }
-    f << "node,mode,variant,w_start,w_end,score,truth,score_primary\n";
+    f << "node,mode,variant,w_start,w_end,score,truth,score_primary,truth_declared\n";
 
     // variant: the proposal's attack number (0 = benign, 1-8), matching the
     // convention lstm_logger.h uses for its file names.
@@ -276,22 +287,28 @@ inline void dw_write_csv(const std::string& path)
                 if (g_dw_obu_hist[c][v])  fired = 1;
                 if (g_dw_obu_truth[c][v]) truth = 1;
             }
+            // OBU rows carry no score_primary and no declared-truth column;
+            // pad both so every row has the same field count (readers index
+            // positionally -- see scripts/run_q1q6_ablation.py's COL_* note).
             f << v << ",OBU," << variant << "," << ws << "," << we << ","
-              << (fired ? "1.0" : "0.0") << "," << (truth ? "1" : "0") << "\n";
+              << (fired ? "1.0" : "0.0") << "," << (truth ? "1" : "0")
+              << ",,\n";
             ++rows;
         }
         for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
         {
-            uint8_t fired = 0, truth = 0, prim = 0;
+            uint8_t fired = 0, truth = 0, prim = 0, truth_d = 0;
             for (size_t c = c0; c < c1; ++c)
             {
                 if (g_dw_rsu_hist[c][r])  fired = 1;
                 if (g_dw_rsu_truth[c][r]) truth = 1;
+                if (c < g_dw_rsu_truth_declared.size() && g_dw_rsu_truth_declared[c][r]) truth_d = 1;
                 if (c < g_dw_rsu_primary_hist.size() && g_dw_rsu_primary_hist[c][r]) prim = 1;
             }
             f << ((uint32_t)N_Vehicles + r) << ",RSU," << variant << ","
               << ws << "," << we << "," << (fired ? "1.0" : "0.0") << ","
-              << (truth ? "1" : "0") << "," << (prim ? "1.0" : "0.0") << "\n";
+              << (truth ? "1" : "0") << "," << (prim ? "1.0" : "0.0") << ","
+              << (truth_d ? "1" : "0") << "\n";
             ++rows;
         }
     }
