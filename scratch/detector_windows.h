@@ -191,6 +191,37 @@ inline void dw_end_cycle()
         }
     }
 
+    // PRIMARY-column fold-in for the TCAM family (2026-08-27).
+    //
+    // score_primary carries "only the detector this variant is actually scored
+    // by" (supervisor's 2026-08-21 assignment). Every other variant's primary
+    // flag is set in lrad_rsu() via dw_mark_rsu_primary(), but A3/A4 cannot be
+    // done there: that call marks prev_sender, whereas S3/S4 fire at -- and
+    // A3/A4 ground truth labels -- the VICTIM RSU holding the malicious TCAM
+    // entries (lstm_rsu_ground_truth_label(), lstm_logger.h). See the no-op
+    // `case 2: case 3:` in lrad.h for the full reasoning.
+    //
+    // So mirror the score fold-in directly above, which already indexes r
+    // correctly and is already proven against the score column, into
+    // g_dw_rsu_primary. Scoped to variants 2/3 only: for any other variant the
+    // TCAM signatures are not that variant's primary detector, and folding them
+    // in would reintroduce exactly the cross-detector pollution score_primary
+    // exists to prevent.
+    //
+    // Gated by g_disable_s3_s4 through the same branch, so Q2/Q3/Q4 (which set
+    // it to isolate the crypto/LSTM/witness layers) correctly score zero here.
+    if (!g_disable_s3_s4 &&
+        (active_attack_variant == 2 || active_attack_variant == 3))
+    {
+        for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
+        {
+            uint32_t nid = (uint32_t)N_Vehicles + r;
+            if (nid < 300 && (g_tcam_flag_s3_last[nid] || g_tcam_flag_s4_last[nid])
+                && r < g_dw_rsu_primary.size())
+                g_dw_rsu_primary[r] = 1;
+        }
+    }
+
     g_dw_obu_hist.push_back(g_dw_obu_fired);
     g_dw_rsu_hist.push_back(g_dw_rsu_fired);
     g_dw_rsu_primary_hist.push_back(g_dw_rsu_primary);

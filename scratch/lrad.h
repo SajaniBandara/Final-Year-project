@@ -446,8 +446,40 @@ inline LRADRSUFlags lrad_rsu(
                 // fix. Scoped to the same rule-based signal the LSTM-gate above
                 // already reads (g_tcam_flag_s3_last/s4_last, tcam_detection.h),
                 // same pattern as every other variant's primary case.
-                _prim = (rsu < 300) &&
-                        (g_tcam_flag_s3_last[rsu] || g_tcam_flag_s4_last[rsu]);
+                //
+                // SUPERSEDED (2026-08-27): marking is done in dw_end_cycle()
+                // instead -- see below. Left as an explicit no-op case so A3/A4
+                // cannot silently fall through to `default` (flags.D_RSU) again,
+                // which is the original bug this case was added to fix.
+                //
+                // Two further problems with doing it here, both found before any
+                // of these numbers were trusted:
+                //
+                //  1. WRONG NODE. This site marks prev_sender (correct for every
+                //     OTHER variant, whose detectors accuse the sender), but the
+                //     value read is g_tcam_flag_s3_last[rsu] -- the flag of the
+                //     RSU PROCESSING the packet. A3/A4 ground truth labels the
+                //     VICTIM RSU ("any RSU holding >=1 malicious TCAM entry",
+                //     lstm_rsu_ground_truth_label(), lstm_logger.h), and S3/S4
+                //     fire at that same victim. So the read node and the marked
+                //     node are different roles, and crediting the victim's
+                //     detection to whatever node happened to send the packet
+                //     inflates FP. The "mark the suspect, not the observer" rule
+                //     INVERTS for the TCAM family: here the observer IS the
+                //     labelled subject.
+                //
+                //  2. WRONG GATE SEMANTICS. g_tcam_flag_s3_last/s4_last are
+                //     deliberately never gated by g_disable_s3_s4
+                //     (tcam_detection.h keeps them live so the LSTM-suppression
+                //     gate still works during ablation runs). Reading them raw
+                //     made A3/A4's primary score insensitive to g_disable_s3_s4
+                //     -- caught when a Q1-Q6 rerun returned Q1..Q5 byte-identical
+                //     for both A3 and A4, impossible when Q2/Q3/Q4 set
+                //     g_disable_s3_s4=1 specifically to isolate S3/S4 out.
+                //
+                // dw_end_cycle() already solves both: it folds the same flags in
+                // per-RSU under `if (!g_disable_s3_s4)`, indexing r directly.
+                _prim = false;
                 break;
             case 4: case 5: _prim = flags.flag_S5 || flags.flag_S6; break; // A5/A6 -> crypto/S5/S6
             case 6: case 7: _prim = flags.flag_S7 || flags.flag_S8; break; // A7/A8 -> S7/S8 (+R_anom, already OR'd in)
