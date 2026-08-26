@@ -424,9 +424,34 @@ inline LRADRSUFlags lrad_rsu(
         bool _prim = false;
         switch (active_attack_variant) {
             case 0: case 1: _prim = flags.flag_S2f; break;              // A1/A2 -> S1/S2
+            case 2: case 3:                                             // A3/A4 -> S3/S4
+                // FIX (2026-08-26, n11 debug session): this fell into `default`
+                // below and used flags.D_RSU -- the full OR-composite, INCLUDING
+                // flag_LSTM -- despite the comment claiming "recorded by
+                // tcam_detection.h". Isolated via a 3-way ablation (LSTM-only /
+                // witness-only / BTMM-only vs. the Q5 baseline, A3 @60% seed1
+                // 300s): LSTM-only alone reproduced Q6's FP explosion exactly
+                // (TP=429 FP=413, byte-identical to full Q6), witness-only and
+                // BTMM-only both matched the Q5 baseline byte-for-byte
+                // (TP=318 FP=2) -- the LSTM is entirely responsible, witness and
+                // BTMM are bystanders here. Mechanism: the LSTM-suppression gate
+                // above only silences flag_LSTM at an RSU where THAT SAME RSU's
+                // S3/S4 fired last cycle; per this file's own comment on that
+                // gate, "the LSTM's reconstruction error is structurally
+                // elevated by residual TCAM occupancy... independently of any
+                // co-firing signature" -- i.e. a bystander RSU with no local
+                // TCAM exhaustion can still see flag_LSTM fire, ungated, and
+                // flags.D_RSU let that pollute A3/A4's window score exactly the
+                // way S2f polluted A5's before the 2026-08-21 primary-detector
+                // fix. Scoped to the same rule-based signal the LSTM-gate above
+                // already reads (g_tcam_flag_s3_last/s4_last, tcam_detection.h),
+                // same pattern as every other variant's primary case.
+                _prim = (rsu < 300) &&
+                        (g_tcam_flag_s3_last[rsu] || g_tcam_flag_s4_last[rsu]);
+                break;
             case 4: case 5: _prim = flags.flag_S5 || flags.flag_S6; break; // A5/A6 -> crypto/S5/S6
             case 6: case 7: _prim = flags.flag_S7 || flags.flag_S8; break; // A7/A8 -> S7/S8 (+R_anom, already OR'd in)
-            default: _prim = flags.D_RSU; break;                        // A3/A4 recorded by tcam_detection.h
+            default: _prim = flags.D_RSU; break;                        // unassigned variant, no home detector
         }
         // ATTRIBUTION FIX (2026-08-22): mark the SUSPECT, not the observer.
         //
