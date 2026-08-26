@@ -142277,7 +142277,7 @@ int main(int argc, char *argv[])
     // bound, which our own zero-attack data showed cannot fit a heavy-tailed
     // delay distribution at any k. Flag retained so the two can still be A/B'd
     // in one binary; set --s1_use_percentile=0 for the old behaviour.
-    cmd.AddValue("s1_use_percentile", "S1: non-parametric percentile threshold instead of delta_bar+k*sigma (default 1)", s1_use_percentile);
+    cmd.AddValue("s1_use_percentile", "S1: non-parametric percentile threshold instead of delta_bar+k*sigma (default 0 -- measured 2.4x WORSE than k*sigma on a zero-attack baseline, see s1_detection.h)", s1_use_percentile);
     cmd.AddValue("s1_pctl", "S1: percentile for the threshold, e.g. 0.99 = p99 (default 0.99)", s1_pctl);
     cmd.AddValue("s1_pctl_min_n", "S1: benign samples required before the percentile is trusted; k*sigma until then (default 200)", s1_pctl_min_n);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);

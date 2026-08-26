@@ -161,7 +161,27 @@ std::vector<double>   s1_sigma2;        // σ²_r(t): EWMA variance per RSU
 // the identical self-masking failure fixed in 033210a. Below the minimum
 // sample count the estimate is not yet meaningful and the detector falls back
 // to the k*sigma bound, so early-run behaviour is unchanged.
-bool     s1_use_percentile = true;    // --s1_use_percentile: item 7 (default ON)
+// DEFAULT FLIPPED TO OFF, 2026-08-27, after measuring it. Zero-attack
+// baseline, 300 s seed 1, both arms from one binary with only this flag
+// varied:
+//     k*sigma      6,156 S1 firings   OBU window FPR 18.86 %
+//     percentile   8,005 S1 firings   OBU window FPR 44.66 %
+// i.e. 2.4x WORSE, against a 1 % target.
+//
+// The defect is the histogram's admission rule below, not the approach. It is
+// fed only samples that did not breach the current threshold -- copied from
+// sigma's robustness gate -- but for a quantile that is truncation, not
+// protection: the distribution is cut off at the very threshold derived from
+// it, so each cycle's estimate sinks further with no floor. Measured, the
+// threshold median collapsed 23.27 ms -> 4.00 ms. Exactly the runaway the
+// sigma path documents and defeats with a floor; this one had none.
+//
+// Correction proposed but NOT built: calibrate on delta_best (best-effort
+// delay), which the attack model leaves untouched by construction -- eq:rule_s1's
+// selectivity conjunct is precisely that only HIGH-priority traffic is delayed.
+// The estimator then never observes the samples it judges, so the loop cannot
+// close. Left default-off until that is built and measured.
+bool     s1_use_percentile = false;   // --s1_use_percentile: item 7 (default OFF, see above)
 double   s1_pctl           = 0.99;    // --s1_pctl: quantile, e.g. 0.99 = p99
 uint32_t s1_pctl_min_n     = 200;     // min samples before the percentile is trusted
 // 1 ms bins. 1000 bins covers 0..1 s; anything above lands in the top bin,
