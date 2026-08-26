@@ -164,3 +164,76 @@ is already in force in this document.
 
 The corrected A3+A4 Q1-Q6 sweep also needs to run before those two columns
 can be reported at all.
+
+
+====================================================================
+ITEM 7 — THE NUMBER YOU ASKED FOR. The percentile threshold made it WORSE.
+====================================================================
+
+Built as specified, ran the fresh zero-attack baseline (300 s, seed 1, both
+arms from ONE binary with only --s1_use_percentile varied, so nothing else
+differs). Every S1 firing on a zero-attack run is a false positive by
+definition.
+
+    arm                     S1 firings    OBU window FPR
+    k*sigma (old bound)          6,156           18.86 %
+    percentile p99 (new)         8,005           44.66 %
+
+Against a 1 % target. The new threshold is worse by a factor of 2.4, and both
+are more than an order of magnitude outside the gate.
+
+(RSU-mode window FPR is 0.000 % in both arms, but that is not a result: S1's
+new RSU-column marking is scoped to variants 0/1 and a zero-attack run is
+variant -1, so nothing marks there by construction. The OBU column is the one
+carrying S1 on this run.)
+
+WHY — and it is a defect in our implementation, not in your reasoning.
+
+The thresholds the two arms actually produced:
+
+    arm            threshold at firing:  mean     median     max
+    k*sigma                            24.30 ms  23.27 ms  40.84 ms
+    percentile                          4.80 ms   4.00 ms  22.59 ms
+
+The percentile threshold COLLAPSED to roughly a fifth of the k*sigma one,
+which is why it fires more. The cause is the histogram's admission rule. We
+fed it only samples that did NOT breach the current threshold -- deliberately,
+copying the robustness gate that protects sigma from the self-masking failure
+fixed in 033210a. But for a quantile that gate is not a safeguard, it is a
+truncation: the distribution being estimated is cut off at the very threshold
+being derived from it, so p99 of the retained samples sits below p99 of the
+real distribution, which lowers the threshold, which truncates harder next
+cycle. A downward spiral with no floor.
+
+This is precisely the failure the codebase already documented for the sigma
+path -- "a self-reinforcing feedback loop where a shrinking sigma excludes
+more packets, shrinking sigma further with no floor". Sigma was rescued with a
+floor. We reintroduced the same loop for the percentile and gave it none.
+
+So item 7 is NOT closed, and the honest status is that the fix as built is
+worse than what it replaced. The code is committed behind
+--s1_use_percentile, DEFAULT ON in the commit, which we will flip to default
+OFF unless you say otherwise -- we do not want an untested regression sitting
+in the default path while the corrected version is built.
+
+PROPOSED CORRECTION (not implemented, flagging for your call).
+
+Estimate the benign distribution from traffic the attack cannot touch. S1
+already computes delta_best, the best-effort hop delay, and both S1 and S2 are
+defined so that only HIGH-priority packets are delayed -- that is the whole
+selectivity conjunct in eq:rule_s1 ("only high-priority packets are delayed,
+while best-effort traffic from the same RSU remains within baseline"). Best-
+effort traffic is therefore a genuinely benign sample stream even during an
+active attack, by the attack model's own definition.
+
+Calibrating the percentile on best-effort delay and applying it to
+high-priority delay is immune to the truncation spiral (the estimator never
+sees the samples it is judging), needs no floor heuristic, and uses a
+separation the architecture already relies on rather than inventing one.
+
+It also predicts the right failure mode: under genuine congestion both classes
+rise together, the cutoff rises with them, and S1 correctly does not fire --
+which is what the selectivity conjunct was there to achieve in the first
+place.
+
+We have not built this. Say the word and it is a small change.
