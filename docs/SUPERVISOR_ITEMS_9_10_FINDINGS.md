@@ -237,3 +237,80 @@ which is what the selectivity conjunct was there to achieve in the first
 place.
 
 We have not built this. Say the word and it is a small change.
+
+
+====================================================================
+ITEM 6 — Fix 2 collection COMPLETE (60/60) and A1/A2 rescored
+====================================================================
+
+Collection finished clean: 60 of 60 jobs, zero failures, no truncated files,
+std_send_gt present on all 3,840 A1/A2 CSVs (60 jobs x 64 RSUs).
+
+VALIDATION OF THE COUNTER ITSELF. Summed across 64 RSUs, seed 1:
+
+    A1:  0% -> 0     20% -> 1,596   40% -> 2,437   60% -> 2,437
+        80% -> 5,095  100% -> 7,316
+    A2:  0% -> 0     20% -> 6,424   40% -> 14,441  60% -> 21,393
+        80% -> 29,246 100% -> 34,819
+
+Exactly zero at 0% for both, which is the strongest evidence available that
+the counter is genuinely injection-side: it cannot fire without an attack, so
+nothing in the benign path can produce a positive label.
+
+A1's 40% and 60% being IDENTICAL is not an error and is worth recording for
+the paper. A1 compromises CONTROLLERS, not RSUs, on the banded ladder
+main.tex specifies ("<33%:1; 33-66%:2; >=66%:3; 100%:4"). With 4 controllers
+that maps 20%->1, 40%->2, 60%->2, 80%->3, 100%->4. A1's attack_percentage
+sweep therefore has FOUR distinct operating points, not six, and reporting
+40% and 60% as separate data points overstates the sweep's resolution.
+
+THE RESCORE. A1/A2 scored against the injection-side label, test split
+(seed 5), non-overlapping 10 s blocks:
+
+    A1  MCC 0.394   DR 0.251   FPR 0.008   TP=930  FP=53  FN=2770  TN=6231
+    A2  MCC 0.464   DR 0.343   FPR 0.010   TP=1396 FP=58  FN=2677  TN=5853
+
+Both hold FPR at or below 1%. Both are recall-limited, which is the same
+sparse-signal characteristic already confirmed for A2 under item 10 -- the
+detector is precise when it fires and simply does not get the chance often.
+
+WHY THIS IS THE FIRST HONEST A1/A2 NUMBER. y_indep, the leak-free label the
+classification head is scored against, was built from hf_send_gt ALONE.
+hf_send_gt is nonzero only for the HF variants, so A1-A4 had ZERO positive
+leak-free windows -- there was no leak-free label for the timing attacks to be
+scored against at any point. Measured before and after this change, train
+split:
+
+    A1  y_indep positives:  0 -> 16,220
+    A2  y_indep positives:  0 -> 22,577
+
+Their only other label path was is_spike, via delta_spike (delta_t > benign
+p99) and delta_max_spike (delta_t > 50 ms). Both are computed from delta_t,
+and delta_t IS in FEATURES -- a label that is a direct transform of a model
+input, i.e. precisely the leakage you ruled out. is_spike is untouched; it
+drives training and no retraining was authorised.
+
+TWO THINGS THIS SURFACED THAT YOU SHOULD SEE.
+
+1. A3/A4 STILL HAVE NO LEAK-FREE LABEL. Their y_indep positive count is 0 in
+   every split, because neither hf_send_gt (HF only) nor std_send_gt (timing
+   only) covers TCAM exhaustion. This is the same gap Fix 2 just closed for
+   A1/A2, still open for A3/A4, and it means no A3/A4 number can currently be
+   called leak-free. The equivalent counter would latch at TCAM rule-install
+   time in the attack injector.
+
+2. THE PER-VARIANT MCC IS DEGENERATE FOR A5, A6 AND A7. Their confusion
+   matrices from this run:
+
+       A5  TP=2026  FP=0  FN=6294  TN=0
+       A6  TP=7175  FP=0  FN=1145  TN=0
+       A7  TP=2005  FP=0  FN=6315  TN=0
+
+   TN=0 and FP=0 makes the MCC denominator sqrt(...*0*0) = 0, so the
+   evaluator prints MCC=0.000. That reads as total failure. A6 in fact
+   detected 86.2% of attack windows with ZERO false positives. Any macro
+   average over these variants is being dragged to zero by a division, not by
+   detector performance, and no macro-MCC computed this way should be quoted
+   -- including against the 0.80 target. The underlying cause is that those
+   variants' evaluation sets contain no negative windows at all after dedup,
+   which is itself worth fixing before these numbers are reported anywhere.
