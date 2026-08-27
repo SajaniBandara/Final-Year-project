@@ -638,6 +638,35 @@ std::map<uint32_t, uint32_t> g_lstm_hf_sendgt_count;
 // preprocessor.py -- same treatment as hf_send_gt.
 std::map<uint32_t, uint32_t> g_lstm_std_sendgt_count;
 
+// 2026-08-28: per-VICTIM-RSU count of malicious TCAM FlowMod installations
+// attempted against it -- the A3/A4 member of the same family as
+// g_lstm_hf_sendgt_count (HF) and g_lstm_std_sendgt_count (timing).
+//
+// Why A3/A4 needed one. y_indep, the leak-free window label, is built from
+// those two counters, and neither covers TCAM exhaustion -- so A3 and A4 had
+// ZERO positive leak-free windows in every split (measured 2026-08-28, all of
+// train/val/test). No A3/A4 score could be called leak-free. Their only label
+// path ran through is_spike, whose A3 leg is U_TCAM > benign-p99 and whose A4
+// leg falls back to delta_t; both of those ARE in FEATURES, i.e. a label that
+// is a transform of a model input -- the leakage class that is not permitted.
+//
+// Keyed by the VICTIM RSU (tcam_install_malicious's target_rsu_node_id), not
+// the attacker, because that is exactly what A3/A4 ground truth labels: "any
+// RSU holding >=1 malicious TCAM entry" (lstm_rsu_ground_truth_label(),
+// lstm_logger.h). For A3 (CP) attacker and victim are the same node; for A4
+// (DP) the attacker is a vehicle and only the victim RSU is ever read by an
+// RSU-indexed CSV row -- the same orphaning that motivated hf_send_gt's
+// covering-RSU attribution.
+//
+// Counts ATTEMPTS, including those refused with TABLE_FULL. A refused install
+// still means the attacker was actively attacking this RSU in this window --
+// indeed saturation is when S4's PACKET_IN signal is strongest -- so counting
+// only successful installs would mark the peak of the attack as benign.
+//
+// Label-only, emitted as tcam_send_gt, excluded from FEATURES like its two
+// siblings.
+std::map<uint32_t, uint32_t> g_lstm_tcam_sendgt_count;
+
 // 2026-07-28 (main.tex:5783-5794 spec correction): D_div/A_tp (eq:feat_ddiv,
 // eq:feat_atp) must be computed from "per-source per-destination byte counts"
 // and "per-flow directional byte rate logs" respectively -- genuinely

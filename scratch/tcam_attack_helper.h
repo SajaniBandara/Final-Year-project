@@ -775,6 +775,16 @@ inline void export_tcam_snapshot_baseline()
 // malicious purely from the flow_id magnitude.
 inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id, uint32_t fake_fid)
 {
+    // A3/A4 injection-side ground truth (2026-08-28). Latched HERE, at the top
+    // of the injector, so it counts the attacker's ATTEMPT rather than the
+    // outcome: the TABLE_FULL branch below refuses the install, but a refused
+    // install still means this RSU was under active attack this cycle -- and
+    // saturation is precisely when S4's PACKET_IN signal peaks, so counting
+    // only successful installs would label the strongest phase of the attack
+    // benign. Keyed by the victim RSU to match A3/A4 ground truth. Runs before
+    // any detector sees anything. See g_lstm_tcam_sendgt_count (crypto_layer.h).
+    g_lstm_tcam_sendgt_count[target_rsu_node_id]++;
+
     // node_id            = attacker's own node (source of the packet; used for src_ip).
     // target_rsu_node_id = the RSU whose TCAM this malicious FlowMod actually lands on.
     // For Attack 3 (CP), attacker and victim RSU are the same node, so that call

@@ -90,6 +90,7 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
     n_missing_gt = 0
     n_missing_std = 0
+    n_missing_tcam = 0
     for path in files:
         p = Path(path)
         attack_v, pct, seed = parse_run_name(p.stem)
@@ -113,11 +114,25 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
             if attack_v in (1, 2):
                 n_missing_std += 1
             df["std_send_gt"] = 0
+        # A3/A4's injection counter (2026-08-28), same treatment: only the TCAM
+        # variants can be harmed by its absence.
+        if "tcam_send_gt" not in df.columns:
+            if attack_v in (3, 4):
+                n_missing_tcam += 1
+            df["tcam_send_gt"] = 0
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
+    n_a34 = sum(1 for f in files if parse_run_name(Path(f).stem)[0] in (3, 4))
+    if n_missing_tcam:
+        print(f"  WARNING: {n_missing_tcam}/{n_a34} A3/A4 files predate the "
+              f"tcam_send_gt column. Those windows carry a BACKFILLED zero, so "
+              f"their y_indep label is unusable -- re-collect before trusting "
+              f"any A3/A4 score.")
+    elif n_a34:
+        print(f"  tcam_send_gt present on all {n_a34} A3/A4 files.")
     n_a12 = sum(1 for f in files if parse_run_name(Path(f).stem)[0] in (1, 2))
     if n_missing_std:
         print(f"  WARNING: {n_missing_std}/{n_a12} A1/A2 files predate the "
@@ -187,6 +202,7 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
         # Fix 2 (2026-08-27, supervisor item 6): A1/A2's injection-side
         # counter, the timing equivalent of hf_send_gt.
         stdgt  = grp["std_send_gt"].values.astype(np.float64)
+        tcamgt = grp["tcam_send_gt"].values.astype(np.float64)   # A3/A4
         cycles = grp["cycle"].values
         for i in range(0, len(grp) - window + 1, stride):
             # Drop the window starting at cycle 0: SUMO's own startup
@@ -216,7 +232,9 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             # time inside the attack injector, before any detector runs, and is
             # excluded from FEATURES, so it shares no computation path with
             # anything the model sees.
-            _inj = max(hfgt[i:i+window].max(), stdgt[i:i+window].max())
+            _inj = max(hfgt[i:i+window].max(),
+                       stdgt[i:i+window].max(),
+                       tcamgt[i:i+window].max())
             yi_list.append(1 if (av > 0 and _inj > 0) else 0)
             ym_list.append(int(av) if win_pos else 0)
             meta_list.append((rsu, av, pct, seed, int(cycles[i])))

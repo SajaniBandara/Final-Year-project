@@ -137,6 +137,9 @@ static std::vector<uint32_t> g_lstm_prev_hf_sendgt;
 // to build the A1/A2 ground-truth label, never fed to the model. Sized by
 // lstm_logger_init().
 static std::vector<uint32_t> g_lstm_prev_std_sendgt;
+// A3/A4 TCAM injection counter from the previous cycle (2026-08-28). Same
+// delta pattern as its hf_/std_ siblings; label-only, never a model feature.
+static std::vector<uint32_t> g_lstm_prev_tcam_sendgt;
 
 // ── D_div/A_tp (eq:feat_ddiv, eq:feat_atp): flow 0's legit-delivery delta,
 // computed ONCE PER CYCLE (not once per RSU) since lstm_log_rsu_cycle() is
@@ -221,9 +224,14 @@ static float               LSTM_HC_MULT = 2.0f;  // supervisor's starting multip
 static const char* LSTM_CSV_HEADER =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
-    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt";
+    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt,tcam_send_gt";
 // 2026-08-14..2026-08-25 format, 18 columns -- same as current but no
 // std_send_gt (appended at the very end).
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_19COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt";
+static const size_t LSTM_CSV_19COL_NCOLS = 19;
 [[maybe_unused]] static const char* LSTM_CSV_HEADER_18COL =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
@@ -408,7 +416,16 @@ inline void lstm_migrate_stale_header(const std::string& path)
             migrated_rows.push_back(row + ",0");
             ++n_migrated;
         }
-        else if (f.size() == 19)
+        else if (f.size() == LSTM_CSV_19COL_NCOLS)
+        {
+            // Pre-tcam_send_gt row (2026-08-27..2026-08-28): all 19 fields
+            // already in current order, missing only the trailing
+            // tcam_send_gt. Append 0 -- same "unknown, assume no injection"
+            // default every prior column addition used here.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == 20)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -417,7 +434,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
         {
             std::cerr << "[LSTM_LOGGER] WARNING: " << path
                        << " has a row with " << f.size()
-                       << " fields (expected 10/13/14/16/17/18 legacy or 19 current) — "
+                       << " fields (expected 10/13/14/16/17/18/19 legacy or 20 current) — "
                        << "left unmigrated: " << row << std::endl;
             migrated_rows.push_back(row);
             ++n_unexpected;
@@ -571,6 +588,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_prev_ranom.assign(n_rsus, 0);
     g_lstm_prev_hf_sendgt.assign(n_rsus, 0);
     g_lstm_prev_std_sendgt.assign(n_rsus, 0);
+    g_lstm_prev_tcam_sendgt.assign(n_rsus, 0);
     g_lstm_escalation_count.assign(n_rsus, 0);
     g_lstm_rsu_window.assign(n_rsus, {});
     g_lstm_last_score.assign(n_rsus, 0.0f);
@@ -911,6 +929,19 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if (r < g_lstm_prev_std_sendgt.size()) g_lstm_prev_std_sendgt[r] = cur_sgt;
     }
 
+    // ── tcam_send_gt (label-only, A3/A4 injection-side ground truth,
+    // 2026-08-28): delta of g_lstm_tcam_sendgt_count for this VICTIM RSU since
+    // last cycle. Closes the gap that left A3/A4 with no leak-free label at
+    // all -- see g_lstm_tcam_sendgt_count (crypto_layer.h).
+    double TCAM_SendGT = 0.0;
+    {
+        auto it = g_lstm_tcam_sendgt_count.find(rsu_sim_idx);
+        uint32_t cur_tg = (it != g_lstm_tcam_sendgt_count.end()) ? it->second : 0;
+        uint32_t prev_tg = (r < g_lstm_prev_tcam_sendgt.size()) ? g_lstm_prev_tcam_sendgt[r] : 0;
+        TCAM_SendGT = (cur_tg >= prev_tg) ? (double)(cur_tg - prev_tg) : 0.0;
+        if (r < g_lstm_prev_tcam_sendgt.size()) g_lstm_prev_tcam_sendgt[r] = cur_tg;
+    }
+
     // ── Features 9 & 10: D_div, A_tp (eq:feat_ddiv, eq:feat_atp; corrected
     // 2026-07-28 per main.tex:5783-5794). Both are computed from dedicated
     // local delivery counters populated at the MacRx receive sites in
@@ -1138,6 +1169,7 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << HF_SendGT
       << "," << (obs_exceeded_dmax ? 1 : 0)
       << "," << STD_SendGT
+      << "," << TCAM_SendGT
       << "\n";
     f.close();
 }
