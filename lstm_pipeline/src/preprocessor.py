@@ -89,6 +89,7 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
     if not files:
         raise FileNotFoundError(f"No CSVs found at {pattern}")
     n_missing_gt = 0
+    n_missing_std = 0
     for path in files:
         p = Path(path)
         attack_v, pct, seed = parse_run_name(p.stem)
@@ -97,11 +98,27 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         if "hf_send_gt" not in df.columns:
             n_missing_gt += 1
             df["hf_send_gt"] = 0
+        # Fix 2 (2026-08-27): A1/A2's injection-side ground truth. Files
+        # collected before the column existed get 0, which is CORRECT as a
+        # value ("no injection recorded") but WRONG as evidence -- a run that
+        # genuinely injected is indistinguishable from one that did not. The
+        # count is surfaced below so an evaluation can never silently rest on
+        # backfilled zeros.
+        if "std_send_gt" not in df.columns:
+            n_missing_std += 1
+            df["std_send_gt"] = 0
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
+    if n_missing_std:
+        n_std_atk = sum(1 for f in files
+                        if parse_run_name(Path(f).stem)[0] in (1, 2))
+        print(f"  WARNING: {n_missing_std}/{len(files)} files predate the std_send_gt "
+              f"column (18-col header). A1/A2 windows in those files carry a "
+              f"BACKFILLED zero, not a measurement -- their y_indep label is "
+              f"unusable. A1/A2 files present: {n_std_atk}.")
     if n_missing_gt:
         print(f"  WARNING: {n_missing_gt}/{len(files)} files predate the hf_send_gt column "
               f"(16-col header). HF (A5-A8) window labels fall back to zkp_delay_fail|"
@@ -159,6 +176,9 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
         vals   = grp[FEATURES].values.astype(np.float32)
         spikes = grp["is_spike"].values.astype(np.int8)   # per-row attack-active flag
         hfgt   = grp["hf_send_gt"].values.astype(np.float64)
+        # Fix 2 (2026-08-27, supervisor item 6): A1/A2's injection-side
+        # counter, the timing equivalent of hf_send_gt.
+        stdgt  = grp["std_send_gt"].values.astype(np.float64)
         cycles = grp["cycle"].values
         for i in range(0, len(grp) - window + 1, stride):
             # Drop the window starting at cycle 0: SUMO's own startup
@@ -175,7 +195,21 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             win_pos = 1 if (av > 0 and spikes[i:i+window].max() > 0) else 0
             X_list.append(vals[i:i+window])
             yb_list.append(win_pos)
-            yi_list.append(1 if (av > 0 and hfgt[i:i+window].max() > 0) else 0)
+            # y_indep, leak-free window label. Until Fix 2 this was hf_send_gt
+            # alone, which is nonzero ONLY for the HF variants -- so A1-A4 had
+            # no positive y_indep at all and could not be scored against a
+            # leak-free label. std_send_gt closes that for A1/A2.
+            #
+            # This matters more than symmetry: A1/A2's OTHER label path
+            # (is_spike, via delta_spike/delta_max_spike) is computed from
+            # delta_t, which IS in FEATURES -- a label that is a direct
+            # transform of a model input, i.e. exactly the leakage the
+            # supervisor ruled out. std_send_gt is latched at packet-scheduling
+            # time inside the attack injector, before any detector runs, and is
+            # excluded from FEATURES, so it shares no computation path with
+            # anything the model sees.
+            _inj = max(hfgt[i:i+window].max(), stdgt[i:i+window].max())
+            yi_list.append(1 if (av > 0 and _inj > 0) else 0)
             ym_list.append(int(av) if win_pos else 0)
             meta_list.append((rsu, av, pct, seed, int(cycles[i])))
     if not X_list:
