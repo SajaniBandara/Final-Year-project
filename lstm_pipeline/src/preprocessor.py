@@ -105,20 +105,28 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         # count is surfaced below so an evaluation can never silently rest on
         # backfilled zeros.
         if "std_send_gt" not in df.columns:
-            n_missing_std += 1
+            # Only A1/A2 can be HARMED by this. std_send_gt is the injection
+            # counter for the Selective Time Delay variants; every other run
+            # legitimately has nothing to record, so a backfilled zero there is
+            # the true value, not a gap. Counting all files would fire this
+            # warning on ~10k benign/HF files and train people to ignore it.
+            if attack_v in (1, 2):
+                n_missing_std += 1
             df["std_send_gt"] = 0
         df["attack_v"] = attack_v
         df["pct"]      = pct
         df["seed"]     = seed
         df["rsu_id"]   = rsu_id
         dfs.append(df)
+    n_a12 = sum(1 for f in files if parse_run_name(Path(f).stem)[0] in (1, 2))
     if n_missing_std:
-        n_std_atk = sum(1 for f in files
-                        if parse_run_name(Path(f).stem)[0] in (1, 2))
-        print(f"  WARNING: {n_missing_std}/{len(files)} files predate the std_send_gt "
-              f"column (18-col header). A1/A2 windows in those files carry a "
-              f"BACKFILLED zero, not a measurement -- their y_indep label is "
-              f"unusable. A1/A2 files present: {n_std_atk}.")
+        print(f"  WARNING: {n_missing_std}/{n_a12} A1/A2 files predate the "
+              f"std_send_gt column (18-col header). Those windows carry a "
+              f"BACKFILLED zero, not a measurement, so their y_indep label is "
+              f"unusable -- re-collect them before trusting any A1/A2 score.")
+    else:
+        print(f"  std_send_gt present on all {n_a12} A1/A2 files "
+              f"(injection-side ground truth, Fix 2).")
     if n_missing_gt:
         print(f"  WARNING: {n_missing_gt}/{len(files)} files predate the hf_send_gt column "
               f"(16-col header). HF (A5-A8) window labels fall back to zkp_delay_fail|"
