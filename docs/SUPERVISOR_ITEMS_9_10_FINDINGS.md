@@ -314,3 +314,80 @@ TWO THINGS THIS SURFACED THAT YOU SHOULD SEE.
    -- including against the 0.80 target. The underlying cause is that those
    variants' evaluation sets contain no negative windows at all after dedup,
    which is itself worth fixing before these numbers are reported anywhere.
+
+
+====================================================================
+ITEM 8 — ANSWERED. Corrected A3/A4 Q1-Q6, and what f_unauth actually does.
+====================================================================
+
+The corrected sweep ran clean: 12 configs, two lanes, all exit 0. These are
+the first A3/A4 numbers ever produced by S3/S4 rather than by an unrelated
+detector leaking through the OR-composite.
+
+    A3          TP     FP    FN     TN     MCC      prec    recall
+      Q1      1105    100   751   1756   +0.5782   0.917    0.595
+      Q2         0      0  1856   1856   +0.0000   --       0.000
+      Q3         0      0  1856   1856   +0.0000   --       0.000
+      Q4         0      0  1856   1856   +0.0000   --       0.000
+      Q5      1105    100   751   1756   +0.5782   0.917    0.595
+      Q6      1105    100   751   1756   +0.5782   0.917    0.595
+
+    A4          TP     FP    FN     TN     MCC      prec    recall
+      Q1      1897      0   742   1073   +0.6519   1.000    0.719
+      Q2         0      0  2639   1073   +0.0000   --       0.000
+      Q3         0      0  2639   1073   +0.0000   --       0.000
+      Q4         0      0  2639   1073   +0.0000   --       0.000
+      Q5      1897      0   742   1073   +0.6519   1.000    0.719
+      Q6      1897      0   742   1073   +0.6519   1.000    0.719
+
+YOUR QUESTION: is f_unauth firing on every unauthorized FlowMod, and if any
+are missed, is it a firing problem or a recording problem?
+
+Neither. It is a COVERAGE problem, and the distinction matters.
+
+When S3/S4 fires it is essentially always right: A4 precision is 1.000 --
+zero false positives across 1,897 detections -- and A3 is 0.917. That is the
+near-deterministic behaviour you expected, and it confirms the detector and
+its recording path are both sound.
+
+What it does not do is fire everywhere the attack is active. Recall is 0.595
+(A3) and 0.719 (A4), so 40% and 28% of genuinely attacked windows produce no
+firing at all. The design expectation of "close to 100% detection at 0% FPR"
+holds on the FPR half and fails on the detection half, and the gap is not
+mis-attribution or a lost record -- it is windows where the signal never
+presents at that RSU. Same family as A1/A2's sparse-signal limit under item
+10, different variant.
+
+THE Q5->Q6 COLLAPSE IS GONE. Q1, Q5 and Q6 are now identical to four decimal
+places on both variants. Adding LSTM, witness and BTMM changes A3/A4's score
+by exactly nothing, which is the correct behaviour: they are not those
+variants' primary detector and must not touch the primary column. A3's
+-0.007 is not "explained", it no longer exists -- it was an artefact of the
+LSTM leaking into a column it never belonged in.
+
+Monotonicity now holds on the A3/A4 ladders (rule-only -> full, flat rather
+than decreasing).
+
+Q2/Q3/Q4 correctly score zero. Those configs set g_disable_s3_s4=1 to isolate
+the crypto/LSTM/witness layers, and the primary column now honours that. The
+byte-identical-across-configs defect reported earlier is fixed.
+
+FOR COMPARISON, what the same cells reported before this correction:
+
+                 old (broken)     corrected
+    A3 Q1            0.318          0.578
+    A3 Q6           -0.007          0.578
+    A4 Q1            0.440          0.652
+    A4 Q6            0.426          0.652
+
+The old A3/A4 column was flag_S2f -- S2's timing detector responding to the
+TCAM slow-path delay -- plus, from Q6, ungated LSTM noise. Neither number was
+about TCAM detection.
+
+REMAINING CAVEAT ON A3/A4. These are window-level scores against the existing
+truth column. They are not yet LEAK-FREE: A3/A4 had no injection-side ground
+truth at all, the same gap Fix 2 closed for A1/A2. tcam_send_gt is now built
+(latched in tcam_install_malicious(), keyed by victim RSU, counting attempts
+including TABLE_FULL refusals) but the A3/A4 training data predates the
+column, so a re-collection is required before any A3/A4 figure can be called
+leak-free.
