@@ -391,3 +391,78 @@ truth at all, the same gap Fix 2 closed for A1/A2. tcam_send_gt is now built
 including TABLE_FULL refusals) but the A3/A4 training data predates the
 column, so a re-collection is required before any A3/A4 figure can be called
 leak-free.
+
+
+====================================================================
+ITEM 11 — temporal curve, A2, 5 seeds. The predicted shape is NOT there.
+====================================================================
+
+Full deployed system (everything live), A2 @60%, 5 seeds, 300 s, mean +/- sd
+across seeds at each time point. A single instantaneous point is never quoted;
+the script refuses to emit below 3 seeds.
+
+DETECTION over time -- flat, near ceiling, no rise and no fall:
+
+      t=2      MCC 0.913 +/-0.063   DR 1.000   FPR 0.107
+      t=52     MCC 0.923 +/-0.047   DR 1.000   FPR 0.076
+      t=112    MCC 0.955 +/-0.026   DR 1.000   FPR 0.035
+      t=182    MCC 0.932 +/-0.023   DR 1.000   FPR 0.059
+      t=237    MCC 0.969 +/-0.019   DR 1.000   FPR 0.027
+      t=282    MCC 0.887 +/-0.010   DR 0.993   FPR 0.107
+
+MCC sits in 0.89-0.97 for the whole run with a tight variance band. Detection
+rate is 1.000 at almost every point. There is no visible onset step and no
+post-quarantine improvement, because there is no headroom: the detector is
+already at ceiling from the first window.
+
+IMPACT over time -- TVR drifts DOWN slowly, UCR is identically zero:
+
+      t=1      TVR 26.54 +/-4.21    UCR 0.0000
+      t=50     TVR 24.74 +/-2.07    UCR 0.0000
+      t=113    TVR 23.79 +/-0.84    UCR 0.0000
+      t=190    TVR 23.11 +/-0.81    UCR 0.0000
+      t=295    TVR 23.05 +/-1.62    UCR 0.0000
+
+TVR falls 26.5% -> 23.1% across the run. That is movement in the direction
+your architecture predicts, but it is a slow monotonic drift of ~3.5 points,
+not a rise-plateau-fall. Note also that TVR is at its HIGHEST at t=1, before
+the attack starts at t=10 -- so the early value is dominated by startup
+transient, not by the attack, and the "decline" is partly that transient
+clearing rather than quarantine engaging.
+
+The variance band tightens sharply over the run (+/-4.21 at t=1 down to
++/-0.81 by t=190), which is itself the clearest temporal signal in the data:
+the system becomes more CONSISTENT across seeds even though its mean level
+barely moves.
+
+UCR = 0.0000 with zero variance at every point is CORRECT here, not a bug, and
+the reason matters for how item 11 should be run. UCR's numerator is
+fade_eavesdrop_counter (routing.cc ~117732) -- hidden duplicates actually
+received by an eavesdropper. That is a Hidden Forwarding mechanism. A2 is a
+timing attack with no eavesdropper and no duplicates, so the counter never
+increments and UCR is structurally zero for this variant.
+
+So the paper's claim that "TVR/UCR rise during an attack and return toward
+zero after quarantine" cannot be evaluated on A2 at all for the UCR half. A
+passive-HF variant is required. A8 @60%, 5 seeds, is running now for exactly
+that, and we will send the HF curve separately.
+
+WHAT THIS MEANS FOR THE RUN-LENGTH QUESTION YOU LEFT OPEN.
+
+300 s is not the limitation. The curve is flat because detection saturates
+immediately, not because the window is too short to show a trend, so extending
+to 600 s or 900 s would produce a longer flat line rather than revealing the
+shape. If the rise-and-fall is to be demonstrated on A2, the variable to
+change is attack onset and intensity -- something that creates headroom for
+performance to move -- not run duration. We have not changed either; flagging
+it as the decision the data actually points to.
+
+ONE NUMBER THAT NEEDS YOUR ATTENTION. A2 detection here reads MCC ~0.93 and
+DR ~1.00, against 0.431 in the Q1-Q6 table and 0.464 in the Fix 2 rescore.
+Two differences could account for it and we have not yet separated them:
+these runs use the default 100 ms injected delay (the ablation forces exactly
+80 ms), and they include your item 1 -- S1 now marks the RSU primary column,
+which it never did before. If item 1 is the dominant cause, that is the "lift
+A1/A2 meaningfully" effect you predicted, and it is much larger than expected.
+An 80 ms A2 run on the current binary isolates the two; it is one 50-minute
+job and we will queue it.
