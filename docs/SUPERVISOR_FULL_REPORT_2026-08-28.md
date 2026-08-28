@@ -545,3 +545,52 @@ We are not asking you to move the target — we are flagging that three of the
 four sources of expected upside did not materialise as expected, so the
 decision should be made against these numbers rather than the earlier
 expectation.
+
+
+====================================================================
+ADDENDUM 1 — ITEM 2, measured. The two recall numbers differ by 40 points.
+====================================================================
+
+The truth_declared column is now live in real output and both numbers have
+been computed. Your instruction to report both was well placed: on A2 they are
+not close.
+
+A2 @60%, full system, 5 seeds:
+
+    seed      MCC      prec    rec_acted    rec_declared
+      1    0.9218     0.919        0.996           0.596
+      2    0.9414     0.936        1.000           0.581
+      3    0.9336     0.931        0.997           0.616
+      4    0.9279     0.925        0.999           0.665
+      5    0.9256     0.920        0.997           0.535
+
+    rec_acted     mean 0.998 +/- 0.001
+    rec_declared  mean 0.599 +/- 0.043
+    gap           39.9 percentage points
+
+Quoting rec_acted alone would claim essentially perfect recall. Quoting
+rec_declared alone would report roughly 60%. Both are true statements about
+different questions, and the 40-point spread is exactly the kind of thing a
+reviewer would catch if only one appeared. They will both appear.
+
+Note also the variance: rec_acted is stable across seeds (+/-0.001) while
+rec_declared swings +/-0.043. The acted number measures the detector; the
+declared number additionally measures how many attackers happened to get an
+opportunity to act, which is a property of the mobility trace and varies by
+seed.
+
+WHERE THE DISTINCTION IS VACUOUS. On A3/A4 the two are IDENTICAL:
+
+    A3 Q1/Q6   rec_acted 0.595   rec_declared 0.595
+    A4 Q1/Q6   rec_acted 0.719   rec_declared 0.719
+
+That is correct and worth stating in the paper rather than looking like an
+error. A3/A4 ground truth is "any RSU holding at least one malicious TCAM
+entry", and an installed entry persists — the victim RSU stays in the attacked
+state continuously, so there is no dormant period for the activity gate to
+exclude. The declared and acted sets are the same set.
+
+So the dual reporting is load-bearing for the timing variants, where attackers
+idle between packets, and vacuous for the TCAM variants, where the attack
+state is persistent. We will present it that way rather than implying the gate
+matters everywhere.
