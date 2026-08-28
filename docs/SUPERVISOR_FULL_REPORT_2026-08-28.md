@@ -594,3 +594,106 @@ So the dual reporting is load-bearing for the timing variants, where attackers
 idle between packets, and vacuous for the TCAM variants, where the attack
 state is persistent. We will present it that way rather than implying the gate
 matters everywhere.
+
+
+====================================================================
+ADDENDUM 2 — ITEM 1 ISOLATED. It is worth +0.52 MCC on A2, not a rounding.
+====================================================================
+
+The open question from item 11 was whether A2's MCC ~0.93 came from item 1 or
+from the delay parameter (those runs use the default 100 ms; the ablation
+forces exactly 80 ms). We reran A2 at EXACTLY 80 ms on the current binary, so
+the delay is held constant and only the binary differs.
+
+    A2 @60%, 80 ms exact, seed 1, full system
+
+    binary                      MCC     prec   rec_acted    TP    FP    FN
+    OLD (pre item 1)         0.3973    0.867       0.343   556    85  1063
+    NEW (with item 1)        0.9207    0.915       0.999  1618   151     1
+
+The delay parameter is identical in both rows. The entire difference is item 1
+-- S1 now marking the RSU primary column instead of earning credit nowhere.
+
+    MCC        0.397 -> 0.921   (+0.524)
+    recall     0.343 -> 0.999
+    false negs  1063 -> 1
+
+Precision also IMPROVED, 0.867 -> 0.915, so this is not a recall-for-precision
+trade. It is strictly better on both axes.
+
+Your instinct on item 1 was right and the effect is much larger than you
+predicted. What was wrong was only the mechanism: pooling OBU rows would have
+destroyed A1 (0.74 -> 0.17, section 1 above) because A1's OBU truth is
+all-zero by construction. Routing S1's detection to the RSU it already accuses
+achieves the same goal inside coherent ground truth, and this is the result.
+
+A2 now clears both the 0.65 floor and the 0.80 gate on this configuration.
+We have not yet reproduced this across the full Q1-Q6 grid or for A1; that
+rerun is the obvious next step and we will queue it.
+
+
+====================================================================
+ADDENDUM 3 — ITEM 11, A8. The predicted curve IS there. It was A2 that hid it.
+====================================================================
+
+A8 @60%, 5 seeds, 300 s, full system, mean +/- sd across seeds.
+
+DETECTION -- the onset rise you predicted is clearly present:
+
+      t=2      MCC 0.375 +/-0.108   DR 0.236   FPR 0.004
+      t=7      MCC 0.721 +/-0.042   DR 0.757   FPR 0.023
+      t=12     MCC 0.839 +/-0.029   DR 0.917   FPR 0.067
+      t=32     MCC 0.874 +/-0.025   DR 0.955   FPR 0.085
+      t=62     MCC 0.872 +/-0.034   DR 0.962   FPR 0.098
+      t=92     MCC 0.812 +/-0.031   DR 0.994   FPR 0.206
+      t=152    MCC 0.815 +/-0.030   DR 0.993   FPR 0.189
+      t=242    MCC 0.847 +/-0.054   DR 0.976   FPR 0.140
+      t=272    MCC 0.841 +/-0.054   DR 0.971   FPR 0.141
+
+MCC climbs 0.375 -> 0.874 over the first 30 seconds, which is the detector
+coming up as the attack establishes. It then holds 0.79-0.88 for the rest of
+the run. Detection rate keeps rising to ~0.99 and stays there; the mid-run MCC
+dip is driven by FPR climbing to ~0.21 around t=92-122 and then recovering to
+~0.14, not by lost detections.
+
+UCR -- and here is the rise-and-fall the paper claims:
+
+      t=1      UCR  0.0000 +/-0.0000
+      t=8      UCR  0.0000 +/-0.0000
+      t=15     UCR 14.6667 +/-4.9889     <- attack starts at t=10
+      t=22     UCR 10.0000 +/-3.3333
+      t=29     UCR  0.0000 +/-0.0000     <- quarantine engaged
+      t=50     UCR  1.5385 +/-3.0769
+      t=64     UCR  1.5385 +/-3.0769
+      t=148    UCR  1.1765 +/-2.3529
+      t>=155   UCR  0.0000 throughout
+
+Zero before the attack, a sharp spike to 14.7 immediately after onset, decay
+through 10.0, and back to zero by t=29 -- then only small isolated blips
+(1.2-1.5, each within one standard deviation of zero) and flat zero for the
+final 140 seconds. That is precisely the shape main.tex describes: unauthorised
+copies surge when the attack begins and are driven back toward zero once trust
+decay quarantines the offending nodes.
+
+So item 11's answer is variant-dependent, and our first attempt simply picked
+the wrong variant:
+
+    A2 (timing)   detection flat at ceiling from t=0, no headroom for a curve;
+                  UCR structurally 0 (no eavesdropper exists in this attack).
+    A8 (passive HF) detection shows a clear onset rise; UCR shows the full
+                  rise-and-fall.
+
+TVR is 0.0000 throughout on A8, which is the mirror image and equally correct:
+TVR measures safety-critical packet delay against Delta_max, and hidden
+forwarding does not delay packets. So neither variant exercises both metrics --
+A2 drives TVR and cannot drive UCR, A8 drives UCR and cannot drive TVR. Any
+figure claiming "TVR and UCR both rise and fall" needs to be drawn from two
+variants side by side, not one, and we suggest presenting it that way.
+
+REVISING WHAT WE SAID ABOUT RUN LENGTH. On the A2 evidence alone we told you
+300 s was not the limitation and that onset/intensity was the variable to
+change. The A8 data shows the curve is fully resolved inside 300 s -- rise
+completes by t=30, quarantine drives UCR to zero by t=29, and the remaining
+270 seconds are flat. A longer run would add flat tail, not shape. So 300 s is
+the right duration; the earlier concern about needing to change onset applies
+only to A2, where the detector has no headroom to begin with.
