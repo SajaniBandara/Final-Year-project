@@ -1,0 +1,14 @@
+# MOBIGUARD demo GUI -- backend dependencies.
+#
+# Deliberately short. The Phase 0 data layer (schema/parser/catalog/aggregate)
+# is stdlib-only, so nothing here is needed to parse or aggregate results --
+# only to serve them over HTTP. See docs/GUI_IMPLEMENTATION_PLAN.md section 2.
+#
+#   python -m pip install -r gui/requirements.txt
+#   python -m uvicorn gui.backend.app:app --reload
+
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+
+# Test-only: fastapi.testclient requires httpx at runtime.
+httpx>=0.27,<1.0
