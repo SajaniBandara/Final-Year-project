@@ -428,3 +428,67 @@ table.confusion td.fp, table.confusion td.fn { color: var(--status-critical); }
 .source-badge[data-mode="replay"] {
   color: var(--text-secondary);
 }
+
+/* --- federated LSTM panel ------------------------------------------------ */
+
+.hero-figure {
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* Rule-based rows are badged so an "LSTM detection quality" table never
+ * implies the model produced a number the S3/S4 rules produced. */
+.badge-rule { color: var(--status-serious); border-color: var(--status-serious); }
+
+/* An MCC that cannot be computed. Not styled as a value, because it is not
+ * one -- and emphatically not rendered as 0. */
+.undefined {
+  color: var(--status-serious);
+  font-style: italic;
+  border-bottom: 1px dotted var(--status-serious);
+  cursor: help;
+}
+
+table.data tr.row-total td { font-weight: 650; border-top: 2px solid var(--axis); }
+table.data tr.row-selected td { background: color-mix(in srgb, var(--status-good) 12%, transparent); }
+
+/* Part-to-whole track. 2px surface gaps keep adjacent fills separable. */
+.stack-track {
+  display: flex;
+  height: 30px;
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 2px;
+  background: var(--surface-page);
+}
+.stack-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 650;
+  min-width: 2px;
+}
+
+table.heatmap td.cell-heat {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  /* 2px surface gap between adjacent fills, per the mark spec. */
+  border: 2px solid var(--surface-1);
+  border-radius: 3px;
+}
+table.heatmap td.cell-empty { text-align: center; color: var(--text-muted); }

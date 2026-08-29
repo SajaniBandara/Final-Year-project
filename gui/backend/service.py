@@ -32,6 +32,7 @@ from typing import Iterable, Sequence
 from . import aggregate, schema
 from .catalog import REPO_ROOT, Catalog, RunFile
 from .parser import Run, SchemaError, parse_file
+from .lstm import panel as lstm_panel
 from .stream import make_source
 
 #: Simulated time at which attack injection begins. Fixed at 10.0 s because the
@@ -315,6 +316,14 @@ class ResultsService:
             )
         except ValueError as exc:
             raise BadRequestError(str(exc)) from exc
+
+    def lstm_panel(self) -> dict[str, object]:
+        """Federated-LSTM results from the committed lstm_pipeline JSONs.
+
+        Independent of ``results_routing/``: these files are git-tracked and
+        current, so this panel is unaffected by the staleness of the CSV copy.
+        """
+        return lstm_panel()
 
     def figures(self) -> dict[str, object]:
         """The committed thesis figures under ``output/``, grouped by directory."""

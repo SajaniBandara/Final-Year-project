@@ -413,3 +413,163 @@ export function renderTable(container, { series, xHeader, unit }) {
   container.innerHTML = '';
   container.appendChild(scroll);
 }
+
+/**
+ * Sequential blue ramp (light -> dark), for magnitude encoding.
+ *
+ * Used by the heatmap. For an ordinal ramp on the light surface the step
+ * nearest the surface must still clear 2:1, so discrete marks start at index 3
+ * (step 250) rather than index 0.
+ */
+export const SEQUENTIAL_BLUE = [
+  '#cde2fb', '#b7d3f6', '#9ec5f4', '#86b6ef', '#6da7ec', '#5598e7', '#3987e5',
+  '#2a78d6', '#256abf', '#1c5cab', '#184f95', '#104281', '#0d366b',
+];
+
+/** Map a 0..1 magnitude onto the sequential ramp. */
+export function sequentialColor(t) {
+  if (!Number.isFinite(t)) return 'var(--grid)';
+  const clamped = Math.max(0, Math.min(1, t));
+  const index = Math.round(clamped * (SEQUENTIAL_BLUE.length - 1));
+  return SEQUENTIAL_BLUE[index];
+}
+
+/**
+ * Vertical bar chart for comparing magnitude across categories.
+ *
+ * One hue for every bar: the bar's *length* encodes magnitude, so colouring
+ * bars differently would imply an identity distinction that is not there.
+ *
+ * @param {object} config
+ * @param {Array} config.bars [{ label, value, note }] -- `note` marks a bar
+ *   whose value is not comparable (e.g. an undefined MCC), drawn as a gap.
+ */
+export function renderBarChart(container, { bars = [], unit = 'count', yLabel = '' }) {
+  container.innerHTML = '';
+  const drawable = bars.filter((b) => b && Number.isFinite(b.value));
+  if (!bars.length) {
+    container.innerHTML = '<p class="empty">No data.</p>';
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-wrap';
+  container.appendChild(wrap);
+
+  const height = 320;
+  const pad = { top: 18, right: 16, bottom: 86, left: 64 };
+  const plotW = VIEW.w - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+
+  const svg = el('svg', {
+    viewBox: `0 0 ${VIEW.w} ${height}`,
+    role: 'img',
+    'aria-label': yLabel,
+    preserveAspectRatio: 'xMidYMid meet',
+  });
+  wrap.appendChild(svg);
+
+  const maxValue = Math.max(0, ...drawable.map((b) => b.value));
+  const scale = niceScale(0, maxValue || 1);
+  const sy = (v) => pad.top + plotH - ((v - scale.lo) / (scale.hi - scale.lo)) * plotH;
+
+  for (let v = scale.lo; v <= scale.hi + scale.step / 2; v += scale.step) {
+    const y = sy(v);
+    el('line', {
+      x1: pad.left, x2: pad.left + plotW, y1: y, y2: y,
+      stroke: 'var(--grid)', 'stroke-width': 1,
+    }, svg);
+    el('text', {
+      x: pad.left - 10, y: y + 4, 'text-anchor': 'end',
+      fill: 'var(--text-muted)', 'font-size': 11,
+    }, svg).textContent = formatTick(v, unit);
+  }
+
+  const slot = plotW / bars.length;
+  const barWidth = Math.min(46, slot * 0.62);
+
+  bars.forEach((bar, index) => {
+    const cx = pad.left + slot * (index + 0.5);
+
+    if (Number.isFinite(bar.value)) {
+      const y = sy(bar.value);
+      el('rect', {
+        x: cx - barWidth / 2, y, width: barWidth,
+        height: Math.max(0, pad.top + plotH - y),
+        // 4px rounded data-end, anchored to the baseline.
+        rx: 4, ry: 4,
+        fill: 'var(--series-1)',
+      }, svg);
+      el('text', {
+        x: cx, y: y - 6, 'text-anchor': 'middle',
+        fill: 'var(--text-secondary)', 'font-size': 11,
+      }, svg).textContent = formatValue(bar.value, unit);
+    } else {
+      // Not a zero bar: an explicit gap, so an uncomputable value is never
+      // read as "scored nothing".
+      el('text', {
+        x: cx, y: pad.top + plotH - 8, 'text-anchor': 'middle',
+        fill: 'var(--text-muted)', 'font-size': 11, 'font-style': 'italic',
+      }, svg).textContent = bar.note || 'n/a';
+    }
+
+    const label = el('text', {
+      x: cx, y: pad.top + plotH + 16, 'text-anchor': 'end',
+      fill: 'var(--text-muted)', 'font-size': 11,
+      transform: `rotate(-40 ${cx} ${pad.top + plotH + 16})`,
+    }, svg);
+    label.textContent = bar.label;
+  });
+
+  el('line', {
+    x1: pad.left, x2: pad.left + plotW, y1: pad.top + plotH, y2: pad.top + plotH,
+    stroke: 'var(--axis)', 'stroke-width': 1,
+  }, svg);
+}
+
+/**
+ * Single horizontal part-to-whole bar.
+ *
+ * Only honest when the segments sum to the whole, which the backend test
+ * enforces for the federated rejection breakdown.
+ */
+export function renderStackedBar(container, { segments = [], total, unit = 'count' }) {
+  container.innerHTML = '';
+  const sum = total || segments.reduce((acc, s) => acc + s.count, 0);
+  if (!sum) {
+    container.innerHTML = '<p class="empty">No data.</p>';
+    return;
+  }
+
+  const track = document.createElement('div');
+  track.className = 'stack-track';
+  segments
+    .filter((s) => s.count > 0)
+    .forEach((segment) => {
+      const cell = document.createElement('div');
+      cell.className = 'stack-seg';
+      cell.style.flexGrow = String(segment.count);
+      cell.style.background = segment.color;
+      cell.title = `${segment.label}: ${segment.count} of ${sum}`;
+      cell.textContent = segment.count >= sum * 0.08 ? String(segment.count) : '';
+      track.appendChild(cell);
+    });
+  container.appendChild(track);
+
+  const legend = document.createElement('div');
+  legend.className = 'legend';
+  segments.forEach((segment) => {
+    const item = document.createElement('span');
+    item.className = 'item';
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = segment.color;
+    swatch.style.height = '10px';
+    item.append(
+      swatch,
+      document.createTextNode(`${segment.label} — ${formatValue(segment.count, unit)}`)
+    );
+    legend.appendChild(item);
+  });
+  container.appendChild(legend);
+}

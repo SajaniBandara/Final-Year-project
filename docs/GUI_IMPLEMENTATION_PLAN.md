@@ -217,7 +217,8 @@ WS   /ws/stream?run_id=&mode=&speed=
 | **0** | **DONE** — `schema.py` + `catalog.py` + `parser.py` + `aggregate.py`, 38 stdlib `unittest` tests green (`python -m unittest gui.tests.test_phase0`). All 48 local CSVs decode; both widths exercised (36 narrow, 12 wide); recomputed MCC/DR/FPR agree with the reported columns to 5.0e-05 | — |
 | **1a** | **DONE** — FastAPI read API over Phase 0 (`service.py` + `app.py`), 25 tests. Routes: health/refresh/catalog/metrics/series/summary/sweep/figures. | Phase 0 |
 | **1b** | **DONE** — Offline Analytics + Thesis Figures frontend: sweep chart with CI error bars, run detail (KPI tiles, per-cycle trend, confusion matrix + recomputation), figures gallery. Hand-rolled SVG, theme-aware, table view on every chart. | Phase 1a |
-| **1c** | *Remaining:* the panels needing their own parsers — blockchain (`bc_*.csv`), crypto timing, TCAM occupancy/snapshots, federated-LSTM (`lstm_pipeline/*.json`), and the B1/B2/B3 baseline comparison. Not blocked; just not built yet. | Phase 1a |
+| **1c-i** | **DONE** — Federated LSTM tab (`lstm.py` + `/api/panels/lstm` + `js/lstm.js`), 16 tests: per-variant detection quality, BRFA-v2 poisoning (M8), federated rejection breakdown, AB2/AB3 ablations, mobility-stratified MCC heatmap. Built first because `lstm_pipeline/*.json` are **git-tracked and current (2026-08-29)** while every CSV is a month stale — this is the only tab whose numbers are up to date. | Phase 1a |
+| **1c-ii** | *Remaining:* blockchain (`bc_*.csv` — note some are 600 MB, needs a streaming reader), crypto timing, TCAM occupancy/snapshots, and the B1/B2/B3 baseline comparison (`fade_results_*` are local; `sfto_pipeline/results/*.csv` are git-tracked). | Phase 1a |
 | **2** | **DONE** — Live PEM Monitor. `stream.py` holds both sources behind one contract (`ReplaySource`, `TailSource`), `/ws/stream` serves them, and the Live tab renders KPI tiles, a rolling chart, an integrity/consensus strip and a detection-event feed. 15 tests. Built as one module rather than the planned separate `replay.py`/`live.py`: both are ~40 lines around the same `RowDecoder`, and splitting them would have invited exactly the contract drift the design exists to prevent. | Phase 0 |
 | **3** *(optional)* | Topology view (8x8 RSU grid, 4 controllers, RSUs tinted by TCAM occupancy, suspects flashing as signatures fire) + verification/evidence tab rendering the equation-audit and functional-verification logs | needs new per-cycle per-RSU emission in `routing.cc` + an HPC rebuild |
 
@@ -295,6 +296,36 @@ carry more seeds)* All 48 CSVs are seed 1, so every sweep point is `n=1` with
 "n=1, no CI" rather than a zero-width error bar implying perfect precision. The
 published figures in `output/` do show CIs, so they came from seeds this copy
 lacks.
+
+**D. Four variants report `MCC = 0.0` in `evaluation_results.json` when MCC is
+actually *undefined*.** *(unaffected by CSV staleness — these JSONs are current)*
+
+MCC's denominator is `(TP+FP)(TP+FN)(TN+FP)(TN+FN)`. Any zero factor makes it
+uncomputable, and the pipeline stores `0.0` in that case:
+
+| Variant | TP | TN | FP | FN | stored MCC | DR | why undefined |
+|---|---|---|---|---|---|---|---|
+| Benign | 0 | 1626 | 38 | 0 | 0.0 | 0.0 | no positives (TP=FN=0) |
+| A5 CP-ActiveHF | — | 0 | 0 | — | 0.0 | 0.244 | no true negatives |
+| **A6 DP-ActiveHF** | 7175 | **0** | **0** | 1145 | **0.0** | **0.862** | no true negatives |
+| A7 CP-PassiveHF | — | 0 | 0 | — | 0.0 | 0.241 | no true negatives |
+
+**A6 detects 86% of its attack windows and reports MCC 0.0.** Anyone reading the
+JSON — or a chart built naively from it — would conclude the detector fails
+completely on Hidden Forwarding. It does not; the *metric* has no meaning on an
+evaluation set containing no true negatives.
+
+The GUI marks these "undefined" with the reason on hover and draws a labelled
+gap rather than a zero-height bar (`gui/backend/lstm.py::mcc_status`). **But the
+underlying question is for the thesis, not the GUI:** if three of four HF
+variants cannot be scored by MCC, then either the HF evaluation set needs
+negatives, or HF results should be reported on a metric that is defined there
+(DR/FPR, or precision-recall). Worth settling before the viva — "why is your MCC
+zero when your detection rate is 86%?" is a question that will be asked.
+
+Related: A3/A4 carry `is_rule_based: true` / `source: "rule_based_S3_S4"` — the
+TCAM variants are caught by the S3/S4 rules, not the model, and the GUI badges
+them so an "LSTM detection quality" panel never claims credit for them.
 
 **C. Attacks 1, 3 and 4 have non-monotone / saturating attacker counts.**
   *(staleness-affected — **re-verify against fresh results before raising it

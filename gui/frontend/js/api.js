@@ -74,6 +74,8 @@ export const api = {
         })
     ),
 
+  lstmPanel: () => request('/api/panels/lstm'),
+
   figures: () => request('/api/figures'),
   figureUrl: (path) => `/api/figures/${path}`,
 };

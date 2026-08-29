@@ -217,6 +217,16 @@ def sweep(
     )
 
 
+@app.get("/api/panels/lstm", tags=["analysis"])
+def lstm_panel(service: ResultsService = Depends(get_service)) -> dict[str, object]:
+    """Federated-LSTM detection quality, poisoning robustness and ablations.
+
+    Degenerate MCC values are flagged rather than reported as zero, and
+    rule-based (S3/S4) rows are marked so they are not read as LSTM results.
+    """
+    return service.lstm_panel()
+
+
 @app.get("/api/figures", tags=["figures"])
 def figures(service: ResultsService = Depends(get_service)) -> dict[str, object]:
     """The committed thesis figures under ``output/``, grouped by directory."""

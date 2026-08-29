@@ -9,6 +9,7 @@
 import { api, ApiError } from './api.js';
 import { initFigures } from './figures.js';
 import { initLive, stopLive } from './live.js';
+import { initLstm } from './lstm.js';
 import { initOffline } from './offline.js';
 
 const THEME_KEY = 'mobiguard-gui-theme';
@@ -96,6 +97,7 @@ async function main() {
   const panels = {
     offline: document.querySelector('#panel-offline'),
     live: document.querySelector('#panel-live'),
+    lstm: document.querySelector('#panel-lstm'),
     figures: document.querySelector('#panel-figures'),
   };
   initTabs(panels);
@@ -124,6 +126,7 @@ async function main() {
       await initOffline(panels.offline, catalog);
       initLive(panels.live, catalog);
     }
+    await initLstm(panels.lstm);
     await initFigures(panels.figures);
   } catch (error) {
     const hint =
