@@ -32,6 +32,7 @@ from typing import Iterable, Sequence
 from . import aggregate, schema
 from .catalog import REPO_ROOT, Catalog, RunFile
 from .parser import Run, SchemaError, parse_file
+from .crypto import panel as crypto_panel
 from .lstm import panel as lstm_panel
 from .stream import make_source
 from .verification import panel as verification_panel, run_audit
@@ -69,6 +70,9 @@ class ResultsService:
         self._catalog: Catalog | None = None
         # key -> parsed runs, keyed on file identity so a re-copy self-invalidates.
         self._run_cache: dict[tuple[str, float, int], list[Run]] = {}
+        # Crypto logs are ~105k rows each (~0.4 s to parse), so one analysed
+        # run is memoised; the panel re-parses only when the selection changes.
+        self._crypto_cache: dict[str, dict[str, object]] = {}
 
     # --- catalog lifecycle --------------------------------------------------
 
@@ -86,6 +90,7 @@ class ResultsService:
         """
         self._catalog = None
         self._run_cache.clear()
+        self._crypto_cache.clear()
         return self.catalog
 
     def _load(self, run_file: RunFile) -> list[Run]:
@@ -317,6 +322,17 @@ class ResultsService:
             )
         except ValueError as exc:
             raise BadRequestError(str(exc)) from exc
+
+    def crypto_panel(self, run_id: str | None = None) -> dict[str, object]:
+        """Crypto and integrity overhead (M7) for one run.
+
+        Memoised per run id: each log is ~105k rows, cheap enough to parse on
+        demand but not on every request.
+        """
+        key = run_id or "__default__"
+        if key not in self._crypto_cache:
+            self._crypto_cache[key] = crypto_panel(run_id, self._results_dir)
+        return self._crypto_cache[key]
 
     def lstm_panel(self) -> dict[str, object]:
         """Federated-LSTM results from the committed lstm_pipeline JSONs.

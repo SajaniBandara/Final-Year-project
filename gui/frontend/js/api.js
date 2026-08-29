@@ -75,6 +75,7 @@ export const api = {
     ),
 
   lstmPanel: () => request('/api/panels/lstm'),
+  cryptoPanel: (runId) => request('/api/panels/crypto' + query({ run_id: runId })),
   verification: () => request('/api/verification'),
   rerunAudit: () => request('/api/verification/audit', { method: 'POST' }),
 

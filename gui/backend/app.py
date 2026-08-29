@@ -217,6 +217,19 @@ def sweep(
     )
 
 
+@app.get("/api/panels/crypto", tags=["analysis"])
+def crypto_panel(
+    run_id: str | None = Query(None, description="Crypto log to analyse; first run if omitted."),
+    service: ResultsService = Depends(get_service),
+) -> dict[str, object]:
+    """Per-operation crypto overhead (M7).
+
+    The log's ``result`` column means different things per operation, so no
+    combined pass/fail rate is reported -- each row carries its own meaning.
+    """
+    return service.crypto_panel(run_id)
+
+
 @app.get("/api/panels/lstm", tags=["analysis"])
 def lstm_panel(service: ResultsService = Depends(get_service)) -> dict[str, object]:
     """Federated-LSTM detection quality, poisoning robustness and ablations.

@@ -9,6 +9,7 @@
 import { api, ApiError } from './api.js';
 import { initFigures } from './figures.js';
 import { initLive, stopLive } from './live.js';
+import { initCrypto } from './crypto.js';
 import { initLstm } from './lstm.js';
 import { initVerification } from './verification.js';
 import { initOffline } from './offline.js';
@@ -99,6 +100,7 @@ async function main() {
     offline: document.querySelector('#panel-offline'),
     live: document.querySelector('#panel-live'),
     lstm: document.querySelector('#panel-lstm'),
+    crypto: document.querySelector('#panel-crypto'),
     verification: document.querySelector('#panel-verification'),
     figures: document.querySelector('#panel-figures'),
   };
@@ -129,6 +131,7 @@ async function main() {
       initLive(panels.live, catalog);
     }
     await initLstm(panels.lstm);
+    await initCrypto(panels.crypto);
     await initVerification(panels.verification);
     await initFigures(panels.figures);
   } catch (error) {
