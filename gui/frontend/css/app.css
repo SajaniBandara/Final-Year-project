@@ -407,3 +407,24 @@ table.confusion td.fp, table.confusion td.fn { color: var(--status-critical); }
   padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* --- live source badge ---------------------------------------------------
+ * States which source is feeding the chart. Not decoration: "is this actually
+ * running, or a recording?" is a question the demo must answer on sight.
+ */
+.source-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.source-badge[data-mode="live"] {
+  color: var(--status-good);
+  border-color: var(--status-good);
+}
+.source-badge[data-mode="replay"] {
+  color: var(--text-secondary);
+}

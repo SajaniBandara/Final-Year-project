@@ -22,11 +22,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .catalog import REPO_ROOT
+from .parser import SchemaError
 from .service import BadRequestError, NotFoundError, ResultsService, ServiceError
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,56 @@ def figures(service: ResultsService = Depends(get_service)) -> dict[str, object]
 def figure(path: str, service: ResultsService = Depends(get_service)) -> FileResponse:
     """Serve one figure PNG by the ``path`` returned from ``/api/figures``."""
     return FileResponse(service.figure_path(path), media_type="image/png")
+
+
+# --- live / replay stream ----------------------------------------------------
+
+
+@app.websocket("/ws/stream")
+async def stream(
+    websocket: WebSocket,
+    run_id: str = Query(..., description="Run to stream."),
+    mode: str = Query("replay", description="'replay' a finished run, or 'live' tail a growing one."),
+    speed: float = Query(1.0, description="Replay speed multiplier; ignored when mode=live."),
+    from_start: bool = Query(True, description="Live mode: include rows already written."),
+    service: ResultsService = Depends(get_service),
+) -> None:
+    """Stream one run's cycles to the Live PEM Monitor.
+
+    Replay and live emit an identical message sequence -- one ``meta``, then a
+    ``cycle`` per routing cycle, then ``end`` -- so the UI renders them the same
+    way and only the labelled ``source`` differs. HTTP exception handlers do not
+    apply to WebSockets, so errors are sent as an ``error`` message before close.
+    """
+    await websocket.accept()
+
+    try:
+        await websocket.send_json(service.stream_meta(run_id, mode))
+        source = service.stream_source(
+            run_id, mode=mode, speed=speed, from_start=from_start
+        )
+    except ServiceError as exc:
+        await websocket.send_json({"type": "error", "detail": str(exc)})
+        await websocket.close()
+        return
+
+    try:
+        async for cycle in source:
+            await websocket.send_json(cycle.to_message())
+        # Only replay terminates on its own; a live tail runs until disconnect.
+        await websocket.send_json({"type": "end", "reason": "complete"})
+    except WebSocketDisconnect:
+        return
+    except (FileNotFoundError, SchemaError) as exc:
+        await websocket.send_json({"type": "error", "detail": str(exc)})
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("stream failed for %s", run_id)
+        await websocket.send_json({"type": "error", "detail": str(exc)})
+
+    try:
+        await websocket.close()
+    except RuntimeError:
+        pass  # already closed by the client
 
 
 # --- static frontend ---------------------------------------------------------

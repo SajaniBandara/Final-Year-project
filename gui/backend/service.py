@@ -32,6 +32,7 @@ from typing import Iterable, Sequence
 from . import aggregate, schema
 from .catalog import REPO_ROOT, Catalog, RunFile
 from .parser import Run, SchemaError, parse_file
+from .stream import make_source
 
 #: Simulated time at which attack injection begins. Fixed at 10.0 s because the
 #: S1 EWMA baseline needs ~10 s of benign traffic to converge (CLAUDE.md, "Known
@@ -260,6 +261,60 @@ class ResultsService:
         # than letting the frontend infer it from a null.
         payload["single_seed"] = all(n < 2 for n in payload["n"])  # type: ignore[union-attr]
         return payload
+
+    # --- live / replay streaming -------------------------------------------
+
+    def stream_meta(self, run_id: str, mode: str) -> dict[str, object]:
+        """Opening message for a stream: what is being sent, and from where.
+
+        Sent before any cycle so the UI can label the source honestly. The
+        distinction matters in a viva -- "is this actually running?" deserves a
+        straight answer, and the answer is on screen.
+        """
+        run_file = self._run_file(run_id)
+        return {
+            "type": "meta",
+            "run": run_file.to_dict(),
+            "mode": mode,
+            "attack_start_s": SIM_ATTACK_START_S,
+            "kpi_columns": list(schema.LIVE_KPI_COLUMNS),
+            "event_counters": list(schema.LIVE_EVENT_COUNTERS),
+            "units": {
+                name: schema.METRIC_UNITS.get(name, "count")
+                for name in schema.columns_for(run_file.attack_id)
+            },
+            "caveats": {
+                name: schema.caveat_for(name)
+                for name in schema.columns_for(run_file.attack_id)
+                if schema.caveat_for(name)
+            },
+        }
+
+    def stream_source(
+        self,
+        run_id: str,
+        *,
+        mode: str = "replay",
+        speed: float = 1.0,
+        from_start: bool = True,
+    ):
+        """Build the cycle source backing a stream.
+
+        Raises:
+            NotFoundError: unknown run id.
+            BadRequestError: unknown mode.
+        """
+        run_file = self._run_file(run_id)
+        try:
+            return make_source(
+                mode,
+                run_file.path,
+                run_file.attack_id,
+                speed=speed,
+                from_start=from_start,
+            )
+        except ValueError as exc:
+            raise BadRequestError(str(exc)) from exc
 
     def figures(self) -> dict[str, object]:
         """The committed thesis figures under ``output/``, grouped by directory."""

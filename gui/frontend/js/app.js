@@ -8,6 +8,7 @@
 
 import { api, ApiError } from './api.js';
 import { initFigures } from './figures.js';
+import { initLive, stopLive } from './live.js';
 import { initOffline } from './offline.js';
 
 const THEME_KEY = 'mobiguard-gui-theme';
@@ -79,6 +80,9 @@ function initTabs(panels) {
     for (const [key, node] of Object.entries(panels)) {
       node.hidden = key !== name;
     }
+    // Leaving the Live tab closes the socket: a stream left running in a
+    // hidden panel keeps the server busy and confuses the next connection.
+    if (name !== 'live') stopLive();
   };
   for (const button of buttons) {
     button.addEventListener('click', () => select(button.dataset.tab));
@@ -91,6 +95,7 @@ async function main() {
 
   const panels = {
     offline: document.querySelector('#panel-offline'),
+    live: document.querySelector('#panel-live'),
     figures: document.querySelector('#panel-figures'),
   };
   initTabs(panels);
@@ -117,6 +122,7 @@ async function main() {
         '<div class="card"><p class="empty">No metrics CSVs found. Copy them from the HPC into results_routing/.</p></div>';
     } else {
       await initOffline(panels.offline, catalog);
+      initLive(panels.live, catalog);
     }
     await initFigures(panels.figures);
   } catch (error) {

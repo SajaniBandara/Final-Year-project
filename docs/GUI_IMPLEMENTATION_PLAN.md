@@ -218,7 +218,7 @@ WS   /ws/stream?run_id=&mode=&speed=
 | **1a** | **DONE** — FastAPI read API over Phase 0 (`service.py` + `app.py`), 25 tests. Routes: health/refresh/catalog/metrics/series/summary/sweep/figures. | Phase 0 |
 | **1b** | **DONE** — Offline Analytics + Thesis Figures frontend: sweep chart with CI error bars, run detail (KPI tiles, per-cycle trend, confusion matrix + recomputation), figures gallery. Hand-rolled SVG, theme-aware, table view on every chart. | Phase 1a |
 | **1c** | *Remaining:* the panels needing their own parsers — blockchain (`bc_*.csv`), crypto timing, TCAM occupancy/snapshots, federated-LSTM (`lstm_pipeline/*.json`), and the B1/B2/B3 baseline comparison. Not blocked; just not built yet. | Phase 1a |
-| **2** | Live PEM Monitor. Build `replay.py` first, ship it working, then add `live.py` behind the same contract. | Phase 0 |
+| **2** | **DONE** — Live PEM Monitor. `stream.py` holds both sources behind one contract (`ReplaySource`, `TailSource`), `/ws/stream` serves them, and the Live tab renders KPI tiles, a rolling chart, an integrity/consensus strip and a detection-event feed. 15 tests. Built as one module rather than the planned separate `replay.py`/`live.py`: both are ~40 lines around the same `RowDecoder`, and splitting them would have invited exactly the contract drift the design exists to prevent. | Phase 0 |
 | **3** *(optional)* | Topology view (8x8 RSU grid, 4 controllers, RSUs tinted by TCAM occupancy, suspects flashing as signatures fire) + verification/evidence tab rendering the equation-audit and functional-verification logs | needs new per-cycle per-RSU emission in `routing.cc` + an HPC rebuild |
 
 Phase 1 before Phase 2 deliberately: it is the half with no moving parts, so the
