@@ -75,6 +75,8 @@ export const api = {
     ),
 
   lstmPanel: () => request('/api/panels/lstm'),
+  verification: () => request('/api/verification'),
+  rerunAudit: () => request('/api/verification/audit', { method: 'POST' }),
 
   figures: () => request('/api/figures'),
   figureUrl: (path) => `/api/figures/${path}`,

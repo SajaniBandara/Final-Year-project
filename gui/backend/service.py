@@ -34,6 +34,7 @@ from .catalog import REPO_ROOT, Catalog, RunFile
 from .parser import Run, SchemaError, parse_file
 from .lstm import panel as lstm_panel
 from .stream import make_source
+from .verification import panel as verification_panel, run_audit
 
 #: Simulated time at which attack injection begins. Fixed at 10.0 s because the
 #: S1 EWMA baseline needs ~10 s of benign traffic to converge (CLAUDE.md, "Known
@@ -324,6 +325,17 @@ class ResultsService:
         current, so this panel is unaffected by the staleness of the CSV copy.
         """
         return lstm_panel()
+
+    def verification_panel(self) -> dict[str, object]:
+        """Task-8 evidence: the equation audit and the functional check."""
+        return verification_panel()
+
+    def rerun_audit(self, *, self_test: bool = False) -> dict[str, object]:
+        """Re-run the equation audit and return the fresh parsed result."""
+        try:
+            return run_audit(self_test=self_test)
+        except (FileNotFoundError, RuntimeError) as exc:
+            raise BadRequestError(str(exc)) from exc
 
     def figures(self) -> dict[str, object]:
         """The committed thesis figures under ``output/``, grouped by directory."""

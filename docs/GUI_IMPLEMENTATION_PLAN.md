@@ -220,7 +220,8 @@ WS   /ws/stream?run_id=&mode=&speed=
 | **1c-i** | **DONE** — Federated LSTM tab (`lstm.py` + `/api/panels/lstm` + `js/lstm.js`), 16 tests: per-variant detection quality, BRFA-v2 poisoning (M8), federated rejection breakdown, AB2/AB3 ablations, mobility-stratified MCC heatmap. Built first because `lstm_pipeline/*.json` are **git-tracked and current (2026-08-29)** while every CSV is a month stale — this is the only tab whose numbers are up to date. | Phase 1a |
 | **1c-ii** | *Remaining:* blockchain (`bc_*.csv` — note some are 600 MB, needs a streaming reader), crypto timing, TCAM occupancy/snapshots, and the B1/B2/B3 baseline comparison (`fade_results_*` are local; `sfto_pipeline/results/*.csv` are git-tracked). | Phase 1a |
 | **2** | **DONE** — Live PEM Monitor. `stream.py` holds both sources behind one contract (`ReplaySource`, `TailSource`), `/ws/stream` serves them, and the Live tab renders KPI tiles, a rolling chart, an integrity/consensus strip and a detection-event feed. 15 tests. Built as one module rather than the planned separate `replay.py`/`live.py`: both are ~40 lines around the same `RowDecoder`, and splitting them would have invited exactly the contract drift the design exists to prevent. | Phase 0 |
-| **3** *(optional)* | Topology view (8x8 RSU grid, 4 controllers, RSUs tinted by TCAM occupancy, suspects flashing as signatures fire) + verification/evidence tab rendering the equation-audit and functional-verification logs | needs new per-cycle per-RSU emission in `routing.cc` + an HPC rebuild |
+| **3a** | **DONE** — Verification & Evidence tab (`verification.py` + `/api/verification` + `js/verification.js`), 16 tests. Parses `audit_equations.py` output into sections/checks/summary, leads with failures, and offers a live "Re-run audit" button (~14 s). The log lives at `docs/task8_verification/equation_audit.log`, which is gitignored by the blanket `*.log` rule — the tab handles its absence by showing the exact command. | Phase 1a |
+| **3b** *(optional)* | Topology view (8x8 RSU grid, 4 controllers, RSUs tinted by TCAM occupancy, suspects flashing as signatures fire) + verification/evidence tab rendering the equation-audit and functional-verification logs | needs new per-cycle per-RSU emission in `routing.cc` + an HPC rebuild |
 
 Phase 1 before Phase 2 deliberately: it is the half with no moving parts, so the
 demo has something complete even if the realtime work runs late.
@@ -296,6 +297,36 @@ carry more seeds)* All 48 CSVs are seed 1, so every sweep point is `n=1` with
 "n=1, no CI" rather than a zero-width error bar implying perfect precision. The
 published figures in `output/` do show CIs, so they came from seeds this copy
 lacks.
+
+**E. The equation audit currently FAILS — 3 checks (Task 8 deliverable 1).**
+*(found 2026-08-29 by running `scripts/audit_equations.py` locally; it needs only
+`main.tex` + the source tree, so it runs on the laptop in ~14 s)*
+
+`FUNCTIONAL_VERIFICATION_GUIDE.md` §1 marks this deliverable ✅ done. It is not
+passing right now: **103 PASS, 3 FAIL, 8 INFO.**
+
+1. **`eq:ewma_variance` — S1 EWMA forgetting factor β: paper says `0.8`, code has
+   `0.95`.** A straight implementation-vs-thesis deviation. One of the two is
+   wrong and it is not the GUI's call which: either the code should be changed to
+   0.8, or `main.tex` should be updated to 0.95 with the reason. **Ask the
+   supervisor which.**
+
+2. **3 equations in `main.tex` have no audit entry:** `eq:eval_dedup`,
+   `eq:lstm_gate`, `eq:theta_adapt`. Note `eq:eval_dedup` is *the* M1
+   deduplication equation that `WHICH_MCC_TO_REPORT.md` is built on, and
+   `eq:theta_adapt` is the warm-up exclusion rule — both central, both unaudited.
+   This is the coverage self-check doing its job: the paper grew and the audit
+   table did not follow.
+
+3. **2 algorithms have no audit entry:** `alg:lrad_rsu_detect`,
+   `alg:lrad_rsu_respond`, while a stale `alg:lrad_rsu` entry remains — so one
+   algorithm was evidently split in two in the thesis and the audit table still
+   carries the old single name.
+
+None of these are GUI bugs and none are fixed here. The Verification tab
+**leads with the failures** rather than reporting a pass count, because a
+verification screen that rounds a failing audit up to "all good" is the one
+screen in a demo that actively misleads.
 
 **D. Four variants report `MCC = 0.0` in `evaluation_results.json` when MCC is
 actually *undefined*.** *(unaffected by CSV staleness — these JSONs are current)*

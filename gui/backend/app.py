@@ -227,6 +227,29 @@ def lstm_panel(service: ResultsService = Depends(get_service)) -> dict[str, obje
     return service.lstm_panel()
 
 
+@app.get("/api/verification", tags=["verification"])
+def verification(service: ResultsService = Depends(get_service)) -> dict[str, object]:
+    """Equation-audit and functional-verification status.
+
+    Answers "does the code implement the thesis?" -- reported as-is, including
+    failures. The audit currently does not pass.
+    """
+    return service.verification_panel()
+
+
+@app.post("/api/verification/audit", tags=["verification"])
+def rerun_audit(
+    self_test: bool = Query(False, description="Also run the negative control (slower)."),
+    service: ResultsService = Depends(get_service),
+) -> dict[str, object]:
+    """Re-run scripts/audit_equations.py and refresh its stored log.
+
+    Takes ~14 s. Worth having live in a demo: re-running the audit in front of
+    an examiner is more convincing than showing a file.
+    """
+    return service.rerun_audit(self_test=self_test)
+
+
 @app.get("/api/figures", tags=["figures"])
 def figures(service: ResultsService = Depends(get_service)) -> dict[str, object]:
     """The committed thesis figures under ``output/``, grouped by directory."""
