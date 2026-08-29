@@ -80,8 +80,15 @@ gui/
   `scipy.stats.t`; the GUI uses a **hardcoded two-sided t-table for df 1–30**
   instead. Same numbers, one less dependency. Cross-check the table against the
   existing plot scripts once so the GUI and the thesis figures agree.
-- **Chart libraries are vendored into `gui/frontend/vendor/`, not CDN-loaded.**
-  A demo that needs internet to draw a chart is a demo that can fail in the room.
+- **No chart library at all** (revised at Phase 1b; the plan originally said
+  vendor uPlot/Chart.js into `gui/frontend/vendor/`). The charts are hand-rolled
+  inline SVG in `gui/frontend/js/charts.js`. Three reasons it came out better:
+  no download or vendored bundle to go stale, confidence-interval bands and
+  error bars are first-class rather than a Chart.js plugin, and the dataviz mark
+  specs (2px strokes, ≥8px markers, a 2px surface ring on overlapping marks,
+  recessive grid) are enforced directly instead of fought with. The original
+  goal stands either way: **a demo that needs internet to draw a chart is a demo
+  that can fail in the room.**
 
 Setup is then exactly: `pip install fastapi uvicorn`, then
 `python -m uvicorn gui.backend.app:app`.
@@ -208,7 +215,9 @@ WS   /ws/stream?run_id=&mode=&speed=
 | Phase | Deliverable | Depends on |
 |---|---|---|
 | **0** | **DONE** — `schema.py` + `catalog.py` + `parser.py` + `aggregate.py`, 38 stdlib `unittest` tests green (`python -m unittest gui.tests.test_phase0`). All 48 local CSVs decode; both widths exercised (36 narrow, 12 wide); recomputed MCC/DR/FPR agree with the reported columns to 5.0e-05 | — |
-| **1** | Offline Analytics tab, all panels. **All the "statistics and graphs" marks, zero run-time risk.** | Phase 0 |
+| **1a** | **DONE** — FastAPI read API over Phase 0 (`service.py` + `app.py`), 25 tests. Routes: health/refresh/catalog/metrics/series/summary/sweep/figures. | Phase 0 |
+| **1b** | **DONE** — Offline Analytics + Thesis Figures frontend: sweep chart with CI error bars, run detail (KPI tiles, per-cycle trend, confusion matrix + recomputation), figures gallery. Hand-rolled SVG, theme-aware, table view on every chart. | Phase 1a |
+| **1c** | *Remaining:* the panels needing their own parsers — blockchain (`bc_*.csv`), crypto timing, TCAM occupancy/snapshots, federated-LSTM (`lstm_pipeline/*.json`), and the B1/B2/B3 baseline comparison. Not blocked; just not built yet. | Phase 1a |
 | **2** | Live PEM Monitor. Build `replay.py` first, ship it working, then add `live.py` behind the same contract. | Phase 0 |
 | **3** *(optional)* | Topology view (8x8 RSU grid, 4 controllers, RSUs tinted by TCAM occupancy, suspects flashing as signatures fire) + verification/evidence tab rendering the equation-audit and functional-verification logs | needs new per-cycle per-RSU emission in `routing.cc` + an HPC rebuild |
 

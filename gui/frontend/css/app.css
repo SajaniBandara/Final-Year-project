@@ -1,0 +1,409 @@
+/* MOBIGUARD demo GUI -- design tokens and layout.
+ *
+ * Palette is the validated default from the dataviz reference instance. The
+ * eight categorical slots were run through the validator in both modes on the
+ * adjacent pairlist (lines/bars):
+ *
+ *   light  worst adjacent CVD dE 9.1  · normal-vision dE 19.6  · PASS
+ *   dark   worst adjacent CVD dE 8.4  · normal-vision dE 19.3  · PASS
+ *
+ * Light mode raises a contrast WARN for aqua/yellow/magenta (< 3:1 on the light
+ * surface). The relief rule applies and is honoured: every series carries a
+ * direct label at its line end, and every chart has a table view. Do not add a
+ * ninth hue -- fold extra series into small multiples instead.
+ */
+
+:root {
+  color-scheme: light;
+
+  --surface-1: #fcfcfb;         /* chart surface */
+  --surface-page: #f9f9f7;      /* page plane */
+  --surface-raised: #ffffff;
+
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+
+  --series-1: #2a78d6;  /* blue    */
+  --series-2: #eb6834;  /* orange  */
+  --series-3: #1baf7a;  /* aqua    */
+  --series-4: #eda100;  /* yellow  */
+  --series-5: #e87ba4;  /* magenta */
+  --series-6: #008300;  /* green   */
+  --series-7: #4a3aa7;  /* violet  */
+  --series-8: #e34948;  /* red     */
+
+  /* Two shades of one hue: cur (light) vs avg (dark) of the same quantity.
+   * Same hue on purpose -- they are one measure at two smoothings, not two
+   * different series. */
+  --shade-light: #86b6ef;
+  --shade-dark: #1c5cab;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --radius: 8px;
+  --gap: 16px;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "Cascadia Code", "Consolas", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-page: #0d0d0d;
+    --surface-raised: #222220;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --shade-light: #5598e7;
+    --shade-dark: #9ec5f4;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --surface-page: #0d0d0d;
+  --surface-raised: #222220;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --shade-light: #5598e7;
+  --shade-dark: #9ec5f4;
+}
+
+/* --- base ---------------------------------------------------------------- */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--surface-page);
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.25; }
+h1 { font-size: 18px; }
+h2 { font-size: 15px; }
+h3 { font-size: 13px; color: var(--text-secondary); }
+
+button, select, input { font: inherit; color: inherit; }
+
+/* --- app shell ----------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 12px 20px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-wrap: wrap;
+}
+
+.topbar .brand { font-weight: 700; letter-spacing: 0.01em; }
+.topbar .spacer { flex: 1; }
+
+.tabs { display: flex; gap: 4px; }
+
+.tab {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tab:hover { background: var(--surface-page); }
+.tab[aria-selected="true"] {
+  background: var(--surface-page);
+  border-color: var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.icon-button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+.icon-button:hover { background: var(--surface-page); }
+
+main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--gap);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- cards --------------------------------------------------------------- */
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: var(--gap);
+}
+
+.card > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.card .sub { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+
+/* --- controls ------------------------------------------------------------ */
+
+.field { margin-bottom: 12px; }
+.field label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.field select, .field input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+
+.checks { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+.check input { margin: 0; accent-color: var(--series-1); }
+.check .swatch {
+  width: 10px; height: 10px; border-radius: 3px; flex: none;
+}
+
+/* --- banner -------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-bottom: var(--gap);
+  background: var(--surface-1);
+}
+.banner .glyph { font-size: 16px; line-height: 1.4; flex: none; }
+.banner strong { display: block; }
+.banner .detail { color: var(--text-secondary); font-size: 12.5px; }
+.banner[data-status="warning"] { border-left: 4px solid var(--status-warning); }
+.banner[data-status="critical"] { border-left: 4px solid var(--status-critical); }
+.banner[data-status="good"] { border-left: 4px solid var(--status-good); }
+
+/* Caveat callout -- shown whenever a per-node diagnostic is plotted. */
+.caveat {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: var(--surface-page);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--status-serious);
+  border-radius: 6px;
+}
+
+/* --- stat tiles ---------------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+.tile .label {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tile .value { font-size: 26px; font-weight: 650; line-height: 1.15; margin-top: 2px; }
+.tile .unit { font-size: 13px; color: var(--text-muted); font-weight: 400; }
+.tile[data-diagnostic="true"] .label::after {
+  content: " ◦ diagnostic";
+  color: var(--status-serious);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* --- charts -------------------------------------------------------------- */
+
+.chart-wrap { position: relative; }
+.chart-wrap svg { display: block; width: 100%; height: auto; }
+
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  min-width: 120px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  transform: translate(-50%, calc(-100% - 12px));
+  opacity: 0;
+  transition: opacity 90ms ease;
+}
+.chart-tooltip[data-visible="true"] { opacity: 1; }
+.chart-tooltip .tt-title { font-weight: 650; margin-bottom: 4px; }
+.chart-tooltip .tt-row {
+  display: flex; align-items: center; gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-tooltip .tt-row .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.chart-tooltip .tt-row .tt-val { margin-left: auto; font-weight: 600; }
+
+.legend {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: 10px; font-size: 12px; color: var(--text-secondary);
+}
+.legend .item { display: inline-flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 12px; height: 3px; border-radius: 2px; }
+
+.empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+.table-toggle {
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.table-toggle:hover { color: var(--text-primary); }
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+table.data th, table.data td {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--grid);
+}
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  border-bottom-color: var(--axis);
+}
+table.data tbody tr:hover { background: var(--surface-page); }
+.table-scroll { overflow-x: auto; }
+
+/* Confusion matrix -- a 2x2 table, not a heatmap. */
+table.confusion td.count { font-size: 17px; font-weight: 650; }
+table.confusion td.tp, table.confusion td.tn { color: var(--status-good); }
+table.confusion td.fp, table.confusion td.fn { color: var(--status-critical); }
+
+/* --- figures gallery ----------------------------------------------------- */
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.gallery figure {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+.gallery img { display: block; width: 100%; height: auto; background: #fff; }
+.gallery figcaption {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  word-break: break-word;
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

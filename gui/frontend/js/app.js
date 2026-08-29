@@ -1,0 +1,131 @@
+/**
+ * Application bootstrap: theme, tabs, health banner, catalog load.
+ *
+ * The health banner is not decoration. results_routing/ is copied from the HPC
+ * by hand, and a month-old copy renders exactly like a fresh one, so the age of
+ * the data is stated on screen rather than left to be assumed.
+ */
+
+import { api, ApiError } from './api.js';
+import { initFigures } from './figures.js';
+import { initOffline } from './offline.js';
+
+const THEME_KEY = 'mobiguard-gui-theme';
+
+function initTheme() {
+  const button = document.querySelector('#theme-toggle');
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    /* private window or blocked storage: fall back to the OS setting */
+  }
+  if (stored === 'light' || stored === 'dark') {
+    document.documentElement.dataset.theme = stored;
+  }
+
+  button.addEventListener('click', () => {
+    const current =
+      document.documentElement.dataset.theme ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* nothing to do: the toggle still works for this session */
+    }
+  });
+}
+
+function renderHealth(health) {
+  const host = document.querySelector('#health-banner');
+  const stale = health.stale;
+  host.innerHTML = `
+    <div class="banner" data-status="${stale ? 'warning' : 'good'}">
+      <span class="glyph" aria-hidden="true">${stale ? '⚠' : '✓'}</span>
+      <div>
+        <strong>${
+          stale
+            ? `Results copy is ${health.age_days} days old`
+            : `Results copy is current (${health.age_days ?? 0} days old)`
+        }</strong>
+        <span class="detail">
+          ${health.run_count} runs indexed from <code>${health.results_dir}</code>.
+          ${
+            stale
+              ? 'These CSVs are copied from the HPC by hand — charts may not reflect the current simulator.'
+              : ''
+          }
+        </span>
+      </div>
+    </div>`;
+}
+
+function renderFatal(message) {
+  document.querySelector('#health-banner').innerHTML = `
+    <div class="banner" data-status="critical">
+      <span class="glyph" aria-hidden="true">✗</span>
+      <div><strong>Cannot load results</strong><span class="detail">${message}</span></div>
+    </div>`;
+}
+
+function initTabs(panels) {
+  const buttons = [...document.querySelectorAll('.tab')];
+  const select = (name) => {
+    for (const button of buttons) {
+      button.setAttribute('aria-selected', String(button.dataset.tab === name));
+    }
+    for (const [key, node] of Object.entries(panels)) {
+      node.hidden = key !== name;
+    }
+  };
+  for (const button of buttons) {
+    button.addEventListener('click', () => select(button.dataset.tab));
+  }
+  select('offline');
+}
+
+async function main() {
+  initTheme();
+
+  const panels = {
+    offline: document.querySelector('#panel-offline'),
+    figures: document.querySelector('#panel-figures'),
+  };
+  initTabs(panels);
+
+  document.querySelector('#refresh').addEventListener('click', async (event) => {
+    event.target.disabled = true;
+    try {
+      renderHealth(await api.refresh());
+      const catalog = await api.catalog();
+      await initOffline(panels.offline, catalog);
+    } catch (error) {
+      renderFatal(error.message);
+    } finally {
+      event.target.disabled = false;
+    }
+  });
+
+  try {
+    const [health, catalog] = await Promise.all([api.health(), api.catalog()]);
+    renderHealth(health);
+
+    if (!catalog.runs.length) {
+      panels.offline.innerHTML =
+        '<div class="card"><p class="empty">No metrics CSVs found. Copy them from the HPC into results_routing/.</p></div>';
+    } else {
+      await initOffline(panels.offline, catalog);
+    }
+    await initFigures(panels.figures);
+  } catch (error) {
+    const hint =
+      error instanceof ApiError && error.status === 503
+        ? ' Copy the CSVs from the HPC, or set MOBIGUARD_RESULTS_DIR.'
+        : '';
+    renderFatal(error.message + hint);
+  }
+}
+
+main();
