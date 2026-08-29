@@ -193,6 +193,33 @@ std::vector<std::vector<uint32_t>> s1_delay_hist;   // [rsu][bin] benign-delay c
 std::vector<uint32_t> s1_hist_n;                    // [rsu] total admitted samples
 std::vector<double>   s1_pctl_threshold;            // [rsu] cached quantile (s)
 
+// ── Best-effort-calibrated percentile (item 7 correction, 2026-08-29) ──────
+//
+// The proposed fix above, now built. s1_delay_hist/s1_pctl_threshold are
+// LEFT UNTOUCHED (still the measured-worse, high-priority-calibrated path,
+// kept default-reachable via s1_use_percentile alone for comparison) —
+// this is a SEPARATE histogram fed from best-effort (non-safety-critical)
+// packet delay instead.
+//
+// Why this is immune to the truncation spiral that broke the high-priority
+// version: that histogram admitted only samples that did not breach the
+// CURRENT threshold, so as the threshold sank, so did what it was allowed
+// to learn from — a closing loop. Best-effort traffic is never delayed by
+// Attack 1's own selectivity conjunct (eq:rule_s1 admits only HIGH-priority
+// packets into the attack's target set), so it is a genuinely attack-immune
+// benign sample BY CONSTRUCTION, independent of where the threshold
+// currently sits. There is nothing to guard against, so this histogram is
+// fed unconditionally (no violation-admission gate) — the estimator never
+// observes the samples it judges, exactly as proposed.
+//
+// s1_pctl / s1_pctl_min_n / S1_HIST_BINS / S1_HIST_BIN_S are shared with the
+// high-priority path above — same quantile, same bin resolution, same
+// warm-up floor, only the sample POPULATION differs.
+bool     s1_pctl_calibrate_besteffort = false;   // --s1_pctl_calibrate_besteffort
+std::vector<std::vector<uint32_t>> s1_best_delay_hist;   // [rsu][bin] best-effort delay counts
+std::vector<uint32_t> s1_best_hist_n;                     // [rsu] total samples (no gate)
+std::vector<double>   s1_pctl_threshold_besteffort;       // [rsu] cached quantile (s)
+
 // Per-RSU observed-delay accumulators for the EWMA input δ_r(t) (Eq. 3.12).
 // Accumulated inside s1_detect_packet() for every valid packet; drained
 // and reset at each s1_update_baseline() call site in routing.cc.
@@ -311,6 +338,27 @@ inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t
 {
     if (rsu_idx >= (uint32_t)N_RSUs) return;
     s1_delta_best[rsu_idx] = delta_best_t;
+
+    // Item 7 correction: recompute this RSU's best-effort-calibrated cutoff
+    // at the same per-cycle cadence as delta_bar and the high-priority
+    // percentile above. Same quantile-read logic as s1_update_baseline()'s
+    // percentile block — see there for why the bin's upper edge is returned.
+    if (s1_pctl_calibrate_besteffort &&
+        rsu_idx < s1_best_delay_hist.size() &&
+        rsu_idx < s1_best_hist_n.size() &&
+        rsu_idx < s1_pctl_threshold_besteffort.size() &&
+        s1_best_hist_n[rsu_idx] >= s1_pctl_min_n)
+    {
+        const uint32_t _target = (uint32_t)(s1_pctl * (double)s1_best_hist_n[rsu_idx]);
+        uint32_t _cum = 0;
+        uint32_t _bin = S1_HIST_BINS - 1;
+        for (uint32_t b = 0; b < S1_HIST_BINS; ++b)
+        {
+            _cum += s1_best_delay_hist[rsu_idx][b];
+            if (_cum >= _target) { _bin = b; break; }
+        }
+        s1_pctl_threshold_besteffort[rsu_idx] = (double)(_bin + 1) * S1_HIST_BIN_S;
+    }
 }
 
 // =========================================================================
@@ -426,6 +474,21 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         {
             s1_best_obs_sum[rsu_idx]   += effective_delay_s;
             s1_best_obs_count[rsu_idx] += 1;
+
+            // Item 7 correction: feed the best-effort percentile histogram.
+            // Unconditional -- unlike the high-priority histogram, best-effort
+            // samples are never touched by Attack 1's selectivity conjunct by
+            // construction, so there is no self-masking risk requiring a
+            // violation-admission gate. See s1_pctl_calibrate_besteffort's
+            // declaration for the full reasoning.
+            if (s1_pctl_calibrate_besteffort &&
+                rsu_idx < s1_best_delay_hist.size() && effective_delay_s >= 0.0)
+            {
+                uint32_t _bin = (uint32_t)(effective_delay_s / S1_HIST_BIN_S);
+                if (_bin >= S1_HIST_BINS) _bin = S1_HIST_BINS - 1;
+                s1_best_delay_hist[rsu_idx][_bin]++;
+                if (rsu_idx < s1_best_hist_n.size()) s1_best_hist_n[rsu_idx]++;
+            }
         }
         return false;
     }
@@ -439,7 +502,21 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // bound before then, so warm-up behaviour is unchanged. See the
     // s1_use_percentile declaration for why the shape assumption is the
     // problem being fixed.
-    if (s1_use_percentile &&
+    //
+    // s1_pctl_calibrate_besteffort selects WHICH histogram calibrates the
+    // cutoff -- the two are mutually exclusive by design (not layered/
+    // averaged), so the measured-worse high-priority path stays reachable
+    // unmodified for comparison, and the corrected path is a clean A/B, not
+    // a blend of a broken estimator and a fixed one.
+    if (s1_use_percentile && s1_pctl_calibrate_besteffort &&
+        rsu_idx < s1_pctl_threshold_besteffort.size() &&
+        rsu_idx < s1_best_hist_n.size() &&
+        s1_best_hist_n[rsu_idx] >= s1_pctl_min_n &&
+        s1_pctl_threshold_besteffort[rsu_idx] > 0.0)
+    {
+        threshold = s1_pctl_threshold_besteffort[rsu_idx];
+    }
+    else if (s1_use_percentile && !s1_pctl_calibrate_besteffort &&
         rsu_idx < s1_pctl_threshold.size() &&
         rsu_idx < s1_hist_n.size() &&
         s1_hist_n[rsu_idx] >= s1_pctl_min_n &&
@@ -650,6 +727,10 @@ inline void s1_init_state(uint32_t n_rsus)
     s1_delay_hist.assign(n_rsus, std::vector<uint32_t>(S1_HIST_BINS, 0u));
     s1_hist_n.assign(n_rsus, 0u);
     s1_pctl_threshold.assign(n_rsus, 0.0);
+    // Item 7 correction: best-effort-calibrated percentile state.
+    s1_best_delay_hist.assign(n_rsus, std::vector<uint32_t>(S1_HIST_BINS, 0u));
+    s1_best_hist_n.assign(n_rsus, 0u);
+    s1_pctl_threshold_besteffort.assign(n_rsus, 0.0);
     s1_rsu_obs_sum.assign(n_rsus, 0.0);
     s1_rsu_obs_count.assign(n_rsus, 0);
     s1_rsu_obs_max.assign(n_rsus, 0.0);
@@ -680,6 +761,9 @@ inline void s1_reset_state()
     for (auto& _h : s1_delay_hist) std::fill(_h.begin(), _h.end(), 0u);
     std::fill(s1_hist_n.begin(),         s1_hist_n.end(),         0u);
     std::fill(s1_pctl_threshold.begin(), s1_pctl_threshold.end(), 0.0);
+    for (auto& _h : s1_best_delay_hist) std::fill(_h.begin(), _h.end(), 0u);
+    std::fill(s1_best_hist_n.begin(),               s1_best_hist_n.end(),               0u);
+    std::fill(s1_pctl_threshold_besteffort.begin(), s1_pctl_threshold_besteffort.end(), 0.0);
     std::fill(s1_rsu_obs_sum.begin(),   s1_rsu_obs_sum.end(),   0.0);
     std::fill(s1_rsu_obs_count.begin(), s1_rsu_obs_count.end(), 0u);
     std::fill(s1_best_obs_sum.begin(),   s1_best_obs_sum.end(),   0.0);
@@ -687,6 +771,50 @@ inline void s1_reset_state()
     std::fill(s1_delta_best.begin(),     s1_delta_best.end(),     0.0);
     cout << "[S1] All S1 per-RSU baseline/variance state reset "
          << "(delta_bar seeded to delta_0=" << s1_delta0 * 1000.0 << "ms)." << endl;
+}
+
+// =========================================================================
+// s1_export_pctl_histograms():
+// Item 7 validation (supervisor, 2026-08-29): "send the mean, median, and
+// 99th percentile of both delay populations from the same clean baseline
+// run, side by side" -- before trusting a threshold borrowed from one
+// traffic class to gate another. Dumps the raw per-RSU bin counts for BOTH
+// the high-priority (s1_delay_hist) and best-effort (s1_best_delay_hist)
+// histograms so the actual descriptive stats (mean/median/p99, pooled
+// across all RSUs or per-RSU) can be computed exactly from the same counts
+// the detector itself would read, rather than a separate ad-hoc sampling
+// pass that could disagree with what the detector saw.
+//
+// Only meaningful when BOTH histograms were actually fed this run --
+// s1_delay_hist requires --s1_use_percentile=1, s1_best_delay_hist requires
+// --s1_pctl_calibrate_besteffort=1. Call once at simulation end.
+// =========================================================================
+inline void s1_export_pctl_histograms(const std::string& out_path)
+{
+    std::ofstream f(out_path);
+    if (!f.is_open())
+    {
+        cout << "[S1] WARNING: could not open " << out_path
+             << " for pctl-histogram export." << endl;
+        return;
+    }
+    f << "rsu_idx,population,n";
+    for (uint32_t b = 0; b < S1_HIST_BINS; ++b) f << ",bin" << b;
+    f << "\n";
+    for (uint32_t r = 0; r < s1_delay_hist.size(); ++r)
+    {
+        f << r << ",highprio," << s1_hist_n[r];
+        for (uint32_t b = 0; b < S1_HIST_BINS; ++b) f << "," << s1_delay_hist[r][b];
+        f << "\n";
+    }
+    for (uint32_t r = 0; r < s1_best_delay_hist.size(); ++r)
+    {
+        f << r << ",besteffort," << s1_best_hist_n[r];
+        for (uint32_t b = 0; b < S1_HIST_BINS; ++b) f << "," << s1_best_delay_hist[r][b];
+        f << "\n";
+    }
+    f.close();
+    cout << "[S1] pctl-histogram export (item 7 validation) -> " << out_path << endl;
 }
 
 #endif // S1_DETECTION_H

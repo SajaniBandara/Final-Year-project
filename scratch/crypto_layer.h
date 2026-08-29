@@ -577,6 +577,22 @@ std::vector<uint8_t> g_ranom_flag_last;
 // other's delta.
 std::vector<uint32_t> g_ranom_rule_prev;
 
+// Item 9 correction (supervisor, 2026-08-29): A5-A8's window activity gate
+// (g_dw_activity_last, below) was reading g_ranom_flag_last -- R_anom's
+// per-cycle delta, a RECEIVE-side signal -- while the detector it gates is
+// S5, a SEND-side one (main.tex: "a hidden-duplicate SEND event"). The
+// correct send-side signal already exists: g_lstm_hf_sendgt_count
+// (immediately below), incremented exactly when an RSU schedules a hidden
+// duplicate. These mirror g_ranom_flag_last/g_ranom_rule_prev's own pattern
+// -- a same-cadence latch computed in routing.cc's per-RSU metrics loop
+// (not inside lstm_log_rsu_cycle(), which early-returns without
+// --training/--enable_lstm_inference and would leave this silently zero in
+// exactly the ablation configs that need the rule) plus its own prev-value
+// array, kept separate so this delta and the LSTM feature's own
+// consumption of g_lstm_hf_sendgt_count never collide.
+std::vector<uint8_t>  g_hf_send_flag_last;
+std::vector<uint32_t> g_hf_send_rule_prev;
+
 // Supervisor Decision 4 (2026-08-21): per-RSU, per-cycle ATTACK-ACTIVITY
 // latch for detector_windows.csv's ground truth. Window-level detectors must
 // be scored against window-level truth; the previous truth column was

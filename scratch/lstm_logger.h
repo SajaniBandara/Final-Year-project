@@ -596,6 +596,8 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_high_confidence.assign(n_rsus, false);
     g_ranom_flag_last.assign(n_rsus, 0);   // Decision 2 rule latch
     g_ranom_rule_prev.assign(n_rsus, 0);   // its own prev-value array
+    g_hf_send_flag_last.assign(n_rsus, 0); // item 9 correction: send-side latch
+    g_hf_send_rule_prev.assign(n_rsus, 0); // its own prev-value array
     g_dw_activity_last.assign(n_rsus, 1);  // Decision 4 activity latch (default: ungated)
     g_lstm_logger_ready = true;
 

@@ -118384,14 +118384,34 @@ void calculate_performance_evaluation_metrics()
 			if (_r < g_ranom_rule_prev.size()) g_ranom_rule_prev[_r] = _cur;
 		}
 
+		// Item 9 correction (supervisor, 2026-08-29): same pattern as the
+		// R_anom delta above, but for g_lstm_hf_sendgt_count -- the SEND-side
+		// hidden-duplicate counter -- since the A5-A8 activity gate below
+		// needs a send-side signal, not R_anom's receive-side one. Computed
+		// here for the same early-return reason as the block above.
+		{
+			uint32_t _rsu_sim = (uint32_t)N_Vehicles + _r;
+			auto _sit = g_lstm_hf_sendgt_count.find(_rsu_sim);
+			uint32_t _cur_sgt  = (_sit != g_lstm_hf_sendgt_count.end()) ? _sit->second : 0u;
+			uint32_t _prev_sgt = (_r < g_hf_send_rule_prev.size()) ? g_hf_send_rule_prev[_r] : 0u;
+			if (_r < g_hf_send_flag_last.size())
+				g_hf_send_flag_last[_r] = (_cur_sgt > _prev_sgt) ? 1 : 0;
+			if (_r < g_hf_send_rule_prev.size()) g_hf_send_rule_prev[_r] = _cur_sgt;
+		}
+
 		// Decision 4 (2026-08-21): latch whether THIS RSU saw genuine attack
 		// activity this cycle, for dw_end_cycle()'s window-level ground truth.
 		// Must be captured here: s1_rsu_exceeded_dmax was already reset above,
 		// and lstm_log_rsu_cycle() has just consumed the hf_send_gt delta.
 		//   A1/A2 (variants 0/1): a real >Delta_max hop-delay exceedance.
 		//   A5-A8 (variants 4-7): a hidden-duplicate SEND event, taken from
-		//     g_ranom_flag_last, which lstm_log_rsu_cycle() published a moment
-		//     ago from R_anom's own per-cycle delta.
+		//     g_hf_send_flag_last (item 9 correction, 2026-08-29) -- the
+		//     block immediately above, from g_lstm_hf_sendgt_count's own
+		//     per-cycle delta. Previously read g_ranom_flag_last, R_anom's
+		//     RECEIVE-side delta, which does not track whether this RSU
+		//     itself scheduled a send -- confirmed as the cause of three
+		//     residual A5 nodes (220/225/233) firing 58/58 windows despite
+		//     being genuinely dormant in some of them.
 		//   A3/A4: left to the existing victim-RSU logic in
 		//     lstm_rsu_ground_truth_label() -- TCAM exhaustion persists across
 		//     cycles rather than firing discretely, so a per-cycle activity
@@ -118401,7 +118421,7 @@ void calculate_performance_evaluation_metrics()
 			if (active_attack_variant == 0 || active_attack_variant == 1)
 				act = obs_exceeded_dmax ? 1 : 0;
 			else if (active_attack_variant >= 4 && active_attack_variant <= 7)
-				act = (_r < g_ranom_flag_last.size() && g_ranom_flag_last[_r]) ? 1 : 0;
+				act = (_r < g_hf_send_flag_last.size() && g_hf_send_flag_last[_r]) ? 1 : 0;
 			g_dw_activity_last[_r] = act;
 		}
 	}
@@ -142280,6 +142300,12 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_use_percentile", "S1: non-parametric percentile threshold instead of delta_bar+k*sigma (default 0 -- measured 2.4x WORSE than k*sigma on a zero-attack baseline, see s1_detection.h)", s1_use_percentile);
     cmd.AddValue("s1_pctl", "S1: percentile for the threshold, e.g. 0.99 = p99 (default 0.99)", s1_pctl);
     cmd.AddValue("s1_pctl_min_n", "S1: benign samples required before the percentile is trusted; k*sigma until then (default 200)", s1_pctl_min_n);
+    // Item 7 correction (supervisor, 2026-08-29): calibrate the percentile on
+    // best-effort delay instead of high-priority delay. Requires
+    // --s1_use_percentile=1 to take effect (selects WHICH histogram
+    // calibrates the cutoff; see s1_pctl_calibrate_besteffort's declaration
+    // in s1_detection.h for why the two histograms are mutually exclusive).
+    cmd.AddValue("s1_pctl_calibrate_besteffort", "S1 item 7 correction: calibrate the percentile cutoff on best-effort delay (attack-immune by construction) instead of high-priority delay (default 0)", s1_pctl_calibrate_besteffort);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);
@@ -144797,6 +144823,16 @@ if (fade_detection_active)
       dw_write_csv(lstm_make_base_dir() + "detector_windows_Attack" + std::to_string(_dw_v)
                    + "_" + std::to_string(attack_percentage) + g_delay_suffix
                    + "_seed" + std::to_string(sim_seed)
+                   + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
+  }
+  // Item 7 validation export: only worth writing if at least one of the two
+  // histograms was actually fed this run.
+  if (s1_use_percentile || s1_pctl_calibrate_besteffort)
+  {
+      int _s1_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
+      s1_export_pctl_histograms(lstm_make_base_dir() + "s1_pctl_histograms_Attack"
+                   + std::to_string(_s1_v) + "_" + std::to_string(attack_percentage)
+                   + g_delay_suffix + "_seed" + std::to_string(sim_seed)
                    + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
   }
   Simulator::Destroy();
