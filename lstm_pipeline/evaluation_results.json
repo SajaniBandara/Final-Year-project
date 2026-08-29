@@ -80,10 +80,10 @@
         "M8_UCR_pct": 0.0
       },
       "pct60": {
-        "M4_L_mit_ms": 17443.9058,
-        "M5_PDR": 63.0497,
-        "M6_L_e2e_ms": 188.83,
-        "M7_TVR_pct": 21.4095,
+        "M4_L_mit_ms": 18116.716,
+        "M5_PDR": 62.9003,
+        "M6_L_e2e_ms": 189.8077,
+        "M7_TVR_pct": 22.2311,
         "M8_UCR_pct": 0.0
       },
       "pct80": {
@@ -100,10 +100,10 @@
     "TN": null,
     "FP": null,
     "FN": null,
-    "M1_MCC": 0.786,
-    "M2_DR": 0.7983,
-    "M3_FPR": 0.0046,
-    "n_runs": 40,
+    "M1_MCC": 0.784,
+    "M2_DR": 0.7786,
+    "M3_FPR": 0.0,
+    "n_runs": 46,
     "source": "rule_based_S3_S4",
     "sim_metrics": {
       "pct20": {
@@ -114,35 +114,35 @@
         "M8_UCR_pct": 0.0
       },
       "pct40": {
-        "M4_L_mit_ms": 49665.076,
+        "M4_L_mit_ms": 49665.0643,
         "M5_PDR": 65.5774,
         "M6_L_e2e_ms": 25.5073,
-        "M7_TVR_pct": 0.797,
+        "M7_TVR_pct": 0.8302,
         "M8_UCR_pct": 0.0
       },
       "pct60": {
-        "M4_L_mit_ms": 38114.6484,
-        "M5_PDR": 63.9782,
-        "M6_L_e2e_ms": 26.8172,
-        "M7_TVR_pct": 0.9105,
+        "M4_L_mit_ms": 39193.815,
+        "M5_PDR": 64.1361,
+        "M6_L_e2e_ms": 26.6925,
+        "M7_TVR_pct": 0.9265,
         "M8_UCR_pct": 0.0
       },
       "pct80": {
-        "M4_L_mit_ms": 56427.5478,
+        "M4_L_mit_ms": 56427.5308,
         "M5_PDR": 65.5856,
         "M6_L_e2e_ms": 26.7823,
-        "M7_TVR_pct": 1.4497,
+        "M7_TVR_pct": 1.5314,
         "M8_UCR_pct": 0.0
       }
     },
     "lstm_clf_reference_only": {
-      "TP": 3364,
-      "TN": 4292,
-      "FP": 109,
-      "FN": 555,
-      "M1_MCC": 0.8438,
-      "M2_DR": 0.8584,
-      "M3_FPR": 0.0248
+      "TP": 3383,
+      "TN": 5734,
+      "FP": 144,
+      "FN": 723,
+      "M1_MCC": 0.823,
+      "M2_DR": 0.8239,
+      "M3_FPR": 0.0245
     },
     "is_rule_based": true
   },
@@ -151,49 +151,49 @@
     "TN": null,
     "FP": null,
     "FN": null,
-    "M1_MCC": 0.6986,
-    "M2_DR": 0.6699,
-    "M3_FPR": 0.0069,
-    "n_runs": 36,
+    "M1_MCC": 0.6863,
+    "M2_DR": 0.6366,
+    "M3_FPR": 0.0,
+    "n_runs": 42,
     "source": "rule_based_S3_S4",
     "sim_metrics": {
       "pct20": {
-        "M4_L_mit_ms": 54631.7452,
+        "M4_L_mit_ms": 54630.932,
         "M5_PDR": 65.9175,
         "M6_L_e2e_ms": 28.3741,
-        "M7_TVR_pct": 2.6788,
+        "M7_TVR_pct": 2.8366,
         "M8_UCR_pct": 0.0
       },
       "pct40": {
-        "M4_L_mit_ms": 54715.7726,
+        "M4_L_mit_ms": 54715.7416,
         "M5_PDR": 66.5397,
         "M6_L_e2e_ms": 30.2472,
-        "M7_TVR_pct": 4.4257,
+        "M7_TVR_pct": 4.6518,
         "M8_UCR_pct": 0.0
       },
       "pct60": {
-        "M4_L_mit_ms": 36035.3646,
-        "M5_PDR": 65.726,
-        "M6_L_e2e_ms": 32.9341,
-        "M7_TVR_pct": 5.3259,
+        "M4_L_mit_ms": 38533.5811,
+        "M5_PDR": 65.8022,
+        "M6_L_e2e_ms": 32.8475,
+        "M7_TVR_pct": 5.5029,
         "M8_UCR_pct": 0.0
       },
       "pct80": {
-        "M4_L_mit_ms": 55875.6811,
+        "M4_L_mit_ms": 55875.6559,
         "M5_PDR": 66.6979,
         "M6_L_e2e_ms": 32.3555,
-        "M7_TVR_pct": 6.6678,
+        "M7_TVR_pct": 7.022,
         "M8_UCR_pct": 0.0
       }
     },
     "lstm_clf_reference_only": {
-      "TP": 773,
-      "TN": 5796,
-      "FP": 1437,
-      "FN": 314,
-      "M1_MCC": 0.391,
-      "M2_DR": 0.7111,
-      "M3_FPR": 0.1987
+      "TP": 838,
+      "TN": 7213,
+      "FP": 1454,
+      "FN": 479,
+      "M1_MCC": 0.377,
+      "M2_DR": 0.6363,
+      "M3_FPR": 0.1678
     },
     "is_rule_based": true
   },
@@ -338,11 +338,11 @@
         "M8_UCR_pct": 2.6627
       },
       "pct60": {
-        "M4_L_mit_ms": 15596.1724,
-        "M5_PDR": 34.1488,
-        "M6_L_e2e_ms": 24.8397,
+        "M4_L_mit_ms": 14483.0296,
+        "M5_PDR": 33.8275,
+        "M6_L_e2e_ms": 24.4261,
         "M7_TVR_pct": 0.0,
-        "M8_UCR_pct": 2.8829
+        "M8_UCR_pct": 2.8321
       },
       "pct80": {
         "M4_L_mit_ms": 26646.4771,
