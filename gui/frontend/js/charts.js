@@ -76,6 +76,8 @@ function niceScale(min, max, ticks = 5) {
  * @param {string} config.xLabel
  * @param {boolean} config.categoricalX  Space x values evenly (attack-% sweeps).
  * @param {Array} config.vlines  [{ x, label }] annotation lines, e.g. attack start.
+ * @param {Array} config.hlines  [{ y, label }] horizontal reference lines, e.g. a
+ *   detector threshold. Drawn beneath the series so data stays on top.
  * @param {boolean} config.band  Draw a shaded lo..hi confidence band.
  * @param {boolean} config.errorBars Draw lo..hi whiskers instead of a band.
  */
@@ -87,6 +89,7 @@ export function renderLineChart(container, config) {
     unit = 'count',
     categoricalX = false,
     vlines = [],
+    hlines = [],
     band = false,
     errorBars = false,
   } = config;
@@ -187,6 +190,20 @@ export function renderLineChart(container, config) {
     }, svg);
     el('text', {
       x: x + 5, y: PLOT.y + 12, fill: 'var(--status-serious)', 'font-size': 11,
+    }, svg).textContent = marker.label;
+  }
+
+  // --- horizontal reference lines (e.g. a detector threshold) -------------
+  for (const marker of hlines) {
+    if (marker.y < yScale.lo || marker.y > yScale.hi) continue;
+    const y = sy(marker.y);
+    el('line', {
+      x1: PLOT.x, x2: PLOT.x + PLOT.w, y1: y, y2: y,
+      stroke: 'var(--status-critical)', 'stroke-width': 1.5, 'stroke-dasharray': '6 3',
+    }, svg);
+    el('text', {
+      x: PLOT.x + PLOT.w - 4, y: y - 5, 'text-anchor': 'end',
+      fill: 'var(--status-critical)', 'font-size': 11,
     }, svg).textContent = marker.label;
   }
 

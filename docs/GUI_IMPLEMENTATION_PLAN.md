@@ -219,11 +219,12 @@ WS   /ws/stream?run_id=&mode=&speed=
 | **1b** | **DONE** — Offline Analytics + Thesis Figures frontend: sweep chart with CI error bars, run detail (KPI tiles, per-cycle trend, confusion matrix + recomputation), figures gallery. Hand-rolled SVG, theme-aware, table view on every chart. | Phase 1a |
 | **1c-i** | **DONE** — Federated LSTM tab (`lstm.py` + `/api/panels/lstm` + `js/lstm.js`), 16 tests: per-variant detection quality, BRFA-v2 poisoning (M8), federated rejection breakdown, AB2/AB3 ablations, mobility-stratified MCC heatmap. Built first because `lstm_pipeline/*.json` are **git-tracked and current (2026-08-29)** while every CSV is a month stale — this is the only tab whose numbers are up to date. | Phase 1a |
 | **1c-ii** | **DONE** — Crypto & Integrity Overhead tab (`crypto.py` + `/api/panels/crypto` + `js/crypto.js`), 14 tests. Per-operation wall-clock over 105k events/run, faceted into two linear charts because costs span 1.15 µs–6.6 ms. | Phase 1a |
-| **1c-iii** | *Remaining:* TCAM occupancy panel (42,706 rows across 13 files — per-RSU per-second, also enough for an RSU-grid heatmap **without** the `routing.cc` change Phase 3b assumes) and blockchain (`bc_anchor`/`bc_flowmod`/`bc_tref` are small and usable; **`bc_detection` is 2.4 GB across 48 files** and needs a streaming reader or exclusion; `bc_trust_updates` and `bc_dkg` are effectively empty — 0 and 1 rows). | Phase 1a |
-| **1c-iv** | **BLOCKED on the HPC** — B1/B2/B3 baseline comparison. **B1 TAP: no local output at all. B3 eFADE: all 48 `fade_results_*.csv` are header-only, 0 data rows.** Only B2 SFTO (`sfto_pipeline/results/*.csv`, git-tracked) has data, and it covers Attack 4 only. A baselines panel built now would be an empty shell. | fresh HPC data |
+| **1c-iii** | **DONE** — TCAM Grid tab (`tcam.py` + `/api/panels/tcam` + `js/tcam.js`), 18 tests. Animated 8×8 RSU occupancy grid with a time scrubber, occupancy-over-time chart with the S4 gate marked, and threshold-crossing counts. **This is the RSU grid Phase 3b assumed needed a `routing.cc` change — it does not.** `tcam_occupancy_*.csv` already carries per-RSU per-second state. | Phase 1a |
+| **1c-iv** | *Remaining:* blockchain. `bc_anchor` (28 rows), `bc_flowmod` (3,138) and `bc_tref` (29) are small and usable; **`bc_detection` is 2.4 GB across 48 files** and needs a streaming reader or exclusion; `bc_trust_updates` (0 rows) and `bc_dkg` (1 row) are effectively empty. | Phase 1a |
+| **1c-v** | **BLOCKED on the HPC** — B1/B2/B3 baseline comparison. **B1 TAP: no local output at all. B3 eFADE: all 48 `fade_results_*.csv` are header-only, 0 data rows.** Only B2 SFTO (`sfto_pipeline/results/*.csv`, git-tracked) has data, and it covers Attack 4 only. A baselines panel built now would be an empty shell. | fresh HPC data |
 | **2** | **DONE** — Live PEM Monitor. `stream.py` holds both sources behind one contract (`ReplaySource`, `TailSource`), `/ws/stream` serves them, and the Live tab renders KPI tiles, a rolling chart, an integrity/consensus strip and a detection-event feed. 15 tests. Built as one module rather than the planned separate `replay.py`/`live.py`: both are ~40 lines around the same `RowDecoder`, and splitting them would have invited exactly the contract drift the design exists to prevent. | Phase 0 |
 | **3a** | **DONE** — Verification & Evidence tab (`verification.py` + `/api/verification` + `js/verification.js`), 16 tests. Parses `audit_equations.py` output into sections/checks/summary, leads with failures, and offers a live "Re-run audit" button (~14 s). The log lives at `docs/task8_verification/equation_audit.log`, which is gitignored by the blanket `*.log` rule — the tab handles its absence by showing the exact command. | Phase 1a |
-| **3b** *(optional)* | Topology view (8x8 RSU grid, 4 controllers, RSUs tinted by TCAM occupancy, suspects flashing as signatures fire) + verification/evidence tab rendering the equation-audit and functional-verification logs | needs new per-cycle per-RSU emission in `routing.cc` + an HPC rebuild |
+| **3b** *(optional)* | Topology view showing **vehicles and controllers** alongside the RSUs, with live suspect highlighting. The RSU-occupancy half of this shipped in 1c-iii from existing data; what still needs new per-cycle emission in `routing.cc` is per-node *detection* state (which node is currently flagged), not occupancy. | `routing.cc` change + HPC rebuild |
 
 Phase 1 before Phase 2 deliberately: it is the half with no moving parts, so the
 demo has something complete even if the realtime work runs late.
@@ -299,6 +300,25 @@ carry more seeds)* All 48 CSVs are seed 1, so every sweep point is `n=1` with
 "n=1, no CI" rather than a zero-width error bar implying perfect precision. The
 published figures in `output/` do show CIs, so they came from seeds this copy
 lacks.
+
+**G. `tcam_occupancy_*.csv`'s `rsu_id` column is a simulation node index, not
+an RSU index.** *(naming issue; no data is wrong, but every consumer must slice)*
+
+The column ranges over all 268 nodes — 200 vehicles, then 64 RSUs, then 4
+controllers (`routing.cc:112`, `const int total_size = 268`). Measured: every
+occupancy file carries ids 0–267, of which only **200–263** are RSUs. Anything
+that plots `rsu_id` directly — an 8×8 grid, a per-RSU average — silently mixes
+vehicle rows into RSU statistics. `gui/backend/tcam.py::rsu_range` derives the
+window from the highest node id rather than hardcoding 200, so a run with a
+different vehicle count still slices correctly. Worth renaming the column to
+`node_id` in `tcam_attack_helper.h:634` if the format is ever revised.
+
+Related, from the same writer's comment (`tcam_attack_helper.h:668`):
+`counted_rule_count` is the capacity-occupying count the S3/S4 detector reads;
+`total_rule_count` additionally includes passive ip-hook observations. Computing
+utilisation from `total` overstates occupancy — measured, the ip-hook delta is
+exactly 1 per RSU, matching the `(total − counted) ≤ 1` invariant noted in
+`tcam_flow_generator.h:23`.
 
 **F. `stark_hop`'s 88% "fail" rate is broadcast overhearing, not proof failures
 — the `verify` fix was never applied to it.** *(instrumentation issue in

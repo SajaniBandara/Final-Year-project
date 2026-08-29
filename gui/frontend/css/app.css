@@ -534,3 +534,30 @@ code {
   padding: 1px 5px;
   border-radius: 4px;
 }
+
+/* --- RSU grid ------------------------------------------------------------ */
+
+.rsu-grid { display: grid; gap: 4px; }
+
+.rsu-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  /* 2px surface ring so adjacent fills stay separable. */
+  border: 2px solid var(--surface-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+.rsu-cell .rsu-id { opacity: 0.65; font-size: 9px; line-height: 1; }
+.rsu-cell .rsu-count { font-weight: 650; line-height: 1.2; }
+
+/* Threshold crossing carries a ring AND a glyph, never colour alone. */
+.rsu-over { outline: 2px solid var(--status-critical); outline-offset: -2px; }
+.rsu-flag { color: var(--status-critical); font-size: 9px; line-height: 1; }
+
+input[type="range"] { width: 100%; accent-color: var(--series-1); }

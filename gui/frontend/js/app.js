@@ -10,6 +10,7 @@ import { api, ApiError } from './api.js';
 import { initFigures } from './figures.js';
 import { initLive, stopLive } from './live.js';
 import { initCrypto } from './crypto.js';
+import { initTcam, stopTcam } from './tcam.js';
 import { initLstm } from './lstm.js';
 import { initVerification } from './verification.js';
 import { initOffline } from './offline.js';
@@ -86,6 +87,8 @@ function initTabs(panels) {
     // Leaving the Live tab closes the socket: a stream left running in a
     // hidden panel keeps the server busy and confuses the next connection.
     if (name !== 'live') stopLive();
+    // Same reason: a grid animating in a hidden panel is wasted work.
+    if (name !== 'tcam') stopTcam();
   };
   for (const button of buttons) {
     button.addEventListener('click', () => select(button.dataset.tab));
@@ -101,6 +104,7 @@ async function main() {
     live: document.querySelector('#panel-live'),
     lstm: document.querySelector('#panel-lstm'),
     crypto: document.querySelector('#panel-crypto'),
+    tcam: document.querySelector('#panel-tcam'),
     verification: document.querySelector('#panel-verification'),
     figures: document.querySelector('#panel-figures'),
   };
@@ -131,6 +135,7 @@ async function main() {
       initLive(panels.live, catalog);
     }
     await initLstm(panels.lstm);
+    await initTcam(panels.tcam);
     await initCrypto(panels.crypto);
     await initVerification(panels.verification);
     await initFigures(panels.figures);

@@ -230,6 +230,19 @@ def crypto_panel(
     return service.crypto_panel(run_id)
 
 
+@app.get("/api/panels/tcam", tags=["analysis"])
+def tcam_panel(
+    mode: str | None = Query(None, description="Occupancy log to analyse; first if omitted."),
+    service: ResultsService = Depends(get_service),
+) -> dict[str, object]:
+    """TCAM occupancy over time plus per-RSU grid frames.
+
+    Cells are RSUs only: the CSV's ``rsu_id`` is a simulation node index over
+    all 268 nodes, so vehicles and controllers are sliced out.
+    """
+    return service.tcam_panel(mode)
+
+
 @app.get("/api/panels/lstm", tags=["analysis"])
 def lstm_panel(service: ResultsService = Depends(get_service)) -> dict[str, object]:
     """Federated-LSTM detection quality, poisoning robustness and ablations.
