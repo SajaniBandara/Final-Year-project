@@ -130,6 +130,17 @@ static std::vector<uint32_t> g_lstm_prev_ranom;
 // model. Sized by lstm_logger_init().
 static std::vector<uint32_t> g_lstm_prev_hf_sendgt;
 
+// ── Per-RSU Selective Time Delay (A1/A2) send-side ground-truth counter
+// from the previous cycle (Fix 2, supervisor-approved 2026-08-25). Same
+// delta pattern as g_lstm_prev_hf_sendgt above, but tracks
+// g_lstm_std_sendgt_count (crypto_layer.h) -- a send-time signal used ONLY
+// to build the A1/A2 ground-truth label, never fed to the model. Sized by
+// lstm_logger_init().
+static std::vector<uint32_t> g_lstm_prev_std_sendgt;
+// A3/A4 TCAM injection counter from the previous cycle (2026-08-28). Same
+// delta pattern as its hf_/std_ siblings; label-only, never a model feature.
+static std::vector<uint32_t> g_lstm_prev_tcam_sendgt;
+
 // ── D_div/A_tp (eq:feat_ddiv, eq:feat_atp): flow 0's legit-delivery delta,
 // computed ONCE PER CYCLE (not once per RSU) since lstm_log_rsu_cycle() is
 // called once per RSU inside the same cycle's per-RSU loop -- consuming
@@ -201,20 +212,31 @@ static std::vector<bool>  g_lstm_last_dlstm;
 static std::vector<bool>  g_lstm_high_confidence;
 static float               LSTM_HC_MULT = 2.0f;  // supervisor's starting multiplier; raise to 3.0 if Q6 FP stays elevated
 
-// Canonical CSV header (2026-08-14, supervisor Fix 3: delta_t_exceeded
-// appended, 18 columns. delta_t itself is now a per-cycle MAX, not mean --
-// same column name/position, changed meaning, see routing.cc's
-// obs_delay_max/lstm_log_rsu_cycle() call site). Kept as a single constant
-// so lstm_migrate_stale_header() and the writer below can never drift apart.
-// hf_send_gt is NOT part of FEATURES in preprocessor.py -- see
-// g_lstm_hf_sendgt_count's declaration (crypto_layer.h) for why it must
-// stay separate from r_anom. delta_t_exceeded IS part of FEATURES (the new
-// 11th eq:lstm_input feature) -- appended last so it doesn't disturb any
-// existing column's position, same pattern hf_send_gt used.
+// Canonical CSV header (2026-08-25, supervisor-approved Fix 2: std_send_gt
+// appended, 19 columns. See g_lstm_std_sendgt_count's declaration
+// (crypto_layer.h) for why A1/A2 need an injection-side ground-truth column
+// independent of delta_t_exceeded/g_s1_gt_delay_exceeded/g_s2_gt_delay_exceeded.
+// Kept as a single constant so lstm_migrate_stale_header() and the writer
+// below can never drift apart. Both hf_send_gt and std_send_gt are
+// label-only, NOT part of FEATURES in preprocessor.py -- see their
+// respective counters' declarations (crypto_layer.h) for why each must stay
+// separate from the detector-facing signal it grounds (r_anom, delta_t).
 static const char* LSTM_CSV_HEADER =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt,tcam_send_gt";
+// 2026-08-14..2026-08-25 format, 18 columns -- same as current but no
+// std_send_gt (appended at the very end).
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_19COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
+    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt";
+static const size_t LSTM_CSV_19COL_NCOLS = 19;
+[[maybe_unused]] static const char* LSTM_CSV_HEADER_18COL =
+    "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
+    "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
     "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded";
+static const size_t LSTM_CSV_18COL_NCOLS = 18;
 // 2026-08-02..2026-08-14 format, 17 columns -- same as current but no
 // delta_t_exceeded (appended at the very end), and delta_t was a mean.
 [[maybe_unused]] static const char* LSTM_CSV_HEADER_17COL =
@@ -383,7 +405,27 @@ inline void lstm_migrate_stale_header(const std::string& path)
             migrated_rows.push_back(row + ",0");
             ++n_migrated;
         }
-        else if (f.size() == 18)
+        else if (f.size() == LSTM_CSV_18COL_NCOLS)
+        {
+            // Pre-std_send_gt row (2026-08-14..2026-08-25): all 18 fields
+            // already in current order, just missing the trailing
+            // std_send_gt column. Append 0 -- these rows predate the
+            // counter's existence, same "unknown, assume no attack-
+            // conforming delay injected" default the rest of this function
+            // uses for absent columns.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == LSTM_CSV_19COL_NCOLS)
+        {
+            // Pre-tcam_send_gt row (2026-08-27..2026-08-28): all 19 fields
+            // already in current order, missing only the trailing
+            // tcam_send_gt. Append 0 -- same "unknown, assume no injection"
+            // default every prior column addition used here.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == 20)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -392,7 +434,7 @@ inline void lstm_migrate_stale_header(const std::string& path)
         {
             std::cerr << "[LSTM_LOGGER] WARNING: " << path
                        << " has a row with " << f.size()
-                       << " fields (expected 10/13/14/16/17 legacy or 18 current) — "
+                       << " fields (expected 10/13/14/16/17/18/19 legacy or 20 current) — "
                        << "left unmigrated: " << row << std::endl;
             migrated_rows.push_back(row);
             ++n_unexpected;
@@ -545,6 +587,8 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_prev_slowpath.assign(n_rsus, 0);
     g_lstm_prev_ranom.assign(n_rsus, 0);
     g_lstm_prev_hf_sendgt.assign(n_rsus, 0);
+    g_lstm_prev_std_sendgt.assign(n_rsus, 0);
+    g_lstm_prev_tcam_sendgt.assign(n_rsus, 0);
     g_lstm_escalation_count.assign(n_rsus, 0);
     g_lstm_rsu_window.assign(n_rsus, {});
     g_lstm_last_score.assign(n_rsus, 0.0f);
@@ -552,6 +596,8 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_lstm_high_confidence.assign(n_rsus, false);
     g_ranom_flag_last.assign(n_rsus, 0);   // Decision 2 rule latch
     g_ranom_rule_prev.assign(n_rsus, 0);   // its own prev-value array
+    g_hf_send_flag_last.assign(n_rsus, 0); // item 9 correction: send-side latch
+    g_hf_send_rule_prev.assign(n_rsus, 0); // its own prev-value array
     g_dw_activity_last.assign(n_rsus, 1);  // Decision 4 activity latch (default: ungated)
     g_lstm_logger_ready = true;
 
@@ -867,6 +913,37 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if (r < g_lstm_prev_hf_sendgt.size()) g_lstm_prev_hf_sendgt[r] = cur_sgt;
     }
 
+    // ── std_send_gt (label-only, NOT a model feature -- Fix 2,
+    // supervisor-approved 2026-08-25): Δ(g_lstm_std_sendgt_count[rsu_sim_idx])
+    // since last cycle, same delta pattern as hf_send_gt above but from the
+    // A1/A2 send/scheduling-side counter (crypto_layer.h). Logged as a
+    // separate CSV column so a rescoring pass can build the A1/A2
+    // ground-truth window label from this instead of from delta_t_exceeded
+    // (banned as an input feature, supervisor Fix 3) or the sticky
+    // g_s1_gt_delay_exceeded/g_s2_gt_delay_exceeded node-level latches
+    // (neither is a per-window signal).
+    double STD_SendGT = 0.0;
+    {
+        auto it = g_lstm_std_sendgt_count.find(rsu_sim_idx);
+        uint32_t cur_sgt = (it != g_lstm_std_sendgt_count.end()) ? it->second : 0;
+        uint32_t prev_sgt = (r < g_lstm_prev_std_sendgt.size()) ? g_lstm_prev_std_sendgt[r] : 0;
+        STD_SendGT = (cur_sgt >= prev_sgt) ? (double)(cur_sgt - prev_sgt) : 0.0;
+        if (r < g_lstm_prev_std_sendgt.size()) g_lstm_prev_std_sendgt[r] = cur_sgt;
+    }
+
+    // ── tcam_send_gt (label-only, A3/A4 injection-side ground truth,
+    // 2026-08-28): delta of g_lstm_tcam_sendgt_count for this VICTIM RSU since
+    // last cycle. Closes the gap that left A3/A4 with no leak-free label at
+    // all -- see g_lstm_tcam_sendgt_count (crypto_layer.h).
+    double TCAM_SendGT = 0.0;
+    {
+        auto it = g_lstm_tcam_sendgt_count.find(rsu_sim_idx);
+        uint32_t cur_tg = (it != g_lstm_tcam_sendgt_count.end()) ? it->second : 0;
+        uint32_t prev_tg = (r < g_lstm_prev_tcam_sendgt.size()) ? g_lstm_prev_tcam_sendgt[r] : 0;
+        TCAM_SendGT = (cur_tg >= prev_tg) ? (double)(cur_tg - prev_tg) : 0.0;
+        if (r < g_lstm_prev_tcam_sendgt.size()) g_lstm_prev_tcam_sendgt[r] = cur_tg;
+    }
+
     // ── Features 9 & 10: D_div, A_tp (eq:feat_ddiv, eq:feat_atp; corrected
     // 2026-07-28 per main.tex:5783-5794). Both are computed from dedicated
     // local delivery counters populated at the MacRx receive sites in
@@ -1093,6 +1170,8 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << (g_lstm_last_dlstm[r] ? 1 : 0)
       << "," << HF_SendGT
       << "," << (obs_exceeded_dmax ? 1 : 0)
+      << "," << STD_SendGT
+      << "," << TCAM_SendGT
       << "\n";
     f.close();
 }

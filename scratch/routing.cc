@@ -117764,10 +117764,37 @@ void calculate_witness_wapr_metric()
 {
     uint32_t fn_w = 0;
     if (present_passive_hf_attack) {
+        // Supervisor item 4 (2026-08-27): count the MISS against the same
+        // covering-RSU attribution Fix 1 applies on the alert side.
+        //
+        // witness_submit_duplication_alert() now targets
+        // hf_gt_attribution_node(accused) -- an RSU attacker maps to itself,
+        // a vehicle attacker to whichever RSU currently covers it -- so
+        // g_witness_da_threshold_fired[] is keyed by covering RSU. This loop
+        // was still asking whether the RAW attacker node had fired, so a
+        // vehicle attacker correctly detected via its covering RSU was
+        // counted as a false negative anyway: the numerator and denominator
+        // were keyed differently. Measured on A8 @40% seed1 30s, the printed
+        // recall read 36.8% while the same run's alerts scored 95.2% against
+        // the covering-RSU ground truth.
+        //
+        // Dedup by attribution target: several vehicle attackers under one
+        // covering RSU are a single detectable subject at this metric's
+        // granularity (one threshold-crossing event per node per run, per
+        // g_witness_da_threshold_fired's own single-fire guard), so counting
+        // each raw attacker separately would inflate FN_W beyond the number
+        // of misses the witness layer could ever have made.
+        std::set<uint32_t> missed_targets;
         for (int n = 0; n < total_size; n++) {
-            if (passive_hf_malicious_nodes[n] && !g_witness_da_threshold_fired[(uint32_t)n])
-                fn_w++;
+            if (!passive_hf_malicious_nodes[n]) continue;
+            uint32_t tgt = hf_gt_attribution_node((uint32_t)n);
+            // UINT32_MAX: no RSU currently covers this attacker, so no witness
+            // could have observed it -- not a miss, matching the alert side,
+            // which suppresses rather than misattributes in the same case.
+            if (tgt == UINT32_MAX) continue;
+            if (!g_witness_da_threshold_fired[tgt]) missed_targets.insert(tgt);
         }
+        fn_w = (uint32_t)missed_targets.size();
     }
     g_witness_FN_W = fn_w;
 
@@ -118357,14 +118384,34 @@ void calculate_performance_evaluation_metrics()
 			if (_r < g_ranom_rule_prev.size()) g_ranom_rule_prev[_r] = _cur;
 		}
 
+		// Item 9 correction (supervisor, 2026-08-29): same pattern as the
+		// R_anom delta above, but for g_lstm_hf_sendgt_count -- the SEND-side
+		// hidden-duplicate counter -- since the A5-A8 activity gate below
+		// needs a send-side signal, not R_anom's receive-side one. Computed
+		// here for the same early-return reason as the block above.
+		{
+			uint32_t _rsu_sim = (uint32_t)N_Vehicles + _r;
+			auto _sit = g_lstm_hf_sendgt_count.find(_rsu_sim);
+			uint32_t _cur_sgt  = (_sit != g_lstm_hf_sendgt_count.end()) ? _sit->second : 0u;
+			uint32_t _prev_sgt = (_r < g_hf_send_rule_prev.size()) ? g_hf_send_rule_prev[_r] : 0u;
+			if (_r < g_hf_send_flag_last.size())
+				g_hf_send_flag_last[_r] = (_cur_sgt > _prev_sgt) ? 1 : 0;
+			if (_r < g_hf_send_rule_prev.size()) g_hf_send_rule_prev[_r] = _cur_sgt;
+		}
+
 		// Decision 4 (2026-08-21): latch whether THIS RSU saw genuine attack
 		// activity this cycle, for dw_end_cycle()'s window-level ground truth.
 		// Must be captured here: s1_rsu_exceeded_dmax was already reset above,
 		// and lstm_log_rsu_cycle() has just consumed the hf_send_gt delta.
 		//   A1/A2 (variants 0/1): a real >Delta_max hop-delay exceedance.
 		//   A5-A8 (variants 4-7): a hidden-duplicate SEND event, taken from
-		//     g_ranom_flag_last, which lstm_log_rsu_cycle() published a moment
-		//     ago from R_anom's own per-cycle delta.
+		//     g_hf_send_flag_last (item 9 correction, 2026-08-29) -- the
+		//     block immediately above, from g_lstm_hf_sendgt_count's own
+		//     per-cycle delta. Previously read g_ranom_flag_last, R_anom's
+		//     RECEIVE-side delta, which does not track whether this RSU
+		//     itself scheduled a send -- confirmed as the cause of three
+		//     residual A5 nodes (220/225/233) firing 58/58 windows despite
+		//     being genuinely dormant in some of them.
 		//   A3/A4: left to the existing victim-RSU logic in
 		//     lstm_rsu_ground_truth_label() -- TCAM exhaustion persists across
 		//     cycles rather than firing discretely, so a per-cycle activity
@@ -118374,7 +118421,7 @@ void calculate_performance_evaluation_metrics()
 			if (active_attack_variant == 0 || active_attack_variant == 1)
 				act = obs_exceeded_dmax ? 1 : 0;
 			else if (active_attack_variant >= 4 && active_attack_variant <= 7)
-				act = (_r < g_ranom_flag_last.size() && g_ranom_flag_last[_r]) ? 1 : 0;
+				act = (_r < g_hf_send_flag_last.size() && g_hf_send_flag_last[_r]) ? 1 : 0;
 			g_dw_activity_last[_r] = act;
 		}
 	}
@@ -121409,6 +121456,21 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							flow_id,
 							is_safety_critical_flow[flow_id]);
 
+						// Fix 2 (supervisor-approved 2026-08-25): injection-side
+						// ground truth for A1/A2 -- see g_lstm_std_sendgt_count's
+						// declaration (crypto_layer.h) for why this must be
+						// independent of any detector's measured delay. Latched
+						// here, on total_tx_delay straight out of
+						// calculate_unified_selective_delay() and BEFORE the TCAM
+						// slow-path addition below mutates it, so this counts only
+						// genuine Selective Time Delay injections (A1/A2), never a
+						// TCAM-exhaustion (A3/A4) queueing delay.
+						if (total_tx_delay > 0.0) {
+							uint32_t _std_gt_node = hf_gt_attribution_node(current_hop);
+							if (_std_gt_node != UINT32_MAX)
+								g_lstm_std_sendgt_count[_std_gt_node]++;
+						}
+
 						// TCAM slow-path delay (Attacks 3 & 4).
 						// Real TCAM lookup is O(1) — fill level does not affect latency.
 						// The penalty fires only when the table is AT OR ABOVE capacity:
@@ -122181,11 +122243,29 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					if ((present_active_hf_attack || present_passive_hf_attack) &&
 					    witness_check_duplication(current_hop, pkt_hash, destination,
 					                              &_dup_prev_dst, &_dup_age)) {
-						// DIAGNOSTIC (2026-08-06): characterise eq:dup_alert_cond's
-						// false positives before redesigning the hash. Prints the two
-						// destinations that collided, how far apart in time, and whether
-						// the accused node is genuinely a hidden-forwarding attacker.
-						// The paper's justification for this condition is "under
+						// Fix 1 (supervisor-approved 2026-08-25): attribute the DA
+						// alert to the true attacker's COVERING RSU via
+						// hf_gt_attribution_node(), the same function already
+						// validated for hf_send_gt across all four HF variants
+						// (routing.cc ~121525/121582/121943/122027 -- see
+						// hf_gt_attribution_node()'s own comment, ~115177). _w_prev
+						// is who physically forwarded the packet to this witness;
+						// for a vehicle relay (A6/A8 DP) that node id is never read
+						// by any RSU's CSV row or ground-truth array -- only its
+						// covering RSU is. An RSU attacker maps to itself (the
+						// identity case inside hf_gt_attribution_node). UINT32_MAX
+						// means no RSU currently covers the accused vehicle --
+						// correctly suppress the alert rather than attribute it to
+						// a covering node that doesn't exist at this instant, same
+						// as the hf_send_gt sites do.
+						uint32_t _da_target = hf_gt_attribution_node(_w_prev);
+						// DIAGNOSTIC (2026-08-06, extended 2026-08-25 with da_target):
+						// characterise eq:dup_alert_cond's false positives before
+						// redesigning the hash. Prints the two destinations that
+						// collided, how far apart in time, whether the accused node
+						// is genuinely a hidden-forwarding attacker, and the node
+						// the alert is actually attributed to post-Fix-1. The
+						// paper's justification for this condition is "under
 						// single-path routing, the same hash at two distinct
 						// destinations is impossible for legitimate traffic" — this
 						// line measures how often that precondition actually holds.
@@ -122196,6 +122276,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 							std::cout << "[DUP-DIAG]"
 							          << " witness=" << current_hop
 							          << " accused=" << _w_prev
+							          << " da_target=" << _da_target
 							          << " gt_malicious=" << (_gt_mal ? 1 : 0)
 							          << " fid=" << fid
 							          << " pkt=" << packet_ID
@@ -122204,8 +122285,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 							          << " dt=" << _dup_age
 							          << " t=" << Now().GetSeconds() << std::endl;
 						}
-						witness_submit_duplication_alert(current_hop, _w_prev,
-						                                 packet_ID, fid, destination, current_hop);
+						if (_da_target != UINT32_MAX) {
+							witness_submit_duplication_alert(current_hop, _da_target,
+							                                 packet_ID, fid, destination, current_hop);
+						}
 					}
 					check_msg_duplication(pkt_hash, destination);
 					volume_record_delivery(destination);
@@ -124817,7 +124900,17 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							routing_dsrc_data_unicast,
 							dev_to_use, dsrc_Nodes.Get(source),
 							fid, nid, arguments, total_packet_counter+1);
-							
+
+						// Fix 2 (supervisor-approved 2026-08-25): injection-side
+						// ground truth for A1/A2, retransmit path -- same latch as
+						// the check_and_transmit() site above, see
+						// g_lstm_std_sendgt_count's declaration (crypto_layer.h).
+						if (attacked) {
+							uint32_t _std_gt_node = hf_gt_attribution_node(source);
+							if (_std_gt_node != UINT32_MAX)
+								g_lstm_std_sendgt_count[_std_gt_node]++;
+						}
+
 						if (!attacked)
 						{
 							Simulator::Schedule(Seconds(0), routing_dsrc_data_unicast,
@@ -142199,6 +142292,20 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
     cmd.AddValue("s1_robust_sigma", "S1: exclude threshold-breaching packets from the sigma2 update (default 1)", s1_robust_sigma);
+    // Item 7 (supervisor, 2026-08-27): non-parametric percentile threshold.
+    // Default ON -- this is the approved replacement for the Gaussian k*sigma
+    // bound, which our own zero-attack data showed cannot fit a heavy-tailed
+    // delay distribution at any k. Flag retained so the two can still be A/B'd
+    // in one binary; set --s1_use_percentile=0 for the old behaviour.
+    cmd.AddValue("s1_use_percentile", "S1: non-parametric percentile threshold instead of delta_bar+k*sigma (default 0 -- measured 2.4x WORSE than k*sigma on a zero-attack baseline, see s1_detection.h)", s1_use_percentile);
+    cmd.AddValue("s1_pctl", "S1: percentile for the threshold, e.g. 0.99 = p99 (default 0.99)", s1_pctl);
+    cmd.AddValue("s1_pctl_min_n", "S1: benign samples required before the percentile is trusted; k*sigma until then (default 200)", s1_pctl_min_n);
+    // Item 7 correction (supervisor, 2026-08-29): calibrate the percentile on
+    // best-effort delay instead of high-priority delay. Requires
+    // --s1_use_percentile=1 to take effect (selects WHICH histogram
+    // calibrates the cutoff; see s1_pctl_calibrate_besteffort's declaration
+    // in s1_detection.h for why the two histograms are mutually exclusive).
+    cmd.AddValue("s1_pctl_calibrate_besteffort", "S1 item 7 correction: calibrate the percentile cutoff on best-effort delay (attack-immune by construction) instead of high-priority delay (default 0)", s1_pctl_calibrate_besteffort);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);
@@ -144716,6 +144823,16 @@ if (fade_detection_active)
       dw_write_csv(lstm_make_base_dir() + "detector_windows_Attack" + std::to_string(_dw_v)
                    + "_" + std::to_string(attack_percentage) + g_delay_suffix
                    + "_seed" + std::to_string(sim_seed)
+                   + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
+  }
+  // Item 7 validation export: only worth writing if at least one of the two
+  // histograms was actually fed this run.
+  if (s1_use_percentile || s1_pctl_calibrate_besteffort)
+  {
+      int _s1_v = (active_attack_variant < 0) ? 0 : (active_attack_variant + 1);
+      s1_export_pctl_histograms(lstm_make_base_dir() + "s1_pctl_histograms_Attack"
+                   + std::to_string(_s1_v) + "_" + std::to_string(attack_percentage)
+                   + g_delay_suffix + "_seed" + std::to_string(sim_seed)
                    + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
   }
   Simulator::Destroy();

@@ -424,9 +424,66 @@ inline LRADRSUFlags lrad_rsu(
         bool _prim = false;
         switch (active_attack_variant) {
             case 0: case 1: _prim = flags.flag_S2f; break;              // A1/A2 -> S1/S2
+            case 2: case 3:                                             // A3/A4 -> S3/S4
+                // FIX (2026-08-26, n11 debug session): this fell into `default`
+                // below and used flags.D_RSU -- the full OR-composite, INCLUDING
+                // flag_LSTM -- despite the comment claiming "recorded by
+                // tcam_detection.h". Isolated via a 3-way ablation (LSTM-only /
+                // witness-only / BTMM-only vs. the Q5 baseline, A3 @60% seed1
+                // 300s): LSTM-only alone reproduced Q6's FP explosion exactly
+                // (TP=429 FP=413, byte-identical to full Q6), witness-only and
+                // BTMM-only both matched the Q5 baseline byte-for-byte
+                // (TP=318 FP=2) -- the LSTM is entirely responsible, witness and
+                // BTMM are bystanders here. Mechanism: the LSTM-suppression gate
+                // above only silences flag_LSTM at an RSU where THAT SAME RSU's
+                // S3/S4 fired last cycle; per this file's own comment on that
+                // gate, "the LSTM's reconstruction error is structurally
+                // elevated by residual TCAM occupancy... independently of any
+                // co-firing signature" -- i.e. a bystander RSU with no local
+                // TCAM exhaustion can still see flag_LSTM fire, ungated, and
+                // flags.D_RSU let that pollute A3/A4's window score exactly the
+                // way S2f polluted A5's before the 2026-08-21 primary-detector
+                // fix. Scoped to the same rule-based signal the LSTM-gate above
+                // already reads (g_tcam_flag_s3_last/s4_last, tcam_detection.h),
+                // same pattern as every other variant's primary case.
+                //
+                // SUPERSEDED (2026-08-27): marking is done in dw_end_cycle()
+                // instead -- see below. Left as an explicit no-op case so A3/A4
+                // cannot silently fall through to `default` (flags.D_RSU) again,
+                // which is the original bug this case was added to fix.
+                //
+                // Two further problems with doing it here, both found before any
+                // of these numbers were trusted:
+                //
+                //  1. WRONG NODE. This site marks prev_sender (correct for every
+                //     OTHER variant, whose detectors accuse the sender), but the
+                //     value read is g_tcam_flag_s3_last[rsu] -- the flag of the
+                //     RSU PROCESSING the packet. A3/A4 ground truth labels the
+                //     VICTIM RSU ("any RSU holding >=1 malicious TCAM entry",
+                //     lstm_rsu_ground_truth_label(), lstm_logger.h), and S3/S4
+                //     fire at that same victim. So the read node and the marked
+                //     node are different roles, and crediting the victim's
+                //     detection to whatever node happened to send the packet
+                //     inflates FP. The "mark the suspect, not the observer" rule
+                //     INVERTS for the TCAM family: here the observer IS the
+                //     labelled subject.
+                //
+                //  2. WRONG GATE SEMANTICS. g_tcam_flag_s3_last/s4_last are
+                //     deliberately never gated by g_disable_s3_s4
+                //     (tcam_detection.h keeps them live so the LSTM-suppression
+                //     gate still works during ablation runs). Reading them raw
+                //     made A3/A4's primary score insensitive to g_disable_s3_s4
+                //     -- caught when a Q1-Q6 rerun returned Q1..Q5 byte-identical
+                //     for both A3 and A4, impossible when Q2/Q3/Q4 set
+                //     g_disable_s3_s4=1 specifically to isolate S3/S4 out.
+                //
+                // dw_end_cycle() already solves both: it folds the same flags in
+                // per-RSU under `if (!g_disable_s3_s4)`, indexing r directly.
+                _prim = false;
+                break;
             case 4: case 5: _prim = flags.flag_S5 || flags.flag_S6; break; // A5/A6 -> crypto/S5/S6
             case 6: case 7: _prim = flags.flag_S7 || flags.flag_S8; break; // A7/A8 -> S7/S8 (+R_anom, already OR'd in)
-            default: _prim = flags.D_RSU; break;                        // A3/A4 recorded by tcam_detection.h
+            default: _prim = flags.D_RSU; break;                        // unassigned variant, no home detector
         }
         // ATTRIBUTION FIX (2026-08-22): mark the SUSPECT, not the observer.
         //
@@ -695,6 +752,47 @@ inline LRADOBUFlags lrad_obu(
             vehicle,                // current_hop (receiver / OBU)
             pkt_id, fid);
         flags.flag_S1 = g_disable_s1_s2 ? false : _s1;
+
+        // S1 -> RSU primary column (2026-08-27, supervisor item 1, ADAPTED).
+        //
+        // The instruction was "M1 scores OBU rows, not just RSU rows", to give
+        // S1 credit it currently earns nowhere (S1 fires only here, in
+        // lrad_obu(), and the window grid's primary column is written only
+        // from lrad_rsu()). Scoring the OBU rows AS THEY STAND does the
+        // opposite -- measured on the existing Q1 data, pooling OBU into M1
+        // takes A1 from 0.7383 to 0.1746 and A2 from 0.3973 to 0.1754:
+        //
+        //   A1 OBU rows: 11,600 rows, truth=1 on ZERO of them, 5,924 firings
+        //                -> TP=0, FP=5,924, MCC=0.0000
+        //   A2 OBU rows: TP=6,371 FP=4,880 -> MCC=-0.0132 (worse than random)
+        //
+        // A1's OBU truth is all-zero STRUCTURALLY, not incidentally: its
+        // attacker is the controller and the compromised RSU obeying the
+        // poisoned FlowMod, so is_malicious_node[0][vehicle] is false for
+        // every vehicle, and every OBU firing is a false positive by
+        // construction. dw_mark_obu() also marks `vehicle` -- the RECEIVER --
+        // while OBU truth asks whether that receiver is malicious: the same
+        // observer/suspect conflation b718110 fixed for RSU rows, never fixed
+        // here because OBU rows were excluded from scoring. Fixing that
+        // attribution still would not rescue A1, because an OBU row is indexed
+        // by vehicle while A1's suspects are RSUs -- the label space and the
+        // attacker space do not intersect.
+        //
+        // So credit S1 inside the RSU-indexed truth space it already accuses
+        // into. s1_detect_packet() is handed N_Vehicles + assoc_rsu_local_idx
+        // as its sender_node_id (the argument immediately above) and records
+        // its detection event against exactly that RSU -- for the reasons in
+        // the comment there. Marking the same RSU in the primary column makes
+        // the window grid agree with the detection event, needs no invented
+        // OBU ground truth, and leaves dw_mark_obu()/the score column
+        // untouched.
+        //
+        // Scoped to variants 0/1: S1 is A1/A2's primary detector, and for any
+        // other variant it is not, so folding it in would reintroduce exactly
+        // the cross-detector pollution score_primary exists to prevent.
+        if (flags.flag_S1 &&
+            (active_attack_variant == 0 || active_attack_variant == 1))
+            dw_mark_rsu_primary(N_Vehicles + assoc_rsu_local_idx, true);
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────

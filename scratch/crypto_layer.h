@@ -577,6 +577,22 @@ std::vector<uint8_t> g_ranom_flag_last;
 // other's delta.
 std::vector<uint32_t> g_ranom_rule_prev;
 
+// Item 9 correction (supervisor, 2026-08-29): A5-A8's window activity gate
+// (g_dw_activity_last, below) was reading g_ranom_flag_last -- R_anom's
+// per-cycle delta, a RECEIVE-side signal -- while the detector it gates is
+// S5, a SEND-side one (main.tex: "a hidden-duplicate SEND event"). The
+// correct send-side signal already exists: g_lstm_hf_sendgt_count
+// (immediately below), incremented exactly when an RSU schedules a hidden
+// duplicate. These mirror g_ranom_flag_last/g_ranom_rule_prev's own pattern
+// -- a same-cadence latch computed in routing.cc's per-RSU metrics loop
+// (not inside lstm_log_rsu_cycle(), which early-returns without
+// --training/--enable_lstm_inference and would leave this silently zero in
+// exactly the ablation configs that need the rule) plus its own prev-value
+// array, kept separate so this delta and the LSTM feature's own
+// consumption of g_lstm_hf_sendgt_count never collide.
+std::vector<uint8_t>  g_hf_send_flag_last;
+std::vector<uint32_t> g_hf_send_rule_prev;
+
 // Supervisor Decision 4 (2026-08-21): per-RSU, per-cycle ATTACK-ACTIVITY
 // latch for detector_windows.csv's ground truth. Window-level detectors must
 // be scored against window-level truth; the previous truth column was
@@ -605,6 +621,67 @@ std::vector<uint8_t> g_dw_activity_last;
 // overlap. Logged as a label-only CSV column (hf_send_gt), excluded from
 // FEATURES in preprocessor.py.
 std::map<uint32_t, uint32_t> g_lstm_hf_sendgt_count;
+
+// Fix 2 (supervisor-approved 2026-08-25): per-RSU count of Selective Time
+// Delay (A1/A2) attack-CONFORMING delay injections scheduled this run --
+// the exact timing equivalent of g_lstm_hf_sendgt_count above, for the same
+// reason. delta_t_exceeded was banned as a training/eval feature (2026-08-14,
+// supervisor Fix 3) because it is derived from the same measured-delay
+// computation the detectors themselves consume, so scoring against it lets a
+// model recover its own label from its input. g_s1_gt_delay_exceeded /
+// g_s2_gt_delay_exceeded are STICKY node-level latches (set once, true for
+// the rest of the run -- see s1_detection.h/s2_detection.h), not per-window
+// signals, so neither is a valid per-window ground truth either.
+//
+// Incremented at the two live injection sites (routing.cc, inside
+// calculate_unified_selective_delay's caller and
+// schedule_unified_selective_delay_attack's caller) at the exact simulation
+// moment a packet is scheduled for attack-conforming delay -- i.e. the
+// return value/the `attacked` flag is non-zero/true -- BEFORE any detector
+// runs, so this shares no computation path with S1/S2's own delay
+// measurement. A1's injecting node is always the RSU holding the poisoned
+// FlowMod (cp_poisoned_flowmod_delay is only ever non-zero at RSU node ids --
+// see reapply_cp_selective_delay(), attack_declaration.h), so no attribution
+// mapping is needed there. A2's malicious-node pool spans the full node
+// space (declare_attackers(), attack_declaration.h: n_candidates =
+// N_Vehicles+N_RSUs) and CAN be a vehicle, which is not a node any RSU's CSV
+// row indexes -- same class of bug g_lstm_hf_sendgt_count exists to avoid
+// for HF, so A2 vehicle injectors are attributed to their covering RSU via
+// hf_gt_attribution_node(), exactly like hf_send_gt. UINT32_MAX (no RSU
+// currently covers the injecting vehicle) correctly latches nothing.
+//
+// Logged as a label-only CSV column (std_send_gt), excluded from FEATURES in
+// preprocessor.py -- same treatment as hf_send_gt.
+std::map<uint32_t, uint32_t> g_lstm_std_sendgt_count;
+
+// 2026-08-28: per-VICTIM-RSU count of malicious TCAM FlowMod installations
+// attempted against it -- the A3/A4 member of the same family as
+// g_lstm_hf_sendgt_count (HF) and g_lstm_std_sendgt_count (timing).
+//
+// Why A3/A4 needed one. y_indep, the leak-free window label, is built from
+// those two counters, and neither covers TCAM exhaustion -- so A3 and A4 had
+// ZERO positive leak-free windows in every split (measured 2026-08-28, all of
+// train/val/test). No A3/A4 score could be called leak-free. Their only label
+// path ran through is_spike, whose A3 leg is U_TCAM > benign-p99 and whose A4
+// leg falls back to delta_t; both of those ARE in FEATURES, i.e. a label that
+// is a transform of a model input -- the leakage class that is not permitted.
+//
+// Keyed by the VICTIM RSU (tcam_install_malicious's target_rsu_node_id), not
+// the attacker, because that is exactly what A3/A4 ground truth labels: "any
+// RSU holding >=1 malicious TCAM entry" (lstm_rsu_ground_truth_label(),
+// lstm_logger.h). For A3 (CP) attacker and victim are the same node; for A4
+// (DP) the attacker is a vehicle and only the victim RSU is ever read by an
+// RSU-indexed CSV row -- the same orphaning that motivated hf_send_gt's
+// covering-RSU attribution.
+//
+// Counts ATTEMPTS, including those refused with TABLE_FULL. A refused install
+// still means the attacker was actively attacking this RSU in this window --
+// indeed saturation is when S4's PACKET_IN signal is strongest -- so counting
+// only successful installs would mark the peak of the attack as benign.
+//
+// Label-only, emitted as tcam_send_gt, excluded from FEATURES like its two
+// siblings.
+std::map<uint32_t, uint32_t> g_lstm_tcam_sendgt_count;
 
 // 2026-07-28 (main.tex:5783-5794 spec correction): D_div/A_tp (eq:feat_ddiv,
 // eq:feat_atp) must be computed from "per-source per-destination byte counts"
@@ -1687,7 +1764,27 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         if (!g_witness_da_threshold_fired[target_node]) {
             g_witness_da_threshold_fired[target_node] = true;
             if (present_passive_hf_attack) {
-                if (passive_hf_malicious_nodes[target_node])
+                // Supervisor item 4 (2026-08-27): score against the same
+                // covering-RSU attribution the alert itself now uses.
+                //
+                // Post-Fix-1 target_node is hf_gt_attribution_node(accused),
+                // so for a VEHICLE attacker it is the covering RSU -- and
+                // passive_hf_malicious_nodes[covering_rsu] is false, because
+                // the RSU is not itself the attacker. Asking that question
+                // directly therefore booked every correct detection of a
+                // vehicle attacker as a false positive. A target is a true
+                // positive when it is the attribution target of at least one
+                // genuinely malicious node, which is exactly what the alert
+                // side computed to pick it.
+                bool _tgt_is_true = false;
+                for (int _n = 0; _n < total_size; ++_n) {
+                    if (!passive_hf_malicious_nodes[_n]) continue;
+                    if (hf_gt_attribution_node((uint32_t)_n) == target_node) {
+                        _tgt_is_true = true;
+                        break;
+                    }
+                }
+                if (_tgt_is_true)
                     ++g_witness_TP_W;
                 else
                     ++g_witness_FP_W;
