@@ -82,48 +82,72 @@ function shell() {
   return `
   <div class="sim">
     <header class="sim-head">
-      <div>
-        <h2>Run a simulation</h2>
-        <p class="lede">
-          Compose a configuration, launch ns-3, and watch the metrics arrive
-          cycle by cycle. This is the real simulator, not a replay.
-        </p>
+      <div class="sim-title-group">
+        <h2>Run Simulation</h2>
+        <span class="sim-subtitle">Configure, launch, and monitor real-time ns-3 simulations</span>
       </div>
       <div id="sim-env"></div>
     </header>
 
     <div class="sim-body">
       <section class="panel sim-form">
-        <h3>Presets</h3>
+        <div class="sim-section-header">
+          <span class="step-num">1</span>
+          <h3>Select Scenario</h3>
+        </div>
         <div id="sim-presets" class="preset-grid"></div>
 
-        <h3>Parameters</h3>
+        <div class="sim-section-header" style="margin-top: 18px;">
+          <span class="step-num">2</span>
+          <h3>Simulation Settings</h3>
+        </div>
         <div id="sim-groups"></div>
 
-        <label class="inline advanced-toggle">
-          <input type="checkbox" id="show-advanced"> Show advanced parameters
-        </label>
+        <details class="sim-advanced-details">
+          <summary class="advanced-summary">
+            <span class="glyph">⚙️</span>
+            <span>Advanced Parameters & Flags</span>
+            <label class="inline advanced-toggle" onclick="event.stopPropagation()">
+              <input type="checkbox" id="show-advanced"> Enable all
+            </label>
+          </summary>
+          <div id="sim-advanced-groups" class="advanced-body"></div>
+        </details>
 
-        <h3>Defence layers</h3>
+        <div class="sim-section-header" style="margin-top: 18px;">
+          <span class="step-num">3</span>
+          <h3>Defense Layers</h3>
+        </div>
         <div id="sim-defences" class="defence-compact"></div>
       </section>
 
       <section class="panel sim-launch">
-        <h3>Command</h3>
-        <pre class="command" id="sim-command">—</pre>
-        <div id="sim-warnings"></div>
-        <div class="row">
-          <button class="btn primary" id="sim-start">▶ Launch simulation</button>
-          <span id="sim-estimate" class="quiet"></span>
+        <div class="launch-hero">
+          <button class="btn primary launch-btn" id="sim-start">
+            <span class="launch-icon">▶</span> Launch Simulation
+          </button>
+          <div id="sim-estimate" class="estimate-pill"></div>
         </div>
 
-        <h3>Runs</h3>
-        <div id="sim-runs"></div>
+        <div id="sim-warnings"></div>
 
+        <details class="sim-command-details">
+          <summary><span class="glyph">💻</span> View Generated CLI Command</summary>
+          <pre class="command" id="sim-command">—</pre>
+        </details>
+
+        <div class="sim-section-header" style="margin-top: 18px;">
+          <h3>Active Run & Status</h3>
+        </div>
         <div id="sim-active"></div>
 
+        <div class="sim-section-header" style="margin-top: 18px;">
+          <h3>Recent Runs</h3>
+        </div>
+        <div id="sim-runs"></div>
+
         <details class="log-details">
-          <summary>Simulator output</summary>
+          <summary><span class="glyph">📄</span> Terminal Output Log</summary>
           <pre class="log" id="sim-log"></pre>
         </details>
       </section>
@@ -177,43 +201,83 @@ function renderEnvironment(root) {
     </div>`;
 }
 
+const PRESET_ICONS = {
+  quick: '⚡',
+  fast: '⚡',
+  standard: '🛡️',
+  eval: '🛡️',
+  stress: '🚨',
+  heavy: '🚨',
+  full: '🔬',
+  default: '🧪'
+};
+
 function renderPresets(root) {
-  root.querySelector('#sim-presets').innerHTML = options.presets
-    .map(
-      (preset) => `
+  const container = root.querySelector('#sim-presets');
+  if (!container) return;
+  container.innerHTML = options.presets
+    .map((preset) => {
+      const iconKey = Object.keys(PRESET_ICONS).find((k) => preset.key.toLowerCase().includes(k)) || 'default';
+      const icon = PRESET_ICONS[iconKey];
+      return `
       <button class="preset-card" data-preset="${preset.key}">
-        <strong>${preset.label}</strong>
-        <span class="preset-blurb">${preset.blurb}</span>
-        <span class="preset-eta">≈ ${fmt.duration(preset.est_wall_s)}</span>
-      </button>`
-    )
+        <div class="preset-head">
+          <span class="preset-icon">${icon}</span>
+          <strong class="preset-title">${preset.label}</strong>
+        </div>
+        <span class="preset-eta">⏱ ${fmt.duration(preset.est_wall_s)}</span>
+      </button>`;
+    })
     .join('');
+
   root.querySelectorAll('[data-preset]').forEach((button) => {
     button.addEventListener('click', () => {
+      root.querySelectorAll('[data-preset]').forEach((b) => b.classList.remove('is-selected'));
+      button.classList.add('is-selected');
       const preset = options.presets.find((p) => p.key === button.dataset.preset);
-      Object.assign(values, preset.values);
-      renderForm(root);
-      refreshPlan(root);
+      if (preset) {
+        Object.assign(values, preset.values);
+        renderForm(root);
+        refreshPlan(root);
+      }
     });
   });
 }
 
 function renderForm(root) {
   const showAdvanced = root.querySelector('#show-advanced')?.checked;
-  root.querySelector('#sim-groups').innerHTML = options.groups
-    // The defence group is rendered by its own switch board below; showing the
-    // same flags twice invites the two views disagreeing.
-    .filter((group) => group.key !== 'defence')
-    .map((group) => {
-      const params = group.params.filter((p) => showAdvanced || !p.advanced);
-      if (!params.length) return '';
-      return `
-      <fieldset class="param-group">
-        <legend>${group.label}</legend>
-        <div class="param-grid">${params.map(field).join('')}</div>
-      </fieldset>`;
-    })
-    .join('');
+  const groupsContainer = root.querySelector('#sim-groups');
+  const advancedContainer = root.querySelector('#sim-advanced-groups');
+  
+  if (groupsContainer) {
+    groupsContainer.innerHTML = options.groups
+      .filter((group) => group.key !== 'defence')
+      .map((group) => {
+        const params = group.params.filter((p) => !p.advanced);
+        if (!params.length) return '';
+        return `
+        <fieldset class="param-group">
+          <legend>${group.label}</legend>
+          <div class="param-grid">${params.map(field).join('')}</div>
+        </fieldset>`;
+      })
+      .join('');
+  }
+
+  if (advancedContainer) {
+    advancedContainer.innerHTML = options.groups
+      .filter((group) => group.key !== 'defence')
+      .map((group) => {
+        const params = group.params.filter((p) => p.advanced || showAdvanced);
+        if (!params.length) return '';
+        return `
+        <fieldset class="param-group advanced-group">
+          <legend>${group.label} (Advanced)</legend>
+          <div class="param-grid">${params.map(field).join('')}</div>
+        </fieldset>`;
+      })
+      .join('');
+  }
 
   root.querySelectorAll('[data-param]').forEach((input) => {
     input.addEventListener('change', () => {
@@ -244,13 +308,15 @@ const maybeNumber = (raw) => (raw !== '' && !Number.isNaN(Number(raw)) ? Number(
 function field(param) {
   const value = values[param.name];
   const help = param.help.replace(/"/g, '&quot;');
-  const label = `<span class="param-label" title="${help}">${param.label}</span>`;
+  const label = `<span class="param-label" title="${help}">${param.label} <span class="info-glyph" title="${help}">ⓘ</span></span>`;
 
   if (param.kind === 'bool') {
     return `
       <label class="param param-bool">
-        <input type="checkbox" data-param="${param.name}" data-kind="bool"
-               ${value ? 'checked' : ''}>
+        <label class="switch">
+          <input type="checkbox" data-param="${param.name}" data-kind="bool" ${value ? 'checked' : ''}>
+          <span class="track"></span>
+        </label>
         ${label}
       </label>`;
   }
@@ -276,16 +342,13 @@ function field(param) {
                value="${value ?? ''}" placeholder="(auto)">
       </label>`;
   }
-  // Numeric with bounds renders as a slider with a readout: a panel member can
-  // sweep attacker percentage without typing, which is the point.
   const step = param.kind === 'int' ? 1 : 'any';
   if (param.min !== null && param.max !== null && param.max - param.min <= 1000) {
     return `
       <label class="param param-range">
-        ${label}
+        <div class="range-head">${label} <output>${value}</output></div>
         <input type="range" data-param="${param.name}" data-kind="${param.kind}"
                min="${param.min}" max="${param.max}" step="${step}" value="${value}">
-        <output>${value}</output>
       </label>`;
   }
   return `
@@ -299,17 +362,24 @@ function field(param) {
 }
 
 function renderDefences(root) {
-  root.querySelector('#sim-defences').innerHTML = options.defences
+  const container = root.querySelector('#sim-defences');
+  if (!container) return;
+  container.innerHTML = options.defences
     .map(
       (layer) => `
-      <label class="defence-compact-row" title="${layer.blurb.replace(/"/g, '&quot;')}">
-        <input type="checkbox" data-defence="${layer.key}"
-               ${defences[layer.key] ? 'checked' : ''}>
-        <span>${layer.label}</span>
-        <span class="ablation">${layer.ablation}</span>
-      </label>`
+      <div class="defence-card-row" title="${layer.blurb.replace(/"/g, '&quot;')}">
+        <label class="switch">
+          <input type="checkbox" data-defence="${layer.key}" ${defences[layer.key] ? 'checked' : ''}>
+          <span class="track"></span>
+        </label>
+        <div class="defence-info">
+          <strong>${layer.label}</strong>
+          <span class="ablation">${layer.ablation}</span>
+        </div>
+      </div>`
     )
     .join('');
+
   root.querySelectorAll('[data-defence]').forEach((input) => {
     input.addEventListener('change', () => {
       defences[input.dataset.defence] = input.checked;
@@ -319,10 +389,10 @@ function renderDefences(root) {
 }
 
 function bind(root) {
-  root.querySelector('#show-advanced').addEventListener('change', () => {
+  root.querySelector('#show-advanced')?.addEventListener('change', () => {
     renderForm(root);
   });
-  root.querySelector('#sim-start').addEventListener('click', () => launch(root));
+  root.querySelector('#sim-start')?.addEventListener('click', () => launch(root));
 }
 
 // -- plan and launch ---------------------------------------------------------
@@ -330,21 +400,24 @@ function bind(root) {
 async function refreshPlan(root) {
   const commandHost = root.querySelector('#sim-command');
   const warnHost = root.querySelector('#sim-warnings');
+  const estHost = root.querySelector('#sim-estimate');
   let plan;
   try {
     plan = await api.simPlan(values, defences);
   } catch (error) {
-    commandHost.textContent = '—';
-    warnHost.innerHTML = `<p class="bad">${error.message}</p>`;
+    if (commandHost) commandHost.textContent = '—';
+    if (warnHost) warnHost.innerHTML = `<p class="bad">${error.message}</p>`;
     return;
   }
-  // Wrap on flag boundaries so a long command stays readable.
-  commandHost.textContent = plan.argv.join(' \\\n  ');
-  root.querySelector('#sim-estimate').textContent =
-    `≈ ${fmt.duration(plan.est_wall_s)} · writes ${plan.metrics_file}`;
-  warnHost.innerHTML = (plan.warnings || [])
-    .map((w) => `<p class="warn-line">⚠ ${w}</p>`)
-    .join('');
+  if (commandHost) commandHost.textContent = plan.argv.join(' \\\n  ');
+  if (estHost) {
+    estHost.innerHTML = `<span class="est-badge">⏱ Est: ${fmt.duration(plan.est_wall_s)}</span>`;
+  }
+  if (warnHost) {
+    warnHost.innerHTML = (plan.warnings || [])
+      .map((w) => `<p class="warn-line">⚠ ${w}</p>`)
+      .join('');
+  }
 }
 
 async function launch(root) {

@@ -879,6 +879,65 @@ table.runs tr.is-active { background: color-mix(in srgb, var(--series-1) 10%, tr
 .state.failed    { background: color-mix(in srgb, var(--status-critical) 20%, transparent); color: var(--status-critical); }
 .state.cancelled { background: var(--surface-page); color: var(--text-muted); }
 
+.sim-title-group { display: flex; flex-direction: column; gap: 2px; }
+.sim-subtitle { font-size: 12px; color: var(--text-secondary); }
+
+.sim-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sim-section-header h3 { margin: 0; font-size: 13px; font-weight: 650; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.03em; }
+.step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--series-1); color: #fff;
+  font-size: 11px; font-weight: 700; flex: none;
+}
+
+.preset-card.is-selected {
+  border-color: var(--series-1);
+  background: color-mix(in srgb, var(--series-1) 8%, var(--surface-page));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--series-1) 25%, transparent);
+}
+.preset-head { display: flex; align-items: center; gap: 6px; }
+.preset-icon { font-size: 16px; }
+.preset-title { font-size: 13px; font-weight: 600; }
+
+.range-head { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.info-glyph { opacity: 0.5; font-size: 10px; cursor: help; margin-left: 2px; }
+.info-glyph:hover { opacity: 1; color: var(--series-1); }
+
+.defence-card-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 8px 10px; border-radius: 6px;
+  background: var(--surface-page); border: 1px solid var(--border);
+}
+.defence-info { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+
+.sim-advanced-details, .sim-command-details {
+  margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-page); padding: 8px 12px;
+}
+.sim-advanced-details summary, .sim-command-details summary {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  cursor: pointer; display: flex; align-items: center; gap: 8px; select: none;
+}
+.advanced-body { margin-top: 10px; }
+
+.launch-hero { display: flex; flex-direction: column; gap: 10px; align-items: stretch; margin-bottom: 12px; }
+.launch-btn {
+  font-size: 14px; font-weight: 650; padding: 12px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 8px; background: var(--series-1); border: none; color: #fff;
+  box-shadow: 0 2px 8px rgba(42, 120, 214, 0.25);
+  cursor: pointer; transition: transform 120ms, box-shadow 120ms;
+}
+.launch-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(42, 120, 214, 0.35); }
+.estimate-pill { text-align: center; }
+.est-badge {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--surface-page); border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
 .log-details { margin-top: 12px; }
 .log-details summary { font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 pre.log {
