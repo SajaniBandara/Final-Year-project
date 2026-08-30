@@ -5233,18 +5233,9 @@ materially affecting all figures in
 Table~\ref{tab:lstm_detection}; all reported
 \ac{DR}, \ac{FPR}, and \ac{MCC} values are
 computed over deduplicated blocks.
-
-    \item \textbf{S1 attribution at scoring time:} Signature S1 is computed
-architecturally at the \ac{OBU} (Algorithm~\ref{alg:lrad_obu}), evaluated
-locally by the receiving vehicle against the delay it observed. Its
-detection event, window-level ground truth, and window index $(k)$ are
-nonetheless attributed to the \ac{RSU} that applied the delay
-(\texttt{N\_Vehicles + assoc\_rsu\_local\_idx}), not to the observing
-\ac{OBU}, because the OBU that fires is the victim relaying a suspicion,
-not the suspect: there is no vehicle-indexed attacker label to score S1's
-firing against under Attacks~1--2. Scoring stays coherent with
-$\text{GT}^{(k)}(t)$'s own per-RSU indexing by crediting the detection to
-the same node the ground truth already accuses.
+(S1's OBU-vs-RSU attribution at scoring time is stated once, in the
+mode-stratified scoring discussion above Eq.~\ref{eq:mcc_variant}, rather
+than repeated here.)
 
     \item \textbf{Attack configurations:} 8 variants (4 Selective Time Delay, 4 Hidden Forwarding) are modeled at attack percentages of 0\%, 20\%, 40\%, 60\%, 80\%, and 100\%; each run lasts 300\,s. To ensure statistical soundness, 5 fixed pseudorandom seeds per configuration are utilized, seeded as \texttt{srand($s_i$)} with $s_i \in \{1,2,3,4,5\}$, each producing a distinct SUMO mobility realisation.
 
