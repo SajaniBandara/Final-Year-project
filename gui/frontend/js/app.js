@@ -143,8 +143,10 @@ async function main() {
     } else {
       await initOffline(panels.offline, catalog);
       initLive(panels.live, catalog);
-      await initLab(panels.lab);
     }
+    // Attack Lab always initialises — it falls back to the synthetic demo
+    // scene when there are no real runs, so it is never left blank.
+    await initLab(panels.lab);
     // Independent of the results directory: the run form comes from the
     // parameter registry, and the tab explains itself when no simulator is
     // reachable rather than being hidden.

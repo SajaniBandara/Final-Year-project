@@ -107,6 +107,7 @@ export const api = {
   // --- map ------------------------------------------------------------------
   mapScene: (runId, { start, end, step } = {}) =>
     request(`/api/map/${encodeURIComponent(runId)}` + query({ start, end, step })),
+  mapDemoScene: () => request('/api/map/demo'),
   mapNode: (runId, nodeId) =>
     request(`/api/map/${encodeURIComponent(runId)}/node/${nodeId}`),
   mapGuess: (runId, guess) =>

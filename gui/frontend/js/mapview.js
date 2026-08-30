@@ -71,6 +71,10 @@ export class NetworkMap {
     this._recent = [];
     /** Screen positions from the last paint, for hit-testing. */
     this._hits = [];
+    /** Previous sim-space positions per vehicle, for heading computation. */
+    this._prevPositions = new Map();
+    /** Last known heading angle (radians, canvas space) per vehicle id. */
+    this._vehicleAngles = new Map();
 
     this._resize = this._resize.bind(this);
     window.addEventListener('resize', this._resize);
@@ -95,6 +99,8 @@ export class NetworkMap {
     this._recent = [];
     this.revealed = null;
     this.guesses.clear();
+    this._prevPositions.clear();
+    this._vehicleAngles.clear();
     this._resize();
   }
 
@@ -379,30 +385,22 @@ export class NetworkMap {
     for (const rsu of layout.rsus) {
       const [x, y] = this.project(rsu.x, rsu.y);
       const load = Number(density[rsu.id] ?? 0);
-      // Size carries load; colour carries state. Two channels, so a busy RSU
-      // and an accusing one are distinguishable at a glance.
-      const size = 7 + Math.min(7, load * 0.55);
+      // Antenna height grows with load so a busy RSU is visible at a glance.
+      const h = 9 + Math.min(6, load * 0.5);
 
-      let fill = token('--surface-raised');
-      let stroke = token('--axis');
+      let color = token('--axis');
+      let signalColor = token('--text-muted');
       if (accusing.has(rsu.id)) {
-        fill = token('--series-1');
-        stroke = token('--series-1');
+        color = token('--series-1');
+        signalColor = token('--series-1');
       }
       if (accused.has(rsu.id)) {
-        fill = token('--status-critical');
-        stroke = token('--status-critical');
+        color = token('--status-critical');
+        signalColor = token('--status-critical');
       }
 
-      ctx.beginPath();
-      ctx.rect(x - size / 2, y - size / 2, size, size);
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = stroke;
-      ctx.stroke();
-
-      this._decorate(ctx, token, rsu.id, x, y, size);
+      this._drawRsuIcon(ctx, x, y, h, color, signalColor);
+      this._decorate(ctx, token, rsu.id, x, y, h * 1.6);
       this._hits.push({ id: rsu.id, x: rsu.x, y: rsu.y, kind: 'rsu', label: `RSU ${rsu.id}` });
     }
   }
@@ -410,18 +408,10 @@ export class NetworkMap {
   _drawControllers(ctx, token, layout) {
     for (const controller of layout.controllers) {
       const [x, y] = this.project(controller.x, controller.y);
-      ctx.beginPath();
-      ctx.moveTo(x, y - 11);
-      ctx.lineTo(x + 11, y);
-      ctx.lineTo(x, y + 11);
-      ctx.lineTo(x - 11, y);
-      ctx.closePath();
-      ctx.fillStyle = token('--series-7');
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = token('--surface-raised');
-      ctx.stroke();
-      this._decorate(ctx, token, controller.id, x, y, 22);
+      const color = token('--series-7');
+      const bg    = token('--surface-raised');
+      this._drawControllerIcon(ctx, x, y, 13, color, bg);
+      this._decorate(ctx, token, controller.id, x, y, 26);
       this._hits.push({
         id: controller.id, x: controller.x, y: controller.y,
         kind: 'controller', label: `Controller c${controller.index + 1}`,
@@ -429,22 +419,198 @@ export class NetworkMap {
     }
   }
 
+  /**
+   * Cell-tower icon for an RSU.
+   *
+   * Three layers, top to bottom:
+   *   1. Signal arcs  — two curved arcs radiating from the antenna tip.
+   *   2. Pole         — a thin vertical mast.
+   *   3. Base disc    — a small filled circle anchoring the tower.
+   *
+   * `h` is the half-height of the pole in screen pixels.
+   */
+  _drawRsuIcon(ctx, cx, cy, h, color, signalColor) {
+    const poleW  = Math.max(1.5, h * 0.14);
+    const tipY   = cy - h;          // top of the antenna
+    const baseY  = cy + h * 0.35;   // bottom of the pole
+    const baseR  = h * 0.35;        // radius of the base disc
+
+    // --- signal arcs --------------------------------------------------------
+    for (let i = 1; i <= 2; i++) {
+      const r = h * 0.45 * i;
+      ctx.beginPath();
+      ctx.arc(cx, tipY, r, -Math.PI * 0.78, -Math.PI * 0.22);
+      ctx.lineWidth = 1.3 - i * 0.3;
+      ctx.strokeStyle = signalColor;
+      ctx.globalAlpha = 0.85 - (i - 1) * 0.3;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // --- pole ---------------------------------------------------------------
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - poleW / 2, tipY, poleW, baseY - tipY);
+
+    // --- base disc ----------------------------------------------------------
+    ctx.beginPath();
+    ctx.arc(cx, baseY, baseR, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.stroke();
+  }
+
+  /**
+   * Hexagonal server-hub icon for a controller.
+   *
+   * Three layers:
+   *   1. Hexagon body — filled with the controller colour.
+   *   2. Rack lines   — three horizontal rules suggesting server blades.
+   *   3. Outline      — thin contrasting stroke.
+   *
+   * `r` is the circumradius of the hexagon in screen pixels.
+   */
+  _drawControllerIcon(ctx, cx, cy, r, color, bg) {
+    // --- hexagon body -------------------------------------------------------
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3;   // flat-top orientation
+      const px = cx + r * Math.cos(a);
+      const py = cy + r * Math.sin(a);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = bg;
+    ctx.stroke();
+
+    // --- inner rack lines ---------------------------------------------------
+    const lw = r * 0.7;     // line width
+    const gap = r * 0.32;   // vertical spacing between lines
+    ctx.strokeStyle = bg;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.55;
+    for (let row = -1; row <= 1; row++) {
+      ctx.beginPath();
+      ctx.moveTo(cx - lw / 2, cy + row * gap);
+      ctx.lineTo(cx + lw / 2, cy + row * gap);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   _drawVehicles(ctx, token) {
     const accused = this._accusedNow();
-    for (const vehicle of this.frame?.vehicles ?? []) {
+    const vehicles = this.frame?.vehicles ?? [];
+
+    for (const vehicle of vehicles) {
       const [x, y] = this.project(vehicle.x, vehicle.y);
       const hits = accused.get(vehicle.id) || 0;
-      const radius = hits ? 4.2 : 2.6;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = hits ? token('--status-critical') : token('--text-muted');
-      ctx.fill();
-      this._decorate(ctx, token, vehicle.id, x, y, radius * 2);
+
+      // Compute heading from previous position; keep the last known angle when
+      // the vehicle is stationary so the car shape does not snap to 0°.
+      const prev = this._prevPositions.get(vehicle.id);
+      if (prev) {
+        // Project both positions to screen space so the angle accounts for
+        // the y-axis flip that project() applies (sim is y-up, canvas y-down).
+        const [px, py] = this.project(prev.x, prev.y);
+        const dx = x - px;
+        const dy = y - py;
+        if (Math.hypot(dx, dy) > 0.5) {   // ignore sub-pixel jitter
+          this._vehicleAngles.set(vehicle.id, Math.atan2(dy, dx));
+        }
+      }
+      this._prevPositions.set(vehicle.id, { x: vehicle.x, y: vehicle.y });
+
+      const angle = this._vehicleAngles.get(vehicle.id) ?? 0;
+      this._drawCar(ctx, token, x, y, angle, hits > 0);
+
+      // Decorations (selection ring, guess ring, reveal marks) expect a size
+      // in pixels; 14 px covers the car body comfortably.
+      this._decorate(ctx, token, vehicle.id, x, y, 14);
       this._hits.push({
         id: vehicle.id, x: vehicle.x, y: vehicle.y,
         kind: 'vehicle', label: `Vehicle ${vehicle.id}`,
       });
     }
+  }
+
+  /**
+   * Draw a top-down car silhouette centred on (cx, cy), rotated by `angle`
+   * radians (canvas space: 0 = pointing right, positive = clockwise).
+   *
+   * The shape has three layers:
+   *   1. Car body  — rounded rectangle, coloured by threat status.
+   *   2. Cabin     — smaller rounded rect with a dark tint for the glass area.
+   *   3. Headlights — two small bright rectangles at the front.
+   *
+   * Sizes are kept small (body ≈ 13×8 px) so 200 cars fit on the map without
+   * occluding the RSU grid.
+   */
+  _drawCar(ctx, token, cx, cy, angle, isAccused) {
+    const bodyColor = isAccused
+      ? token('--status-critical')
+      : token('--series-2');
+
+    // Car body dimensions in screen pixels.
+    const bw = 13;   // length (along the direction of travel)
+    const bh = 8;    // width
+    const r  = 2;    // corner radius
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // --- body ---------------------------------------------------------------
+    ctx.beginPath();
+    this._roundedRect(ctx, -bw / 2, -bh / 2, bw, bh, r);
+    ctx.fillStyle = bodyColor;
+    ctx.fill();
+
+    // Thin outline so the car is legible against both light and dark themes.
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = isAccused
+      ? token('--status-critical')
+      : token('--surface-raised');
+    ctx.globalAlpha = 0.6;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // --- cabin (windscreen + roof) ------------------------------------------
+    const cw = bw * 0.42;
+    const ch = bh - 2.5;
+    const cx2 = -cw / 2 + 0.5;   // slightly forward of centre
+    const cy2 = -ch / 2;
+    ctx.beginPath();
+    this._roundedRect(ctx, cx2, cy2, cw, ch, 1.2);
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fill();
+
+    // --- headlights ---------------------------------------------------------
+    const hlX = bw / 2 - 1.5;
+    const hlH = (bh - 2) / 2 - 0.5;
+    ctx.fillStyle = 'rgba(255, 245, 160, 0.95)';
+    ctx.fillRect(hlX, -bh / 2 + 1.2, 1.5, hlH);
+    ctx.fillRect(hlX,  0.3,           1.5, hlH);
+
+    ctx.restore();
+  }
+
+  /** Canvas rounded-rect path helper (pre-CanvasRenderingContext2D.roundRect). */
+  _roundedRect(ctx, x, y, w, h, r) {
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y,     x + w, y + r,     r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x,      y + h, x,       y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x,      y,     x + r,   y,          r);
+    ctx.closePath();
   }
 
   /**

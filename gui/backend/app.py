@@ -358,6 +358,128 @@ def sim_log(
 
 # --- map ---------------------------------------------------------------------
 
+@app.get("/api/map/demo", tags=["map"])
+def map_demo_scene() -> dict:
+    """Synthetic demo scene — no results_routing/ CSVs needed.
+
+    Generates 30 vehicles moving on plausible road paths across the LA map,
+    the full 8x8 RSU grid, 4 controllers, 60 frames of animation, and
+    detection events from second 10 onward so the accusation overlay
+    and car-rotation code can all be exercised without any real data.
+    """
+    import math as _math
+    import random as _rnd
+
+    _rnd.seed(42)
+
+    # --- static layout (same constants as topology.py) -----------------------
+    N_V, N_RSU, N_CTRL = 30, 64, 4
+    MAP_W, MAP_H = 2061.0, 2137.0
+    RSU_MIN_X, RSU_MIN_Y = 100.0, 100.0
+    RSU_DX, RSU_DY = 260.0, 270.0
+    RSU_GRID_W = 8
+    CTRL_POS = [(515.0, 534.0), (1545.0, 534.0), (515.0, 1602.0), (1545.0, 1602.0)]
+
+    rsus = []
+    for r in range(N_RSU):
+        col, row = r % RSU_GRID_W, r // RSU_GRID_W
+        x, y = RSU_MIN_X + RSU_DX * col, RSU_MIN_Y + RSU_DY * row
+        best_c = min(range(N_CTRL), key=lambda c: (x - CTRL_POS[c][0])**2 + (y - CTRL_POS[c][1])**2)
+        rsus.append({"id": N_V + r, "index": r, "row": row, "col": col,
+                     "x": x, "y": y, "controller": best_c})
+
+    controllers = [{"id": N_V + N_RSU + c, "index": c, "x": cx, "y": cy}
+                   for c, (cx, cy) in enumerate(CTRL_POS)]
+
+    layout = {
+        "map": {"width": MAP_W, "height": MAP_H},
+        "rsus": rsus,
+        "controllers": controllers,
+        "n_vehicles": N_V, "n_rsus": N_RSU, "n_controllers": N_CTRL,
+        "coverage_radius": 180.0, "grid_width": RSU_GRID_W,
+        "id_ranges": {
+            "vehicles":    [0,          N_V - 1],
+            "rsus":        [N_V,        N_V + N_RSU - 1],
+            "controllers": [N_V + N_RSU, N_V + N_RSU + N_CTRL - 1],
+        },
+    }
+
+    # --- vehicle routes: straight lines across the map -----------------------
+    # Each vehicle gets a start point and a bearing so it drifts naturally.
+    SPEED = 14.0  # m/s ≈ 50 km/h
+    routes = []
+    for i in range(N_V):
+        angle = _rnd.uniform(0, 2 * _math.pi)
+        x0 = _rnd.uniform(100, MAP_W - 100)
+        y0 = _rnd.uniform(100, MAP_H - 100)
+        routes.append((x0, y0, _math.cos(angle) * SPEED, _math.sin(angle) * SPEED))
+
+    # 5 malicious vehicles — ids 3, 7, 12, 18, 25
+    ATTACKERS = {3, 7, 12, 18, 25}
+    ATTACK_START = 10   # second at which detection events begin
+    SIGNALS = ["S1", "S2", "S3", "S4", "S5"]
+    N_FRAMES = 60
+
+    # --- build frames ---------------------------------------------------------
+    frames = []
+    all_events: list[dict] = []
+
+    for fi in range(N_FRAMES):
+        t = float(fi)
+        vehicles = []
+        for vid, (x0, y0, vx, vy) in enumerate(routes):
+            x = (x0 + vx * t) % MAP_W
+            y = (y0 + vy * t) % MAP_H
+            vehicles.append({"id": vid, "x": round(x, 1), "y": round(y, 1)})
+
+        frame_events = []
+        if fi >= ATTACK_START:
+            # Each malicious vehicle may generate 0-2 accusations per frame
+            for att in ATTACKERS:
+                if _rnd.random() < 0.45:
+                    rsu_idx = _rnd.randint(0, N_RSU - 1)
+                    rsu_id  = N_V + rsu_idx
+                    signal  = _rnd.choice(SIGNALS)
+                    ev = {"rsu": rsu_id, "suspect": att, "signal": signal,
+                          "t": round(t + _rnd.uniform(0, 0.9), 2)}
+                    frame_events.append(ev)
+                    all_events.append(ev)
+
+        frames.append({
+            "t": t,
+            "vehicles": vehicles,
+            "events": frame_events,
+            "density": {str(N_V + r): _rnd.randint(1, 6) for r in range(N_RSU)},
+        })
+
+    return {
+        "run_id": "demo",
+        "attack_id": 2,
+        "attack_percentage": 20,
+        "seed": 1,
+        "layout": layout,
+        "frames": frames,
+        "frame_step": 1.0,
+        "duration": float(N_FRAMES - 1),
+        "event_count": len(all_events),
+        "events_truncated": False,
+        "ground_truth": {
+            "attackers": sorted(ATTACKERS),
+            "expected_count": len(ATTACKERS),
+            "known": True,
+            "source": "synthetic demo — not a real run",
+        },
+        "suspects": [
+            {"suspect": a, "count": sum(1 for e in all_events if e["suspect"] == a),
+             "first_t": ATTACK_START, "last_t": N_FRAMES - 1,
+             "signals": {s: 1 for s in SIGNALS}, "accusers": [N_V]}
+            for a in sorted(ATTACKERS)
+        ],
+        "sources": {"detection_log": None, "density": None, "mobility": "synthetic"},
+        "notes": ["⚠ Demo mode — synthetic data, not a real simulation run."],
+    }
+
+
 @app.get("/api/map/{run_id}", tags=["map"])
 def map_scene(
     run_id: str,

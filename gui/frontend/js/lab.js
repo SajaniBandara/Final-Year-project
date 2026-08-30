@@ -59,7 +59,12 @@ export async function initLab(root) {
   renderDefenceBoard(root);
 
   const first = pickDefaultRun();
-  if (first) await loadRun(root, first);
+  if (first) {
+    await loadRun(root, first);
+  } else {
+    // No real results — load the synthetic demo so the map is never just blank.
+    await loadDemoScene(root);
+  }
 }
 
 // -- markup -----------------------------------------------------------------
@@ -238,6 +243,46 @@ function pickDefaultRun() {
 }
 
 // -- run loading -------------------------------------------------------------
+
+async function loadDemoScene(root) {
+  const status = root.querySelector('#lab-status');
+  status.innerHTML = `<span class="spinner"></span> Loading demo scene…`;
+  stopPlayback(root);
+  currentRunId = 'demo';
+  try {
+    scene = await api.mapDemoScene();
+  } catch (error) {
+    status.innerHTML = `<span class="bad">${error.message}</span>`;
+    return;
+  }
+
+  map.setScene(scene);
+  map.setFrame(0);
+
+  const slider = root.querySelector('#map-time');
+  slider.max = String(Math.max(0, scene.frames.length - 1));
+  slider.value = '0';
+
+  state.revealed = false;
+  map.revealed = null;
+  root.querySelector('#guess-reveal').disabled = false;
+  root.querySelector('#guess-result').innerHTML = '';
+  renderGuessPanel(root);
+  renderOverlay(root);
+  updateClock(root);
+
+  status.innerHTML = `
+    <div class="run-badge">
+      <strong>⚠ Demo mode</strong> — synthetic data, not a real simulation run.
+      Copy results_routing/ CSVs from the HPC and hit <em>Refresh data</em> to use real data.
+    </div>
+    <div class="run-sources">
+      <span class="good">Ground truth available</span>
+      (${scene.ground_truth.attackers.length} synthetic attackers —
+      vehicles ${scene.ground_truth.attackers.join(', ')})
+    </div>
+    <div class="note">Attack starts at t = 10 s. Press ▶ Play and watch the red accusations appear.</div>`;
+}
 
 async function loadRun(root, run) {
   const status = root.querySelector('#lab-status');

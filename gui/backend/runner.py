@@ -789,8 +789,8 @@ def running_simulations() -> Iterator[tuple[int, str]]:
 def host_load() -> dict[str, Any]:
     """Load average, core count and free memory, for the pre-launch check."""
     try:
-        load1, load5, load15 = os.getloadavg()
-    except OSError:
+        load1, load5, load15 = os.getloadavg()  # type: ignore[attr-defined]
+    except (OSError, AttributeError):  # AttributeError on Windows
         load1 = load5 = load15 = 0.0
     others = list(running_simulations())
     return {
@@ -807,8 +807,14 @@ def _free_gb() -> float | None:
     """Available memory in GB, or None where /proc/meminfo is unavailable."""
     try:
         text = Path("/proc/meminfo").read_text(encoding="utf-8")
+        m = re.search(r"^MemAvailable:\s+(\d+) kB", text, re.MULTILINE)
+        return round(int(m.group(1)) / 1e6, 1) if m else None
     except OSError:
-        usage = shutil.disk_usage("/")  # not memory, but never used on Linux
-        return round(usage.free / 1e9, 1)
-    m = re.search(r"^MemAvailable:\s+(\d+) kB", text, re.MULTILINE)
-    return round(int(m.group(1)) / 1e6, 1) if m else None
+        pass
+    # Windows fallback: use psutil if available, otherwise skip.
+    try:
+        import psutil  # type: ignore[import-untyped]
+        return round(psutil.virtual_memory().available / 1e9, 1)
+    except ImportError:
+        pass
+    return None
