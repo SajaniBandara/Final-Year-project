@@ -259,7 +259,19 @@ inline void dw_write_csv(const std::string& path)
         std::cerr << "[DETECTOR-WINDOWS] WARNING: cannot open " << path << std::endl;
         return;
     }
-    f << "node,mode,variant,w_start,w_end,score,truth,score_primary,truth_declared\n";
+    // score_cycles / score_primary_cycles (item 7 persistence, 2026-08-30):
+    // how many DISTINCT CYCLES inside the window the detector fired in, not
+    // just whether any did. The existing score/score_primary columns keep
+    // their exact OR semantics, so every prior reader and every prior number
+    // is unaffected -- these are additive.
+    //
+    // Why counts rather than a built-in M-of-N threshold: emitting the count
+    // lets the persistence threshold M be swept offline from a SINGLE run per
+    // configuration, instead of one 90-minute run per candidate M. Window is
+    // positive under persistence-M iff the corresponding *_cycles column >= M
+    // (M=1 reproduces the current OR behaviour exactly).
+    f << "node,mode,variant,w_start,w_end,score,truth,score_primary,truth_declared,"
+         "score_cycles,score_primary_cycles\n";
 
     // variant: the proposal's attack number (0 = benign, 1-8), matching the
     // convention lstm_logger.h uses for its file names.
@@ -282,9 +294,10 @@ inline void dw_write_csv(const std::string& path)
         for (uint32_t v = 0; v < (uint32_t)N_Vehicles; ++v)
         {
             uint8_t fired = 0, truth = 0;
+            uint32_t fired_cycles = 0;            // item 7 persistence
             for (size_t c = c0; c < c1; ++c)
             {
-                if (g_dw_obu_hist[c][v])  fired = 1;
+                if (g_dw_obu_hist[c][v])  { fired = 1; ++fired_cycles; }
                 if (g_dw_obu_truth[c][v]) truth = 1;
             }
             // OBU rows carry no score_primary and no declared-truth column;
@@ -292,23 +305,25 @@ inline void dw_write_csv(const std::string& path)
             // positionally -- see scripts/run_q1q6_ablation.py's COL_* note).
             f << v << ",OBU," << variant << "," << ws << "," << we << ","
               << (fired ? "1.0" : "0.0") << "," << (truth ? "1" : "0")
-              << ",,\n";
+              << ",,," << fired_cycles << ",\n";
             ++rows;
         }
         for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
         {
             uint8_t fired = 0, truth = 0, prim = 0, truth_d = 0;
+            uint32_t fired_cycles = 0, prim_cycles = 0;   // item 7 persistence
             for (size_t c = c0; c < c1; ++c)
             {
-                if (g_dw_rsu_hist[c][r])  fired = 1;
+                if (g_dw_rsu_hist[c][r])  { fired = 1; ++fired_cycles; }
                 if (g_dw_rsu_truth[c][r]) truth = 1;
                 if (c < g_dw_rsu_truth_declared.size() && g_dw_rsu_truth_declared[c][r]) truth_d = 1;
-                if (c < g_dw_rsu_primary_hist.size() && g_dw_rsu_primary_hist[c][r]) prim = 1;
+                if (c < g_dw_rsu_primary_hist.size() && g_dw_rsu_primary_hist[c][r]) { prim = 1; ++prim_cycles; }
             }
             f << ((uint32_t)N_Vehicles + r) << ",RSU," << variant << ","
               << ws << "," << we << "," << (fired ? "1.0" : "0.0") << ","
               << (truth ? "1" : "0") << "," << (prim ? "1.0" : "0.0") << ","
-              << (truth_d ? "1" : "0") << "\n";
+              << (truth_d ? "1" : "0") << "," << fired_cycles << ","
+              << prim_cycles << "\n";
             ++rows;
         }
     }

@@ -131,6 +131,19 @@ report any MCC for A5/A6/A7** until he has ruled on the fix.
 `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md` predates this and its "needs
 HPC access" checklist is superseded by the above.
 
+## 5b. Supervisor round 3 (2026-08-30) -- answers
+
+Full detail: `docs/SUPERVISOR_ROUND3_ANSWERS_2026-08-30.md`. Summary:
+
+| Ask | Status |
+|---|---|
+| **Item 5** -- what is A7's 0.963 scored against? | **ANSWERED, trustworthy as-is.** Not the pipeline finding (b) broke. `run_q1q6_ablation.py` reads TP/FP/TN/FN from the `MOBIGUARD_*.csv` written by `routing.cc` from `is_malicious_node[]`/`is_detected_node[]` -- the simulator's own ground truth. Verified it contains **zero** references to `is_spike`/`y_bin`/`test_y.npy`. Needs no re-scrutiny when finding (b) is fixed. |
+| **Finding (b)** -- how is `y_indep` built, at what granularity? | **ANSWERED.** `preprocessor.py:235-238`: `max(hf_send_gt, std_send_gt, tcam_send_gt)` over the 10-cycle window, positive iff `> 0`. A **per-cycle EVENT counter OR-ed across the window**, not a state flag. **Structurally the same signal as item 9's gate** -- `y_indep` is the window-level OR of the very counter item 9 proved too coarse, so the two problems share one root and argue for a joint fix. |
+| **Finding (b)** -- A5 cross-check vs S5's 45-53% | **BLOCKED HERE, needs HPC.** Exhaustively confirmed: zero A5-A8 `lstm_training` CSVs anywhere under `/home/nipuni`; `test_meta.npy` holds only `attack_v` 0-4. Prediction to test: if cycles were independent, item 9's ~10% per-cycle rate gives `1-(0.9)^10 ~= 65%` per window vs S5's ~100% -- a narrowed but not closed gap. |
+| **Item 9** -- which S5 condition is true? | **ANSWERED FROM CODE; the working guess is correct.** S5's conjunctions 1-2 are both persistent: FlowMod-never-endorsed, and `active_hf_malicious_nodes[]` which is set **once** at attack start (`hf_attack_helper.h:642`, injector runs once per `routing.cc:144266`) and never cleared. So S5 fires on an **ongoing compromised state**; `hf_send_gt` marks only the send instant. S5 firing more often is **correct detection, not a bug**. Fix should be a **latched** `hf_send_gt` (has this RSU ever scheduled a duplicate up to now) -- persisting state, derived from the counter already trusted for ground truth. |
+| **Item 7** -- within-window persistence build | **BUILT + early result.** `detector_windows.csv` gains `score_cycles`/`score_primary_cycles` (distinct cycles fired per window) as **additive** columns, so M sweeps offline from one run per config and no existing number moves. Zero-attack: benign FPs are **88.8% single-cycle**; FPR **17.11% (M=1) -> 1.85% (M=2) -> 0.19% (M=3)**, with ~10x benign/attack separation at M=3. Recall side needs fresh runs (queued) -- the log-based attack figures mix TP with the attack run's own FPs and are **not** recall. |
+| Q3-Q6 full grid | **Correctly NOT run**, per instruction. |
+
 ## 6. Workflow gotcha found this session
 
 **Always re-run `scripts/local_path_swap.sh local` immediately after any
@@ -163,3 +176,6 @@ crashing.
 - `logs/findingb_pilot/` — A5/A6/A7 percentage-sweep run logs, this session
 - `logs/item9_verify/` — item 9 verification run log
 - `logs/item7_verify/` — item 7 baseline validation run log
+- `logs/item7_handoff/` — handoff-fix runs + 5-seed/A2 validation
+- `docs/SUPERVISOR_ROUND3_ANSWERS_2026-08-30.md` — round-3 answers (items 5, 9,
+  finding (b) label definition, item 7 persistence)
