@@ -69,29 +69,67 @@ two.** Everything else can proceed in parallel.
 
 | Item | Status |
 |---|---|
-| Item 1 methodology sentence | Not started |
-| Item 5 (real witness+R_anom config) | Not started |
+| Item 1 methodology sentence | **Done.** Paragraph added to `docs/main.tex` after eq:mcc_variant: S1 evaluated at the OBU, scored against the covering RSU, and why (A1's OBU truth vector is identically zero by construction). |
+| Item 5 (real witness+R_anom config) | **Built, not yet run.** R_anom was gated by `g_disable_s7_s8`, so no config could express the rung. Added tri-state `g_disable_ranom` (`crypto_layer.h`, default -1 = follow `g_disable_s7_s8`) so **every existing Q1-Q6 run stays bit-identical unless the flag is passed**, plus config `Q4R` in `run_q1q6_ablation.py`. Verified via `--table`. NB `g_ranom_rule_fired_this_pkt` deliberately left on the ungated value -- it drives Q3's LSTM suppression and has never been gated. |
 | **Item 7** (threshold fix) | **Code built** (best-effort-calibrated percentile, clean A/B against the old path, diagnostics export). **Not yet run** — needs a zero-attack baseline for the mean/median/p99 comparison + FPR number. |
 | **Item 9** (gate fix) | **Code built and verified.** Send-side gate repoint compiles and runs clean. Rerun on A5@60%/300s: TP now equals truth-positive windows exactly for nodes 220/225/233 with zero false negatives (real improvement — the old wrong-signal failure mode is gone). But all three nodes still fire in 58/58 windows regardless of the corrected gate, leaving 19-24 residual FP per node. **Not fully closed** — points to a second, narrower issue: whether `g_lstm_hf_sendgt_count`'s increment granularity actually matches how often S5's own firing condition is true for these high-activity nodes. Needs its own follow-up diagnosis. |
 | **Finding (b)** (negative-window rerun) | **Partially done, and the result complicates the picture.** A5 rerun at 20%/40%/60% (window-grid scorer): negative windows present at every percentage, including 60% — this contradicts a simple "saturation at 60%" explanation. A6/A7 also rerun at 20%/40%, all show healthy TN. Full writeup + 3 candidate explanations + HPC checklist: `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md`. **The original TN=0 numbers still stand as real** — they come from a different pipeline (LSTM classification head on a pooled historical test split) than what was reproduced locally (rule-based window grid, single runs). Not resolved; needs HPC data. |
 | Item 11 clarification | **Answered.** Confirmed via code trace (not a new run): the reported "t=2" data point is a window *start* label; the window's content (1.998s-11.998s) already spans past the actual attack onset at t=10s, and window truth is content-based, not start-label-based. Not a contradiction of the zero-attack baseline. |
-| Finding (a) (tcam_send_gt sweep) | Not started |
+| Finding (a) (tcam_send_gt sweep) | **Already DONE -- this row was stale.** Verified against the data 2026-08-29: A3/A4 training CSVs carry the `tcam_send_gt` column (20-col header vs A5-A8's 18) and it is populated -- nonzero in 32.7% of A3 rows and 30.6% of A4 rows (seed-5 split). A1/A2 likewise carry `std_send_gt`, nonzero in 24.0%/32.2% of rows at pct100. The collection was done by commit `e34f353` on 2026-08-28, and `lstm_training_pre_tcamgt_20260828/` is the pre-collection backup. `preprocessor.py:119` backfills zeros for the A5-A8 files that lack the column (deliberate, and it prints a warning), so the mixed 18/19/20-col schema is handled. All three injection counters now feed `y_indep` via `_inj = max(hfgt, stdgt, tcamgt)`. |
 
-## 5. Open question needing HPC data
+## 5. RESOLVED (2026-08-29, later same day): the negative-class question
 
 **"Why don't you get any negative classes for A5, A6, and A7?"**
 
-Full detail, diagram-in-prose, and a concrete checklist for what to check on
-HPC: `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md`.
+**Answered, with a verified code-level root cause. It is the supervisor's
+branch 2 (scoping bug in window-truth computation), not saturation. No HPC
+data was needed** -- two premises in the earlier write-up were wrong:
 
-Short version: local reproduction (window-grid scorer, single runs) shows
-healthy negative windows at every tested percentage, contradicting the
-"genuine saturation at 60%" branch the supervisor set up. The three candidate
-explanations (different detector / different ground truth / pooled test set
-vs. one run) are not fully distinguished — the local machine's LSTM
-preprocessed cache has **zero rows** for A5/A6/A7, so the actual pooled test
-split's composition can't be inspected here. That file has the exact
-checklist for whoever has HPC access.
+- `lstm_training/` **does** hold A5/A6/A7 raw data locally (1600 files each).
+  The "zero rows" observed earlier was the *preprocessed cache*, not the
+  source CSVs.
+- The local reruns were never contradicting the pooled-split result. They
+  were measuring the same thing from the other side.
+
+**Mechanism.** `evaluator.py:predict_test()` loads `test_y.npy` -- the
+*spike-based* label `y_bin`, not the leak-free `y_indep`. In
+`lstm_pipeline/src/preprocessor.py:355`, `is_spike` for A5-A8 includes
+
+    ddiv_spike = df["attack_v"].isin(HF_VARIANTS) & (df["d_div"] > 1)
+
+`d_div > 1` holds in ~92-96% of ALL rows in an HF run, dormant cycles
+included -- the code's own comment at preprocessor.py:294 says so ("85-92% of
+'quiet' cycles ... already have d_div elevated"). Window truth is
+`max()` over a 10-cycle window, so a signal present in ~92% of rows makes
+essentially EVERY window positive. The negative class is annihilated before
+scoring, which zeroes the MCC denominator.
+
+**Measured on the actual test split (seed 5), and it predicts the observed
+table variant-for-variant:**
+
+| variant | rows `d_div>1` | windows positive by that leg ALONE | observed TN |
+|---|---|---|---|
+| A5 | 91.7% | **100.0%** | 0 |
+| A6 | 96.4% | **100.0%** | 0 |
+| A7 | 91.9% | **100.0%** | 0 |
+| A8 | 54.1% | 92.6% | 173 |
+
+A8 is the control: its lower `d_div` rate leaves 7.4% of windows able to be
+negative, which is exactly why it alone has a nonzero TN. A6 is the sharpest
+consequence -- 86.2% DR at 0% FP reported as MCC=0.000 purely because its
+negatives never reach the confusion matrix.
+
+**Fix candidate (NOT applied -- needs the supervisor's call, since it moves
+every HF number):** score A5-A8 against `y_indep`, the leak-free
+injection-based label the pipeline already computes and saves as
+`test_y_indep.npy`. Relabelled that way the same test split carries **57-72%
+negative windows** (A5 13,062 / A6 10,476 / A7 13,115 of 18,240).
+
+The supervisor's standing instruction is unchanged and still binding: **do not
+report any MCC for A5/A6/A7** until he has ruled on the fix.
+
+`docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md` predates this and its "needs
+HPC access" checklist is superseded by the above.
 
 ## 7. Workflow gotcha found this session
 

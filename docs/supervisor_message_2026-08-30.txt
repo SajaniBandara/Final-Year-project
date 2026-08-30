@@ -1,0 +1,153 @@
+Subject: Your six decisions — all actioned. Two need your call, and one
+         recommendation has reversed.
+
+Hi Sir
+
+All six decisions from 29/08 have been actioned. The full detail is in
+docs/SUPERVISOR_UPDATE_2026-08-30.md; this is the summary, with the three
+things that need your attention first.
+
+
+1. YOUR QUESTION: "Why don't you get any negative classes for A5, A6 and A7?"
+
+It is your branch 2 — a scoping bug in window-truth computation, not
+saturation. Your framing anticipated it exactly; the defect is entirely on our
+side of the pipeline, and it needed no HPC data to find.
+
+The evaluator scores against test_y.npy (the spike-based label), not the
+leak-free y_indep. For the HF variants that label includes
+
+    ddiv_spike = attack_v in HF_VARIANTS & (d_div > 1)
+
+and d_div > 1 holds in 92-96% of ALL rows, dormant cycles included. Window
+truth is max() over a 10-cycle window, so nearly every window is labelled
+positive, TN and FP both collapse to 0, and the MCC denominator becomes zero.
+
+    variant   rows d_div>1   windows positive from that leg alone   TN
+    A5           91.7 %                 100.0 %                      0
+    A6           96.4 %                 100.0 %                      0
+    A7           91.9 %                 100.0 %                      0
+    A8           54.1 %                  92.6 %                    173
+
+A8 is the control: its lower rate leaves 7.4% of windows able to stay
+negative, which is exactly why it alone has a nonzero TN.
+
+Relabelled against y_indep — which the pipeline already computes and saves —
+the same test split carries 57-72% negative windows. I have NOT applied that
+change, as it moves every A5-A8 number and you reserved the decision. No MCC
+for A5/A6/A7 appears anywhere in the report.
+
+Two corrections to what I told you previously: the A5-A7 data was on the local
+machine all along (the "zero rows" was the preprocessed cache, not the source),
+and the local reruns were never contradicting the pooled result.
+
+
+2. ITEM 7 — BUILT AND MEASURED, AND I RECOMMEND WE DO NOT ADOPT IT
+
+You asked for the two delay distributions from one clean baseline before
+trusting a threshold borrowed across traffic classes. You were right to ask.
+
+    population        n         mean     median      p99
+    high-priority   260,750    5.08 ms   3.00 ms   113 ms
+    best-effort     216,732    7.12 ms   3.00 ms   202 ms
+
+Medians are identical; the tails diverge — 1.79x at p99, which is the exact
+statistic the threshold reads. (Caveat: the high-priority histogram is
+right-censored by the sigma admission gate, so its p99 is a lower bound and
+the true ratio is smaller.)
+
+FPR, zero-attack, 5 seeds per arm:
+
+    k*sigma                          18.40 %  (sd 0.82)
+    percentile, HP-calibrated        46.06 %  (sd 2.82)
+    percentile, best-effort-calib    16.72 %  (sd 0.96)
+
+On FPR alone the correction wins. Then recall — which I should have measured
+alongside it from the start, and had not (A1/A2 @60%, RSU score_primary):
+
+    run                  RECALL      FPR
+    A1  k*sigma          99.13 %   23.56 %
+    A1  best-effort      92.83 %   23.67 %
+    A2  k*sigma          99.94 %    7.21 %
+    A2  best-effort      81.22 %    5.78 %
+
+The trade is poor. On A1 it costs 6.3 points of recall and buys nothing. On A2
+it costs 18.7 points of recall to buy 1.4 points of FPR. Calibrating on
+best-effort raises the threshold roughly six-fold (24 ms -> 151 ms), which
+suppresses a few false positives and a great many true detections.
+
+Recommendation: keep it behind its flag as a documented negative result, as we
+did with the HP-calibrated arm, and treat S1's FPR as still open. The
+zero-attack view flattered it; had I stopped at FPR I would have recommended
+shipping a regression.
+
+
+3. ITEM 9 — THE RESIDUAL IS SYSTEMIC, NOT THREE NODES
+
+The gate repoint is in and correct. But you asked me to confirm no similar
+residuals appear elsewhere, and they do, extensively.
+
+Per cycle on A5 @60%, the gate (hf_send_gt > 0) is nonzero in ~10% of cycles
+while S5 fires in ~45-53%. They do not match: hf_send_gt increments only when
+an RSU schedules a hidden duplicate, and S5's firing condition is true far
+more often than that.
+
+Sweeping every node with S5 activity: 39 nodes show the residual, and 36 of
+them are NOT 220/225/233. Several are worse than the three I reported to you
+(node 236: 166 residual cycles; node 227: 157; node 219: 154 — against node
+220's 119). Those three were simply the ones I had looked at; I should have
+swept the full set before reporting them as three isolated cases.
+
+This is the same class of defect as the finding above — window truth derived
+from a signal whose granularity does not match the detector — but in the
+opposite direction: that one labels almost everything positive, this labels
+too much negative. I have not changed the gate further, as the fix depends on
+what you consider the correct send-side truth signal.
+
+
+4. THE REMAINING ITEMS
+
+Item 1 — done. Methodology sentence added: S1 is evaluated at the OBU but
+scored against the covering RSU, because ground truth for the Selective Time
+Delay variants is RSU-indexed by construction (A1's OBU truth vector is
+identically zero, so OBU scoring would mark every firing a false positive
+regardless of detector quality).
+
+Item 5 — built as you specified. R_anom had no independent switch, so I added
+a tri-state flag defaulting to the pre-existing behaviour; every existing
+Q1-Q6 run is bit-identical unless it is passed. New config Q4R = witness +
+R_anom only. Results at 60%, seed 1:
+
+    A7:  MCC 0.963,  DR 96.1 %,  zero false positives
+    A8:  generic matrix DR 26.1 %, but witness-native recall 96.0 % /
+         precision 98.0 %
+
+A8's 70-point gap is the known Q4 measurement caveat — in a witness-only
+config the witness reaches the generic matrix only via quarantine, so that
+matrix measures quarantine, not detection. The witness-native figures are the
+correct ones for A8. Both variants have healthy TN, so no degeneracy here.
+
+Item 11 — confirmed previously: the "t=2" point is a window start label whose
+content spans past attack onset at t=10s, so it does not contradict the
+zero-attack baseline.
+
+Finding (a) — my earlier status was wrong. The A3/A4 leak-free collection was
+already done (commit e34f353, 28/08). tcam_send_gt is present and populated in
+32.7% / 30.6% of rows. No sweep is needed.
+
+
+5. WHAT I NEED FROM YOU
+
+  (i)  Finding (b): do we re-score A5-A8 against y_indep? It moves every HF
+       number, so I have not done it.
+  (ii) Item 9: what should the correct send-side truth signal be? hf_send_gt
+       is demonstrably too coarse.
+
+Separately, item 7's FPR remains ~17x outside the 1% target on every arm
+tested, so S1's false-positive rate is still an open problem rather than a
+solved one. One structural note that may guide it: firings fell 2.3x between
+arms while window FPR fell only 1.1x, so window-level FPR is governed by how
+many DISTINCT windows contain a firing, not by firing volume. Reducing the
+count further will not move it; the breadth has to come down.
+
+Kind regards,
