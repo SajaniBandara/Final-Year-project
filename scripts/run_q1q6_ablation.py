@@ -15,6 +15,7 @@ Scope per the supervisor's spec: 30 s, 60 % attack, 1 seed, all 8 variants,
   Q2  Cryptographic layer only     (S1-S4 off; S5-S8 live; LSTM off; crypto natural;     witness off)
   Q3  LSTM anomaly detector only   (S1-S8 off;             LSTM on;  crypto forced pass; witness off)
   Q4  Witness monitoring only      (S1-S8 off;             LSTM off; crypto forced pass; witness ON)
+  Q4R Witness + R_anom only      (S1-S8 off; R_anom FORCED ON; LSTM off; crypto forced pass; witness ON)
   Q5  Rule + Crypto combined       (S1-S8 live;            LSTM off; crypto natural;     witness off)
   Q6  Full system                  (everything on / natural)
 
@@ -71,6 +72,7 @@ Q_CONFIGS = {
     "Q1": {  # rule-based signatures only
         "g_disable_s1_s2": 0, "g_disable_s3_s4": 0,
         "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
+        "g_disable_ranom": 1,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 0,
         "disable_crypto": 1,
         "g_disable_btmm_trust": 1,
@@ -78,6 +80,7 @@ Q_CONFIGS = {
     "Q2": {  # cryptographic layer only
         "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
         "g_disable_s5_s6": 0, "g_disable_s7_s8": 0,
+        "g_disable_ranom": 0,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 0,
         "disable_crypto": 0,
         "g_disable_btmm_trust": 1,
@@ -85,6 +88,7 @@ Q_CONFIGS = {
     "Q3": {  # LSTM anomaly detector only (gate stays live -- see header)
         "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
         "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
+        "g_disable_ranom": 1,
         "enable_lstm_inference": 1, "enable_witness_mechanism": 0,
         "disable_crypto": 1,
         "g_disable_btmm_trust": 1,
@@ -92,6 +96,7 @@ Q_CONFIGS = {
     "Q4": {  # witness monitoring only
         "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
         "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
+        "g_disable_ranom": 1,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 1,
         "disable_crypto": 1,
         "g_disable_btmm_trust": 1,
@@ -99,6 +104,7 @@ Q_CONFIGS = {
     "Q5": {  # rule + crypto combined
         "g_disable_s1_s2": 0, "g_disable_s3_s4": 0,
         "g_disable_s5_s6": 0, "g_disable_s7_s8": 0,
+        "g_disable_ranom": 0,
         "enable_lstm_inference": 0, "enable_witness_mechanism": 0,
         "disable_crypto": 0,
         "g_disable_btmm_trust": 1,
@@ -106,19 +112,36 @@ Q_CONFIGS = {
     "Q6": {  # full system (deployed configuration)
         "g_disable_s1_s2": 0, "g_disable_s3_s4": 0,
         "g_disable_s5_s6": 0, "g_disable_s7_s8": 0,
+        "g_disable_ranom": 0,
         "enable_lstm_inference": 1, "enable_witness_mechanism": 1,
         "disable_crypto": 0,
         "g_disable_btmm_trust": 0,
     },
+    # Item 5 (supervisor, 2026-08-29): the A7/A8 ladder's specified first rung,
+    # "witness + R_anom", which no Q1-Q6 config could express. Q4 is
+    # witness-only (R_anom rode the S7/S8 path and died with it); Q2 carries
+    # R_anom but drags the whole crypto layer in. This is Q4 plus R_anom and
+    # nothing else, using g_disable_ranom=0 to force the rule on while S7/S8
+    # stay silenced.
+    "Q4R": {  # witness + R_anom only
+        "g_disable_s1_s2": 1, "g_disable_s3_s4": 1,
+        "g_disable_s5_s6": 1, "g_disable_s7_s8": 1,
+        "g_disable_ranom": 0,
+        "enable_lstm_inference": 0, "enable_witness_mechanism": 1,
+        "disable_crypto": 1,
+        "g_disable_btmm_trust": 1,
+    },
 }
 
 FLAG_ORDER = ["g_disable_s1_s2", "g_disable_s3_s4", "g_disable_s5_s6",
-              "g_disable_s7_s8", "enable_lstm_inference",
+              "g_disable_s7_s8", "g_disable_ranom",
+              "enable_lstm_inference",
               "enable_witness_mechanism", "disable_crypto",
               "g_disable_btmm_trust"]
 
 SHORT = {"g_disable_s1_s2": "S1/S2", "g_disable_s3_s4": "S3/S4",
          "g_disable_s5_s6": "S5/S6", "g_disable_s7_s8": "S7/S8",
+         "g_disable_ranom": "R_anom",
          "enable_lstm_inference": "LSTM", "enable_witness_mechanism": "witness",
          "disable_crypto": "crypto", "g_disable_btmm_trust": "BTMM"}
 
@@ -401,7 +424,7 @@ def analyse(params):
     print("\n" + "=" * 78)
     print("CUMULATIVE MCC BY COMPONENT (standalone configs, then full system)")
     print("=" * 78)
-    order = ["Q1", "Q3", "Q4", "Q5", "Q6"]
+    order = ["Q1", "Q3", "Q4", "Q4R", "Q5", "Q6"]
     hdr = f"{'variant':<9}" + "".join(f"{q:>9}" for q in order)
     print(hdr)
     print("-" * len(hdr))
@@ -444,7 +467,7 @@ def analyse(params):
     print("directly -- it reaches the generic matrix only via")
     print("  witness -> trust_update_negative() -> quarantine -> record_detection_event()")
     print("so the generic TP/FP there measure quarantine, not witness detection.")
-    for q in ("Q4", "Q6"):
+    for q in ("Q4", "Q4R", "Q6"):
         print(f"\n{q}:")
         print(f"  {'variant':<9}{'TP_W':>7}{'FP_W':>7}{'FN_W':>7}"
               f"{'precision%':>12}{'recall%':>10}{'dup_alerts':>12}")

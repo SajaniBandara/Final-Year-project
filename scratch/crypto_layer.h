@@ -184,6 +184,26 @@ bool g_disable_s1_s2                = false;
 bool g_disable_s3_s4                = false;
 bool g_disable_s5_s6                = false;
 bool g_disable_s7_s8                = false;
+
+// ── Item 5 (supervisor, 2026-08-29): decouple R_anom from S7/S8 ───────────
+// The A7/A8 ablation ladder's first rung is specified as "witness + R_anom".
+// No Q-config could express that: the R_anom>0 zero-tolerance rule (lrad.h,
+// DSRC_RULE_RANOM) rides the S7/S8 path and is gated by g_disable_s7_s8, so
+// silencing S7/S8 to isolate the witness silenced R_anom with it, and the
+// only config carrying R_anom (Q2) also carries the whole crypto layer.
+//
+// TRI-STATE, deliberately, so that no existing configuration changes
+// behaviour:
+//   -1 (default) = follow g_disable_s7_s8, exactly the pre-existing coupling
+//    0           = force R_anom ON  even with S7/S8 silenced  <- the new rung
+//    1           = force R_anom OFF even with S7/S8 live
+// Every Q1-Q6 run therefore produces bit-identical results to before unless
+// this flag is passed explicitly. Use g_ranom_is_disabled() to read it.
+int g_disable_ranom                 = -1;
+inline bool g_ranom_is_disabled()
+{
+    return (g_disable_ranom < 0) ? g_disable_s7_s8 : (g_disable_ranom != 0);
+}
 // DIAGNOSTIC ONLY (added 2026-08-05) — gates the §BTMM PER-PACKET trust update
 // (eq:trust_update) at routing.cc's ML-DSA-87 verify block, i.e. the
 // "if (hop_ok && timing_ok && g_batch_passed) trust_update_positive(...) else
@@ -2016,6 +2036,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("g_disable_s3_s4",               "DIAGNOSTIC: disable S3+S4 confusion-matrix recording only, keep flag_s3/flag_s4's eq:lstm_gate LSTM-suppression publishing intact", g_disable_s3_s4);
     cmd.AddValue("g_disable_s5_s6",               "DIAGNOSTIC: disable S5+S6 (active HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution", g_disable_s5_s6);
     cmd.AddValue("g_disable_s7_s8",               "DIAGNOSTIC: disable S7+S8 (passive HF) signature computation, incl. their D_RSU/BTMM/BC.Write contribution (isolates the witness pipeline)", g_disable_s7_s8);
+    cmd.AddValue("g_disable_ranom",                "DIAGNOSTIC (item 5): decouple the R_anom>0 rule from S7/S8. -1=follow g_disable_s7_s8 (default, unchanged behaviour), 0=force R_anom on, 1=force R_anom off", g_disable_ranom);
     cmd.AddValue("enable_detector_windows",       "M1: emit detector_windows.csv (per-window OBU/RSU decisions + truth) for metrics/m01_detection_quality.py", enable_detector_windows);
     cmd.AddValue("g_dup_diag_log",                "DIAGNOSTIC: trace every eq:dup_alert_cond firing (witness, accused, both destinations, ground truth)", g_dup_diag_log);
     cmd.AddValue("g_disable_btmm_trust",          "DIAGNOSTIC: disable the per-packet BTMM trust update (eq:trust_update); witness-driven and controller-plane trust updates unaffected", g_disable_btmm_trust);

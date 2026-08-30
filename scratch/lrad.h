@@ -322,14 +322,27 @@ inline LRADRSUFlags lrad_rsu(
                           && (_rsu_local < g_ranom_flag_last.size())
                           && (g_ranom_flag_last[_rsu_local] != 0);
 
-    const bool _s7_raw = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid) || _ranom_rule;
-    const bool _s8_raw = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid) || _ranom_rule;
-    flags.flag_S7 = g_disable_s7_s8 ? false : _s7_raw;
-    flags.flag_S8 = g_disable_s7_s8 ? false : _s8_raw;
+    // Item 5 (2026-08-29): R_anom is now switchable independently of S7/S8, so
+    // the A7/A8 ladder can express its specified "witness + R_anom" rung.
+    // g_ranom_is_disabled() defaults to following g_disable_s7_s8, so every
+    // pre-existing config behaves exactly as before (crypto_layer.h).
+    const bool _ranom_live = _ranom_rule && !g_ranom_is_disabled();
+
+    // s7_detect()/s8_detect() are still CALLED when S7/S8 are disabled -- both
+    // self-gate their own record_detection_event() on !g_disable_s7_s8 -- so
+    // their window/volume state stays warm and nothing is recorded.
+    const bool _s7_raw = s7_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    const bool _s8_raw = s8_detect(fid, prev_sender, rsu, pkt_id, base_fid);
+    flags.flag_S7 = (g_disable_s7_s8 ? false : _s7_raw) || _ranom_live;
+    flags.flag_S8 = (g_disable_s7_s8 ? false : _s8_raw) || _ranom_live;
 
     // Suppress the LSTM's redundant contribution when the rule already fired,
     // exactly the S3/S4 pattern (eq:lstm_gate). Published for the flag_LSTM
     // computation further down.
+    // NB: deliberately _ranom_rule, NOT _ranom_live. This publication has never
+    // been gated by g_disable_s7_s8 -- Q3 (S7/S8 off, LSTM on) relies on the
+    // ungated value for eq:lstm_gate suppression. Switching it to _ranom_live
+    // would silently change Q3's LSTM results, so item 5 leaves it alone.
     g_ranom_rule_fired_this_pkt = _ranom_rule;
 
     // Decision 2 (2026-08-21): the rule must REACH the confusion matrix, not
@@ -349,7 +362,7 @@ inline LRADRSUFlags lrad_rsu(
     // keyed by hf_gt_attribution_node(), the malicious forwarder's covering
     // RSU, so it does not inherit the prev_sender misattribution that puts
     // 79.2% of the witness path's duplication alerts on vehicle relays.
-    if (_ranom_rule && !g_disable_s7_s8 &&
+    if (_ranom_live &&
         active_attack_variant >= 0 &&
         active_attack_variant < NUM_ATTACK_VARIANTS &&
         rsu < (uint32_t)total_size &&
