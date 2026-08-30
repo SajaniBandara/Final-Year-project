@@ -1,0 +1,99 @@
+Subject: Both blockers answered — five decisions for you
+
+Hi Sir
+
+Both checks you asked for before deciding are back. Only the decisions are
+below; the working is in the repo if you want it.
+
+
+DECISION 1 — Finding (b) and item 9 are ONE problem. Adopt the latched signal?
+
+Your cross check, A5, five seeds:
+
+    granularity        label        S5              gap
+    per cycle          7.05 %       45-53 %        ~7x
+    per window        31.99 %       56.33 %        ~1.8x
+
+The gap is there, so by your own rule the two are connected. (The 56.33 % is
+S5's measured per-window rate from a fresh 300 s run, not an assumption.)
+
+Item 9 is your branch 1, confirmed. Across 51,466 traced firings, conjunctions
+1 and 2 held every time and conjunctions 3 and 4 were true on 100 %. Only
+conjunction 0 ever filters anything, and it rejects 0.47 %. S5's conditions
+are genuinely true when it fires — correct detection of an ongoing compromised
+state, not a bug in S5. Exactly the mechanism you described.
+
+A latched signal — "has this RSU ever scheduled a duplicate up to now" —
+closes it:
+
+    A5 @60 %, seed 1        attacker RSUs    benign RSUs
+    S5 (measured)              92.44 %          0.00 %
+    label, latched             94.74 %          0.00 %
+    label, per-event (today)   52.03 %          0.00 %
+
+Per-window agreement with S5 rises from 75.46 % to 94.07 %; disagreements fall
+from 904 to 75.
+
+OUR RECOMMENDATION: adopt the latched signal. One fix, both problems.
+
+
+DECISION 2 — Sign-off to rescore A5-A8
+
+Not started, as you reserved it. Ready to run once decision 1 is settled.
+
+
+DECISION 3 — Item 7: adopt the handoff fix alone?
+
+At M=1 the tool reproduces the published k-sigma figures exactly (FPR 18.86 %,
+A1 TP=802 / FP=684 / FN=7 / TN=2219), which validates the sweep.
+
+A1 @60 %, un-deduplicated:
+
+    M     recall      FPR       MCC        M     recall      FPR       MCC
+          --- baseline k-sigma ---              --- with handoff fix ---
+    1     99.13 %   23.56 %   0.6368        1     95.55 %    6.48 %   0.8395
+    2     89.86 %   12.44 %   0.7023        2     84.80 %    2.65 %   0.8392
+    3     79.11 %    6.44 %   0.7210        3     72.44 %    1.34 %   0.7843
+
+A2 @60 %, with the fix: M=1 recall 97.53 %, FPR 6.98 %, MCC 0.9004. (This is
+the arm that had collapsed to 81.22 %.)
+
+Zero-attack FPR with the fix, 5 seeds: 0.022 % +/- 0.014 % at M=1; exactly
+0.000 % at M=2 on every seed.
+
+Persistence does NOT beat the fix alone — MCC is a dead heat (0.8392 vs
+0.8395), and M=2 buys the last 0.03 % of false alarms for 10.8 points of
+recall.
+
+OUR RECOMMENDATION: adopt the handoff fix alone, M=1. Choose M=2 only if zero
+false alarms outrank recall.
+
+
+DECISION 4 — Does the masked "both ways" table become the reporting standard?
+
+26.7 % of test windows carry zero traffic and make up 36.9 % of the negative
+class — free negatives that inflate every RSU-level specificity number without
+being visible in it. Reporting both ways:
+
+    variant     MCC all / masked     FPR all / masked    FPR understated by
+    A1          0.255 / 0.218         5.86 % /  7.99 %        36 %
+    A2          0.385 / 0.342         5.04 % /  6.99 %        39 %
+    A5          0.614 / 0.566         8.07 % / 11.77 %        46 %
+    A6          0.292 / 0.326        78.18 % / 77.46 %        -1 %
+    A7          0.621 / 0.574         7.62 % / 11.13 %        46 %
+    A8          0.443 / 0.405        30.69 % / 36.05 %        17 %
+
+Detection rate moves under 0.2 points anywhere, confirming the dropped windows
+are almost purely negatives. This is a reporting change only — nothing in the
+pipeline has been altered.
+
+OUR RECOMMENDATION: report both. The masked column is the defensible one.
+
+
+DECISION 5 — A6's FPR is 78 %
+
+Masked or not. Independent of everything above and not previously flagged.
+Does this get investigated now, or after the rescore?
+
+
+Q3-Q6 grid not run, as instructed. Item 5 unchanged from the round-3 answer.

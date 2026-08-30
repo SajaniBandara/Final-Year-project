@@ -1,0 +1,102 @@
+Subject: Agreed on per-variant calibration — one blocking question on A5, plus
+         your four outstanding checks
+
+Hi Sir
+
+Agreed, and that is exactly what we found: the pooled threshold assumes the four
+HF variants share a score scale and they do not. A6's median window scores
+1.452 against a shared threshold of 0.790, so it flags 85.5% of windows against
+42.6% real positives. Per-variant calibration, fitted on validation and applied
+to test: A6 FPR 76.3% -> 8.3%, MCC 0.304 -> 0.707. A8 also gains (24.8% ->
+9.7%). A5 and A7 barely move, so it is really an A6 and A8 fix.
+
+We are treating decision 5 as closed on diagnosis and will not run the
+per-source trace unless you say otherwise.
+
+One caveat on it we would rather you rule on than have us assume: a per-variant
+threshold means the detector implicitly knows which attack it is facing, which
+no deployed system does. It is defensible for per-variant diagnostic reporting,
+and hf_theta.json already carries an applies_to_variants field so
+variant-scoped thresholds are established practice here. But it is not a
+deployable single detector. Which of the two the table claims is your call.
+
+
+THE ONE THING BLOCKING US
+
+Decision 2 said "go ahead on A5 now". That was written before our addendum
+reached you, so you have not yet seen this: adopting the latch LOWERS reported
+detection rate.
+
+    variant   DR per-event -> latched
+    A5          61.8 % -> 41.4 %
+    A8          71.3 % -> 53.9 %
+
+The latch is still the correct ground truth — 94% agreement with S5 against 75%
+for the per-event form — but it marks many more windows positive and the
+CURRENT thresholds do not fire on them. So rescoring A5 on its own will make
+A5 look worse, for a reason that is an artefact of old thresholds meeting a new
+label.
+
+Given you have now approved per-variant calibration anyway, we think the clean
+move is to do both in one pass: adopt the latch AND recalibrate per variant,
+then report. Recalibration costs minutes and needs no new data and no
+retraining. Do you want us to proceed that way, or rescore A5 alone first so
+you can see the two effects separately?
+
+
+YOUR DECISION 1 CONFIRMATIONS — ALL THREE ANSWERED
+
+(1) Reset boundary. It is end-of-run, and that is correct here, because
+mitigation never stops forwarding. Quarantine fires (77 events from t=10.11)
+but has NO enforcement path: g_quarantined[] is written once and read only by
+its own double-set guard. Nothing consults it to block forwarding. The separate
+local-quarantine hold path is default OFF and applies to vehicles, not RSUs.
+
+Measured: after their quarantine time, 39 of 43 quarantined RSUs kept
+scheduling hidden duplicates — 1,329 post-quarantine firing cycles. The
+compromised state genuinely never ends, so the latch should not clear.
+
+Separate issue you should know about: M4 (mitigation latency) is a reported
+metric while quarantine has no effect on the data plane. We have not touched it.
+
+(2) Pooled counts, whole test split (seed 5), pre-dedup:
+
+    label form      total    positive    negative (TN pool)   pos rate
+    per-event      164,160     52,599         111,561          32.0 %
+    latched (HF)   164,160     69,952          94,208          42.6 %
+
+    HF variants only (A5-A8):
+    per-event       72,960     24,709          48,251          33.9 %
+    latched         72,960     42,062          30,898          57.7 %
+
+(3) Generalisation — it does NOT generalise, and that is informative:
+
+    variant   FPR per-event -> latched    MCC
+    A5            7.2 % ->  4.4 %         0.588 -> 0.442
+    A6           76.3 % -> 69.7 %         0.304 -> 0.311
+    A7            7.1 % ->  4.4 %         0.586 -> 0.437
+    A8           24.8 % -> 20.2 %         0.454 -> 0.329
+
+The latch does not fix A6. That is the diagnostic you asked for, and it agrees
+independently with the pooled-threshold finding: A6's problem is in the
+detector, not the ground truth.
+
+
+DECISION 4 CHECK — GENUINE SPARSITY, NOT A LOGGING GAP
+
+rho_count (vehicles in range) on the zero-traffic RSUs: mean 0.031, with 97.7%
+of their cycles having literally zero vehicles in range, max 2. Interior RSUs:
+mean 13.55, only 12.2% zero-vehicle cycles. Logging works; there is nothing to
+log.
+
+
+A7's 0.963 — RE-VERIFIED, NOT RECONFIRMED
+
+is_malicious_node[][] is only ever set true and never cleared anywhere in
+routing.cc. It is therefore ALREADY a persistent state definition — the same
+shape as the latch being adopted for A5. So it is consistent with the new
+definition by construction, not merely unaffected by it.
+
+
+Decision 3's density sweep (0/20/40/60%) and the handoff-fix mechanical
+writeup are unaffected by all of this and we are proceeding with them now.
