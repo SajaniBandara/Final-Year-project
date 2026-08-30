@@ -121,10 +121,42 @@ function shell() {
           <div class="legend-group">
             <span class="legend-label">Symbols</span>
             <div class="chips static">
-              <span class="chip"><span class="mark node-rsu"></span>RSU (size = vehicles served)</span>
-              <span class="chip"><span class="mark node-ctrl"></span>Controller</span>
-              <span class="chip"><span class="mark node-veh"></span>Vehicle</span>
-              <span class="chip"><span class="mark node-acc"></span>Currently accused</span>
+              <span class="chip">
+                <svg class="legend-icon" viewBox="0 0 16 16" width="14" height="14">
+                  <path d="M3.5,3.5 A5.5,5.5 0 0,1 12.5,3.5" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round"/>
+                  <path d="M5.5,5.5 A3,3 0 0,1 10.5,5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round"/>
+                  <rect x="7.2" y="6" width="1.6" height="7" fill="var(--axis)"/>
+                  <circle cx="8" cy="13.5" r="2" fill="var(--axis)"/>
+                </svg>
+                RSU (tower height = load)
+              </span>
+              <span class="chip">
+                <svg class="legend-icon" viewBox="0 0 16 16" width="14" height="14">
+                  <polygon points="8,1.2 14.5,4.8 14.5,11.2 8,14.8 1.5,11.2 1.5,4.8" fill="var(--series-7)" stroke="var(--surface-raised)" stroke-width="1.2"/>
+                  <line x1="4.5" y1="6" x2="11.5" y2="6" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+                  <line x1="4.5" y1="8" x2="11.5" y2="8" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+                  <line x1="4.5" y1="10" x2="11.5" y2="10" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+                </svg>
+                Controller
+              </span>
+              <span class="chip">
+                <svg class="legend-icon" viewBox="0 0 18 12" width="16" height="11">
+                  <rect x="1" y="1" width="16" height="10" rx="2.5" fill="var(--series-2)" stroke="var(--surface-raised)" stroke-width="0.8"/>
+                  <rect x="5.5" y="2.5" width="6.5" height="7" rx="1.2" fill="rgba(0,0,0,0.35)"/>
+                  <rect x="15" y="2" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                  <rect x="15" y="7.5" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                </svg>
+                Vehicle
+              </span>
+              <span class="chip">
+                <svg class="legend-icon" viewBox="0 0 18 12" width="16" height="11">
+                  <rect x="1" y="1" width="16" height="10" rx="2.5" fill="var(--status-critical)" stroke="var(--status-critical)" stroke-width="0.8"/>
+                  <rect x="5.5" y="2.5" width="6.5" height="7" rx="1.2" fill="rgba(0,0,0,0.35)"/>
+                  <rect x="15" y="2" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                  <rect x="15" y="7.5" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                </svg>
+                Accused vehicle
+              </span>
             </div>
           </div>
         </div>

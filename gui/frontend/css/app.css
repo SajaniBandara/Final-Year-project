@@ -750,11 +750,12 @@ table.mini td { padding: 3px 0; font-variant-numeric: tabular-nums; }
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--text-muted);
 }
-.mark { width: 10px; height: 10px; display: inline-block; }
-.mark.node-rsu  { background: var(--surface-raised); border: 1.5px solid var(--axis); }
-.mark.node-ctrl { background: var(--series-7); transform: rotate(45deg); }
-.mark.node-veh  { background: var(--text-muted); border-radius: 50%; width: 6px; height: 6px; }
-.mark.node-acc  { background: var(--status-critical); border-radius: 50%; }
+.legend-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
 
 .score-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
 .score-cell {
