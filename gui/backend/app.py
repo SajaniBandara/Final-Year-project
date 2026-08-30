@@ -497,6 +497,50 @@ def map_node(
     run_id: str, node_id: int, service: ResultsService = Depends(get_service)
 ) -> dict:
     """One node's detection history, for the click-through inspector."""
+    if run_id == "demo":
+        attackers = {3, 7, 12, 18, 25}
+        is_attacker = (node_id in attackers)
+        if node_id < 30:  # Vehicle
+            return {
+                "node_id": node_id,
+                "kind": "vehicle",
+                "is_attacker": is_attacker,
+                "ground_truth_known": True,
+                "position": None,
+                "accused": {
+                    "count": 14 if is_attacker else 0,
+                    "first_t": 10.0 if is_attacker else None,
+                    "last_t": 59.0 if is_attacker else None,
+                    "accusers": [30, 31, 35] if is_attacker else [],
+                    "signals": {"S1": 5, "S2": 5, "S3": 4} if is_attacker else {},
+                },
+            }
+        elif node_id < 94:  # RSU
+            r_idx = node_id - 30
+            col, row = r_idx % 8, r_idx // 8
+            return {
+                "node_id": node_id,
+                "kind": "rsu",
+                "is_attacker": False,
+                "ground_truth_known": True,
+                "position": {"x": 100.0 + 260.0 * col, "y": 100.0 + 270.0 * row},
+                "grid": {"row": row, "col": col},
+                "controller": 0,
+                "accused": {"count": 0, "first_t": None, "last_t": None, "accusers": [], "signals": {}},
+                "raised": {
+                    "count": 8,
+                    "suspects": [3, 7],
+                    "signals": {"S1": 3, "S2": 3, "S3": 2},
+                },
+            }
+        else:  # Controller
+            return {
+                "node_id": node_id,
+                "kind": "controller",
+                "is_attacker": False,
+                "ground_truth_known": True,
+                "accused": {"count": 0, "first_t": None, "last_t": None, "accusers": [], "signals": {}},
+            }
     return service.map_node(run_id, node_id)
 
 
@@ -511,6 +555,26 @@ def map_guess(
     Answers with the same confusion matrix the detectors are judged by, so a
     guess and MOBIGUARD's own answer are directly comparable.
     """
+    if run_id == "demo":
+        attackers = {3, 7, 12, 18, 25}
+        picked = set(body.get("guess") or [])
+        tp = len(picked & attackers)
+        fp = len(picked - attackers)
+        fn = len(attackers - picked)
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+        return {
+            "scored": True,
+            "tp": tp, "fp": fp, "fn": fn,
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+            "actual_count": len(attackers),
+            "guess": sorted(picked),
+            "correct": sorted(picked & attackers),
+            "missed": sorted(attackers - picked),
+        }
     return service.score_guess(run_id, list(body.get("guess") or []))
 
 

@@ -75,16 +75,11 @@ function shell() {
     <header class="lab-head">
       <div>
         <h2>Attack Lab</h2>
-        <p class="lede">
-          The live network, the attacks running on it, and the signatures that
-          catch them. Everything drawn here comes from a simulation that ran.
-        </p>
       </div>
       <div class="lab-status" id="lab-status"></div>
     </header>
 
     <section class="panel" id="scenario-panel">
-      <h3>1 · Pick a scenario</h3>
       <div id="scenario-picker" class="scenario-grid"></div>
     </section>
 
@@ -137,34 +132,25 @@ function shell() {
 
       <aside class="lab-side">
         <section class="panel" id="guess-panel">
-          <h3>2 · Spot the attacker</h3>
-          <p class="hint">
-            Turn this on and click the nodes you think are malicious. Then reveal
-            and see how your guess scores against the same confusion matrix
-            MOBIGUARD is judged by.
-          </p>
+          <h3>🎯 Spot the Attacker</h3>
           <div class="row">
             <button class="btn" id="guess-toggle">Start guessing</button>
             <button class="btn" id="guess-reveal" disabled>Reveal</button>
             <button class="btn ghost" id="guess-clear">Clear</button>
           </div>
+          <p class="hint" id="guess-hint"></p>
           <div id="guess-result"></div>
         </section>
 
         <section class="panel" id="inspector-panel">
-          <h3>3 · Inspect a node</h3>
-          <p class="hint">Click any node on the map for its full detection story.</p>
+          <h3>🔍 Node Inspector</h3>
           <div id="inspector">
-            <p class="empty">Nothing selected.</p>
+            <p class="empty">Click any node on the map.</p>
           </div>
         </section>
 
         <section class="panel" id="defence-panel">
-          <h3>4 · Switch a defence off</h3>
-          <p class="hint">
-            Each switch maps to a published ablation, so the comparison is
-            measured rather than modelled.
-          </p>
+          <h3>🛡 Defence Layers</h3>
           <div id="defence-board"></div>
         </section>
       </aside>
@@ -272,16 +258,10 @@ async function loadDemoScene(root) {
   updateClock(root);
 
   status.innerHTML = `
-    <div class="run-badge">
-      <strong>⚠ Demo mode</strong> — synthetic data, not a real simulation run.
-      Copy results_routing/ CSVs from the HPC and hit <em>Refresh data</em> to use real data.
-    </div>
-    <div class="run-sources">
-      <span class="good">Ground truth available</span>
-      (${scene.ground_truth.attackers.length} synthetic attackers —
-      vehicles ${scene.ground_truth.attackers.join(', ')})
-    </div>
-    <div class="note">Attack starts at t = 10 s. Press ▶ Play and watch the red accusations appear.</div>`;
+    <div class="run-badge demo-badge">
+      ⚠ <strong>Demo</strong> — synthetic data.
+      <span class="good">5 hidden attackers</span> · vehicles 3, 7, 12, 18, 25 · attack starts at t = 10 s
+    </div>`;
 }
 
 async function loadRun(root, run) {
@@ -460,21 +440,27 @@ function renderOverlay(root) {
 
 function renderGuessPanel(root) {
   const button = root.querySelector('#guess-toggle');
-  button.textContent = state.guessMode ? 'Stop guessing' : 'Start guessing';
-  button.classList.toggle('primary', state.guessMode);
-  const count = map.guesses.size;
-  const hint = root.querySelector('#guess-panel .hint');
-  if (state.guessMode) {
-    hint.innerHTML = `<strong>Guessing is on.</strong> Click nodes on the map.
-      ${count} selected${
-        scene && scene.ground_truth.expected_count !== null
-          ? ` of ${scene.ground_truth.expected_count} attackers in this run`
-          : ''
-      }.`;
-  } else {
-    hint.innerHTML = `Turn this on and click the nodes you think are malicious.
-      Then reveal and see how your guess scores against the same confusion
-      matrix MOBIGUARD is judged by.`;
+  if (button) {
+    button.textContent = state.guessMode ? 'Stop guessing' : 'Start guessing';
+    button.classList.toggle('primary', state.guessMode);
+  }
+  const revealBtn = root.querySelector('#guess-reveal');
+  if (revealBtn) {
+    revealBtn.disabled = !scene || !scene.ground_truth || !scene.ground_truth.known;
+  }
+  const count = map?.guesses?.size ?? 0;
+  const hint = root.querySelector('#guess-hint') || root.querySelector('#guess-panel .hint');
+  if (hint) {
+    if (state.guessMode) {
+      hint.innerHTML = `<strong>Guessing mode ON.</strong> Click nodes on map.
+        ${count} selected${
+          scene && scene.ground_truth && scene.ground_truth.expected_count !== null
+            ? ` (expected ${scene.ground_truth.expected_count})`
+            : ''
+        }.`;
+    } else {
+      hint.innerHTML = count > 0 ? `${count} node(s) selected.` : '';
+    }
   }
 }
 
@@ -595,23 +581,19 @@ function renderDefenceBoard(root) {
     .map(
       (layer) => `
       <div class="defence-row" data-key="${layer.key}">
-        <label class="switch">
+        <label class="switch" title="${layer.blurb}">
           <input type="checkbox" ${layer.default ? 'checked' : ''} data-layer="${layer.key}">
           <span class="track"></span>
         </label>
         <div class="defence-text">
           <strong>${layer.label}</strong>
           <span class="ablation">${layer.ablation}</span>
-          <p>${layer.blurb}</p>
         </div>
       </div>`
     )
     .join('') +
-    `<p class="hint" id="defence-summary">
-       Toggling here composes a configuration. Send it to the Simulation tab to
-       run it, or compare against the ablation runs already on disk.
-     </p>
-     <button class="btn" id="defence-send">Send this configuration to Simulation →</button>`;
+    `<p class="hint" id="defence-summary">All layers on — full MOBIGUARD config.</p>
+     <button class="btn" id="defence-send">Send to Simulation →</button>`;
 
   host.querySelectorAll('input[data-layer]').forEach((input) => {
     input.addEventListener('change', () => updateDefenceSummary(root));
@@ -641,7 +623,6 @@ function updateDefenceSummary(root) {
     .map((layer) => `${layer.label} (${layer.ablation})`);
   const summary = root.querySelector('#defence-summary');
   summary.innerHTML = off.length
-    ? `<strong>${off.length} layer(s) disabled:</strong> ${off.join(', ')}.
-       This is the configuration those ablations measured.`
-    : 'All layers on — the full MOBIGUARD configuration.';
+    ? `<strong>${off.length} disabled:</strong> ${off.map((l) => l.split(' (')[0]).join(', ')}.`
+    : 'All layers on — full MOBIGUARD config.';
 }
