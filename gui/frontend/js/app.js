@@ -7,7 +7,6 @@
  */
 
 import { api, ApiError } from './api.js';
-import { initFigures } from './figures.js';
 import { initLive, stopLive } from './live.js';
 import { initCrypto } from './crypto.js';
 import { initTcam, stopTcam } from './tcam.js';
@@ -114,7 +113,6 @@ async function main() {
     lstm: document.querySelector('#panel-lstm'),
     crypto: document.querySelector('#panel-crypto'),
     tcam: document.querySelector('#panel-tcam'),
-    figures: document.querySelector('#panel-figures'),
   };
   initTabs(panels);
 
@@ -153,7 +151,6 @@ async function main() {
     await initLstm(panels.lstm);
     await initTcam(panels.tcam);
     await initCrypto(panels.crypto);
-    await initFigures(panels.figures);
   } catch (error) {
     const hint =
       error instanceof ApiError && error.status === 503
