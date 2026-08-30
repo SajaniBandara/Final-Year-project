@@ -37,9 +37,13 @@ from typing import Iterable, Iterator
 #: Repository root, from ``gui/backend/catalog.py``.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: Default location of the metrics CSVs. Override with ``MOBIGUARD_RESULTS_DIR``
-#: to point the GUI at a different copy without editing code.
-DEFAULT_RESULTS_DIR = REPO_ROOT / "results_routing"
+_ns3_results = Path.home() / "ns3_g13" / "ns-allinone-3.35" / "ns-3.35" / "results_routing"
+DEFAULT_RESULTS_DIR = Path(
+    os.environ.get(
+        "MOBIGUARD_RESULTS_DIR",
+        _ns3_results if _ns3_results.is_dir() else REPO_ROOT / "results_routing",
+    )
+).expanduser()
 
 METRICS_FILENAME_RE = re.compile(
     r"^MOBIGUARD_Attack(?P<attack>\d+)"

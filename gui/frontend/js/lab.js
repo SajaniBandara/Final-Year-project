@@ -77,12 +77,23 @@ export async function initLab(root) {
       const attack = event.detail?.attack;
 
       let targetRun = null;
-      if (runId) {
-        targetRun = (catalog.runs || []).find((r) => r.id === runId || (r.file && r.file.includes(runId)));
+
+      // 1. Try finding by metrics_file name or stem
+      if (metricsFile) {
+        const stem = metricsFile.replace(/\.csv$/, '');
+        targetRun = (catalog.runs || []).find(
+          (r) => r.id === stem || r.file === metricsFile || (r.file && r.file.includes(stem))
+        );
       }
-      if (!targetRun && metricsFile) {
-        targetRun = (catalog.runs || []).find((r) => r.file === metricsFile || (r.file && r.file.includes(metricsFile)));
+
+      // 2. Try finding by runId
+      if (!targetRun && runId) {
+        targetRun = (catalog.runs || []).find(
+          (r) => r.id === runId || (r.file && r.file.includes(runId))
+        );
       }
+
+      // 3. Fallback to attack number
       if (!targetRun && attack !== undefined) {
         const runs = (catalog.runs || []).filter((r) => r.attack === Number(attack));
         if (runs.length) {
@@ -93,6 +104,8 @@ export async function initLab(root) {
 
       if (targetRun) {
         await loadRun(root, targetRun);
+      } else if (catalog.runs && catalog.runs.length > 0) {
+        await loadRun(root, catalog.runs[catalog.runs.length - 1]);
       }
 
       const labTab = document.querySelector('.tab[data-tab="lab"]');
