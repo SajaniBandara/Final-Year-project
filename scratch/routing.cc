@@ -114738,6 +114738,30 @@ int active_attack_variant = -1;
 double t_onset[total_size]      = {0.0};
 double t_quarantine[total_size] = {0.0};
 
+// ── M4 / eq:l_mit CORRECTION (2026-08-31) ────────────────────────────────────
+// Default OFF: every figure produced before this date reproduces exactly.
+//
+// t_onset above is assigned attack_start_time for every DECLARED malicious node
+// (attack_declaration.h, hf_attack_helper.h), i.e. the instant the ATTACK was
+// declared, not the instant THIS node first misbehaved. Nodes that start late,
+// or are blocked before ever acting, are then charged latency for an attack
+// they had not launched. Measured 2026-08-31 on A5-A8: correcting the onset
+// alone cuts L_mit by 1.5-2.5x.
+//
+// t_first_attack is latched at the node's first ACTUAL attack action -- the
+// same instants the *_send_gt ground-truth counters increment -- so it is the
+// send-side truth, set before any detector runs.
+double t_first_attack[total_size] = {0.0};
+uint32_t g_lmit_blocked_before_acting = 0;   // quarantined having never acted
+bool     enable_corrected_lmit = false;      // --enable_corrected_lmit
+
+// Latch the first attack action for `node`. Cheap and idempotent.
+inline void lmit_mark_attack(uint32_t node)
+{
+    if (node < (uint32_t)total_size && t_first_attack[node] == 0.0)
+        t_first_attack[node] = ns3::Simulator::Now().GetSeconds();
+}
+
 // Computed metric values (current cycle)
 double current_MCC[NUM_ATTACK_VARIANTS]            = {0.0};
 double current_detection_rate[NUM_ATTACK_VARIANTS] = {0.0};
@@ -117552,12 +117576,29 @@ void calculate_mitigation_latency_metric()
     double total_latency = 0.0;
     uint32_t valid_count = 0;
 
+    g_lmit_blocked_before_acting = 0;
     for (int n = 0; n < total_size; n++)
     {
-        // Only count nodes that have both timestamps set
-        if (t_onset[n] > 0.0 && t_quarantine[n] > t_onset[n])
+        // eq:l_mit onset. Corrected mode uses the node's OWN first attack;
+        // legacy mode uses attack_start_time via t_onset (see t_first_attack).
+        double onset = enable_corrected_lmit ? t_first_attack[n] : t_onset[n];
+
+        // Corrected mode: a node quarantined having NEVER acted is not a slow
+        // mitigation -- it is the best possible outcome, and averaging it in as
+        // latency inverts the result. Counted separately instead. (Measured
+        // 2026-08-31: 13-34 such RSUs per variant with enforcement on, vs 3-6
+        // without, i.e. this IS the mitigation benefit and it does not appear
+        // in L_mit at all.)
+        if (enable_corrected_lmit && onset == 0.0 && t_quarantine[n] > 0.0)
         {
-            double lmit = t_quarantine[n] - t_onset[n];  // seconds
+            ++g_lmit_blocked_before_acting;
+            continue;
+        }
+
+        // Only count nodes that have both timestamps set
+        if (onset > 0.0 && t_quarantine[n] > onset)
+        {
+            double lmit = t_quarantine[n] - onset;  // seconds
             total_latency += lmit;
             valid_count++;
 
@@ -117580,8 +117621,14 @@ void calculate_mitigation_latency_metric()
 	double cycle = data_gathering_cycle_number - 1.0;
 	if (cycle < 1.0)
 		cycle = 1.0;
-	average_mitigation_latency =
-		previous_cumulative_mitigation_latency / cycle;
+	// Legacy: a time-average of a per-cycle mean taken over a node set that
+	// GROWS as more nodes quarantine -- not a mean of L_mit at all. Measured
+	// 2026-08-31 on A5's control arm: true mean 2,697 ms reported as 6,937 ms,
+	// a 2.6x accumulation artefact independent of any mitigation behaviour.
+	// Corrected mode reports the plain mean over scored nodes.
+	average_mitigation_latency = enable_corrected_lmit
+		? current_mitigation_latency
+		: previous_cumulative_mitigation_latency / cycle;
 
     std::cout << "[SECURITY] Avg mitigation latency: "
               << 1000.0 * average_mitigation_latency << " ms" << std::endl;
@@ -121469,6 +121516,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							uint32_t _std_gt_node = hf_gt_attribution_node(current_hop);
 							if (_std_gt_node != UINT32_MAX)
 								g_lstm_std_sendgt_count[_std_gt_node]++;
+                                    lmit_mark_attack(_std_gt_node);   // eq:l_mit onset
 						}
 
 						// TCAM slow-path delay (Attacks 3 & 4).
@@ -121525,6 +121573,21 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// In the real system, EdDSA would fail on the modified copy.
 						if (present_active_hf_attack &&
 							active_hf_malicious_nodes[current_hop] &&
+							// eq:quarantine enforcement -- a quarantined forwarder is denied
+							// the action. No-op while enable_quarantine_enforcement is off.
+							//
+							// BOTH tests are required. For the DP variants (A6/A8) current_hop is
+							// a VEHICLE relay, and vehicles never cross the trust threshold, so
+							// testing current_hop alone lets the duplicate through while
+							// hf_send_gt still attributes it to the covering RSU -- which IS
+							// quarantined. That is exactly the leak measured 2026-08-30: A5/A7
+							// (CP, forwarder is the RSU itself) dropped to 0 post-quarantine
+							// firing cycles, while A6/A8 still showed 50 and 137. Mirroring
+							// hf_gt_attribution_node() here matches the attribution the ground
+							// truth already uses. UINT32_MAX (no covering RSU) is safe:
+							// quarantine_blocks() bounds-checks and returns false.
+							!quarantine_blocks(current_hop) &&
+							!quarantine_blocks(hf_gt_attribution_node(current_hop)) &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
@@ -121587,6 +121650,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						        uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
 						        if (_hf_gt_node != UINT32_MAX)
 						            g_lstm_hf_sendgt_count[_hf_gt_node]++;
+                                    lmit_mark_attack(_hf_gt_node);   // eq:l_mit onset
 						    }
 						    // eFADE: count the hidden duplicate as an extra forward event at
 						    // scheduling time so it lands in the same epoch as the legitimate
@@ -121605,6 +121669,21 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
                         if (present_passive_hf_attack &&
 							passive_hf_malicious_nodes[current_hop] &&
+							// eq:quarantine enforcement -- a quarantined forwarder is denied
+							// the action. No-op while enable_quarantine_enforcement is off.
+							//
+							// BOTH tests are required. For the DP variants (A6/A8) current_hop is
+							// a VEHICLE relay, and vehicles never cross the trust threshold, so
+							// testing current_hop alone lets the duplicate through while
+							// hf_send_gt still attributes it to the covering RSU -- which IS
+							// quarantined. That is exactly the leak measured 2026-08-30: A5/A7
+							// (CP, forwarder is the RSU itself) dropped to 0 post-quarantine
+							// firing cycles, while A6/A8 still showed 50 and 137. Mirroring
+							// hf_gt_attribution_node() here matches the attribution the ground
+							// truth already uses. UINT32_MAX (no covering RSU) is safe:
+							// quarantine_blocks() bounds-checks and returns false.
+							!quarantine_blocks(current_hop) &&
+							!quarantine_blocks(hf_gt_attribution_node(current_hop)) &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
@@ -121644,6 +121723,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                                 uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
                                 if (_hf_gt_node != UINT32_MAX)
                                     g_lstm_hf_sendgt_count[_hf_gt_node]++;
+                                    lmit_mark_attack(_hf_gt_node);   // eq:l_mit onset
                             }
                             // eFADE: count the hidden duplicate as an extra forward event
                             // (see the active-HF block above for the full explanation —
@@ -121670,6 +121750,31 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// the flow does not match the flagged signature — so the default
 						// build is bit-identical to before this change.
 						double _hold_defer = fwd_hold_remaining(current_hop, flow_id);
+						// eq:quarantine ENFORCEMENT (2026-08-30) -- "instructing all RSUs to
+						// drop flows originating from v". This is the equation as written: a
+						// RECEIVE-side drop keyed on the flow's ORIGIN, performed by the
+						// relaying RSU. It is deliberately distinct from the send-side guards
+						// at the two hidden-duplicate sites, which stop a quarantined node
+						// from ATTACKING; this one stops the network from carrying a
+						// quarantined node's OWN traffic. Both are needed: an HF attacker
+						// duplicates OTHER nodes' flows, so origin-based dropping alone would
+						// not stop it, and the send-side guard alone does not implement
+						// eq:quarantine. Restricted to RSU relays because the equation says
+						// "all RSUs". No-op while enable_quarantine_enforcement is off.
+						bool _q_drop = false;
+						if (enable_quarantine_enforcement &&
+						    current_hop >= (uint32_t)N_Vehicles &&
+						    current_hop <  (uint32_t)(N_Vehicles + N_RSUs) &&
+						    flow_id < (uint32_t)(2 * var))
+						{
+							_q_drop = quarantine_blocks((delta_at_nodes_inst + flow_id)->source_f);
+							if (_q_drop)
+								std::cout << "[QUARANTINE-DROP] rsu=" << current_hop
+								          << " flow=" << flow_id
+								          << " origin=" << (delta_at_nodes_inst + flow_id)->source_f
+								          << " t=" << Now().GetSeconds() << "s" << std::endl;
+						}
+						if (!_q_drop)
 						Simulator::Schedule (Seconds(total_tx_delay + _hold_defer), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 						//cout<<"This is flow ID "<<flow_id<<"Re-transmitting attempt of packet ID "<<packet_id<<" from "<<current_hop<<" to next hop "<<hop<<"at time "<<Now().GetSeconds()<<endl;
 						bool apply_attack_delay = (total_tx_delay > 0.0);   
@@ -124909,6 +125014,7 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 							uint32_t _std_gt_node = hf_gt_attribution_node(source);
 							if (_std_gt_node != UINT32_MAX)
 								g_lstm_std_sendgt_count[_std_gt_node]++;
+                                    lmit_mark_attack(_std_gt_node);   // eq:l_mit onset
 						}
 
 						if (!attacked)
@@ -142312,6 +142418,15 @@ int main(int argc, char *argv[])
     // contains the 80 ms A1/A2 inject, so no threshold can separate them.
     // See s1_suppress_handoff_fp in s1_detection.h. Default 0 = unchanged.
     cmd.AddValue("s1_suppress_handoff_fp", "S1 item 7 follow-up: do not fire on packets carrying the 50-300ms handoff jitter this detector injects (default 0)", s1_suppress_handoff_fp);
+    // eq:quarantine enforcement (2026-08-30). Default 0 reproduces every result
+    // produced before this date; 1 makes SC.Quarantine actually deny data-path
+    // actions instead of only setting a flag. See crypto_layer.h.
+    cmd.AddValue("enable_quarantine_enforcement", "SC.Quarantine actually blocks quarantined nodes from scheduling hidden duplicates and installing malicious FlowMods (default 0 = flag-only, pre-2026-08-30 behaviour)", enable_quarantine_enforcement);
+    // eq:l_mit correction (2026-08-31). Default 0 reproduces every pre-existing
+    // M4 figure; 1 fixes all three defects (per-node onset, plain mean instead
+    // of an accumulated per-cycle mean, and blocked-before-acting nodes counted
+    // separately rather than averaged in as slow mitigations).
+    cmd.AddValue("enable_corrected_lmit", "M4/L_mit measured from each node's OWN first attack, as a plain mean, excluding nodes quarantined before they ever acted (default 0 = legacy)", enable_corrected_lmit);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);

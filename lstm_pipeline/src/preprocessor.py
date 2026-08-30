@@ -42,6 +42,31 @@ def parse_run_name(stem: str):
 FEATURES   = ["delta_t", "lambda_PI", "U_TCAM",
               "zkp_delay_fail", "zkp_hop_fail", "rho", "v_bar",
               "d_div", "a_tp", "r_anom", "delta_t_exceeded"]
+# ── HF label form (supervisor item 9 / finding (b), 2026-08-30) ──────────────
+# OFF by default: y_indep is built exactly as before, so every existing number
+# is reproduced byte-for-byte unless this is explicitly turned on.
+#
+# When ON, the HF term of y_indep switches from the per-EVENT OR
+# (hf_send_gt fired at least once *inside* this window) to a LATCHED form
+# ("has this RSU ever scheduled a hidden duplicate up to the end of this
+# window"). Only the HF term changes; std_send_gt (A1/A2) and tcam_send_gt
+# (A3/A4) keep their existing per-event semantics.
+#
+# Why: S5's conjunctions 1-2 are persistent state -- the FlowMod stays
+# unendorsed and active_hf_malicious_nodes[] is never cleared -- so S5 marks an
+# ONGOING compromised state while hf_send_gt marks only the instant a duplicate
+# is scheduled. Measured on A5 @60%, seed 1: per-window agreement with S5 rises
+# from 75.46% to 94.07% under the latch, and the attacker-RSU window rate goes
+# 52.03% -> 94.74% against S5's own measured 92.44%, while benign RSUs stay at
+# exactly 0.00% under both forms.
+#
+# The latch is derived offline from the hf_send_gt column already present in
+# every CSV (cumulative max within each rsu/attack_v/pct/seed run), so turning
+# this on requires NO simulator change and NO re-run of the 14,400-file dataset.
+#
+# Set MOBIGUARD_HF_LATCHED=1 in the environment, or flip the default here.
+HF_LATCHED_LABEL = os.environ.get("MOBIGUARD_HF_LATCHED", "0") == "1"
+
 WINDOW     = 10      # 10-second sliding window (1 Hz cycles)
 STRIDE     = 5       # 5-second stride = 50% overlap (spec §3)
 TRAIN_FRAC = 0.70
@@ -199,6 +224,9 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
         vals   = grp[FEATURES].values.astype(np.float32)
         spikes = grp["is_spike"].values.astype(np.int8)   # per-row attack-active flag
         hfgt   = grp["hf_send_gt"].values.astype(np.float64)
+        # Latched HF ground truth, computed per RUN (the groupby key), so it
+        # never carries across runs. Only consulted when HF_LATCHED_LABEL is on.
+        hflat  = np.maximum.accumulate(hfgt > 0).astype(np.int8)
         # Fix 2 (2026-08-27, supervisor item 6): A1/A2's injection-side
         # counter, the timing equivalent of hf_send_gt.
         stdgt  = grp["std_send_gt"].values.astype(np.float64)
@@ -232,7 +260,11 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             # time inside the attack injector, before any detector runs, and is
             # excluded from FEATURES, so it shares no computation path with
             # anything the model sees.
-            _inj = max(hfgt[i:i+window].max(),
+            # HF term: latched ("ever fired up to the end of this window") when
+            # HF_LATCHED_LABEL, else the original per-event OR over the window.
+            _hf = (float(hflat[i + window - 1]) if HF_LATCHED_LABEL
+                   else hfgt[i:i+window].max())
+            _inj = max(_hf,
                        stdgt[i:i+window].max(),
                        tcamgt[i:i+window].max())
             yi_list.append(1 if (av > 0 and _inj > 0) else 0)
