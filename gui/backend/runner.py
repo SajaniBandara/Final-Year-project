@@ -60,7 +60,7 @@ from .catalog import REPO_ROOT
 DEFAULT_NS3_DIR = Path(
     os.environ.get(
         "MOBIGUARD_NS3_DIR",
-        Path.home() / "G_13" / "ns-allinone-3.35" / "ns-3.35",
+        Path.home() / "ns3_g13" / "ns-allinone-3.35" / "ns-3.35",
     )
 ).expanduser()
 

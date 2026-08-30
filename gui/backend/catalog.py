@@ -133,7 +133,9 @@ class Catalog:
     """An immutable snapshot of the metrics CSVs in one results directory."""
 
     def __init__(self, runs: Iterable[RunFile], results_dir: Path) -> None:
-        self._runs: list[RunFile] = sorted(runs)
+        self._runs: list[RunFile] = sorted(
+            runs, key=lambda r: (r.attack_id, r.attack_percentage, r.seed, r.delay_ms or 0, r.tag or "")
+        )
         self._by_id: dict[str, RunFile] = {r.run_id: r for r in self._runs}
         self.results_dir = results_dir
 

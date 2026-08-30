@@ -149,7 +149,7 @@ export function renderLineChart(container, config) {
     }, gridGroup);
     el('text', {
       x: PLOT.x - 10, y: y + 4, 'text-anchor': 'end',
-      fill: 'var(--text-muted)', 'font-size': 11,
+      fill: 'var(--text-muted)', 'font-size': 12.5,
     }, gridGroup).textContent = formatTick(v, unit);
   }
 
@@ -160,7 +160,7 @@ export function renderLineChart(container, config) {
   for (const x of xTickValues) {
     el('text', {
       x: sx(x), y: PLOT.y + PLOT.h + 20, 'text-anchor': 'middle',
-      fill: 'var(--text-muted)', 'font-size': 11,
+      fill: 'var(--text-muted)', 'font-size': 12.5,
     }, gridGroup).textContent = categoricalX ? `${x}%` : String(x);
   }
 
@@ -171,12 +171,12 @@ export function renderLineChart(container, config) {
 
   el('text', {
     x: PLOT.x + PLOT.w / 2, y: VIEW.h - 8, 'text-anchor': 'middle',
-    fill: 'var(--text-secondary)', 'font-size': 12,
+    fill: 'var(--text-secondary)', 'font-size': 13.5, 'font-weight': 600,
   }, svg).textContent = xLabel;
 
   el('text', {
     x: 16, y: PLOT.y + PLOT.h / 2, 'text-anchor': 'middle',
-    fill: 'var(--text-secondary)', 'font-size': 12,
+    fill: 'var(--text-secondary)', 'font-size': 13.5, 'font-weight': 600,
     transform: `rotate(-90 16 ${PLOT.y + PLOT.h / 2})`,
   }, svg).textContent = yLabel;
 
@@ -189,7 +189,7 @@ export function renderLineChart(container, config) {
       stroke: 'var(--status-serious)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4',
     }, svg);
     el('text', {
-      x: x + 5, y: PLOT.y + 12, fill: 'var(--status-serious)', 'font-size': 11,
+      x: x + 5, y: PLOT.y + 12, fill: 'var(--status-serious)', 'font-size': 12.5, 'font-weight': 600,
     }, svg).textContent = marker.label;
   }
 
@@ -203,7 +203,7 @@ export function renderLineChart(container, config) {
     }, svg);
     el('text', {
       x: PLOT.x + PLOT.w - 4, y: y - 5, 'text-anchor': 'end',
-      fill: 'var(--status-critical)', 'font-size': 11,
+      fill: 'var(--status-critical)', 'font-size': 12.5, 'font-weight': 600,
     }, svg).textContent = marker.label;
   }
 
@@ -269,7 +269,7 @@ export function renderLineChart(container, config) {
       while (placed.some((p) => Math.abs(p - y) < 13)) y += 13;
       placed.push(y);
       el('text', {
-        x: sx(last.x) + 10, y, fill: s.color, 'font-size': 11.5, 'font-weight': 600,
+        x: sx(last.x) + 10, y, fill: s.color, 'font-size': 12.5, 'font-weight': 600,
       }, svg).textContent = s.name;
     }
   }

@@ -73,10 +73,7 @@ function shell() {
   return `
   <div class="lab">
     <header class="lab-head">
-      <div>
-        <h2>Attack Lab</h2>
-      </div>
-      <div class="lab-status" id="lab-status"></div>
+      <h2>Attack Lab</h2>
     </header>
 
     <section class="panel" id="scenario-panel">
@@ -85,6 +82,8 @@ function shell() {
 
     <div class="lab-body">
       <section class="panel map-panel">
+        <div class="map-status-bar" id="lab-status"></div>
+
         <div class="map-toolbar">
           <button class="btn primary" id="map-play">▶ Play</button>
           <label class="inline">
@@ -219,16 +218,27 @@ function renderScenarioPicker(root) {
       const sigs = attack.signatures.length
         ? attack.signatures.map((s) => `<span class="sig sig-${s}">${s}</span>`).join('')
         : '<span class="sig sig-none">baseline</span>';
+      
+      const planeClass = attack.plane.toLowerCase().includes('control')
+        ? 'ctrl'
+        : attack.plane.toLowerCase().includes('data')
+        ? 'data'
+        : 'base';
+
       return `
       <button class="scenario-card${available ? '' : ' is-empty'}"
               data-attack="${attack.number}" ${available ? '' : 'disabled'}>
-        <span class="scenario-num">${attack.number}</span>
-        <span class="scenario-name">${attack.name}</span>
-        <span class="scenario-plane">${attack.plane}</span>
-        <span class="scenario-sigs">${sigs}</span>
-        <span class="scenario-runs">${
-          available ? `${runs.length} run${runs.length === 1 ? '' : 's'}` : 'no data'
-        }</span>
+        <div class="card-top">
+          <span class="scenario-num-badge">Attack 0${attack.number}</span>
+          <span class="scenario-plane-pill ${planeClass}">${attack.plane}</span>
+        </div>
+        <div class="scenario-name">${attack.name}</div>
+        <div class="scenario-sigs">${sigs}</div>
+        <div class="card-bottom">
+          <span class="scenario-runs-badge ${available ? 'active' : ''}">
+            ${available ? `<span class="dot"></span> ${runs.length} run${runs.length === 1 ? '' : 's'}` : 'No data'}
+          </span>
+        </div>
       </button>`;
     })
     .join('');
@@ -238,6 +248,11 @@ function renderScenarioPicker(root) {
       const attack = Number(card.dataset.attack);
       const runs = (catalog.runs || []).filter((r) => r.attack === attack);
       if (!runs.length) return;
+
+      // Instant UI feedback (0ms responsiveness)
+      root.querySelectorAll('.scenario-card').forEach((c) => c.classList.remove('is-selected'));
+      card.classList.add('is-selected');
+
       // Highest attacker percentage first: the most visible instance of the
       // attack is the one worth opening on.
       runs.sort((a, b) => b.pct - a.pct);
@@ -327,6 +342,11 @@ async function loadRun(root, run) {
   renderGuessPanel(root);
   renderOverlay(root);
   updateClock(root);
+
+  root.querySelectorAll('.scenario-card').forEach((card) => {
+    const isSel = Number(card.dataset.attack) === scene.attack_id;
+    card.classList.toggle('is-selected', isSel);
+  });
 
   const gt = scene.ground_truth;
   status.innerHTML = `
