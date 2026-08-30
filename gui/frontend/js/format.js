@@ -68,3 +68,40 @@ export function attackLabel(attackId) {
 export function attackShortLabel(attackId) {
   return attackId === 0 ? 'Base' : `A${attackId}`;
 }
+
+/**
+ * Small formatters for prose and tables, where there is no column unit to key
+ * off. `formatValue` above is the one to use whenever the API has told you the
+ * unit; this is for counts, durations and percentages the UI itself computes.
+ */
+export const fmt = {
+  /** Thousands-separated integer. */
+  int: (value) =>
+    value === null || value === undefined || Number.isNaN(value)
+      ? '—'
+      : Math.round(Number(value)).toLocaleString(),
+
+  /** Fixed-decimal number, trailing zeros trimmed. */
+  num: (value, decimals = 2) =>
+    value === null || value === undefined || Number.isNaN(value)
+      ? '—'
+      : String(Number(Number(value).toFixed(decimals))),
+
+  /** A value already expressed in percent, e.g. 47.2 -> "47.2%". */
+  pct: (value, decimals = 1) =>
+    value === null || value === undefined || Number.isNaN(value)
+      ? '—'
+      : `${Number(Number(value).toFixed(decimals))}%`,
+
+  /**
+   * Wall-clock duration. Seconds below a minute, m:ss above -- a demo operator
+   * reading "412 s" has to do arithmetic to know whether to keep talking.
+   */
+  duration: (seconds) => {
+    if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return '—';
+    const total = Math.max(0, Math.round(Number(seconds)));
+    if (total < 60) return `${total} s`;
+    const minutes = Math.floor(total / 60);
+    return `${minutes}m ${String(total % 60).padStart(2, '0')}s`;
+  },
+};

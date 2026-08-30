@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -538,6 +539,7 @@ class RunManager:
                 tail = " | ".join(record.log[-3:])
                 record.error = f"exit code {code}. Last output: {tail}" if tail \
                     else f"exit code {code}"
+            _persist_roster(record)
             self._procs.pop(record.run_id, None)
             self._tasks.pop(record.run_id, None)
 
@@ -578,6 +580,59 @@ class RunManager:
         record = self.get(run_id)
         start = max(0, min(since, len(record.log)))
         return record.log[start:], len(record.log)
+
+
+#: Sidecar holding a run's attacker roster, written beside its metrics CSV.
+#: ``declare_attackers()`` prints the roster to stdout and nothing else records
+#: it, so once the launching process exits the ground truth is gone. Persisting
+#: it is what lets the spot-the-attacker reveal work on a run days later, and
+#: what makes a GUI-launched run self-describing rather than dependent on this
+#: server still being the one that started it.
+ROSTER_SUFFIX = ".attackers.json"
+
+
+def roster_path(metrics_path: Path) -> Path:
+    """Where a run's attacker roster is stored."""
+    return metrics_path.with_suffix(ROSTER_SUFFIX)
+
+
+def load_roster(metrics_path: Path) -> set[int] | None:
+    """Read a persisted roster, or None if this run has none.
+
+    None means "not recorded", which is emphatically not the same as "there
+    were no attackers" -- a benign run records an empty list, and the caller
+    must be able to tell those apart.
+    """
+    path = roster_path(metrics_path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    nodes = payload.get("attackers")
+    if not isinstance(nodes, list):
+        return None
+    return {int(n) for n in nodes}
+
+
+def _persist_roster(record: RunRecord) -> None:
+    """Write the roster sidecar. Never raises -- a run must not fail over this."""
+    if record.state not in (RunState.FINISHED, RunState.CANCELLED):
+        return
+    try:
+        roster_path(record.metrics_path).write_text(
+            json.dumps({
+                "run_tag": record.tag,
+                "attackers": sorted(record.attackers),
+                "attack_number": record.values.get("attack_number", 0),
+                "attack_percentage": record.values.get("attack_percentage", 0),
+                "sim_seed": record.values.get("sim_seed", 1),
+                "source": "declare_attackers() stdout, captured at launch",
+                "written_at": time.time(),
+            }, indent=1),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 def _count_cycles(path: Path) -> int:

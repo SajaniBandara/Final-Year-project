@@ -29,11 +29,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from . import aggregate, schema
+from . import aggregate, mapview, params, schema
 from .catalog import REPO_ROOT, Catalog, RunFile
 from .parser import Run, SchemaError, parse_file
 from .crypto import panel as crypto_panel
 from .lstm import panel as lstm_panel
+from .runner import RunManager, RunnerError, host_load
 from .stream import make_source
 from .tcam import panel as tcam_panel
 from .verification import panel as verification_panel, run_audit
@@ -67,6 +68,8 @@ class ResultsService:
     """Read-only view over one ``results_routing/`` directory."""
 
     def __init__(self, results_dir: str | os.PathLike[str] | None = None) -> None:
+        #: Created on first use; see :attr:`runs`.
+        self._run_manager: RunManager | None = None
         self._results_dir = results_dir
         self._catalog: Catalog | None = None
         # key -> parsed runs, keyed on file identity so a re-copy self-invalidates.
@@ -362,6 +365,130 @@ class ResultsService:
             return run_audit(self_test=self_test)
         except (FileNotFoundError, RuntimeError) as exc:
             raise BadRequestError(str(exc)) from exc
+
+    # --- run control --------------------------------------------------------
+
+    @property
+    def runs(self) -> RunManager:
+        """The process manager, created lazily.
+
+        Lazy because constructing it probes the filesystem for the ns-3 tree,
+        and a GUI running on a laptop with no simulator present should still
+        start -- it just cannot launch anything, which the environment report
+        says plainly rather than failing at import time.
+        """
+        if self._run_manager is None:
+            self._run_manager = RunManager()
+        return self._run_manager
+
+    def simulator_environment(self) -> dict[str, object]:
+        """Whether this machine can launch a simulation, and how loaded it is."""
+        return {**self.runs.env.to_json(), "host": host_load()}
+
+    def run_options(self) -> dict[str, object]:
+        """The parameter registry the run form renders itself from."""
+        return params.describe()
+
+    def plan_run(
+        self,
+        values: dict[str, object],
+        defences: dict[str, bool] | None = None,
+    ) -> dict[str, object]:
+        """Render the exact command a launch would use, without launching."""
+        try:
+            return self.runs.plan(values, defences)
+        except params.ParamError as exc:
+            raise BadRequestError(str(exc)) from exc
+        except RunnerError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    async def start_run(
+        self,
+        values: dict[str, object],
+        defences: dict[str, bool] | None = None,
+    ) -> dict[str, object]:
+        try:
+            record = await self.runs.start(values, defences)
+        except params.ParamError as exc:
+            raise BadRequestError(str(exc)) from exc
+        except RunnerError as exc:
+            raise BadRequestError(str(exc)) from exc
+        return record.to_json()
+
+    async def stop_run(self, run_uid: str) -> dict[str, object]:
+        try:
+            record = await self.runs.stop(run_uid)
+        except RunnerError as exc:
+            raise NotFoundError(str(exc)) from exc
+        return record.to_json()
+
+    def run_status(self, run_uid: str) -> dict[str, object]:
+        try:
+            return self.runs.get(run_uid).to_json()
+        except RunnerError as exc:
+            raise NotFoundError(str(exc)) from exc
+
+    def run_log(self, run_uid: str, since: int = 0) -> dict[str, object]:
+        try:
+            lines, cursor = self.runs.log_lines(run_uid, since)
+        except RunnerError as exc:
+            raise NotFoundError(str(exc)) from exc
+        return {"lines": lines, "cursor": cursor}
+
+    def launched_runs(self) -> dict[str, object]:
+        return {"runs": [r.to_json() for r in self.runs.list()],
+                "active": len(self.runs.active)}
+
+    # --- map ----------------------------------------------------------------
+
+    def map_scene(
+        self,
+        run_id: str,
+        *,
+        start: float = 0.0,
+        end: float | None = None,
+        step: float = 1.0,
+    ) -> dict[str, object]:
+        """Topology, movement and accusations for one run.
+
+        Assembled per request rather than cached: the detection log dominates
+        the cost and is bounded by the read cap, while a live run's scene must
+        not be served from a snapshot taken before the events existed.
+        """
+        run_file = self._run_file(run_id)
+        try:
+            return mapview.scene(
+                run_file, start=start, end=end, step=step,
+                live_attackers=self._live_attackers(run_file),
+            )
+        except mapview.MapError as exc:
+            raise BadRequestError(str(exc)) from exc
+
+    def map_node(self, run_id: str, node_id: int) -> dict[str, object]:
+        run_file = self._run_file(run_id)
+        return mapview.node_detail(
+            run_file, node_id, live_attackers=self._live_attackers(run_file)
+        )
+
+    def score_guess(self, run_id: str, guess: list[int]) -> dict[str, object]:
+        run_file = self._run_file(run_id)
+        return mapview.score_guess(
+            run_file, guess, live_attackers=self._live_attackers(run_file)
+        )
+
+    def _live_attackers(self, run_file: RunFile) -> set[int] | None:
+        """The attacker roster, if this run was launched by this server.
+
+        Matched on the run tag, which is in the filename -- so a GUI-launched
+        run keeps its exact ground truth for as long as the server lives, and
+        anything else falls back to log mining or to saying it is unknown.
+        """
+        if self._run_manager is None:
+            return None
+        for record in self._run_manager.list():
+            if record.tag and record.tag in run_file.path.stem:
+                return set(record.attackers) or None
+        return None
 
     def figures(self) -> dict[str, object]:
         """The committed thesis figures under ``output/``, grouped by directory."""

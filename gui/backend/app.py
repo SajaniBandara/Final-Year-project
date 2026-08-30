@@ -22,7 +22,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import Depends, FastAPI, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -274,6 +274,122 @@ def rerun_audit(
     an examiner is more convincing than showing a file.
     """
     return service.rerun_audit(self_test=self_test)
+
+
+# --- simulation control ------------------------------------------------------
+#
+# These are the only routes that change anything on the host: they start a
+# process. Everything else in this API is read-only over the filesystem.
+
+@app.get("/api/sim/environment", tags=["simulation"])
+def sim_environment(service: ResultsService = Depends(get_service)) -> dict:
+    """Whether this machine can run a simulation, and what it is doing now.
+
+    The GUI is expected to run both on the workstation beside the ns-3 tree and
+    on a laptop with no simulator at all. This route is how the frontend decides
+    whether to offer run control or hide it, so it always answers rather than
+    erroring when the tree is absent.
+    """
+    return service.simulator_environment()
+
+
+@app.get("/api/sim/options", tags=["simulation"])
+def sim_options(service: ResultsService = Depends(get_service)) -> dict:
+    """Parameter registry, attack variants, defence layers and presets."""
+    return service.run_options()
+
+
+@app.post("/api/sim/plan", tags=["simulation"])
+def sim_plan(
+    body: dict = Body(..., description="{'values': {...}, 'defences': {...}}"),
+    service: ResultsService = Depends(get_service),
+) -> dict:
+    """Validate a configuration and show the command it would run.
+
+    Called on every form change, so the operator sees the exact command line
+    before committing to it -- which also makes the GUI a way to compose a
+    command to run by hand later.
+    """
+    return service.plan_run(body.get("values") or {}, body.get("defences") or {})
+
+
+@app.post("/api/sim/start", tags=["simulation"])
+async def sim_start(
+    body: dict = Body(..., description="{'values': {...}, 'defences': {...}}"),
+    service: ResultsService = Depends(get_service),
+) -> dict:
+    """Launch a simulation. Returns immediately with the run record."""
+    return await service.start_run(
+        body.get("values") or {}, body.get("defences") or {}
+    )
+
+
+@app.post("/api/sim/{run_uid}/stop", tags=["simulation"])
+async def sim_stop(
+    run_uid: str, service: ResultsService = Depends(get_service)
+) -> dict:
+    """Terminate a running simulation."""
+    return await service.stop_run(run_uid)
+
+
+@app.get("/api/sim/runs", tags=["simulation"])
+def sim_runs(service: ResultsService = Depends(get_service)) -> dict:
+    """Every run this server has launched, newest first."""
+    return service.launched_runs()
+
+
+@app.get("/api/sim/{run_uid}", tags=["simulation"])
+def sim_status(
+    run_uid: str, service: ResultsService = Depends(get_service)
+) -> dict:
+    """Progress, state and captured attacker roster for one launched run."""
+    return service.run_status(run_uid)
+
+
+@app.get("/api/sim/{run_uid}/log", tags=["simulation"])
+def sim_log(
+    run_uid: str,
+    since: int = Query(0, ge=0, description="Resume from this line index."),
+    service: ResultsService = Depends(get_service),
+) -> dict:
+    """Incremental process output. Poll with the returned cursor."""
+    return service.run_log(run_uid, since)
+
+
+# --- map ---------------------------------------------------------------------
+
+@app.get("/api/map/{run_id}", tags=["map"])
+def map_scene(
+    run_id: str,
+    start: float = Query(0.0, ge=0.0),
+    end: float | None = Query(None, description="Sim seconds; default is the run's own horizon."),
+    step: float = Query(1.0, gt=0.0, le=10.0),
+    service: ResultsService = Depends(get_service),
+) -> dict:
+    """Topology, vehicle movement and detection events for one run."""
+    return service.map_scene(run_id, start=start, end=end, step=step)
+
+
+@app.get("/api/map/{run_id}/node/{node_id}", tags=["map"])
+def map_node(
+    run_id: str, node_id: int, service: ResultsService = Depends(get_service)
+) -> dict:
+    """One node's detection history, for the click-through inspector."""
+    return service.map_node(run_id, node_id)
+
+
+@app.post("/api/map/{run_id}/guess", tags=["map"])
+def map_guess(
+    run_id: str,
+    body: dict = Body(..., description="{'guess': [node ids]}"),
+    service: ResultsService = Depends(get_service),
+) -> dict:
+    """Score a spot-the-attacker guess against the run's attacker roster.
+
+    Answers with the same confusion matrix the detectors are judged by, so a
+    guess and MOBIGUARD's own answer are directly comparable.
+    """
+    return service.score_guess(run_id, list(body.get("guess") or []))
 
 
 @app.get("/api/figures", tags=["figures"])

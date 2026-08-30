@@ -4,13 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MOBIGUARD — Simulation Analytics</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M16 5l9 3.5v7c0 6-3.8 10-9 11.5-5.2-1.5-9-5.5-9-11.5v-7z' fill='%23fff'/%3E%3Cg fill='%232a78d6'%3E%3Ccircle cx='12' cy='12' r='1.6'/%3E%3Ccircle cx='20' cy='12' r='1.6'/%3E%3Ccircle cx='12' cy='19' r='1.6'/%3E%3Ccircle cx='20' cy='19' r='1.6'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <header class="topbar">
     <span class="brand">MOBIGUARD</span>
     <nav class="tabs" role="tablist" aria-label="Views">
-      <button class="tab" data-tab="offline" role="tab" aria-selected="true">Offline Analytics</button>
+      <button class="tab" data-tab="lab" role="tab" aria-selected="true">Attack Lab</button>
+      <button class="tab" data-tab="simulation" role="tab" aria-selected="false">Run Simulation</button>
+      <button class="tab" data-tab="offline" role="tab" aria-selected="false">Offline Analytics</button>
       <button class="tab" data-tab="live" role="tab" aria-selected="false">Live PEM Monitor</button>
       <button class="tab" data-tab="lstm" role="tab" aria-selected="false">Federated LSTM</button>
       <button class="tab" data-tab="tcam" role="tab" aria-selected="false">TCAM Grid</button>
@@ -25,7 +28,9 @@
 
   <main>
     <div id="health-banner"></div>
-    <section id="panel-offline" role="tabpanel" aria-label="Offline Analytics"></section>
+    <section id="panel-lab" role="tabpanel" aria-label="Attack Lab"></section>
+    <section id="panel-simulation" role="tabpanel" aria-label="Run Simulation" hidden></section>
+    <section id="panel-offline" role="tabpanel" aria-label="Offline Analytics" hidden></section>
     <section id="panel-live" role="tabpanel" aria-label="Live PEM Monitor" hidden></section>
     <section id="panel-lstm" role="tabpanel" aria-label="Federated LSTM" hidden></section>
     <section id="panel-tcam" role="tabpanel" aria-label="TCAM Grid" hidden></section>

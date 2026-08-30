@@ -36,6 +36,13 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+const post = (path, body) =>
+  request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+
 const query = (params) => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -82,4 +89,25 @@ export const api = {
 
   figures: () => request('/api/figures'),
   figureUrl: (path) => `/api/figures/${path}`,
+
+  // --- simulation control ---------------------------------------------------
+  // The only calls that change anything on the host. Everything above is a
+  // read over the filesystem.
+  simEnvironment: () => request('/api/sim/environment'),
+  simOptions: () => request('/api/sim/options'),
+  simPlan: (values, defences) => post('/api/sim/plan', { values, defences }),
+  simStart: (values, defences) => post('/api/sim/start', { values, defences }),
+  simStop: (uid) => request(`/api/sim/${encodeURIComponent(uid)}/stop`, { method: 'POST' }),
+  simRuns: () => request('/api/sim/runs'),
+  simStatus: (uid) => request(`/api/sim/${encodeURIComponent(uid)}`),
+  simLog: (uid, since = 0) =>
+    request(`/api/sim/${encodeURIComponent(uid)}/log` + query({ since })),
+
+  // --- map ------------------------------------------------------------------
+  mapScene: (runId, { start, end, step } = {}) =>
+    request(`/api/map/${encodeURIComponent(runId)}` + query({ start, end, step })),
+  mapNode: (runId, nodeId) =>
+    request(`/api/map/${encodeURIComponent(runId)}/node/${nodeId}`),
+  mapGuess: (runId, guess) =>
+    post(`/api/map/${encodeURIComponent(runId)}/guess`, { guess }),
 };

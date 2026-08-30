@@ -14,6 +14,8 @@ import { initTcam, stopTcam } from './tcam.js';
 import { initLstm } from './lstm.js';
 import { initVerification } from './verification.js';
 import { initOffline } from './offline.js';
+import { initLab, stopLab } from './lab.js';
+import { initSimulation, stopSimulation } from './simulation.js';
 
 const THEME_KEY = 'mobiguard-gui-theme';
 
@@ -89,17 +91,23 @@ function initTabs(panels) {
     if (name !== 'live') stopLive();
     // Same reason: a grid animating in a hidden panel is wasted work.
     if (name !== 'tcam') stopTcam();
+    // The map's playback timer and the run poller are the same class of
+    // problem: work continuing behind a hidden panel.
+    if (name !== 'lab') stopLab();
+    if (name !== 'simulation') stopSimulation();
   };
   for (const button of buttons) {
     button.addEventListener('click', () => select(button.dataset.tab));
   }
-  select('offline');
+  select('lab');
 }
 
 async function main() {
   initTheme();
 
   const panels = {
+    lab: document.querySelector('#panel-lab'),
+    simulation: document.querySelector('#panel-simulation'),
     offline: document.querySelector('#panel-offline'),
     live: document.querySelector('#panel-live'),
     lstm: document.querySelector('#panel-lstm'),
@@ -133,7 +141,12 @@ async function main() {
     } else {
       await initOffline(panels.offline, catalog);
       initLive(panels.live, catalog);
+      await initLab(panels.lab);
     }
+    // Independent of the results directory: the run form comes from the
+    // parameter registry, and the tab explains itself when no simulator is
+    // reachable rather than being hidden.
+    await initSimulation(panels.simulation);
     await initLstm(panels.lstm);
     await initTcam(panels.tcam);
     await initCrypto(panels.crypto);
