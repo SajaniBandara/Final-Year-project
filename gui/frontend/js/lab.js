@@ -662,6 +662,8 @@ function renderDefenceBoard(root) {
         detail: { defences, attack: scene?.attack_id, pct: scene?.attack_percentage },
       })
     );
+    const simTab = document.querySelector('.tab[data-tab="simulation"]');
+    if (simTab) simTab.click();
   });
 }
 

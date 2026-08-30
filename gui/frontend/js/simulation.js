@@ -60,6 +60,7 @@ export async function initSimulation(root) {
     if (event.detail.pct !== undefined) values.attack_percentage = event.detail.pct;
     renderForm(root);
     renderDefences(root);
+    bind(root);
     refreshPlan(root);
   });
 }
@@ -238,6 +239,8 @@ function renderPresets(root) {
       if (preset) {
         Object.assign(values, preset.values);
         renderForm(root);
+        renderDefences(root);
+        bind(root);
         refreshPlan(root);
       }
     });
