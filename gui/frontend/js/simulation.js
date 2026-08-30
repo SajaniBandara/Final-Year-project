@@ -464,6 +464,7 @@ async function tick(root) {
     // The new run's CSVs are on disk now; let the rest of the GUI see them.
     try {
       await api.refresh();
+      window.dispatchEvent(new CustomEvent('mobiguard:catalog-updated'));
     } catch {
       /* the banner will still be right on the next manual refresh */
     }
@@ -503,6 +504,9 @@ function renderActive(root, record) {
         ${record.state === 'running'
           ? `<button class="btn ghost small" id="sim-stop">Stop</button>`
           : ''}
+        ${record.state === 'finished'
+          ? `<button class="btn primary small" id="sim-view-map" style="margin-left: 8px;">🗺️ View on Map</button>`
+          : ''}
       </div>
       <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
       <div class="active-stats">
@@ -529,6 +533,18 @@ function renderActive(root, record) {
       /* the poll will show the real state */
     }
   });
+
+  root.querySelector('#sim-view-map')?.addEventListener('click', () => {
+    window.dispatchEvent(
+      new CustomEvent('mobiguard:open-run-map', {
+        detail: {
+          run_id: record.run_id,
+          metrics_file: record.metrics_file,
+          attack: record.values?.attack_number,
+        },
+      })
+    );
+  });
 }
 
 async function refreshRuns(root) {
@@ -545,7 +561,7 @@ async function refreshRuns(root) {
   }
   host.innerHTML = `
     <table class="runs">
-      <thead><tr><th>State</th><th>Configuration</th><th>Cycles</th><th>Elapsed</th></tr></thead>
+      <thead><tr><th>State</th><th>Configuration</th><th>Cycles</th><th>Elapsed</th><th>Action</th></tr></thead>
       <tbody>
         ${payload.runs
           .slice(0, 8)
@@ -556,11 +572,31 @@ async function refreshRuns(root) {
             <td><code>${r.metrics_file}</code></td>
             <td>${r.cycles_done}</td>
             <td>${fmt.duration(r.elapsed_s)}</td>
+            <td>
+              ${r.state === 'finished'
+                ? `<button class="btn ghost small btn-open-map" data-map-uid="${r.run_id}" data-map-file="${r.metrics_file}">🗺️ View Map</button>`
+                : '—'}
+            </td>
           </tr>`
           )
           .join('')}
       </tbody>
     </table>`;
+
+  host.querySelectorAll('.btn-open-map').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent('mobiguard:open-run-map', {
+          detail: {
+            run_id: btn.dataset.mapUid,
+            metrics_file: btn.dataset.mapFile,
+          },
+        })
+      );
+    });
+  });
+
   host.querySelectorAll('tr[data-uid]').forEach((row) => {
     row.addEventListener('click', () => {
       activeUid = row.dataset.uid;

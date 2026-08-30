@@ -58,6 +58,50 @@ export async function initLab(root) {
   renderScenarioPicker(root);
   renderDefenceBoard(root);
 
+  window.addEventListener('mobiguard:catalog-updated', async () => {
+    try {
+      catalog = await api.catalog();
+      renderScenarioPicker(root);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  window.addEventListener('mobiguard:open-run-map', async (event) => {
+    try {
+      catalog = await api.catalog();
+      renderScenarioPicker(root);
+
+      const runId = event.detail?.run_id;
+      const metricsFile = event.detail?.metrics_file;
+      const attack = event.detail?.attack;
+
+      let targetRun = null;
+      if (runId) {
+        targetRun = (catalog.runs || []).find((r) => r.id === runId || (r.file && r.file.includes(runId)));
+      }
+      if (!targetRun && metricsFile) {
+        targetRun = (catalog.runs || []).find((r) => r.file === metricsFile || (r.file && r.file.includes(metricsFile)));
+      }
+      if (!targetRun && attack !== undefined) {
+        const runs = (catalog.runs || []).filter((r) => r.attack === Number(attack));
+        if (runs.length) {
+          runs.sort((a, b) => b.pct - a.pct);
+          targetRun = runs[0];
+        }
+      }
+
+      if (targetRun) {
+        await loadRun(root, targetRun);
+      }
+
+      const labTab = document.querySelector('.tab[data-tab="lab"]');
+      if (labTab) labTab.click();
+    } catch {
+      /* ignore */
+    }
+  });
+
   const first = pickDefaultRun();
   if (first) {
     await loadRun(root, first);
