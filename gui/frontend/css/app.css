@@ -887,3 +887,29 @@ pre.log {
   margin: 7px 0 0; white-space: pre-wrap; word-break: break-word;
 }
 ul.problems { margin: 4px 0; padding-left: 18px; font-size: 12px; }
+
+/* --- Baselines & ablations ------------------------------------------------ */
+
+.grid-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.grid-table th, .grid-table td { padding: 5px 9px; border-bottom: 1px solid var(--border); text-align: left; }
+.grid-table thead th { color: var(--text-secondary); font-weight: 550; white-space: nowrap; }
+.grid-table td.num, .grid-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.grid-table tbody tr:hover { background: var(--surface-page); }
+.grid-table tr.is-reference { background: color-mix(in srgb, var(--series-1) 8%, transparent); }
+.grid-table tr.is-reference th { font-weight: 650; }
+
+/* Coverage matrix. Three states, three glyphs -- "not addressed by this
+ * baseline" and "in scope but never run" are different claims and must not
+ * render alike, or the tab overstates how much comparison exists. */
+.cov-have    { color: var(--status-good); text-align: center; font-size: 14px; }
+.cov-missing { color: var(--status-warning); text-align: center; font-size: 14px; }
+.cov-na      { color: var(--text-muted); text-align: center; }
+
+.caveat-mark { color: var(--text-muted); font-size: 9px; vertical-align: super; }
+
+.compare-block { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.compare-block:last-child { border-bottom: none; }
+.compare-head { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
+
+.notes-panel { border-left: 3px solid var(--status-warning); }
+.notes-panel .note { border-left: none; padding-left: 0; }

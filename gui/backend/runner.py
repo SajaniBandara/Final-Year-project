@@ -88,14 +88,37 @@ NOTABLE_MARKERS: tuple[str, ...] = (
     "Solution not found",
 )
 
-#: ``declare_attackers()`` prints one line per candidate node, unconditionally:
-#: ``[ATTACK2] Node 3 selective_delay_malicious = 1``. That roster is the
-#: attacker ground truth, and stdout is the only place it appears -- no CSV
-#: carries it. Capturing it here is what lets the map reveal, after the panel
-#: has guessed, which nodes were actually malicious.
+# Attacker ground truth exists only on stdout -- no CSV carries it -- and each
+# attack family announces itself in a different format. Capturing all of them is
+# what lets the map reveal, after the panel has guessed, which nodes were
+# actually malicious.
+#
+# Data-plane Selective Time Delay (Attack 2). One line per *candidate*, so the
+# value matters: `= 0` lines are the majority.
+#     [ATTACK2] Node 3 selective_delay_malicious = 1
 ROSTER_RE = re.compile(
     r"^\[ATTACK\d*\]\s+Node\s+(?P<node>\d+)\s+"
     r"(?P<field>\w+)\s*=\s*(?P<value>[01])\s*$"
+)
+
+# Hidden Forwarding (Attacks 5-8). Only malicious nodes are printed, and the
+# node may be an RSU or a vehicle acting as a relay -- both are given as logical
+# ids, so no translation is needed.
+#     [HF SCALE] RSU 217 marked malicious -> eavesdropper=45
+#     [HF SCALE] VehicleRelay 12 marked malicious -> eavesdropper=88
+HF_ROSTER_RE = re.compile(
+    r"^\[HF SCALE\]\s+(?:RSU|VehicleRelay)\s+(?P<node>\d+)\s+marked\s+malicious"
+)
+
+# Control-plane ladder (Attack 1; Attack 3 uses the same ladder but prints
+# nothing, being guarded on active_attack_variant == 0). This gives a *count*,
+# not identities -- but the C++ compromises controllers 0..k-1 in order, so the
+# identities follow, and the RSUs they own follow from the nearest-controller
+# assignment. `mapview.derive_control_plane_attackers` does that expansion.
+#     [ATTACK1] declare_attackers(): attack_percentage=60% -> 2 of 4 controllers compromised.
+CP_ROSTER_RE = re.compile(
+    r"declare_attackers\(\):\s*attack_percentage=\d+%\s*->\s*(?P<count>\d+)\s+of\s+"
+    r"(?P<total>\d+)\s+controllers\s+compromised"
 )
 
 #: Its 264-line output would otherwise swamp the event rail, so roster lines are
@@ -134,12 +157,18 @@ class RunRecord:
     finished_at: float | None = None
     cycles_done: int = 0
     error: str | None = None
+    #: False for isolated baseline runs, which write no metrics CSV -- see
+    #: :func:`writes_metrics_csv`. Progress then falls back to wall time.
+    emits_metrics: bool = True
     log: list[str] = field(default_factory=list)
     notable: list[str] = field(default_factory=list)
     #: Node ids ``declare_attackers()`` reported as malicious, parsed from
     #: stdout. Empty for a benign run, and empty until the simulator reaches
     #: its declaration phase a few seconds in.
     attackers: set[int] = field(default_factory=set)
+    #: Controllers compromised by the Attack 1/3 ladder. Their identities are
+    #: 0..n-1 by construction; the RSUs they own are derived, not printed.
+    compromised_controllers: int = 0
 
     @property
     def elapsed_s(self) -> float:
@@ -155,12 +184,17 @@ class RunRecord:
         one row per simulated second.
         """
         if self.state is RunState.FINISHED:
-            # The simulator writes a row per completed routing cycle, and the
-            # final cycle of a run does not always complete before Simulator
-            # ::Stop -- a 20 s run reliably lands 18 rows. A run that exited 0
-            # is done, whatever the row count says; reporting 90% forever is
-            # just wrong.
             return 1.0
+        if not self.emits_metrics:
+            # No CSV to count. Fall back to the measured wall-clock rate, which
+            # is an estimate and is labelled as one rather than presented with
+            # the same authority as a row count.
+            expected = self.sim_time * P.WALL_S_PER_SIM_S
+            return min(0.99, self.elapsed_s / expected) if expected > 0 else 0.0
+        # The simulator writes a row per completed routing cycle, and the final
+        # cycle does not always complete before Simulator::Stop -- a 20 s run
+        # reliably lands 18 rows. A run that exited 0 is done whatever the row
+        # count says, which the FINISHED branch above handles.
         if self.sim_time <= 0:
             return 0.0
         return min(1.0, self.cycles_done / self.sim_time)
@@ -168,7 +202,9 @@ class RunRecord:
     @property
     def eta_s(self) -> float | None:
         """Seconds remaining, extrapolated from this run's own observed rate."""
-        if self.state != RunState.RUNNING or self.cycles_done < 2:
+        if self.state != RunState.RUNNING or not self.emits_metrics:
+            return None
+        if self.cycles_done < 2:
             return None
         rate = self.elapsed_s / self.cycles_done  # wall-s per sim-s, measured
         return max(0.0, (self.sim_time - self.cycles_done) * rate)
@@ -186,6 +222,7 @@ class RunRecord:
             "metrics_file": self.metrics_path.name,
             "metrics_path": str(self.metrics_path),
             "metrics_exists": self.metrics_path.exists(),
+            "emits_metrics": self.emits_metrics,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "elapsed_s": round(self.elapsed_s, 1),
@@ -195,7 +232,29 @@ class RunRecord:
             "error": self.error,
             "notable": self.notable[-40:],
             "attackers": sorted(self.attackers),
+            "compromised_controllers": self.compromised_controllers,
         }
+
+
+def writes_metrics_csv(values: dict[str, Any]) -> bool:
+    """Whether this configuration produces a ``MOBIGUARD_*.csv`` at all.
+
+    ``write_security_metrics_csv()`` returns early when either the TAP baseline
+    is enabled or both LRAD engines are off (routing.cc ~117890). Both are
+    deliberate: an isolated baseline run must not append rows produced with
+    MOBIGUARD's own detectors disabled into the file the real run writes, since
+    the two would be indistinguishable afterwards.
+
+    The consequence for the GUI is that a baseline run has no metrics CSV to
+    count rows in, so progress cannot be measured the usual way. Detecting the
+    case up front is better than watching a healthy run sit at 0% -- which is
+    exactly what it looks like otherwise.
+    """
+    if values.get("enable_tap"):
+        return False
+    lrad_obu = values.get("enable_lrad_obu", P.PARAMS_BY_NAME["enable_lrad_obu"].default)
+    lrad_rsu = values.get("enable_lrad_rsu", P.PARAMS_BY_NAME["enable_lrad_rsu"].default)
+    return bool(lrad_obu or lrad_rsu)
 
 
 def metrics_filename(values: dict[str, Any], tag: str) -> str:
@@ -370,7 +429,10 @@ class RunManager:
         to *compose* a command to run by hand later.
         """
         merged = P.apply_defences(P.validate(values), defences or {})
-        run_tag = tag or _new_tag()
+        # Precedence: explicit argument, then a tag the caller put in `values`,
+        # then a generated one. A caller naming its own tag is how a scripted
+        # batch keeps its output files identifiable (DEMO*, TAP*, FADE*).
+        run_tag = tag or merged.get("run_tag") or _new_tag()
         merged["run_tag"] = run_tag
         argv = P.build_command(str(self.env.binary), merged)
         sim_time = float(merged.get("simTime", P.PARAMS_BY_NAME["simTime"].default))
@@ -382,6 +444,7 @@ class RunManager:
             "sim_time": sim_time,
             "metrics_file": metrics_filename(merged, run_tag),
             "est_wall_s": int(round(sim_time * P.WALL_S_PER_SIM_S)),
+            "emits_metrics": writes_metrics_csv(merged),
             "warnings": self._warnings(merged),
         }
 
@@ -418,6 +481,15 @@ class RunManager:
                 "The TAP baseline is only comparable on Attack 2; on other "
                 "variants its output is not meaningful."
             )
+        if not writes_metrics_csv(values):
+            out.append(
+                "This is an isolated baseline configuration (TAP enabled, or "
+                "both LRAD engines off), so routing.cc writes no "
+                "MOBIGUARD_*.csv -- deliberately, so baseline rows cannot be "
+                "confused with a real run's. Progress will be estimated from "
+                "wall time, and the baseline's own output (TAP_*.csv / "
+                "fade_results_*.csv) is what to look at."
+            )
         if self.env.build_profile() != "optimized":
             out.append(
                 f"Build profile reads '{self.env.build_profile()}', not "
@@ -450,13 +522,14 @@ class RunManager:
                 sim_time=plan["sim_time"],
                 metrics_path=self.env.results_dir / plan["metrics_file"],
                 started_at=time.time(),
+                emits_metrics=plan["emits_metrics"],
             )
             # A stale file from an earlier run with the same tag would be
             # appended to, not replaced (ios::app), and the parser would see one
             # run with a restarting cycle counter. Tags are unique per launch so
             # this should never fire; it is here because the failure it prevents
             # is silent and looks like corrupt data.
-            if record.metrics_path.exists():
+            if record.emits_metrics and record.metrics_path.exists():
                 raise RunnerError(
                     f"{record.metrics_path.name} already exists; refusing to "
                     "append into it."
@@ -511,9 +584,17 @@ class RunManager:
                 if len(record.log) > LOG_RING_SIZE:
                     del record.log[: len(record.log) - LOG_RING_SIZE]
                 roster = ROSTER_RE.match(line)
+                hf = HF_ROSTER_RE.match(line)
+                cp = CP_ROSTER_RE.search(line)
                 if roster is not None:
                     if roster.group("value") == "1":
                         record.attackers.add(int(roster.group("node")))
+                elif hf is not None:
+                    record.attackers.add(int(hf.group("node")))
+                    record.notable.append(line[:400])
+                elif cp is not None:
+                    record.compromised_controllers = int(cp.group("count"))
+                    record.notable.append(line[:400])
                 elif any(m in line for m in NOTABLE_MARKERS) \
                         and not NOISE_RE.match(line):
                     record.notable.append(line[:400])
@@ -614,15 +695,38 @@ def load_roster(metrics_path: Path) -> set[int] | None:
     return {int(n) for n in nodes}
 
 
+def load_roster_meta(metrics_path: Path) -> dict[str, Any] | None:
+    """The whole roster sidecar, including the compromised-controller count."""
+    try:
+        payload = json.loads(roster_path(metrics_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _persist_roster(record: RunRecord) -> None:
-    """Write the roster sidecar. Never raises -- a run must not fail over this."""
+    """Write the roster sidecar. Never raises -- a run must not fail over this.
+
+    An *empty* roster is only written for a run that genuinely had no attackers,
+    i.e. one at 0%. For any other run an empty roster means the parser did not
+    recognise that attack family's announcement format, and recording it as
+    "zero attackers, known" would be actively misleading: the reveal would then
+    confidently mark every real attacker as a false alarm. Writing nothing
+    leaves ground truth reported as unavailable, which is the truth.
+    """
     if record.state not in (RunState.FINISHED, RunState.CANCELLED):
+        return
+    pct = int(record.values.get("attack_percentage", 0) or 0)
+    attack = int(record.values.get("attack_number", 0) or 0)
+    if not record.attackers and not record.compromised_controllers \
+            and attack > 0 and pct > 0:
         return
     try:
         roster_path(record.metrics_path).write_text(
             json.dumps({
                 "run_tag": record.tag,
                 "attackers": sorted(record.attackers),
+                "compromised_controllers": record.compromised_controllers,
                 "attack_number": record.values.get("attack_number", 0),
                 "attack_percentage": record.values.get("attack_percentage", 0),
                 "sim_seed": record.values.get("sim_seed", 1),

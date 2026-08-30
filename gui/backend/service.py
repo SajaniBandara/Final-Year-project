@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from . import aggregate, mapview, params, schema
+from . import aggregate, baselines, mapview, params, schema
 from .catalog import REPO_ROOT, Catalog, RunFile
 from .parser import Run, SchemaError, parse_file
 from .crypto import panel as crypto_panel
@@ -78,6 +78,7 @@ class ResultsService:
         # run is memoised; the panel re-parses only when the selection changes.
         self._crypto_cache: dict[str, dict[str, object]] = {}
         self._tcam_cache: dict[str, dict[str, object]] = {}
+        self._baselines_cache: dict[tuple[str, int], dict[str, object]] = {}
 
     # --- catalog lifecycle --------------------------------------------------
 
@@ -97,6 +98,7 @@ class ResultsService:
         self._run_cache.clear()
         self._crypto_cache.clear()
         self._tcam_cache.clear()
+        self._baselines_cache.clear()
         return self.catalog
 
     def _load(self, run_file: RunFile) -> list[Run]:
@@ -489,6 +491,21 @@ class ResultsService:
             if record.tag and record.tag in run_file.path.stem:
                 return set(record.attackers) or None
         return None
+
+    def baselines_panel(self) -> dict[str, object]:
+        """B1/B2/B3 comparators and the ablation summary.
+
+        Memoised on the catalog's identity: it re-parses every AB-tagged run's
+        final row, which is 74 files here. The cache is dropped by
+        :meth:`refresh`, so new runs appear as soon as the results directory is
+        re-scanned.
+        """
+        key = str(self.catalog.results_dir), len(self.catalog)
+        cached = self._baselines_cache.get(key)
+        if cached is None:
+            cached = baselines.panel(self.catalog)
+            self._baselines_cache = {key: cached}
+        return cached
 
     def figures(self) -> dict[str, object]:
         """The committed thesis figures under ``output/``, grouped by directory."""

@@ -392,6 +392,12 @@ def map_guess(
     return service.score_guess(run_id, list(body.get("guess") or []))
 
 
+@app.get("/api/panels/baselines", tags=["analysis"])
+def baselines_panel(service: ResultsService = Depends(get_service)) -> dict:
+    """SOTA comparators (B1 TAP, B2 SFTO, B3 eFADE) and the ablation summary."""
+    return service.baselines_panel()
+
+
 @app.get("/api/figures", tags=["figures"])
 def figures(service: ResultsService = Depends(get_service)) -> dict[str, object]:
     """The committed thesis figures under ``output/``, grouped by directory."""
