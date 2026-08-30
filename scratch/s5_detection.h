@@ -200,7 +200,24 @@ inline bool s5_detect(uint32_t recv_flow_id,
             d_prime_unauthorized = false;
     }
 
-    cout << "[S5] receiver=" << current_hop
+    // t= added 2026-08-30 (supervisor item 9). Reaching this line already
+    // PROVES conjunctions 1 and 2 held -- bc_query_flowmod()==false (FlowMod
+    // never endorsed) and active_hf_malicious_nodes[prev_sender]==true, since
+    // both early-return above. Both are PERSISTENT state: the malicious flag is
+    // assigned once in hf_declare_malicious_rsus() and never cleared, and the
+    // unendorsed FlowMod stays installed. So every [S5] line is evidence of an
+    // ongoing compromised state, not of a discrete send event -- which is
+    // exactly why S5 fires far more often than hf_send_gt, whose delta marks
+    // only the instant a duplicate is scheduled.
+    //
+    // The timestamp is what makes that claim checkable: without it these lines
+    // cannot be mapped to a cycle and joined against the per-cycle hf_send_gt
+    // column, which is the comparison item 9 turns on. Conjunctions 3 and 4
+    // (mldsa_fails, b_hop_fails) are already printed below, so the full
+    // per-condition breakdown the supervisor asked for is recoverable from
+    // this one line.
+    cout << "[S5] t=" << Simulator::Now().GetSeconds() << "s"
+         << " receiver=" << current_hop
          << " sender_rsu=" << prev_sender
          << " flow=" << base_flow_id
          << " pkt=" << packet_id
