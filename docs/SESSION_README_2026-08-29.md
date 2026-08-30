@@ -93,10 +93,35 @@ preprocessed cache has **zero rows** for A5/A6/A7, so the actual pooled test
 split's composition can't be inspected here. That file has the exact
 checklist for whoever has HPC access.
 
-## 6. Related documents
+## 7. Workflow gotcha found this session
+
+**Always re-run `scripts/local_path_swap.sh local` immediately after any
+`... hpc` revert, before launching another simulation.** Caught the hard way:
+reverted to HPC paths to commit item 7/item 9 cleanly, then launched the item
+7 baseline run without switching back. The compiled binary itself was
+unaffected (`SCR` in `routing.cc` is baked in at compile time and was still
+correct), but `scratch/optimization.py`/`optimization_lifetime.py` are
+interpreted fresh from disk on every `system()` call — they picked up the
+reverted `SCRATCH` HPC path, silently failed to find their own input CSV
+every cycle (`Unexpected error in link lifetime optimization: ... No such
+file or directory`), and the link-lifetime optimization degraded on every
+cycle for the whole 300s run. That directly affects routing paths and
+per-hop delay, i.e. exactly what S1 measures — the first baseline run's
+numbers were discarded, not reported, and rerun after fixing paths.
+
+Check for this specifically with:
+```bash
+grep -c "Solution not found\|Unexpected error in link lifetime" <run.log>
+```
+Zero is the only acceptable count. A nonzero count invalidates the run's
+delay/routing-dependent metrics even if the simulation completes without
+crashing.
+
+## 8. Related documents
 
 - `docs/SUPERVISOR_FULL_REPORT_2026-08-28.md` — the full 11-item report
 - `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md` — the pipeline-mismatch
   diagnosis and HPC checklist
 - `logs/findingb_pilot/` — A5/A6/A7 percentage-sweep run logs, this session
 - `logs/item9_verify/` — item 9 verification run log
+- `logs/item7_verify/` — item 7 baseline validation run log
