@@ -551,33 +551,44 @@ export class NetworkMap {
    * occluding the RSU grid.
    */
   _drawCar(ctx, token, cx, cy, angle, isAccused) {
-    const bodyColor = isAccused
-      ? token('--status-critical')
-      : token('--series-2');
+    if (isAccused) {
+      // 1. Radiant warning halo ring around accused vehicle (visible from afar)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+      ctx.fill();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
+      ctx.setLineDash([3, 2]);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    // Car body dimensions in screen pixels.
-    const bw = 13;   // length (along the direction of travel)
-    const bh = 8;    // width
-    const r  = 2;    // corner radius
+    const bw = isAccused ? 15 : 13;   // slightly larger length for accused
+    const bh = isAccused ? 9 : 8;     // width
+    const r  = 2.2;
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle);
 
     // --- body ---------------------------------------------------------------
+    const bodyColor = isAccused
+      ? token('--status-critical')
+      : token('--series-2');
+
     ctx.beginPath();
     this._roundedRect(ctx, -bw / 2, -bh / 2, bw, bh, r);
     ctx.fillStyle = bodyColor;
     ctx.fill();
 
-    // Thin outline so the car is legible against both light and dark themes.
-    ctx.lineWidth = 0.8;
+    // Outline
+    ctx.lineWidth = isAccused ? 1.4 : 0.8;
     ctx.strokeStyle = isAccused
-      ? token('--status-critical')
+      ? '#ffffff'
       : token('--surface-raised');
-    ctx.globalAlpha = 0.6;
     ctx.stroke();
-    ctx.globalAlpha = 1;
 
     // --- cabin (windscreen + roof) ------------------------------------------
     const cw = bw * 0.42;
@@ -586,13 +597,24 @@ export class NetworkMap {
     const cy2 = -ch / 2;
     ctx.beginPath();
     this._roundedRect(ctx, cx2, cy2, cw, ch, 1.2);
-    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fillStyle = isAccused ? 'rgba(60, 0, 0, 0.55)' : 'rgba(0, 0, 0, 0.30)';
     ctx.fill();
+
+    // --- roof beacon / strobe light for accused vehicle ---------------------
+    if (isAccused) {
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#fde047'; // bright warning yellow
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+    }
 
     // --- headlights ---------------------------------------------------------
     const hlX = bw / 2 - 1.5;
     const hlH = (bh - 2) / 2 - 0.5;
-    ctx.fillStyle = 'rgba(255, 245, 160, 0.95)';
+    ctx.fillStyle = isAccused ? 'rgba(255, 220, 220, 0.95)' : 'rgba(255, 245, 160, 0.95)';
     ctx.fillRect(hlX, -bh / 2 + 1.2, 1.5, hlH);
     ctx.fillRect(hlX,  0.3,           1.5, hlH);
 

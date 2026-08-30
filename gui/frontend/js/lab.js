@@ -149,13 +149,18 @@ function shell() {
                 Vehicle
               </span>
               <span class="chip">
-                <svg class="legend-icon" viewBox="0 0 18 12" width="16" height="11">
-                  <rect x="1" y="1" width="16" height="10" rx="2.5" fill="var(--status-critical)" stroke="var(--status-critical)" stroke-width="0.8"/>
-                  <rect x="5.5" y="2.5" width="6.5" height="7" rx="1.2" fill="rgba(0,0,0,0.35)"/>
-                  <rect x="15" y="2" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
-                  <rect x="15" y="7.5" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                <svg class="legend-icon" viewBox="0 0 20 14" width="18" height="12">
+                  <!-- outer dashed warning halo -->
+                  <rect x="0.5" y="0.5" width="19" height="13" rx="4" fill="rgba(239,68,68,0.22)" stroke="rgba(239,68,68,0.85)" stroke-width="0.8" stroke-dasharray="2 1.5"/>
+                  <!-- car body -->
+                  <rect x="2.5" y="2" width="15" height="10" rx="2.5" fill="var(--status-critical)" stroke="#ffffff" stroke-width="0.8"/>
+                  <rect x="6.5" y="3.5" width="6.5" height="7" rx="1.2" fill="rgba(60,0,0,0.55)"/>
+                  <!-- yellow beacon -->
+                  <circle cx="9.75" cy="7" r="1.5" fill="#fde047" stroke="#ffffff" stroke-width="0.4"/>
+                  <rect x="16" y="3" width="1.5" height="2.5" fill="rgba(255,220,220,0.95)" rx="0.4"/>
+                  <rect x="16" y="8.5" width="1.5" height="2.5" fill="rgba(255,220,220,0.95)" rx="0.4"/>
                 </svg>
-                Accused vehicle
+                Accused vehicle (warning halo + beacon)
               </span>
             </div>
           </div>
