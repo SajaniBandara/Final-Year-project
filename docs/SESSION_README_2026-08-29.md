@@ -160,6 +160,29 @@ cycle for the whole 300s run. That directly affects routing paths and
 per-hop delay, i.e. exactly what S1 measures — the first baseline run's
 numbers were discarded, not reported, and rerun after fixing paths.
 
+**REFINED 2026-08-30, after it bit a second time in the opposite direction.**
+The rule is not just "swap to local before running" -- it is **never run
+`... hpc` while ANY simulation is in flight.** `scratch/optimization.py` and
+`optimization_lifetime.py` in the ns-3 tree are *symlinks into this repo*, and
+`routing.cc` shells out to them **fresh every cycle**. Swapping the repo to HPC
+paths to make a clean commit therefore breaks every running job instantly, mid-
+run. Observed: two 300 s validation runs swapped under them, then crawled --
+28 minutes of CPU to reach simulated t=3.7 s (healthy rate is ~3.4 sim-s/min,
+so ~95 s expected). Both were killed and restarted rather than trusted.
+
+Practical consequence for the workflow: **do all committing BEFORE launching
+runs, not during.** The safe cycle is
+`hpc` -> `git commit` -> `local` -> verify helpers -> launch. A third
+path pattern (`g13_project_repo`, used only by `lstm_logger.h` for LSTM
+weights) is not covered by the swap script at all; harmless unless a run uses
+`--training=1` or `--enable_lstm_inference=1`.
+
+Note the binary is a separate concern from the helpers: `routing.cc`'s paths
+are compiled in, so a rebuild while the tree is on HPC paths bakes the cluster
+mobility path into the binary and every subsequent run aborts immediately with
+`Could not open trace file`. That happened once too; the helpers are read at
+runtime, the mobility path at compile time, and both must be local before a run.
+
 Check for this specifically with:
 ```bash
 grep -c "Solution not found\|Unexpected error in link lifetime" <run.log>

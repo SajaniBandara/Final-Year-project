@@ -154,7 +154,16 @@ gain is specifically about spread over time, not firing volume.
 
 ### Runs still required for the side-by-side the supervisor asked for
 Zero-attack + A1@60% + A2@60%, default threshold, with the new count columns;
-then sweep M offline. Queued behind the currently-running validation.
+then sweep M offline.
+
+**Status 2026-08-30:** the handoff-fix validation queue (4 more zero-attack
+seeds + A2) was killed and must be restarted -- a `local_path_swap.sh hpc`
+run, done to produce a clean commit, broke the two in-flight jobs mid-run
+because the ns-3 tree's `optimization*.py` are symlinks into this repo and are
+executed fresh every cycle. They degraded to 28 minutes of CPU for 3.7
+simulated seconds and were discarded rather than trusted. See the refined
+gotcha in `SESSION_README_2026-08-29.md` §6: commit BEFORE launching, never
+during. No result reported anywhere depended on those two runs.
 
 ---
 
