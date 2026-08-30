@@ -316,27 +316,23 @@ PARAMS: tuple[Param, ...] = (
     # --- topology -----------------------------------------------------------
     Param(
         "N_Vehicles", "int", 200, "Vehicles",
-        "Number of vehicle nodes (OBUs). The SUMO trace supplies mobility for "
-        "each; above the trace's vehicle count the extras stay at the origin.",
-        "topology", minimum=1, maximum=400, source="routing.cc",
+        "Number of vehicle nodes (OBUs). Maximum 200.",
+        "topology", minimum=1, maximum=200, source="routing.cc",
     ),
     Param(
         "N_RSUs", "int", 64, "RSUs",
-        "Roadside units, laid out as a grid. 64 gives the thesis's 8x8; other "
-        "counts still lay out row-first at the same 260x270 m spacing.",
+        "Roadside units, laid out as a grid. Maximum 64.",
         "topology", minimum=1, maximum=64, source="routing.cc",
     ),
     Param(
         "N_Controllers", "int", 4, "SDVN controllers",
-        "Controllers sharing the control plane. Attack 1 compromises them on a "
-        "threshold ladder that always leaves at least one honest.",
-        "topology", minimum=1, maximum=8, source="routing.cc",
+        "Controllers sharing the control plane. Maximum 4.",
+        "topology", minimum=1, maximum=4, source="routing.cc",
     ),
     Param(
         "simTime", "float", 300.0, "Simulated seconds",
-        "Length of the run. One routing cycle per simulated second. A 300 s run "
-        "is the thesis default; 40-90 s is the practical demo range.",
-        "topology", minimum=5.0, maximum=600.0, source="routing.cc",
+        "Length of the run. Maximum 330 seconds.",
+        "topology", minimum=5.0, maximum=330.0, source="routing.cc",
     ),
     Param(
         "sim_seed", "int", 1, "Seed",
@@ -381,10 +377,18 @@ PARAMS: tuple[Param, ...] = (
         source="routing.cc",
     ),
     Param(
-        "attack_percentage", "int", 0, "Attacker percentage",
-        "Fraction of candidate nodes that are malicious. The thesis sweeps "
-        "0/20/40/60/80/100.",
-        "attack", minimum=0, maximum=100, source="routing.cc",
+        "attack_percentage", "choice", 0, "Attacker percentage",
+        "Fraction of candidate nodes that are malicious.",
+        "attack",
+        choices=(
+            (0, "0% (No attack)"),
+            (20, "20%"),
+            (40, "40%"),
+            (60, "60%"),
+            (80, "80%"),
+            (100, "100%"),
+        ),
+        source="routing.cc",
     ),
     Param(
         "attack_start_time", "float", 10.0, "Attack start (s)",
