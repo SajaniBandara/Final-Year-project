@@ -142306,6 +142306,12 @@ int main(int argc, char *argv[])
     // calibrates the cutoff; see s1_pctl_calibrate_besteffort's declaration
     // in s1_detection.h for why the two histograms are mutually exclusive).
     cmd.AddValue("s1_pctl_calibrate_besteffort", "S1 item 7 correction: calibrate the percentile cutoff on best-effort delay (attack-immune by construction) instead of high-priority delay (default 0)", s1_pctl_calibrate_besteffort);
+    // Item 7 follow-up (2026-08-30): suppress S1 firings on packets whose delay
+    // was inflated by the 50-300 ms handoff jitter this detector itself adds.
+    // 94.8% of zero-attack false positives land in that band, and it strictly
+    // contains the 80 ms A1/A2 inject, so no threshold can separate them.
+    // See s1_suppress_handoff_fp in s1_detection.h. Default 0 = unchanged.
+    cmd.AddValue("s1_suppress_handoff_fp", "S1 item 7 follow-up: do not fire on packets carrying the 50-300ms handoff jitter this detector injects (default 0)", s1_suppress_handoff_fp);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);

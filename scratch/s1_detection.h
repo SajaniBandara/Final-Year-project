@@ -377,6 +377,55 @@ inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t
 // routing.cc) — NOT srand()/rand(), so results stay deterministic per
 // sim_seed + sim_run.
 // =========================================================================
+// ── Handoff-jitter false-positive suppression (item 7 follow-up, 2026-08-30) ─
+//
+// MEASURED ROOT CAUSE of S1's window-level FPR, from the zero-attack 300 s
+// baseline (seed 1, 2,676 firings, every one a false positive by definition):
+//
+//     firing delay band      count    share
+//        0-50 ms              140      5.2 %
+//       50-300 ms            2536     94.8 %   <-- the jitter band, exactly
+//
+// median firing delay 246.9 ms, max 304.5 ms. 94.8% of all false positives
+// land inside [S1_HANDOFF_JITTER_MIN_S, S1_HANDOFF_JITTER_MAX_S] because
+// s1_detect_packet() ADDS a 50-300 ms draw to the packet's delay whenever
+// handoff_just_occurred(vehicle_id), and then tests that inflated value
+// against the threshold. S1 fires on the jitter this function injected.
+//
+// WHY NO THRESHOLD CAN FIX IT. The confounder is LARGER than the signal:
+// legitimate handoff jitter spans 50-300 ms while A1/A2 inject 80 ms, so the
+// benign tail strictly contains the attack magnitude. Measured on the same
+// baseline, 1.25% of benign high-priority packets already exceed the ~85 ms
+// an attacked packet reaches. A threshold low enough to catch an 85 ms attack
+// packet therefore admits >1.2% of benign traffic per packet, and window-level
+// OR-aggregation over the ~15 high-priority packets in a 10 s window turns
+// that into 1-(1-0.0125)^15 = 17%, matching the 17.11% actually observed.
+// This is precisely why both percentile arms failed: the best-effort arm
+// pushed the threshold to ~151 ms, above the 85 ms attack signal, so it
+// rejected jitter and true detections alike (A2 recall 99.94% -> 81.22%).
+//
+// THE FIX, and why it is legitimate rather than cheating: the detector
+// already KNOWS the handoff happened -- handoff_just_occurred(vehicle_id) is
+// evaluated in this very function to add the jitter. A serving RSU
+// participates in the handoff it is completing, so "do not raise a
+// delay-based accusation about a packet whose flow rules were being
+// reinstalled" is information genuinely available at runtime, not oracle
+// knowledge of the attack. Under an attack the malicious RSU delays every
+// high-priority packet it forwards, so the packets outside handoff cycles
+// still fire and recall is preserved.
+//
+// Estimated from the same baseline by discarding firings in the jitter band:
+// false-positive windows 1,985 -> 181, i.e. window FPR 17.11% -> 1.56%.
+//
+// DEFAULT OFF so every previously measured configuration stays bit-identical;
+// pass --s1_suppress_handoff_fp=1 to enable. Suppresses only the DETECTION
+// decision. The g_s1_gt_delay_exceeded[] ground-truth latch below is
+// deliberately left untouched: it is ANDed with is_malicious_node[] in
+// dw_end_cycle(), so it can only ever gate a node already declared malicious,
+// and silencing it there would wrongly mark a genuinely attacking node
+// dormant.
+bool s1_suppress_handoff_fp = false;
+
 const double S1_HANDOFF_JITTER_MIN_S = 0.050;   // 50 ms, Islam2021SDVN lower bound
 const double S1_HANDOFF_JITTER_MAX_S = 0.300;   // 300 ms, Islam2021SDVN upper bound
 
@@ -453,10 +502,12 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // so this term fires more often at higher mobility without needing a
     // per-speed-point knob (see §7 overfitting risk).
     double effective_delay_s = packet_delay_s;
+    bool   _handoff_inflated = false;   // item 7 follow-up: see s1_suppress_handoff_fp
     if (packet_delay_s > 0.0 && handoff_just_occurred(vehicle_id))
     {
         double jitter_s = s1_sample_handoff_jitter();
         effective_delay_s += jitter_s;
+        _handoff_inflated = true;
         if (DETECTION_DEBUG_LOG_S1)
             cout << "[S1] Handoff jitter: vehicle " << vehicle_id
                  << " handed off this cycle — adding " << jitter_s * 1000.0
@@ -638,6 +689,22 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // Condition 3: δ_best(r,t) ≤ δ̄_r(t) + k·σ_r(t)  (selectivity, eq:rule_s1)
     if (effective_delay_s > threshold && selective_ok)
     {
+        // Item 7 follow-up: this packet's delay was inflated by the 50-300 ms
+        // handoff jitter THIS function added a few lines above, and that band
+        // strictly contains the 80 ms A1/A2 inject -- so the exceedance is not
+        // attributable evidence of an attack. Measured to be 94.8% of all
+        // false positives on the zero-attack baseline. See
+        // s1_suppress_handoff_fp's declaration.
+        if (s1_suppress_handoff_fp && _handoff_inflated)
+        {
+            if (DETECTION_DEBUG_LOG_S1)
+                cout << "[S1] suppressed: delay " << effective_delay_s * 1000.0
+                     << "ms exceeded threshold " << threshold * 1000.0
+                     << "ms but this packet carries handoff jitter (vehicle "
+                     << vehicle_id << ")." << endl;
+            return false;
+        }
+
         cout << "[S1] ⚠️ SIGNATURE S1 TRIGGERED!"
              << " Delay " << effective_delay_s * 1000.0
              << "ms exceeds threshold " << threshold * 1000.0 << "ms"

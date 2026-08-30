@@ -69,34 +69,136 @@ two.** Everything else can proceed in parallel.
 
 | Item | Status |
 |---|---|
-| Item 1 methodology sentence | Not started |
-| Item 5 (real witness+R_anom config) | Not started |
-| **Item 7** (threshold fix) | **Code built** (best-effort-calibrated percentile, clean A/B against the old path, diagnostics export). **Not yet run** — needs a zero-attack baseline for the mean/median/p99 comparison + FPR number. |
-| **Item 9** (gate fix) | **Code built and verified.** Send-side gate repoint compiles and runs clean. Rerun on A5@60%/300s: TP now equals truth-positive windows exactly for nodes 220/225/233 with zero false negatives (real improvement — the old wrong-signal failure mode is gone). But all three nodes still fire in 58/58 windows regardless of the corrected gate, leaving 19-24 residual FP per node. **Not fully closed** — points to a second, narrower issue: whether `g_lstm_hf_sendgt_count`'s increment granularity actually matches how often S5's own firing condition is true for these high-activity nodes. Needs its own follow-up diagnosis. |
-| **Finding (b)** (negative-window rerun) | **Partially done, and the result complicates the picture.** A5 rerun at 20%/40%/60% (window-grid scorer): negative windows present at every percentage, including 60% — this contradicts a simple "saturation at 60%" explanation. A6/A7 also rerun at 20%/40%, all show healthy TN. Full writeup + 3 candidate explanations + HPC checklist: `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md`. **The original TN=0 numbers still stand as real** — they come from a different pipeline (LSTM classification head on a pooled historical test split) than what was reproduced locally (rule-based window grid, single runs). Not resolved; needs HPC data. |
+| Item 1 methodology sentence | **Done.** Paragraph added to `docs/main.tex` after eq:mcc_variant: S1 evaluated at the OBU, scored against the covering RSU, and why (A1's OBU truth vector is identically zero by construction). |
+| Item 5 (real witness+R_anom config) | **Built, not yet run.** R_anom was gated by `g_disable_s7_s8`, so no config could express the rung. Added tri-state `g_disable_ranom` (`crypto_layer.h`, default -1 = follow `g_disable_s7_s8`) so **every existing Q1-Q6 run stays bit-identical unless the flag is passed**, plus config `Q4R` in `run_q1q6_ablation.py`. Verified via `--table`. NB `g_ranom_rule_fired_this_pkt` deliberately left on the ungated value -- it drives Q3's LSTM suppression and has never been gated. |
+| **Item 7** (threshold fix) | **ROOT CAUSE FOUND 2026-08-30; candidate fix under validation.** The two percentile arms are still correctly reported as negative results (see `docs/SUPERVISOR_UPDATE_2026-08-30.md` sec.7 -- best-effort costs A1 6.3 / A2 18.7 points of recall and was recommended against). What changed is the diagnosis of WHY. Measured on the zero-attack 300s baseline, **94.8% of all 2,676 false positives fall in the 50-300 ms band -- exactly `S1_HANDOFF_JITTER_MIN_S`..`MAX_S`** (median firing delay 246.9 ms). `s1_detect_packet()` adds a 50-300 ms draw whenever `handoff_just_occurred(vehicle_id)` and then tests that inflated value, so S1 fires on the confounder it injects itself. No threshold can separate them because the confounder is LARGER than the signal: A1/A2 inject 80 ms, while 1.25% of benign high-priority packets already exceed the ~85 ms an attacked packet reaches. Window-level OR-aggregation over ~15 high-priority packets per 10 s window turns 1.25% into 1-(1-0.0125)^15 = 17%, matching the 17.11% observed -- and it is why best-effort (threshold ~151 ms, ABOVE the 85 ms signal) rejected jitter and true detections alike. **Fix** (`--s1_suppress_handoff_fp`, commit `1448111`, default OFF so all prior results stay bit-identical): do not accuse on a packet the detector already knows carries handoff jitter. Measured seed 1: zero-attack window FPR **18.86% -> 0.03%** (3 firings), A1@60% 80ms recall **95.55%** at FPR **6.48%** (vs k*sigma 99.13% / 23.56%) -- strictly dominates the best-effort arm on both axes and is the first arm to clear the <=1% target. **NOT YET VALIDATED**: single seed, A1 only; 5-seed FPR + A2 recall running. **Limitation to report**: suppressing during handoff cycles creates an evasion window for an attacker timing delays to coincide with handoffs (handoffs are controller-mediated so cannot be manufactured at will, but the exposure is real and is the source of the 3.6-point recall cost). Not proposed for adoption until validated and signed off. |
+| **Item 9** (gate fix) | **Gate fix correct; residual is SYSTEMIC, not 3 nodes.** Send-side repoint compiles and runs clean, and TP now equals truth-positive windows for 220/225/233 with zero false negatives -- the wrong-signal failure mode is gone. But a full sweep (`scripts/item9_granularity.py`) over every node with S5 activity on A5@60% found **39 nodes** show the residual, several worse than the three originally reported (node 236: 166 residual cycles vs node 220's 119). Root cause: `hf_send_gt` is nonzero in ~10% of cycles while S5 fires in ~45-53% -- the send-side counter's granularity does not match the detector's firing condition at all, for most attacking nodes, not just three. Needs the supervisor's call on what the correct send-side truth signal should be before changing the gate further. |
+| **Finding (b)** (negative-window rerun) | **RESOLVED.** Root cause found and verified against the actual test split -- see section 5 below. It is the supervisor's branch 2 (scoping bug in window-truth computation via the wrong label, `test_y.npy`'s spike-based `y_bin` instead of leak-free `y_indep`), not saturation. The local window-grid rerun (A5/A6/A7 at 20/40/60%, all showing healthy TN) was never in conflict with the reported TN=0 -- they were measuring different things (rule-based S5-S8 vs the LSTM classification head). `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md`'s "needs HPC access" framing is superseded; no HPC data was actually needed. |
 | Item 11 clarification | **Answered.** Confirmed via code trace (not a new run): the reported "t=2" data point is a window *start* label; the window's content (1.998s-11.998s) already spans past the actual attack onset at t=10s, and window truth is content-based, not start-label-based. Not a contradiction of the zero-attack baseline. |
-| Finding (a) (tcam_send_gt sweep) | Not started |
+| Finding (a) (tcam_send_gt sweep) | **Already DONE -- this row was stale.** Verified against the data 2026-08-29: A3/A4 training CSVs carry the `tcam_send_gt` column (20-col header vs A5-A8's 18) and it is populated -- nonzero in 32.7% of A3 rows and 30.6% of A4 rows (seed-5 split). A1/A2 likewise carry `std_send_gt`, nonzero in 24.0%/32.2% of rows at pct100. The collection was done by commit `e34f353` on 2026-08-28, and `lstm_training_pre_tcamgt_20260828/` is the pre-collection backup. `preprocessor.py:119` backfills zeros for the A5-A8 files that lack the column (deliberate, and it prints a warning), so the mixed 18/19/20-col schema is handled. All three injection counters now feed `y_indep` via `_inj = max(hfgt, stdgt, tcamgt)`. |
 
-## 5. Open question needing HPC data
+## 5. RESOLVED (2026-08-29, later same day): the negative-class question
 
 **"Why don't you get any negative classes for A5, A6, and A7?"**
 
-Full detail, diagram-in-prose, and a concrete checklist for what to check on
-HPC: `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md`.
+**Answered, with a verified code-level root cause. It is the supervisor's
+branch 2 (scoping bug in window-truth computation), not saturation. No HPC
+data was needed** -- two premises in the earlier write-up were wrong:
 
-Short version: local reproduction (window-grid scorer, single runs) shows
-healthy negative windows at every tested percentage, contradicting the
-"genuine saturation at 60%" branch the supervisor set up. The three candidate
-explanations (different detector / different ground truth / pooled test set
-vs. one run) are not fully distinguished — the local machine's LSTM
-preprocessed cache has **zero rows** for A5/A6/A7, so the actual pooled test
-split's composition can't be inspected here. That file has the exact
-checklist for whoever has HPC access.
+- `lstm_training/` **does** hold A5/A6/A7 raw data locally (1600 files each).
+  The "zero rows" observed earlier was the *preprocessed cache*, not the
+  source CSVs.
+- The local reruns were never contradicting the pooled-split result. They
+  were measuring the same thing from the other side.
 
-## 6. Related documents
+**Mechanism.** `evaluator.py:predict_test()` loads `test_y.npy` -- the
+*spike-based* label `y_bin`, not the leak-free `y_indep`. In
+`lstm_pipeline/src/preprocessor.py:355`, `is_spike` for A5-A8 includes
+
+    ddiv_spike = df["attack_v"].isin(HF_VARIANTS) & (df["d_div"] > 1)
+
+`d_div > 1` holds in ~92-96% of ALL rows in an HF run, dormant cycles
+included -- the code's own comment at preprocessor.py:294 says so ("85-92% of
+'quiet' cycles ... already have d_div elevated"). Window truth is
+`max()` over a 10-cycle window, so a signal present in ~92% of rows makes
+essentially EVERY window positive. The negative class is annihilated before
+scoring, which zeroes the MCC denominator.
+
+**Measured on the actual test split (seed 5), and it predicts the observed
+table variant-for-variant:**
+
+| variant | rows `d_div>1` | windows positive by that leg ALONE | observed TN |
+|---|---|---|---|
+| A5 | 91.7% | **100.0%** | 0 |
+| A6 | 96.4% | **100.0%** | 0 |
+| A7 | 91.9% | **100.0%** | 0 |
+| A8 | 54.1% | 92.6% | 173 |
+
+A8 is the control: its lower `d_div` rate leaves 7.4% of windows able to be
+negative, which is exactly why it alone has a nonzero TN. A6 is the sharpest
+consequence -- 86.2% DR at 0% FP reported as MCC=0.000 purely because its
+negatives never reach the confusion matrix.
+
+**Fix candidate (NOT applied -- needs the supervisor's call, since it moves
+every HF number):** score A5-A8 against `y_indep`, the leak-free
+injection-based label the pipeline already computes and saves as
+`test_y_indep.npy`. Relabelled that way the same test split carries **57-72%
+negative windows** (A5 13,062 / A6 10,476 / A7 13,115 of 18,240).
+
+The supervisor's standing instruction is unchanged and still binding: **do not
+report any MCC for A5/A6/A7** until he has ruled on the fix.
+
+`docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md` predates this and its "needs
+HPC access" checklist is superseded by the above.
+
+## 5b. Supervisor round 3 (2026-08-30) -- answers
+
+Full detail: `docs/SUPERVISOR_ROUND3_ANSWERS_2026-08-30.md`. Summary:
+
+| Ask | Status |
+|---|---|
+| **Item 5** -- what is A7's 0.963 scored against? | **ANSWERED, trustworthy as-is.** Not the pipeline finding (b) broke. `run_q1q6_ablation.py` reads TP/FP/TN/FN from the `MOBIGUARD_*.csv` written by `routing.cc` from `is_malicious_node[]`/`is_detected_node[]` -- the simulator's own ground truth. Verified it contains **zero** references to `is_spike`/`y_bin`/`test_y.npy`. Needs no re-scrutiny when finding (b) is fixed. |
+| **Finding (b)** -- how is `y_indep` built, at what granularity? | **ANSWERED.** `preprocessor.py:235-238`: `max(hf_send_gt, std_send_gt, tcam_send_gt)` over the 10-cycle window, positive iff `> 0`. A **per-cycle EVENT counter OR-ed across the window**, not a state flag. **Structurally the same signal as item 9's gate** -- `y_indep` is the window-level OR of the very counter item 9 proved too coarse, so the two problems share one root and argue for a joint fix. |
+| **Finding (b)** -- A5 cross-check vs S5's 45-53% | **BLOCKED HERE, needs HPC.** Exhaustively confirmed: zero A5-A8 `lstm_training` CSVs anywhere under `/home/nipuni`; `test_meta.npy` holds only `attack_v` 0-4. Prediction to test: if cycles were independent, item 9's ~10% per-cycle rate gives `1-(0.9)^10 ~= 65%` per window vs S5's ~100% -- a narrowed but not closed gap. |
+| **Item 9** -- which S5 condition is true? | **ANSWERED FROM CODE; the working guess is correct.** S5's conjunctions 1-2 are both persistent: FlowMod-never-endorsed, and `active_hf_malicious_nodes[]` which is set **once** at attack start (`hf_attack_helper.h:642`, injector runs once per `routing.cc:144266`) and never cleared. So S5 fires on an **ongoing compromised state**; `hf_send_gt` marks only the send instant. S5 firing more often is **correct detection, not a bug**. Fix should be a **latched** `hf_send_gt` (has this RSU ever scheduled a duplicate up to now) -- persisting state, derived from the counter already trusted for ground truth. |
+| **Item 7** -- within-window persistence build | **BUILT + early result.** `detector_windows.csv` gains `score_cycles`/`score_primary_cycles` (distinct cycles fired per window) as **additive** columns, so M sweeps offline from one run per config and no existing number moves. Zero-attack: benign FPs are **88.8% single-cycle**; FPR **17.11% (M=1) -> 1.85% (M=2) -> 0.19% (M=3)**, with ~10x benign/attack separation at M=3. Recall side needs fresh runs (queued) -- the log-based attack figures mix TP with the attack run's own FPs and are **not** recall. |
+| Q3-Q6 full grid | **Correctly NOT run**, per instruction. |
+
+## 6. Workflow gotcha found this session
+
+**Always re-run `scripts/local_path_swap.sh local` immediately after any
+`... hpc` revert, before launching another simulation.** Caught the hard way:
+reverted to HPC paths to commit item 7/item 9 cleanly, then launched the item
+7 baseline run without switching back. The compiled binary itself was
+unaffected (`SCR` in `routing.cc` is baked in at compile time and was still
+correct), but `scratch/optimization.py`/`optimization_lifetime.py` are
+interpreted fresh from disk on every `system()` call — they picked up the
+reverted `SCRATCH` HPC path, silently failed to find their own input CSV
+every cycle (`Unexpected error in link lifetime optimization: ... No such
+file or directory`), and the link-lifetime optimization degraded on every
+cycle for the whole 300s run. That directly affects routing paths and
+per-hop delay, i.e. exactly what S1 measures — the first baseline run's
+numbers were discarded, not reported, and rerun after fixing paths.
+
+**REFINED 2026-08-30, after it bit a second time in the opposite direction.**
+The rule is not just "swap to local before running" -- it is **never run
+`... hpc` while ANY simulation is in flight.** `scratch/optimization.py` and
+`optimization_lifetime.py` in the ns-3 tree are *symlinks into this repo*, and
+`routing.cc` shells out to them **fresh every cycle**. Swapping the repo to HPC
+paths to make a clean commit therefore breaks every running job instantly, mid-
+run. Observed: two 300 s validation runs swapped under them, then crawled --
+28 minutes of CPU to reach simulated t=3.7 s (healthy rate is ~3.4 sim-s/min,
+so ~95 s expected). Both were killed and restarted rather than trusted.
+
+Practical consequence for the workflow: **do all committing BEFORE launching
+runs, not during.** The safe cycle is
+`hpc` -> `git commit` -> `local` -> verify helpers -> launch. A third
+path pattern (`g13_project_repo`, used only by `lstm_logger.h` for LSTM
+weights) is not covered by the swap script at all; harmless unless a run uses
+`--training=1` or `--enable_lstm_inference=1`.
+
+Note the binary is a separate concern from the helpers: `routing.cc`'s paths
+are compiled in, so a rebuild while the tree is on HPC paths bakes the cluster
+mobility path into the binary and every subsequent run aborts immediately with
+`Could not open trace file`. That happened once too; the helpers are read at
+runtime, the mobility path at compile time, and both must be local before a run.
+
+Check for this specifically with:
+```bash
+grep -c "Solution not found\|Unexpected error in link lifetime" <run.log>
+```
+Zero is the only acceptable count. A nonzero count invalidates the run's
+delay/routing-dependent metrics even if the simulation completes without
+crashing.
+
+## 7. Related documents
 
 - `docs/SUPERVISOR_FULL_REPORT_2026-08-28.md` — the full 11-item report
 - `docs/FINDING_B_PIPELINE_MISMATCH_2026-08-29.md` — the pipeline-mismatch
   diagnosis and HPC checklist
 - `logs/findingb_pilot/` — A5/A6/A7 percentage-sweep run logs, this session
 - `logs/item9_verify/` — item 9 verification run log
+- `logs/item7_verify/` — item 7 baseline validation run log
+- `logs/item7_handoff/` — handoff-fix runs + 5-seed/A2 validation
+- `docs/SUPERVISOR_ROUND3_ANSWERS_2026-08-30.md` — round-3 answers (items 5, 9,
+  finding (b) label definition, item 7 persistence)

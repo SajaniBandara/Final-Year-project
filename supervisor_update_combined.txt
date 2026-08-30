@@ -1,0 +1,272 @@
+========================================================
+
+SUMMARY
+-------
+Full Q1-Q6 ablation rerun (48/48 runs clean, 300 s, 60%, seed 1) after fixing
+three measurement defects. Results improved materially, target not met.
+
+  Q6 macro-MCC (M1, score_primary) = 0.590   against the >0.80 gate
+  Variants at or above the 0.65 floor        = 5 of 8   (previously 1 of 8)
+
+Two variants clear 0.80 (A6=0.802, A8=0.811). Three block the macro:
+A2=0.431, A4=0.426, A3=-0.007.
+
+One proposed fix — S1 attribution, same style as the later-approved Fix 1 but
+applied to S1's EWMA path — was implemented, measured, found to make every
+metric worse, and reverted. Kept below as a documented negative result.
+
+1. FIXED — stale claimed-forward timestamps (b7c8af1)
+-------------------------------------------------------
+claimed_forward_timestamp() returned a slot with no ownership check; the
+backing array is never cleared while packet_id restarts every cycle, so reads
+collided across cycles. S2's hop_delay was measuring elapsed cycles, not an
+actual hop. Now reads from the packet tag (previous_senderId/previous_timestamp,
+already serialized at every tagging site).
+
+A2 @60% seed 1, 20s, A/B on identical config:
+                        before      after
+  S2 triggers            1,165        821
+  false positives          307          0
+  median hop delay      1,252 ms    103 ms
+  max hop delay        16,971 ms    116 ms
+  benign nodes accused        71          0
+  precision                73.6%     100.0%
+
+TP moved 858->821: only 446 of 858 pre-fix TPs had a physically possible delay;
+the other 412 were fabricated readings on a node that happened to be malicious
+anyway. Genuine detections rose 446->821; all 718 fabricated triggers vanished.
+
+2. FIXED — synthetic TCAM-generator samples raising real S1 accusations (20ede88)
+-----------------------------------------------------------------------------
+tcam_flow_generator.h called the real s1_detect_packet() with a hardcoded
+1.5ms constant and a VEHICLE as sender_node_id, contradicting that function's
+own contract (sender_node_id = the RSU that applied the delay). Every firing
+from this path was false by construction, and it ran ungated in every attack
+variant, polluting Attack 1's confusion matrix even during unrelated runs.
+
+A1 @60% seed 1, 90s, attack window t>=10s:
+                        before      after
+  true positives             17         17
+  false positives            47         15
+  vehicles accused           32          0
+  precision                26.6%      53.1%
+  MCC                     0.2503     0.4666
+
+Recall untouched — a synthetic benign constant could never have produced a TP.
+
+3. TESTED AND DISPROVED — S1 attribution (accuse prev_sender)
+-----------------------------------------------------------------------------
+The observation that S1 measures delay from prev_sender but records against
+the receiving vehicle's proximity-associated RSU is correct. The obvious
+remedy is not:
+
+  variant             TP   FP   prec%   recall%      MCC
+  assoc_rsu (orig)    17   15     53.1     53.1     0.4666
+  prev_sender         13   50     20.6     40.6     0.1460
+  gated (RSU-only)    13   14     48.1     40.6     0.3726
+
+Both alternatives dominated on every metric; both reverted, original
+attribution stands. Flagging this explicitly because it's the same PATTERN as
+the witness/DA attribution fix approved below (Fix 1) — that one worked, this
+one didn't, and the difference matters: S1's problem is coverage (15 RSUs
+never caught at any threshold), not mis-pointed accusation.
+
+4. FIXED — S1 masking itself (033210a)
+-----------------------------------------------------------------------------
+sigma^2 updated on every packet including attack packets, so
+threshold = delta_bar + k*sigma rose under sustained attack until it exceeded
+the injected delay itself (mean threshold 50-70s: 114.88ms, above the 99.568ms
+injected). Fixed with a variance floor rather than excluding violating packets
+(exclusion alone was tried before and abandoned — shrinking-sigma feedback
+loop with no floor).
+
+Verified, only --s1_robust_sigma varied:
+                     off          on
+  k*sigma mean    102.04 ms    12.50 ms
+  S1 fires            1,416       3,784
+
+Moves neither headline metric — see Part A.6.1 below for why (structural, not
+a flaw in this fix).
+
+5. FULL Q1-Q6 TABLE (score_primary, M1 = per-RSU 10s blocks, max-pooled)
+-----------------------------------------------------------------------------
+         Q1      Q2      Q3      Q4      Q5      Q6
+  A1   0.789   0.000   0.000   0.000   0.789   0.789
+  A2   0.431   0.000   0.000   0.000   0.431   0.431
+  A3   0.318   0.000  -0.180   0.000   0.318  -0.007
+  A4   0.440   0.000   0.018   0.000   0.440   0.426
+  A5   0.000   0.745   0.000   0.000   0.745   0.745
+  A6   0.000   0.802   0.000   0.000   0.802   0.802
+  A7   0.000   0.722   0.000   0.000   0.722   0.720
+  A8   0.000   0.812   0.000   0.000   0.812   0.811
+  macro 0.247  0.385  -0.020   0.000   0.632   0.590
+  >=.65     1       4       0       0       5       5
+
+Almost all improvement over the previous 0.4233 macro comes from reporting
+score_primary (suspect attribution) rather than from the three defects fixed
+this cycle — those fixed genuine measurement errors, but their effect on M1
+is small (see 6.1).
+
+6. STRUCTURAL FINDINGS NEEDING A DECISION
+-----------------------------------------------------------------------------
+6.1 S1 cannot affect M1 at all. dw_mark_obu() (where S1 lives) marks OBU rows;
+    M1 scores RSU rows only. Confirmed empirically — after fixing S1
+    (item 4), it fired 2.7x more often and M1 was byte-identical. A1's M1 is
+    carried entirely by S2. Decision needed: should M1 incorporate OBU rows,
+    or should S1 be reported separately?
+
+6.2 Per-node matrix is coverage-only and run-length-dependent. Same config
+    scored 55.6% precision at 20s, 26.6% at 90s — state run length whenever
+    per-node figures are quoted.
+
+6.3 Recall ceiling is 26, not 32 — 32 RSUs marked malicious via controller
+    compromise, only 26 ever apply a delay. Recall against the detectable set
+    is 17/26 = 65%, not 53%.
+
+6.4 Adding components makes results WORSE. Q5 macro 0.632 -> Q6 macro 0.590.
+    A3 collapses to -0.007 (worse than random) once LSTM+witness+BTMM are
+    added. Sharpest unexplained anomaly in the table.
+
+6.5 Monotonicity is still ill-posed. Q3 is LSTM-only, Q4 witness-only, most
+    variants have no value there (Q3 macro -0.020, Q4 exactly 0.000
+    everywhere) — raised three times, still needs a scoring decision.
+
+7. CAVEAT ON ANY Q3/Q6 FIGURE
+-----------------------------------------------------------------------------
+LSTM in this sweep is PRE-RETRAIN on stale data (zkp_delay_fail identically
+zero for A2 across all 1,792 training rows; A6/A8 labels were corrupted
+before the label fix). Q3/Q6 LSTM contributions are lower bounds, not final.
+
+8. OPEN FROM THIS PART (still unresolved, not touched by Part B below)
+-----------------------------------------------------------------------------
+a) Diagnose the A3 regression (0.318 -> -0.007, Q5->Q6).
+b) Explain the A2 node/window gap — S2 reaches 100% node-level precision
+   post-fix, yet A2's window M1 is 0.431. Possibly the same misattribution
+   class as the observer/suspect bug — SEE PART B, ITEM 4 RESIDUAL below,
+   which may be the same thread.
+c) Retrain LSTM on corrected data, rerun Q3/Q6 as real figures.
+d) Decisions requested: 6.1 (OBU-row scoring), 6.5 (monotonicity scoring).
+
+All committed to branch S15_SIR: b7c8af1, 20ede88, 033210a.
+
+
+====================================================================
+PART B — THIS ROUND: FIX 1, FIX 2, ITEMS 3 & 4
+====================================================================
+
+FIX 1 — witness DA attribution — DONE, BUILT, VERIFIED LIVE
+-----------------------------------------------------------------------------
+Replaced prev_sender attribution in the duplication-alert path with
+hf_gt_attribution_node(), as approved — same function already validated for
+hf_send_gt. UINT32_MAX (no RSU currently covers the accused vehicle) correctly
+suppresses the alert.
+
+Fresh 30s live reruns, not offline recomputation:
+  A6 (active DP):  precision 93.5%, recall 100.0%  (TP=43 FP=3 FN=0)
+  A8 (passive DP): precision 93.0%, recall 95.2%   (TP=40 FP=3 FN=2)
+
+Side effect found, not fixed (out of approved scope): the in-sim WAP-R/M12
+counter (calculate_witness_wapr_metric()) still indexes ground truth by the
+raw attacker node, not the covering RSU, so its own printed recall on A8 read
+36.8% — inconsistent with the number above because its denominator and Fix 1's
+numerator are now keyed differently. Needs a decision on whether to fix.
+
+FIX 2 — A1/A2 injection-side ground truth latch — CODE DONE, RECOLLECTION PENDING
+-----------------------------------------------------------------------------
+Added g_lstm_std_sendgt_count, latched at both live delay-injection sites,
+before any TCAM slow-path delay is added so it never counts an A3/A4 queueing
+delay. A2's vehicle-relay attackers get the same covering-RSU attribution as
+hf_send_gt (A1's injector is always the RSU holding the poisoned FlowMod, no
+mapping needed there). New label-only std_send_gt CSV column, excluded from
+FEATURES the same way hf_send_gt is.
+
+Verified on a 15s smoke run: 50 genuine injections logged across 64 RSUs,
+correctly independent of any detector. The actual data recollection (rerun
+A1/A2 training sweep so this column exists on real data, then rescore — no
+retraining needed) has not been run yet; awaiting the go-ahead given the time
+cost.
+
+ITEM 4 — A5 firing 58/58 on a benign RSU — CAUSE CONFIRMED
+-----------------------------------------------------------------------------
+Traced through s5_detection.h: S5 only fires when mldsa_fails && b_hop_fails
+&& d_prime_unauthorized are ALL true, and reaching that requires Conjunction 2
+to already hold — prev_sender must be a flagged, ground-truth-malicious node.
+S5 cannot structurally fire on a fabricated accusation. The "benign RSU" in
+every report is the observing/receiving node, not prev_sender — same
+misattribution class as Fix 1, in the window-grid path instead of the witness
+path, already fixed by b718110 (2026-08-22, window grid marked the OBSERVER
+instead of the SUSPECT — MCC 0.3118->0.9341 on identical A5 data).
+
+Confirmed against live current data, same run as Part A section 5
+(detector_windows_Attack5_60_seed1_Q6.csv): ~24 benign RSUs each fire 58/58
+under the OLD (observer-attributed) score column. Under the FIXED
+score_primary column, most drop to 0 or partial (42-57/58), BUT THREE NODES
+(220, 225, 233) STILL FIRE 58/58 EVEN POST-FIX. That's a new, real, unexplained
+residual — not covered by the observer/suspect bug, and possibly the same
+thread as Part A item 8b (the A2 node/window gap). Flagging, not yet diagnosed.
+
+Your Q3 sub-question (window width for the blockchain-receipt copy-verify
+query) doesn't map onto the current code — mldsa87_verify_copy_content() is a
+direct re-signature check, not a windowed receipt-log match. No window-width
+parameter exists there to report.
+
+ITEM 3 — S1/S2 firing on a zero-attack run — PARTIALLY ANSWERED, FRESH DATA COLLECTED
+-----------------------------------------------------------------------------
+Could not locate the exact run behind "252 S1 / 168 S2." The only baseline
+data on this machine (Aug 17, 5 seeds) shows 3,000-3,600 firings each — wrong
+order of magnitude, and that file predates the Aug 21 CSV-header fix and every
+S1 fix listed in Part A. Ran a fresh 300s zero-attack baseline (seed 1,
+current binary, all of Part A's fixes included) to get real current numbers
+instead — this is a deviation from "no new run needed," flagging it here with
+the reason (the only alternative data was unusably stale) and the result:
+
+  S1 fired 6,156 times. S2 fired 0 times.
+
+Your four questions, answered against this fresh run:
+
+Q1 (delay vs threshold per firing): extracted from every trigger line.
+  Mean/median measured delay: 177 ms (max 304, min 6)
+  Mean/median threshold at firing: 24 ms
+  81% of firings exceed 100 ms; 99.95% exceed 50 ms
+  The threshold is not implausibly low — it's tracking the calibrated
+  baseline correctly. The measured delay itself is elevated, and by a lot:
+  177ms mean is nearly the same magnitude as an actual A1@60% attack
+  (178-195ms, Part A section 4). Zero attackers present, attack-scale delay
+  measured anyway.
+
+Q2 (calibration provenance, from code comments, not inferred): delta0/
+  alpha_rho/alpha_v last fit 2026-08-08 via rule_calibrator.py on
+  lambda_PI-fixed benign SUMO traces, seeds 1-3, 120s each (22,087 rows).
+  k=3.0 confirmed 2026-08-13. The code states outright: "no candidate
+  actually clears 1% on this data -- FPR=0.0287 at k=3.0" -- matches your
+  own suspicion in the codebase's own words.
+
+Q3 (clock skew): confirmed anchored to the distributed time reference
+  (node_clock_offset() de-skewing, not raw local clock) -- real mechanism.
+  Max clock skew across all 64 RSUs this run: 0.0 ms. Ruled out cleanly.
+
+Q4 (distribution shape): strongly heavy-tailed, not Gaussian. Baseline ~7ms,
+  threshold ~24ms, median firing delay 176ms -- over 7x the threshold. A
+  symmetric Gaussian k*sigma bound cannot accommodate this tail without k
+  becoming enormous. Looks like a genuine distribution-shape problem, as you
+  suspected.
+
+k and S1 rule logic not touched, per instruction. 
+
+NEXT STEPS PROPOSED
+-----------------------------------------------------------------------------
+1. Your call on Items 3/4: do these two share one root cause as you
+   suspected? Item 4's root cause (misattribution) is confirmed and mostly
+   fixed; Item 3's root cause looks like a genuine heavy-tailed delay
+   distribution colliding with a Gaussian threshold modewhatsa thel -- different
+   mechanism, though both are "the calibration/attribution layer doesn't
+   match what the simulation actually produces."
+2. Decisions needed from Part A: 6.1 (OBU-row scoring), 6.5 (monotonicity
+   scoring), and now also whether to fix the WAP-R denominator inconsistency
+   Fix 1 exposed.
+3. Item 4's residual (3 nodes still 58/58 post-fix) and Part A's A2 node/
+   window gap may be the same open thread -- worth investigating together.
+4. Fix 2 data recollection sweep -- awaiting go-ahead, time-costly.
+5. A3 regression (Q5->Q6, 0.318->-0.007) still unexplained.
+
+

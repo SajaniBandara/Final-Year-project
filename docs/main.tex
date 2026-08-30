@@ -4189,6 +4189,27 @@ As given in Equation~\eqref{eq:mcc_variant}, computing
 a separate score per variant and per mode prevents
 strong variants from masking weak ones in aggregate
 figures and exposes any mode-specific detection gap.
+
+One attribution rule applies to the $m{=}\text{RSU}$ column and
+is stated here because it is not self-evident from
+Equation~\eqref{eq:mcc_variant}. Signature~S1 is
+\emph{evaluated} at the \ac{OBU}, which is where the
+per-packet delay it tests is observable, but its decision is
+\emph{scored} against the covering \ac{RSU} --- the same
+\ac{RSU} against which \texttt{s1\_detect\_packet()} already
+records the detection event --- and therefore contributes to
+the \ac{RSU} column rather than the \ac{OBU} one. The reason
+is that ground truth for the Selective Time Delay variants is
+\ac{RSU}-indexed by construction: the adversary is the
+controller together with the compromised \ac{RSU} that obeys
+the poisoned \texttt{FlowMod}, so no vehicle is ever marked
+malicious and an \ac{OBU}-indexed truth vector for A1 is
+identically zero. Scoring S1 in the \ac{OBU} column would
+therefore register every firing as a false positive
+irrespective of detector quality, whereas scoring it against
+the \ac{RSU} it already names measures the decision the
+detector actually makes without inventing an \ac{OBU} ground
+truth that the threat model does not define.
 To validate the mobility-adjusted thresholds
 (Eq.~\ref{eq:mobility_baseline}) against the static
 thresholds used by all three baselines, the mobility-
@@ -5212,6 +5233,9 @@ materially affecting all figures in
 Table~\ref{tab:lstm_detection}; all reported
 \ac{DR}, \ac{FPR}, and \ac{MCC} values are
 computed over deduplicated blocks.
+(S1's OBU-vs-RSU attribution at scoring time is stated once, in the
+mode-stratified scoring discussion above Eq.~\ref{eq:mcc_variant}, rather
+than repeated here.)
 
     \item \textbf{S1 attribution at scoring time:} Signature S1 is computed
 architecturally at the \ac{OBU} (Algorithm~\ref{alg:lrad_obu}), evaluated
