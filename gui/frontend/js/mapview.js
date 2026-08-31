@@ -153,12 +153,13 @@ export class NetworkMap {
     this.viewW = rect.width;
     this.viewH = rect.height;
 
+    if (this.viewW <= 0 || this.viewH <= 0) return;
+
     const map = this.scene?.layout?.map ?? { width: 2061, height: 2137 };
     const pad = 18;
-    this.scale = Math.min(
-      (this.viewW - pad * 2) / map.width,
-      (this.viewH - pad * 2) / map.height
-    );
+    const scaleX = (this.viewW - pad * 2) / map.width;
+    const scaleY = (this.viewH - pad * 2) / map.height;
+    this.scale = Math.max(0.0001, Math.min(scaleX > 0 ? scaleX : 0.0001, scaleY > 0 ? scaleY : 0.0001));
     this.offsetX = (this.viewW - map.width * this.scale) / 2;
     this.offsetY = (this.viewH - map.height * this.scale) / 2;
     this.mapH = map.height;
@@ -299,7 +300,8 @@ export class NetworkMap {
   }
 
   _drawCoverage(ctx, token, layout) {
-    const radius = layout.coverage_radius * this.scale;
+    const radius = Math.max(0, (layout.coverage_radius || 180) * (this.scale || 0));
+    if (radius <= 0) return;
     ctx.save();
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = token('--series-1');
