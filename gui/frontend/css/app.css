@@ -1116,18 +1116,31 @@ table.mini td { padding: 3px 0; font-variant-numeric: tabular-nums; }
   border-left: 3px solid var(--series-7); padding-left: 10px; line-height: 1.4;
 }
 
-table.runs { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-table.runs th { text-align: left; color: var(--text-secondary); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-table.runs td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+#sim-runs {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+table.runs { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+table.runs th { text-align: left; color: var(--text-secondary); font-weight: 600; padding: 7px 8px; border-bottom: 1px solid var(--border); background: var(--surface-page); }
+table.runs td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.runs th:nth-child(1), table.runs td:nth-child(1) { width: 74px; }
+table.runs th:nth-child(2), table.runs td:nth-child(2) { width: auto; }
+table.runs th:nth-child(3), table.runs td:nth-child(3) { width: 50px; text-align: center; }
+table.runs th:nth-child(4), table.runs td:nth-child(4) { width: 55px; text-align: center; }
+table.runs th:nth-child(5), table.runs td:nth-child(5) { width: 100px; text-align: right; }
 table.runs td code {
-  display: inline-block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  vertical-align: middle; font-family: var(--mono); font-size: 12px;
+  display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 11.5px;
 }
 table.runs tr[data-uid] { cursor: pointer; transition: background 120ms; }
 table.runs tr[data-uid]:hover { background: color-mix(in srgb, var(--series-7) 10%, transparent); }
 table.runs tr.is-active { background: color-mix(in srgb, var(--series-1) 12%, transparent); }
+.btn-open-map { padding: 3px 8px !important; font-size: 11.5px !important; white-space: nowrap; }
 .state {
-  font-size: 12px; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em;
+  font-size: 11px; padding: 3px 7px; border-radius: 999px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em; display: inline-block; text-align: center;
 }
 .state.running   { background: color-mix(in srgb, var(--series-1) 20%, transparent); color: var(--series-1); }
 .state.finished  { background: color-mix(in srgb, var(--status-good) 20%, transparent); color: var(--status-good); }
