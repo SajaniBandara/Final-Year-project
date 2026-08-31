@@ -449,6 +449,13 @@ async function loadRun(root, run) {
               : ` — expected ${gt.expected_count} attackers.`
           } ${gt.source}`}
     </div>
+    <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+      <span class="scenario-plane-pill ctrl" style="font-size: 11px;">🛡 MOBIGUARD Defense Pipeline Active:</span>
+      <span class="sig" style="font-size: 11px;">L1 Rule Signatures</span>
+      <span class="sig" style="font-size: 11px;">L2 Fed-LSTM</span>
+      <span class="sig" style="font-size: 11px;">L3 STARK ZKP</span>
+      <span class="sig" style="font-size: 11px;">L4 BFT Voting</span>
+    </div>
     ${(scene.notes || []).map((n) => `<div class="note">${n}</div>`).join('')}`;
 }
 
