@@ -314,15 +314,17 @@ class MobilityTrace:
         return list(self._times)
 
 
-def trace_path(seed: int) -> Path:
-    """The mobility trace ``routing.cc`` loads for ``--sim_seed=seed``.
+def trace_path(seed: int, maxspeed: int = 150) -> Path:
+    """The mobility trace ``routing.cc`` loads for ``--sim_seed=seed`` and ``--maxspeed=maxspeed``.
 
-    Seeds 1-5 each select a separately generated SUMO run; anything outside
-    that range falls back to the original single trace. Mirrors the branch at
-    routing.cc ~142886 -- if the map used a different trace than the simulator
-    did, every vehicle would be drawn in the wrong place.
+    Seeds 1-5 select separately generated SUMO runs for speed 150; maxspeed 0..60 selects
+    specific speed limit family traces (mobility_urban_<maxspeed>.tcl).
     """
     base = REPO_ROOT / "mobility"
+    if maxspeed != 150:
+        candidate = base / f"mobility_urban_{maxspeed}.tcl"
+        if candidate.is_file():
+            return candidate
     if 1 <= seed <= 5:
         candidate = base / f"mobility_urban_150_seed{seed}.tcl"
         if candidate.is_file():
@@ -330,15 +332,13 @@ def trace_path(seed: int) -> Path:
     return base / "mobility_urban_150.tcl"
 
 
-@lru_cache(maxsize=6)
-def load_trace(seed: int, step: float = 1.0, until: float | None = None) -> MobilityTrace:
+@lru_cache(maxsize=12)
+def load_trace(seed: int, maxspeed: int = 150, step: float = 1.0, until: float | None = None) -> MobilityTrace:
     """Cached trace load. Integration takes a moment; the result is immutable."""
-    path = trace_path(seed)
+    path = trace_path(seed, maxspeed=maxspeed)
     if not path.is_file():
         raise TopologyError(
-            f"mobility trace for seed {seed} not found at {path}. The map needs "
-            "it to place vehicles; RSUs and controllers are computed and will "
-            "still render."
+            f"mobility trace for seed {seed} and maxspeed {maxspeed} not found at {path}."
         )
     return MobilityTrace(path, step=step, until=until)
 
