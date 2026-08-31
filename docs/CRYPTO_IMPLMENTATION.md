@@ -45,7 +45,7 @@ cryptographic integrity layer from the proposal so that:
 | ML-DSA-87 signing | 4,595 B/pkt (proposal) / 4,627 B (liboqs) | Real `OQS_SIG_sign()` via liboqs; sig stored in `g_packet_crypto`; 1.5 ms delay modelled | Size discrepancy is a parameter-set citation difference; no functional impact |
 | ML-DSA-87 signing inputs | `H(msg_id ‖ ts_i ‖ η_i ‖ nh_i ‖ z_i)` per `eq:mldsa_sign` | All five fields present including `z_i` via `crypto_zone_id()` | `SigningInput` struct carries `zone_id` field |
 | SHA3-512 | Full NIST FIPS 202 hash | Real `EVP_sha3_512()` via OpenSSL | Available after `sudo apt-get install libssl-dev` |
-| HMAC-SHA3-512 | 64-byte MAC | Real `HMAC(EVP_sha3_512(), ...)` via OpenSSL | Same |
+| HMAC-SHA3-512 | 64-byte MAC | Tag **generation** real via OpenSSL `HMAC(EVP_sha3_512(), ...)`; tag **verification** modelled (see §2.5) | Generation and its CPU cost are genuine and measured (`crypto_timing_log`). Verification is modelled: the threat model contains no impersonation attack, and HMAC authenticates origin, not truthfulness — a malicious forwarder signs its own false timestamp validly, which is why `alg:lrad_obu` specifies S2-partial as *"threshold only, no ZKP"* |
 | Batch verification | Combined lattice equation `∑ r_i A_i z_i = ∑ r_i(t_i c_i + w'_i) mod q` | SHA3-512 Fiat-Shamir challenge (`eq:batch_challenge` faithful over full sigs + messages) + real `OQS_SIG_verify()` per sig | Internal lattice vectors not exposed by liboqs API; per-sig OQS verify provides equivalent correctness; 50 ms budget enforced via modelled 1 ms/sig delay |
 | STARK proofs | 100 KB FRI proof, 10 ms verify | SHA3-512 commitment + logical validity flag + 10 ms delay | No open-source STARK library exists; `stark_timing_ok` and `stark_hop_ok` flags are exported to LSTM input vector |
 | Two-tier blockchain | RSU-chain (PBFT) + global anchor | In-memory `vector<BlockchainCommit>` with two tiers | Preserves audit-trail semantics; swap to real chain without changing crypto code |
@@ -104,6 +104,62 @@ Contributes to S5–S8 detection. `stark_hop_ok` flag exported to LSTM feature v
 
 Three fields only (no `nh_i`, no `z_i` — matches proposal exactly). Tag: 64 bytes.
 Pre-shared symmetric key established at RSU association. No non-repudiation.
+
+**Implementation note — verification is modelled (2026-08-31).**
+
+Tag generation is real: `lrad_hmac_tag_packet()` (`lrad_hmac.h`) computes a genuine
+HMAC-SHA3-512 over the message with the node's pre-shared key, and its cost is
+measured in `crypto_timing_log`.
+
+Verification is not. `lrad_s2_partial_check()` (`lrad.h`) rebuilds the message from
+the stored entry's **own** `ts` and `flow_id` — the same values that produced the
+tag — and compares against that entry's tag, so the comparison is
+`HMAC(k,m) == HMAC(k,m)` and cannot fail. `flag_S2p` is therefore the threshold
+test `(t_now - ts_recv) > Δ_max` alone.
+
+This is a deliberate modelling choice, not an oversight, for two reasons:
+
+1. **HMAC authenticates origin, not truthfulness.** In S2 the malicious node is the
+   *forwarder*; holding its own key `k_i`, it can sign a false timestamp validly, and
+   a correct `HMAC.Verify` returns true. This is exactly why full S2 pairs the check
+   with a ZKP (`eq:sig_s2`: `... ∧ π_delay(u) = ⊥`) and why `alg:lrad_obu`
+   (`main.tex:2342`) annotates S2-partial *"threshold only, no ZKP"*.
+2. **No forgery vector is modelled.** None of the eight attack variants is an
+   impersonation or spoofing attack, so the third-party forgery that HMAC verification
+   defends against never occurs in these simulations.
+
+Implementing it faithfully would mean carrying `τ` in the packet tag per
+`alg:lrad_obu`'s `HMAC.Verify(τ,p)`. That is cheap (ns-3 packet tags are simulation
+metadata — they do not change packet size, airtime, PDR, latency, or any LSTM
+feature) but would still produce a check that never fails, for reason 1.
+
+**Message composition (corrected 2026-08-31).** Now matches `eq:hmac_light` exactly:
+
+```
+tau_i = HMAC-SHA3-512(k_i, msg_id || ts_i || eta_i)     16-byte buffer
+        msg_id(4) | ts(8) | eta(4)
+```
+
+This is the full-mode 24-byte sign buffer (`eq:mldsa_sign`) minus `nh_i` and `z_i`,
+which `eq:hmac_light` omits by design, so both modes now derive their inputs the
+same way:
+
+- `msg_id = crypto_msg_key(pkt_id, flow_id)`, the same convention full mode uses.
+  `pkt_id` alone is a per-cycle slot index and does not identify a packet (see
+  `docs/BUGS_MISMATCHES_AND_OPEN_DOUBTS_2026-08-31.md` section 1).
+- `eta_i <- RAND()` via `OQS_randombytes()`, the same primitive the full-mode signer
+  uses. Previously every caller passed `pkt_id` as the nonce, so the field duplicated
+  `msg_id` and carried no entropy.
+
+Verified behaviour-neutral: A2 @40%, 40 s, seed 1 - `d_obu_count`,
+`escalation_count`, TP/FP/TN/FN and `avg_PDR` all bit-identical before and after.
+Expected, since the nonce is stored and re-read by the same code path.
+
+**Replay detection remains unmodelled.** `eta_i` is now a genuine fresh nonce, so
+tags are unique per stamping, but nothing tracks nonce freshness on the receive
+side, and given the verification above a freshness check would have nothing to
+reject. The nonce makes the *construction* spec-faithful; it does not make replay
+protection real.
 
 ### 2.6 Distributed Key Generation — `eq:vk_commit`, `eq:key_rotation_trigger`
 
