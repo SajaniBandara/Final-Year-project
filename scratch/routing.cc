@@ -142481,6 +142481,17 @@ int main(int argc, char *argv[])
     // contains the 80 ms A1/A2 inject, so no threshold can separate them.
     // See s1_suppress_handoff_fp in s1_detection.h. Default 0 = unchanged.
     cmd.AddValue("s1_suppress_handoff_fp", "S1 item 7 follow-up: do not fire on packets carrying the 50-300ms handoff jitter this detector injects (default 0)", s1_suppress_handoff_fp);
+    // eq:trust_update / eq:quarantine calibration parameters. crypto_layer.h
+    // labels this block "Tunable Parameters (all CLI-exposed)" but no AddValue
+    // existed for any of them, so the sweep main.tex asks for could not be run
+    // without editing the constant and rebuilding per value.
+    // main.tex marks all three [tbd]: "Delta_r, Delta_p (vehicle/RSU trust
+    // reward/penalty) & [tbd]; Delta_p > Delta_r enforced" and "T_min
+    // (vehicle/RSU quarantine threshold) & [tbd: {0.3, 0.5, 0.7}]".
+    // Defaults are unchanged, so omitting these reproduces every prior result.
+    cmd.AddValue("trust_t_min",   "T_min: quarantine threshold for vehicles/RSUs (eq:quarantine, main.tex [tbd: {0.3,0.5,0.7}]; default 0.50)", TRUST_T_MIN);
+    cmd.AddValue("trust_delta_p", "Delta_p: trust penalty per negative event (eq:trust_update, main.tex [tbd]; default 0.10)", TRUST_DELTA_P);
+    cmd.AddValue("trust_delta_r", "Delta_r: trust reward per clean event (eq:trust_update, main.tex [tbd]; default 0.05)", TRUST_DELTA_R);
     // eq:quarantine enforcement (2026-08-30). Default 0 reproduces every result
     // produced before this date; 1 makes SC.Quarantine actually deny data-path
     // actions instead of only setting a flag. See crypto_layer.h.
