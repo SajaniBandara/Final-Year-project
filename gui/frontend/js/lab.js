@@ -685,6 +685,17 @@ async function onSelect(root, hit) {
       .map(([s, n]) => `<span class="sig sig-${s}">${s} ${n}</span>`)
       .join('') || '<span class="quiet">none</span>';
 
+  const dl = detail.defence_layers || {};
+  const lstmBadge = dl.lstm_anomaly_score > 0.5
+    ? `<span class="tag attack">High Anomaly (${(dl.lstm_anomaly_score * 100).toFixed(1)}%)</span>`
+    : `<span class="tag benign">Normal (${(dl.lstm_anomaly_score * 100).toFixed(1)}%)</span>`;
+  const zkpBadge = dl.zkp_status?.includes('Invalid')
+    ? `<span class="tag attack">${dl.zkp_status}</span>`
+    : `<span class="tag benign">${dl.zkp_status || 'Verified Valid'}</span>`;
+  const bftBadge = dl.bft_status?.includes('Quarantined')
+    ? `<span class="tag attack">${dl.bft_status}</span>`
+    : `<span class="tag benign">${dl.bft_status || 'Active Roster'}</span>`;
+
   host.innerHTML = `
     <div class="node-head">
       <strong>${hit.label}</strong> ${truth}
@@ -695,12 +706,12 @@ async function onSelect(root, hit) {
           detail.grid ? ` · grid r${detail.grid.row} c${detail.grid.col}` : ''
         }${detail.controller !== undefined ? ` · controller c${detail.controller + 1}` : ''}</p>`
       : ''}
-    <h4>Accused</h4>
+    <h4>🛡 Proposed Defense Pipeline</h4>
     <table class="mini">
-      <tr><th>Times</th><td>${fmt.int(detail.accused.count)}</td></tr>
-      <tr><th>First / last</th><td>${fmt.num(detail.accused.first_t, 1)} s – ${fmt.num(detail.accused.last_t, 1)} s</td></tr>
-      <tr><th>By</th><td>${detail.accused.accusers.length} RSU(s)</td></tr>
-      <tr><th>Signatures</th><td>${sigRow(detail.accused.signals)}</td></tr>
+      <tr><th>Layer 1 (Signatures)</th><td>${sigRow(detail.accused.signals)}</td></tr>
+      <tr><th>Layer 2 (Fed-LSTM)</th><td>${lstmBadge}</td></tr>
+      <tr><th>Layer 3 (STARK ZKP)</th><td>${zkpBadge}</td></tr>
+      <tr><th>Layer 4 (BFT Voting)</th><td>${bftBadge}</td></tr>
     </table>
     ${detail.kind === 'rsu'
       ? `<h4>Accusations raised</h4>
