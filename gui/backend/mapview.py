@@ -260,6 +260,9 @@ def scene(
         )
         truncated = len(events) >= MAX_EVENTS
 
+    density_path = sidecar(run_file, "density")
+    density = T.read_rsu_density(density_path) if density_path else {}
+
     horizon = end
     if horizon is None:
         max_cycle: float | None = None
