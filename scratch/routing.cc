@@ -114786,6 +114786,7 @@ double   g_tvr_cumulative  = 0.0;
 // fade_eavesdropped_packets dedup set in efade_detection.h).
 // Denominator: total packets across all active flows (same as PDR).
 double   current_UCR       = 0.0;
+uint32_t g_ucr_prev_allseen = 0;   // eq:ucr denominator running total
 double   average_UCR       = 0.0;
 double   g_ucr_cumulative  = 0.0;
 // eq:ucr is a per-window ratio, so its numerator is the NEW copies this cycle,
@@ -115628,6 +115629,8 @@ void hardcode_attack7_test_network()
     // routing_2_.cc, applies to all Hidden Forwarding variants 4-7)
     fade_eavesdrop_counter   = 0;
     fade_eavesdropped_packets.clear();
+    fade_allseen_counter     = 0;
+    fade_all_packets_seen.clear();
     g_total_copies_scheduled = 0;
     g_hdup_intentional       = false;
     fade_cum_pdr = 0.0; fade_cum_pir = 0.0; fade_cum_mcc = 0.0;
@@ -117764,13 +117767,12 @@ void calculate_tvr_metric()
 // ============================================================
 void calculate_ucr_metric()
 {
-    uint32_t total_pkts = 0;
-    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
-    {
-        uint32_t f_size = (demanding_flow_struct_nodes_inst + fid)->f_size;
-        if (f_size > 0)
-            total_pkts += f_size;
-    }
+    // eq:ucr denominator |P_total|: distinct packets observed in THIS window.
+    // Was sum(f_size) -- the demanding-flow injection count -- which is a smaller
+    // population than the numerator draws from, so the ratio exceeded 1 and
+    // clamped. See fade_all_packets_seen in efade_detection.h.
+    uint32_t total_pkts = (uint32_t)(fade_allseen_counter - g_ucr_prev_allseen);
+    g_ucr_prev_allseen  = fade_allseen_counter;
 
     // eq:ucr numerator: distinct packets copied to an unauthorized destination
     // THIS window (the new copies since last cycle), over the same-window
@@ -122040,6 +122042,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			g_rx_claimed_sender = tagmodified_routing.Getprevious_senderId();
 			g_rx_claimed_ts     = previous_timestamp.GetSeconds();
 			Time originail_timestamp = tagmodified_routing.Getoriginal_timestamp();
+
+			// eq:ucr denominator: record this packet in P_total.  Computed once
+			// here and reused by both eavesdrop sites below, so a received packet
+			// costs exactly one H(p).
+			const uint64_t hp_rx = ucr_packet_identity(
+			    fid, packet_ID, originail_timestamp.GetNanoSeconds());
+			if (fade_all_packets_seen.insert(hp_rx).second)
+			    fade_allseen_counter++;
 			//cout<<previous_sender_ID<<endl;
 			
 			//uint32_t packets = txop_inst[fid].pending_packets[previous_sender_ID];
@@ -122084,11 +122094,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                 if (prev_sender < (uint32_t)total_size &&
                     passive_hf_malicious_nodes[prev_sender])
                 {
-                    if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
-                    {
-                        fade_eavesdropped_packets.insert({fid, packet_ID});
+                    // eq:ucr numerator: distinct PACKETS reaching an off-path
+                    // receiver, identified by H(p) (main.tex:1306).
+                    if (fade_eavesdropped_packets.insert(hp_rx).second)
                         fade_eavesdrop_counter++;
-                    }
                     // Fix 2b: a hidden forward IS a hop-proof violation by the
                     // malicious RSU. Populate its LSTM hop-fail counter so the
                     // 1[pi_hop=⊥] feature (eq:lstm_input) fires for that RSU's
@@ -122178,11 +122187,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     if (prev_sender < (uint32_t)total_size &&
                         active_hf_malicious_nodes[prev_sender])
                     {
-                        if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
-                        {
-                            fade_eavesdropped_packets.insert({fid, packet_ID});
+                        // eq:ucr numerator, H(p) identity — see the passive-HF
+                        // receive block above.
+                        if (fade_eavesdropped_packets.insert(hp_rx).second)
                             fade_eavesdrop_counter++;
-                        }
                         // Fix 2b: active hidden forward = hop-proof violation by
                         // the malicious RSU. Populate its LSTM hop-fail counter so
                         // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal

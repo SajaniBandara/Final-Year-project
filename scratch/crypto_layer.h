@@ -421,6 +421,46 @@ inline uint32_t crypto_msg_key(uint32_t pkt_id, uint32_t flow_id) {
 inline uint32_t crypto_msg_key_pkt(uint32_t key)  { return key & 0xFFFu; }
 inline uint32_t crypto_msg_key_flow(uint32_t key) { return key >> 12; }
 
+// ---------------------------------------------------------------------------
+// H(p) — the universal packet identity of main.tex:1306 ("SHA3-512 packet hash
+// used as the universal packet identity across UCR (eq:ucr), witness cache, and
+// Signature S6").  Returns the leading 64 bits of SHA3-512(flow_id || pkt_id ||
+// original_ts_ns).
+//
+// Why these three fields and not the payload: ns-3 payloads here are synthetic
+// (Create<Packet>(p_size - 28), zero-filled), so hashing packet CONTENT would
+// give every packet the same digest.  The three fields below all travel in
+// CustomDataUnicastTag_ModifiedRouting, so every receiver of the same packet
+// derives the same H(p), and original_timestamp differs per cycle -- which is
+// exactly what (flow_id, packet_id) alone lacks, since packet_id is a per-cycle
+// slot index that restarts at 1 every cycle.
+//
+// A hidden duplicate carries the ORIGINAL's original_timestamp
+// (routing.cc: dup_tag.Setoriginal_timestamp(original_timestamp)), so a copy and
+// its original share one H(p).  That is the eq:ucr semantics: the numerator
+// counts distinct packets p that reached an off-path receiver, not copy events.
+//
+// 64-bit truncation: a 300 s run yields on the order of 4e3 distinct eavesdropped
+// packets, so the birthday collision bound is n^2/2^65 ~ 4e-13 -- far below any
+// other error term in the metric.
+inline uint64_t ucr_packet_identity(uint32_t flow_id, uint32_t pkt_id,
+                                    int64_t original_ts_ns)
+{
+    uint8_t buf[16];
+    memcpy(buf,     &flow_id,         4);
+    memcpy(buf + 4, &pkt_id,          4);
+    memcpy(buf + 8, &original_ts_ns,  8);
+
+    uint8_t digest[64];
+    if (!sha3_512_hash(buf, sizeof(buf), digest))
+        return ((uint64_t)flow_id << 32) ^ ((uint64_t)pkt_id << 16)
+               ^ (uint64_t)original_ts_ns;   // hash unavailable: degrade, don't drop
+
+    uint64_t id = 0;
+    memcpy(&id, digest, 8);
+    return id;
+}
+
 // Sign buffer layout per eq:mldsa_sign: msg_id(4)|ts(8)|η(4)|nh(4)|z(4) = 24 bytes
 // No node_id, no padding — explicit memcpy, not struct cast.
 static constexpr size_t MLDSA_SIGN_BUF = 4 + 8 + 4 + 4 + 4;
