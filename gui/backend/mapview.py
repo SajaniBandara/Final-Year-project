@@ -260,13 +260,22 @@ def scene(
         )
         truncated = len(events) >= MAX_EVENTS
 
-    density_path = sidecar(run_file, "density")
-    density = T.read_rsu_density(density_path) if density_path else {}
-
     horizon = end
     if horizon is None:
-        candidates = [e.t for e in events[-1:]] + list(density)
-        horizon = max(candidates) if candidates else (trace.duration if trace else 0.0)
+        max_cycle: float | None = None
+        try:
+            from .parser import parse_file
+            runs = parse_file(run_file.path, run_file.attack_id)
+            if runs and runs[-1].cycles:
+                max_cycle = float(runs[-1].cycles[-1])
+        except Exception:
+            pass
+
+        if max_cycle is not None and max_cycle > 0:
+            horizon = max_cycle
+        else:
+            candidates = [e.t for e in events[-1:]] + list(density)
+            horizon = max(candidates) if candidates else (trace.duration if trace else 0.0)
         horizon = min(horizon, trace.duration if trace else horizon)
 
     frames: list[dict[str, Any]] = []

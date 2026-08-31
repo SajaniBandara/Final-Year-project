@@ -58,6 +58,15 @@ export async function initLab(root) {
   renderScenarioPicker(root);
   renderDefenceBoard(root);
 
+  window.addEventListener('mobiguard:tab-changed', (e) => {
+    if (e.detail?.tab === 'lab' && map) {
+      setTimeout(() => {
+        map._resize();
+        map.draw();
+      }, 50);
+    }
+  });
+
   window.addEventListener('mobiguard:catalog-updated', async () => {
     try {
       catalog = await api.catalog();
@@ -69,6 +78,11 @@ export async function initLab(root) {
 
   window.addEventListener('mobiguard:open-run-map', async (event) => {
     try {
+      // 1. Switch active tab to Attack Lab FIRST so panel is visible in DOM
+      const labTab = document.querySelector('.tab[data-tab="lab"]');
+      if (labTab) {
+        labTab.click();
+      }
       // Re-scan results directory so mid-demo simulation runs appear immediately
       try {
         await api.refresh();
@@ -117,10 +131,12 @@ export async function initLab(root) {
         await loadRun(root, targetRun);
       }
 
-      // Switch active tab to Attack Lab visually
-      const labTab = document.querySelector('.tab[data-tab="lab"]');
-      if (labTab) {
-        labTab.click();
+      // Ensure canvas is resized and drawn after DOM layout stabilizes
+      if (map) {
+        setTimeout(() => {
+          map._resize();
+          map.draw();
+        }, 50);
       }
     } catch (err) {
       console.error('Error handling mobiguard:open-run-map:', err);
@@ -526,8 +542,9 @@ function updateClock(root) {
   const out = root.querySelector('#map-clock');
   if (!out || !scene) return;
   const t = map.time;
+  const dur = scene.duration ?? 0;
   const attackStarted = t >= 10;
-  out.innerHTML = `t = ${fmt.num(t, 0)} s ${
+  out.innerHTML = `t = ${fmt.num(t, 0)} s / ${fmt.num(dur, 0)} s ${
     attackStarted
       ? '<span class="tag attack">attack active</span>'
       : '<span class="tag benign">benign baseline</span>'

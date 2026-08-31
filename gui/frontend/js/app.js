@@ -94,6 +94,8 @@ function initTabs(panels) {
     // problem: work continuing behind a hidden panel.
     if (name !== 'lab') stopLab();
     if (name !== 'simulation') stopSimulation();
+
+    window.dispatchEvent(new CustomEvent('mobiguard:tab-changed', { detail: { tab: name } }));
   };
   for (const button of buttons) {
     button.addEventListener('click', () => select(button.dataset.tab));
