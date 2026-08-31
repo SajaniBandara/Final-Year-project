@@ -69,6 +69,12 @@ export async function initLab(root) {
 
   window.addEventListener('mobiguard:open-run-map', async (event) => {
     try {
+      // Re-scan results directory so mid-demo simulation runs appear immediately
+      try {
+        await api.refresh();
+      } catch {
+        /* ignore refresh error, fall back to existing catalog */
+      }
       catalog = await api.catalog();
       renderScenarioPicker(root);
 
@@ -82,7 +88,7 @@ export async function initLab(root) {
       if (metricsFile) {
         const stem = metricsFile.replace(/\.csv$/, '');
         targetRun = (catalog.runs || []).find(
-          (r) => r.id === stem || r.file === metricsFile || (r.file && r.file.includes(stem))
+          (r) => r.id === stem || r.file === metricsFile || (r.file && r.file.includes(stem)) || r.id === runId
         );
       }
 
@@ -102,16 +108,22 @@ export async function initLab(root) {
         }
       }
 
-      if (targetRun) {
-        await loadRun(root, targetRun);
-      } else if (catalog.runs && catalog.runs.length > 0) {
-        await loadRun(root, catalog.runs[catalog.runs.length - 1]);
+      // 4. Fallback to latest run in catalog
+      if (!targetRun && catalog.runs && catalog.runs.length > 0) {
+        targetRun = catalog.runs[catalog.runs.length - 1];
       }
 
+      if (targetRun) {
+        await loadRun(root, targetRun);
+      }
+
+      // Switch active tab to Attack Lab visually
       const labTab = document.querySelector('.tab[data-tab="lab"]');
-      if (labTab) labTab.click();
-    } catch {
-      /* ignore */
+      if (labTab) {
+        labTab.click();
+      }
+    } catch (err) {
+      console.error('Error handling mobiguard:open-run-map:', err);
     }
   });
 

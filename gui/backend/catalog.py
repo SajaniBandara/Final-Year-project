@@ -201,15 +201,20 @@ class Catalog:
         return list(self._runs)
 
     def get(self, run_id: str) -> RunFile:
-        """Look up one run by id.
+        """Look up one run by id or filename.
 
         Raises:
             KeyError: if no such run is indexed.
         """
-        try:
+        if run_id in self._by_id:
             return self._by_id[run_id]
-        except KeyError:
-            raise KeyError(f"unknown run id: {run_id!r}") from None
+        clean_id = run_id.removesuffix(".csv")
+        if clean_id in self._by_id:
+            return self._by_id[clean_id]
+        for r in self._runs:
+            if r.run_id == clean_id or r.path.name == run_id or clean_id in r.run_id:
+                return r
+        raise KeyError(f"unknown run id: {run_id!r}")
 
     def filter(
         self,
