@@ -161,8 +161,8 @@ function shell() {
       <h2>Attack Lab</h2>
     </header>
 
-    <section class="panel" id="scenario-panel">
-      <div id="scenario-picker" class="scenario-grid"></div>
+    <section class="panel" id="scenario-panel" style="padding: 10px;">
+      <div id="scenario-picker" class="scenario-rail"></div>
     </section>
 
     <div class="lab-body">
@@ -255,9 +255,9 @@ function shell() {
         <section class="panel" id="guess-panel">
           <h3>🎯 Spot the Attacker</h3>
           <div class="row">
-            <button class="btn" id="guess-toggle">Start guessing</button>
-            <button class="btn" id="guess-reveal" disabled>Reveal</button>
-            <button class="btn ghost" id="guess-clear">Clear</button>
+            <button class="btn primary" id="guess-toggle">Start guessing</button>
+            <button class="btn" id="guess-clear">Clear</button>
+            <button class="btn" id="guess-reveal">Reveal</button>
           </div>
           <p class="hint" id="guess-hint"></p>
           <div id="guess-result"></div>
@@ -266,7 +266,7 @@ function shell() {
         <section class="panel" id="inspector-panel">
           <h3>🔍 Node Inspector</h3>
           <div id="inspector">
-            <p class="empty">Click any node on the map.</p>
+            <p class="empty">Click a vehicle, RSU, or controller on the map.</p>
           </div>
         </section>
 
@@ -281,14 +281,6 @@ function shell() {
 
 // -- scenario picker ---------------------------------------------------------
 
-/**
- * One card per attack variant, showing what data exists for it.
- *
- * Variants with no run on disk are shown disabled rather than hidden: their
- * absence is information, and a panel asking "what about attack 6?" deserves
- * "no run has been collected for it here" rather than a menu that quietly
- * omits it.
- */
 function renderScenarioPicker(root) {
   const byAttack = new Map();
   for (const run of catalog.runs || []) {
@@ -300,46 +292,31 @@ function renderScenarioPicker(root) {
     .map((attack) => {
       const runs = byAttack.get(attack.number) || [];
       const available = runs.length > 0;
-      const sigs = attack.signatures.length
-        ? attack.signatures.map((s) => `<span class="sig sig-${s}">${s}</span>`).join('')
-        : '<span class="sig sig-none">baseline</span>';
-      
-      const planeClass = attack.plane.toLowerCase().includes('control')
-        ? 'ctrl'
+      const planeShort = attack.plane.toLowerCase().includes('control')
+        ? 'CTL'
         : attack.plane.toLowerCase().includes('data')
-        ? 'data'
-        : 'base';
+        ? 'DAT'
+        : 'BASE';
 
       return `
-      <button class="scenario-card${available ? '' : ' is-empty'}"
+      <button class="scenario-segment${available ? '' : ' is-empty'}"
               data-attack="${attack.number}" ${available ? '' : 'disabled'}>
-        <div class="card-top">
-          <span class="scenario-num-badge">Attack 0${attack.number}</span>
-          <span class="scenario-plane-pill ${planeClass}">${attack.plane}</span>
-        </div>
-        <div class="scenario-name">${attack.name}</div>
-        <div class="scenario-sigs">${sigs}</div>
-        <div class="card-bottom">
-          <span class="scenario-runs-badge ${available ? 'active' : ''}">
-            ${available ? `<span class="dot"></span> ${runs.length} run${runs.length === 1 ? '' : 's'}` : 'No data'}
-          </span>
-        </div>
+        <span class="seg-num">0${attack.number}</span>
+        <span class="seg-name">${attack.name}</span>
+        <span class="seg-plane ${planeShort.toLowerCase()}">${planeShort}</span>
       </button>`;
     })
     .join('');
 
-  root.querySelectorAll('.scenario-card').forEach((card) => {
+  root.querySelectorAll('.scenario-segment').forEach((card) => {
     card.addEventListener('click', async () => {
       const attack = Number(card.dataset.attack);
       const runs = (catalog.runs || []).filter((r) => r.attack === attack);
       if (!runs.length) return;
 
-      // Instant UI feedback (0ms responsiveness)
-      root.querySelectorAll('.scenario-card').forEach((c) => c.classList.remove('is-selected'));
+      root.querySelectorAll('.scenario-segment').forEach((c) => c.classList.remove('is-selected'));
       card.classList.add('is-selected');
 
-      // Highest attacker percentage first: the most visible instance of the
-      // attack is the one worth opening on.
       runs.sort((a, b) => b.pct - a.pct);
       await loadRun(root, runs[0]);
     });
