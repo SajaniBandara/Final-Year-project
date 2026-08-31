@@ -1,0 +1,128 @@
+{
+  "A1 CP-SelectiveDelay": {
+    "all_windows": {
+      "TP": 636,
+      "TN": 6860,
+      "FP": 427,
+      "FN": 2061,
+      "M1_MCC": 0.2551,
+      "M2_DR": 0.2358,
+      "M3_FPR": 0.0586
+    },
+    "traffic_carrying": {
+      "TP": 630,
+      "TN": 4459,
+      "FP": 387,
+      "FN": 2045,
+      "M1_MCC": 0.2179,
+      "M2_DR": 0.2355,
+      "M3_FPR": 0.0799
+    },
+    "pct_windows_dropped": 24.67
+  },
+  "A2 DP-SelectiveDelay": {
+    "all_windows": {
+      "TP": 1185,
+      "TN": 6175,
+      "FP": 328,
+      "FN": 2296,
+      "M1_MCC": 0.3854,
+      "M2_DR": 0.3404,
+      "M3_FPR": 0.0504
+    },
+    "traffic_carrying": {
+      "TP": 1175,
+      "TN": 4032,
+      "FP": 303,
+      "FN": 2286,
+      "M1_MCC": 0.3417,
+      "M2_DR": 0.3395,
+      "M3_FPR": 0.0699
+    },
+    "pct_windows_dropped": 21.92
+  },
+  "A5 CP-ActiveHF": {
+    "all_windows": {
+      "TP": 1772,
+      "TN": 5193,
+      "FP": 456,
+      "FN": 899,
+      "M1_MCC": 0.6144,
+      "M2_DR": 0.6634,
+      "M3_FPR": 0.0807
+    },
+    "traffic_carrying": {
+      "TP": 1772,
+      "TN": 3359,
+      "FP": 448,
+      "FN": 898,
+      "M1_MCC": 0.5662,
+      "M2_DR": 0.6637,
+      "M3_FPR": 0.1177
+    },
+    "pct_windows_dropped": 22.15
+  },
+  "A6 DP-ActiveHF": {
+    "all_windows": {
+      "TP": 3630,
+      "TN": 1007,
+      "FP": 3607,
+      "FN": 76,
+      "M1_MCC": 0.2921,
+      "M2_DR": 0.9795,
+      "M3_FPR": 0.7818
+    },
+    "traffic_carrying": {
+      "TP": 3615,
+      "TN": 637,
+      "FP": 2189,
+      "FN": 75,
+      "M1_MCC": 0.3258,
+      "M2_DR": 0.9797,
+      "M3_FPR": 0.7746
+    },
+    "pct_windows_dropped": 21.68
+  },
+  "A7 CP-PassiveHF": {
+    "all_windows": {
+      "TP": 1751,
+      "TN": 5248,
+      "FP": 433,
+      "FN": 888,
+      "M1_MCC": 0.6212,
+      "M2_DR": 0.6635,
+      "M3_FPR": 0.0762
+    },
+    "traffic_carrying": {
+      "TP": 1751,
+      "TN": 3403,
+      "FP": 426,
+      "FN": 888,
+      "M1_MCC": 0.5744,
+      "M2_DR": 0.6635,
+      "M3_FPR": 0.1113
+    },
+    "pct_windows_dropped": 22.26
+  },
+  "A8 DP-PassiveHF": {
+    "all_windows": {
+      "TP": 2491,
+      "TN": 3493,
+      "FP": 1547,
+      "FN": 789,
+      "M1_MCC": 0.4425,
+      "M2_DR": 0.7595,
+      "M3_FPR": 0.3069
+    },
+    "traffic_carrying": {
+      "TP": 2480,
+      "TN": 1753,
+      "FP": 988,
+      "FN": 777,
+      "M1_MCC": 0.4045,
+      "M2_DR": 0.7614,
+      "M3_FPR": 0.3605
+    },
+    "pct_windows_dropped": 27.91
+  }
+}

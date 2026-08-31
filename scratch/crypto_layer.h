@@ -237,6 +237,26 @@ bool enable_stark_delay            = true;  // AB4: π_delay timing proof
 bool enable_stark_hop              = true;  // AB4: π_hop hop-legitimacy proof
 bool enable_witness_mechanism      = true;  // AB6: witness alert/BFT mechanism
 bool enable_quarantine             = true;  // AB7: trust updates + SC.Quarantine
+
+// ── SC.Quarantine ENFORCEMENT (eq:quarantine, 2026-08-30) ───────────────────
+// Default OFF so every result produced before this date reproduces exactly.
+//
+// Why this exists. Until now g_quarantined[] was WRITE-ONLY: it is set when
+// trust falls below T_MIN and read nowhere except its own double-set guard.
+// Nothing consulted it before forwarding a packet, installing a FlowMod, or
+// scheduling a hidden duplicate, so quarantine had no effect on the data path.
+// Measured on A5 @60% seed 1: of 43 quarantined RSUs, 39 kept scheduling
+// hidden duplicates afterwards -- 1,329 post-quarantine firing cycles. The
+// paper's mitigation claim (SC.Quarantine / BTMM / Full-Mode isolation) was
+// therefore unbacked in simulation: we had detection, not mitigation.
+//
+// This is the missing enforcement point for a mechanism main.tex already
+// specifies -- not a new design decision.
+//
+// NOTE ON M4 (eq:l_mit). Lmit is computed from t_quarantine[], i.e. the
+// instant the flag is SET. With enforcement off that measures the latency of
+// an inert flag, so M4 must not be reported until this is enabled.
+bool enable_quarantine_enforcement = false; // --enable_quarantine_enforcement
 // ── eq:local_quarantine / HOLD_FORWARD (added 2026-08-06) ───────────────────
 // alg:lrad_obu (main.tex:2395-2397) specifies TWO actions on D_OBU=1:
 //     HOLD_FORWARD(v,r)   and   ESCALATE(p,v,r,{flag_S1,flag_S2p})
@@ -460,6 +480,17 @@ struct WitnessAlert {
 double g_trust_score[268]       = {};
 double g_trust_last_update[268] = {};
 bool   g_quarantined[268]       = {};
+
+// True when `node` must be denied a data-path action because it is under
+// SC.Quarantine. Returns false unconditionally while enforcement is disabled,
+// so guarded call sites are bit-identical to the pre-2026-08-30 behaviour.
+// Indexed over the full node space (vehicles included), so DP variants whose
+// forwarder is a vehicle relay are covered on the relay's own quarantine state.
+inline bool quarantine_blocks(uint32_t node) {
+    if (!enable_quarantine_enforcement) return false;
+    if (node >= 268u) return false;
+    return g_quarantined[node];
+}
 double g_ctrl_trust_score[268]  = {};
 bool   g_ctrl_revoked[268]      = {};
 
