@@ -736,7 +736,7 @@ function renderDefenceBoard(root) {
     )
     .join('') +
     `<p class="hint" id="defence-summary">All layers on — full MOBIGUARD config.</p>
-     <button class="btn" id="defence-send">Send to Simulation →</button>`;
+     <button class="btn primary" id="defence-send" style="width: 100%; margin-top: 10px;">Send to Simulation →</button>`;
 
   host.querySelectorAll('input[data-layer]').forEach((input) => {
     input.addEventListener('change', () => updateDefenceSummary(root));
