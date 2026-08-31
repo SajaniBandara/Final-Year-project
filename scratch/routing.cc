@@ -121551,7 +121551,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						record_claimed_forward_timestamp(current_hop, flow_id, packet_id);
 						// S2-partial HMAC tag: same reasoning — stamp pre-delay so
 						// lrad_s2_partial_check() sees (t_recv - t_stamp) = attack_delay + propagation.
-						lrad_hmac_tag_packet(current_hop, packet_id, packet_id);
+						lrad_hmac_tag_packet(current_hop, packet_id, flow_id);
 
 						// §7.2 — ML-DSA-87 sign outgoing packet
 						{
@@ -124460,9 +124460,11 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // S2 hop_delay = attack_delay + propagation rather than propagation only.
     if (claimed_forward_timestamp(source, flow_id, packet_ID) == 0.0)
         record_claimed_forward_timestamp(source, flow_id, packet_ID);
-    // Guard: skip if already stamped pre-delay by the vehicle attack path.
-    if (g_hmac_tags.find({source, packet_ID}) == g_hmac_tags.end())
-        lrad_hmac_tag_packet(source, packet_ID, packet_ID);
+    // Was write-if-absent, which meant a slot stamped in an earlier cycle was
+    // never refreshed and lrad_s2_partial_check() read an ever-older ts_recv.
+    // Restamping is what the pre-delay vehicle attack path wants anyway: the
+    // S2 hop_delay it measures is (t_recv - t_stamp) for THIS forward.
+    lrad_hmac_tag_packet(source, packet_ID, flow_id);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
@@ -124991,7 +124993,7 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						// both S2-full (t_claimed_packet) and S2-partial (HMAC ts) see only
 						// propagation delay, never triggering.
 						record_claimed_forward_timestamp(source, fid, packet_id);
-						lrad_hmac_tag_packet(source, packet_id, packet_id);
+						lrad_hmac_tag_packet(source, packet_id, fid);
 
 						bool attacked = schedule_unified_selective_delay_attack(
 							present_selective_delay_attack_nodes,

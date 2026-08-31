@@ -157,7 +157,8 @@ inline LRADRSUFlags lrad_rsu(uint32_t rsu, uint32_t prev_sender,
                               uint32_t obu_orig_prev_sender  = UINT32_MAX);
 inline void    btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok);
 inline bool    lrad_s2_partial_check(uint32_t vehicle,
-                                     uint32_t pkt_id, double t_now);
+                                     uint32_t pkt_id, uint32_t flow_id,
+                                     double t_now);
 inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
 
 // =========================================================================
@@ -167,15 +168,27 @@ inline uint32_t lookup_vehicle_associated_rsu_local_idx(uint32_t vehicle);
 // =========================================================================
 
 // flag_S2p = HMAC.Verify(τ_i, k_i, msg) ∧ (t_now − ts_recv) > Δ_max
-inline bool lrad_s2_partial_check(uint32_t vehicle, uint32_t pkt_id, double t_now)
+inline bool lrad_s2_partial_check(uint32_t vehicle, uint32_t pkt_id,
+                                  uint32_t flow_id, double t_now)
 {
-    auto it = g_hmac_tags.find({vehicle, pkt_id});
+    const uint32_t msg_id = crypto_msg_key(pkt_id, flow_id);
+    auto it = g_hmac_tags.find({vehicle, msg_id});
     if (it == g_hmac_tags.end() || !it->second.valid) return false;
     if (!g_node_keys[vehicle].keys_generated) return false;
 
-    // Recompute tag with stored (pkt_id, ts, nonce) and vehicle's HMAC key.
+    // Freshness gate.  (pkt_id, flow_id) is a per-cycle slot index, so an entry
+    // written in an earlier cycle still occupies this key.  ts_recv in
+    // alg:lrad_obu is THIS packet's forward timestamp; an older one only makes
+    // (t_now - ts_recv) larger, so a stale entry fires flag_S2p unconditionally.
+    // A packet cannot legitimately still be in flight a full transmission period
+    // after it was stamped, so treat anything older as "no claim" -- the same
+    // sentinel discipline claimed_forward_timestamp() uses for recycled slots.
+    if ((t_now - it->second.ts) > data_transmission_period) return false;
+
+    // Recompute per eq:hmac_light: HMAC(k_i, msg_id || ts_i || eta_i), same
+    // 16-byte layout the writer used.
     uint8_t msg[16];
-    memcpy(msg,    &pkt_id,           4);
+    memcpy(msg,    &msg_id,           4);
     memcpy(msg+4,  &it->second.ts,    8);
     memcpy(msg+12, &it->second.nonce, 4);
 
@@ -183,8 +196,18 @@ inline bool lrad_s2_partial_check(uint32_t vehicle, uint32_t pkt_id, double t_no
     if (!hmac_sha3_512(g_node_keys[vehicle].hmac_key, 64, msg, 16, recomputed))
         return false;
 
-    // Constant-time compare (memcmp is fine here — timing side-channel
-    // is irrelevant inside a simulator with no real attacker observing it).
+    // MODELLED, NOT A REAL VERIFICATION.  msg was just rebuilt from this very
+    // entry's own ts/flow_id (and pkt_id, which had to match or the lookup above
+    // would have failed), using the same node's key -- so this is
+    // HMAC(k,m) == HMAC(k,m) and the branch is unreachable.  flag_S2p is the
+    // threshold test below, alone.
+    //
+    // Deliberate: HMAC authenticates ORIGIN, not truthfulness.  The S2 attacker is
+    // the forwarder itself and can sign a false timestamp validly, which is why
+    // eq:sig_s2 pairs the full check with a ZKP and alg:lrad_obu (main.tex:2342)
+    // annotates S2-partial "threshold only, no ZKP".  No variant models
+    // impersonation, so the forgery this would reject never occurs.
+    // See docs/CRYPTO_IMPLMENTATION.md 2.5 before "fixing" this.
     if (memcmp(recomputed, it->second.tag, 64) != 0) return false;
 
     return (t_now - it->second.ts) > S2_DELTA_MAX;
@@ -810,7 +833,7 @@ inline LRADOBUFlags lrad_obu(
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
     // Tag was stamped by the SENDER (prev_sender) not by the receiving vehicle.
-    flags.flag_S2p = g_disable_s1_s2 ? false : lrad_s2_partial_check(prev_sender, pkt_id, t_now);
+    flags.flag_S2p = g_disable_s1_s2 ? false : lrad_s2_partial_check(prev_sender, pkt_id, fid, t_now);
 
     // ── D_OBU (Eq. composite_light, main.tex:2354-2357) ─────────────────────
     // S3/S4 are not OBU-side signatures — see the LRADOBUFlags comment for
