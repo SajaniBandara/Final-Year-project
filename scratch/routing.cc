@@ -117703,14 +117703,56 @@ void ufcr_attempt_unauthorized_flowmod()
         if (enable_controller_failover &&
             Simulator::Now().GetSeconds() >= attack_start_time)
         {
+            // ── eq:delay_evidence ────────────────────────────────────────
+            // E_delay(c_i,t) = |{ r_k in R_ci(t) : f_S1(r_k,t) = 1 }|.
+            // Previously unimplemented: controller trust reacted only to
+            // unauthorized FlowMods, so a controller whose FlowMods induce
+            // timing anomalies was never penalised (eq:ctrl_trust_update's
+            // second disjunct was dead).
+            //
+            // f is taken over each controller's OWN assigned RSU set, not over
+            // all N_RSUs. main.tex says only "f+1 independent RSUs"; with
+            // N_RSUs=64 across N_Controllers=4, a global f+1 = 22 exceeds the
+            // ~16 RSUs any one controller owns, which would make the mechanism
+            // unreachable by construction. Per-set f keeps the BFT intent
+            // ("preventing a single compromised RSU from falsely accusing a
+            // controller") and matches bc_blockchain_helper.h:126's (n-1)/3+1.
+            uint32_t e_delay[16]   = {};
+            uint32_t rsu_count[16] = {};
+            for (uint32_t r = 0; r < (uint32_t)N_RSUs && r < 300; r++)
+            {
+                uint32_t c = rsu_controller_assignment[r];
+                if (c >= (uint32_t)N_Controllers || c >= 16) continue;
+                rsu_count[c]++;
+                if (g_s1_rsu_fired[r]) e_delay[c]++;
+            }
+
             for (uint32_t c = 0; c < (uint32_t)N_Controllers; c++)
             {
                 if (g_ctrl_revoked[c]) continue; // already revoked — no re-fire
-                if (controller_compromised[c] && !committed)
-                    ctrl_trust_update_negative(c);   // conflict evidence ≥ f+1
+
+                const uint32_t f_plus_1 =
+                    (c < 16 && rsu_count[c] > 0) ? ((rsu_count[c] - 1) / 3) + 1 : 1;
+                const bool delay_evidence = (c < 16) && (e_delay[c] >= f_plus_1);
+
+                if (delay_evidence)
+                    std::cout << "[CTRL-DELAY-EVIDENCE] controller=" << c
+                              << " E_delay=" << e_delay[c]
+                              << " >= f+1=" << f_plus_1
+                              << " (of " << rsu_count[c] << " assigned RSUs)"
+                              << " at t=" << Simulator::Now().GetSeconds() << "s\n";
+
+                // eq:ctrl_trust_update: penalise on conflict evidence >= f+1
+                // OR delay evidence >= f+1; reward only when BOTH are below.
+                if ((controller_compromised[c] && !committed) || delay_evidence)
+                    ctrl_trust_update_negative(c);
                 else if (!controller_compromised[c])
-                    ctrl_trust_update_positive(c);   // clean behaviour, < f+1
+                    ctrl_trust_update_positive(c);
             }
+
+            // f_S1 is a per-cycle indicator; clear after this cycle's evaluation.
+            for (uint32_t r = 0; r < (uint32_t)N_RSUs && r < 300; r++)
+                g_s1_rsu_fired[r] = false;
         }
     }
     if (Simulator::Now().GetSeconds() < simTime)

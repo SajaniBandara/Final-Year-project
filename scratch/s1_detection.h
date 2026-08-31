@@ -462,6 +462,12 @@ inline double s1_sample_handoff_jitter()
 //   packet_id      — packet ID (for logging)
 //   flow_id        — flow ID (for logging)
 // =========================================================================
+// eq:delay_evidence — per-RSU, per-cycle record of f_S1(r_k,t).  Set here when
+// S1 fires at RSU r_k; read once per cycle by ufcr_attempt_unauthorized_flowmod()
+// (routing.cc) to build E_delay(c_i,t) for each controller, then cleared.
+// Sized like rsu_controller_assignment[] (attack_variables.h:118).
+bool g_s1_rsu_fired[300] = {};
+
 inline bool s1_detect_packet(uint32_t rsu_idx,
                               uint32_t vehicle_id,
                               double   packet_delay_s,
@@ -745,6 +751,11 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
                  << ") variant=" << S1_HOME_VARIANT
                  << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
         }
+        // eq:delay_evidence: f_S1(rsu_idx, t) = 1 for this cycle.  Set after the
+        // suppress_detection gate so the TCAM generator's synthetic samples, which
+        // only feed the EWMA baseline, never accuse a controller.
+        if (!suppress_detection && rsu_idx < 300)
+            g_s1_rsu_fired[rsu_idx] = true;
         return true;
     }
 
