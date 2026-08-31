@@ -114753,6 +114753,7 @@ double t_quarantine[total_size] = {0.0};
 // send-side truth, set before any detector runs.
 double t_first_attack[total_size] = {0.0};
 uint32_t g_lmit_blocked_before_acting = 0;   // quarantined having never acted
+uint32_t g_lmit_scored_n            = 0;   // nodes actually averaged into L_mit
 bool     enable_corrected_lmit = false;      // --enable_corrected_lmit
 
 // Latch the first attack action for `node`. Cheap and idempotent.
@@ -117615,6 +117616,13 @@ void calculate_mitigation_latency_metric()
         }
     }
 
+    // eq:l_mit's domain is nodes with a defined t_onset, i.e. those that emitted
+    // an attack-conforming packet. Nodes quarantined before ever acting have no
+    // t_onset and are excluded -- but they are the SUCCESSES, so the mean alone
+    // moves the wrong way as mitigation improves. Publish the two population
+    // counts with it so the mean is never read on its own.
+    g_lmit_scored_n = valid_count;
+
     if (valid_count > 0)
         current_mitigation_latency = total_latency / (double)valid_count;
     else
@@ -118024,7 +118032,8 @@ void write_security_metrics_csv()
 			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg, t_stark_ms_avg,"
 			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
 			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
-			 << " ufcr_unauth_total, ufcr_blocked, UFCR\n";
+			 << " ufcr_unauth_total, ufcr_blocked, UFCR,"
+			 << " lmit_scored_n, lmit_blocked_before_acting\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118142,6 +118151,8 @@ void write_security_metrics_csv()
 		 << ", " << g_ufcr_unauth_total
 		 << ", " << g_ufcr_blocked
 		 << ", " << (current_UFCR * 100.0)
+		 << ", " << g_lmit_scored_n
+		 << ", " << g_lmit_blocked_before_acting
 		 << "\n";
 
 	fout.close();
