@@ -283,7 +283,7 @@ function renderForm(root) {
   }
 
   root.querySelectorAll('[data-param]').forEach((input) => {
-    input.addEventListener('change', () => {
+    const updateVal = () => {
       const name = input.dataset.param;
       values[name] =
         input.type === 'checkbox'
@@ -296,7 +296,9 @@ function renderForm(root) {
                 ? maybeNumber(input.value)
                 : input.value;
       refreshPlan(root);
-    });
+    };
+    input.addEventListener('change', updateVal);
+    input.addEventListener('input', updateVal);
     if (input.type === 'range') {
       input.addEventListener('input', () => {
         const out = input.parentElement.querySelector('output');
@@ -346,7 +348,8 @@ function field(param) {
       </label>`;
   }
   const step = param.kind === 'int' ? 1 : 'any';
-  if (param.min !== null && param.max !== null && param.max - param.min <= 1000) {
+  // simTime (Simulated seconds) is rendered as a number text box so users can type directly
+  if (param.name !== 'simTime' && param.min !== null && param.max !== null && param.max - param.min <= 1000) {
     return `
       <label class="param param-range">
         <div class="range-head">${label} <output>${value}</output></div>
@@ -358,9 +361,8 @@ function field(param) {
     <label class="param">
       ${label}
       <input type="number" data-param="${param.name}" data-kind="${param.kind}"
-             value="${value}" step="${step}"
-             ${param.min !== null ? `min="${param.min}"` : ''}
-             ${param.max !== null ? `max="${param.max}"` : ''}>
+             min="${param.min ?? ''}" max="${param.max ?? ''}" step="${step}"
+             value="${value ?? ''}" placeholder="${param.default}">
     </label>`;
 }
 
