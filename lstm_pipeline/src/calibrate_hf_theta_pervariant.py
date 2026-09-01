@@ -33,7 +33,7 @@ import numpy as np, torch
 
 SRC = Path(__file__).resolve().parent
 sys.path.insert(0, str(SRC))
-from evaluator import load_global_model, PRE, RESULTS
+from evaluator import load_global_model, PRE, RESULTS, DEVICE
 from fed_aggregator import Z_ALPHA
 from preprocessor import WINDOW
 
@@ -47,7 +47,11 @@ def scores_for(model, split):
     out = []
     with torch.no_grad():
         for i in range(0, len(X), 512):
-            out.append(model.anomaly_score(torch.from_numpy(X[i:i+512]).float()).cpu().numpy())
+            # .to(DEVICE): load_global_model() puts the model on cuda, so the
+            # batch must follow it. Without this the LSTM raises "Input and
+            # parameter tensors are not at the same device" on any GPU host.
+            xb = torch.from_numpy(X[i:i+512]).float().to(DEVICE)
+            out.append(model.anomaly_score(xb).cpu().numpy())
     return np.concatenate(out), np.load(PRE / f"{split}_meta.npy"), np.load(PRE / f"{split}_y_indep.npy")
 
 

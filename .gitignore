@@ -58,3 +58,16 @@ docs/main.synctex(busy)
 docs/main.fls
 
 CLAUDE.md
+# ── Local backups / restore points (2026-09-01) ─────────────────────────────
+# Timestamped safety copies made before a destructive pipeline step. They are
+# hundreds of MB of .npy/.pt binaries and must never enter git: commit 43c4d24
+# accidentally staged 370 MB of them (train_X.npy alone was 210 MB) before
+# being rolled back. The originals they protect are already tracked.
+lstm_pipeline/preprocessed_backup_*/
+lstm_pipeline/preprocessed/
+lstm_pipeline/restore_point_*/
+lstm_pipeline/models_backup_*/
+lstm_pipeline/*_backup_*.json
+lstm_pipeline/*_backup_*.bin
+# Raw arrays are regenerable from results_routing via preprocessor.py (~27 s).
+*.npy

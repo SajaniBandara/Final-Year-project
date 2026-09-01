@@ -118522,8 +118522,19 @@ void calculate_performance_evaluation_metrics()
 			uint8_t act = 1;   // default: no per-cycle gate for this variant
 			if (active_attack_variant == 0 || active_attack_variant == 1)
 				act = obs_exceeded_dmax ? 1 : 0;
-			else if (active_attack_variant >= 4 && active_attack_variant <= 7)
-				act = (_r < g_hf_send_flag_last.size() && g_hf_send_flag_last[_r]) ? 1 : 0;
+			else if (active_attack_variant >= 4 && active_attack_variant <= 7) {
+				const bool fired_now =
+					(_r < g_hf_send_flag_last.size() && g_hf_send_flag_last[_r]);
+				// Latch (hf_truth_latched): once this RSU has scheduled a
+				// duplicate it stays attack-active, matching S5-S8's persistent
+				// -state semantics and y_indep's np.maximum.accumulate latch.
+				// Separate array: g_dw_activity_last is zeroed every cycle.
+				if (fired_now && _r < g_hf_activity_latch.size())
+					g_hf_activity_latch[_r] = 1;
+				act = hf_truth_latched
+					? ((_r < g_hf_activity_latch.size() && g_hf_activity_latch[_r]) ? 1 : 0)
+					: (fired_now ? 1 : 0);
+			}
 			g_dw_activity_last[_r] = act;
 		}
 	}

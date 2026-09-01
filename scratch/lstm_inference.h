@@ -44,6 +44,12 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+// std::cerr is used below (the feature-count mismatch abort). Included
+// explicitly because this header is also compiled standalone by
+// lstm_inference_test.cpp, which is the docs/LSTM_RETRAIN_GUIDE.md §5 verify
+// step -- inside routing.cc an earlier include happens to pull <iostream> in,
+// so the omission only ever surfaced in the standalone build.
+#include <iostream>
 #include <string>
 #include <vector>
 

@@ -54,9 +54,44 @@ quantity — with the handoff/persistence fixes enabled. That is a ~560x gap
 explained entirely by `s1_suppress_handoff_fp` defaulting to `false`
 (`s1_detection.h:427`).
 
-**This cuts in the project's favour.** If any table reports ~12% zero-attack FPR,
-it badly understates the system. A validation run with the flag ON was queued at
-the time of writing; its result belongs here when it lands.
+**VALIDATED (same config, `--s1_suppress_handoff_fp=1`):**
+
+| flag | S1 firings | FP | TN | avg_FPR |
+|---|---|---|---|---|
+| OFF (default) | **1,766** | 39 | 229 | **12.32%** |
+| ON | **5** | 2 | 266 | **0.67%** |
+
+S1 false firings drop **353x**; FPR drops **18.5x**. With the flag ON, S1 meets
+its <=1% calibration target on a benign run; with it OFF it misses by 12x.
+
+**This cuts in the project's favour.** Any table reporting ~12% zero-attack FPR
+understates the system by more than an order of magnitude.
+
+Note 0.67% is not the 0.022% the other machine reported -- that figure was
+measured with the persistence fix at M=1 as well, which this run did not enable.
+`s1_suppress_handoff_fp` accounts for most of the gap, the persistence filter for
+the rest. Report the two separately rather than conflating them.
+
+**Delta_p sweep result (completes section 3).** A4 @60%, T_min=0.7:
+
+| Delta_p | installs | avg_mit_ms | blocked | FP | benign quarantine events |
+|---|---|---|---|---|---|
+| 0.10 (current) | 33,153 | 21,928 | 62 | 0 | 0 |
+| 0.20 | 22,124 | 11,789 | 104 | 0 | not measured |
+| 0.30 | 19,199 | 10,356 | 112 | 0 | **1** |
+
+Delta_p 0.10 -> 0.30: installs **-42.1%**, latency **-52.8%**, blocked **+80.6%**.
+Combined with T_min=0.7 against the original defaults (T_min=0.5, Delta_p=0.10):
+**installs -49.1%, mitigation latency -68.7%**.
+
+Cross-variant: A1 at Delta_p=0.30 gives latency -14.1% with PDR unchanged.
+
+**The cost appears at 0.30:** one false quarantine in a 90 s benign run, where
+the entire T_min sweep produced zero. Delta_p=0.20 captures most of the gain
+(installs -33.3%, latency -46.2%) and has no benign control yet.
+
+**Recommendation: T_min=0.7 + Delta_p=0.20**, pending a benign control at 0.20.
+Move to 0.30 only if that single event proves to be noise across seeds.
 
 ---
 

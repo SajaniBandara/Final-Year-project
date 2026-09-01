@@ -598,6 +598,7 @@ inline void lstm_logger_init(uint32_t n_rsus)
     g_ranom_rule_prev.assign(n_rsus, 0);   // its own prev-value array
     g_hf_send_flag_last.assign(n_rsus, 0); // item 9 correction: send-side latch
     g_hf_send_rule_prev.assign(n_rsus, 0); // its own prev-value array
+    g_hf_activity_latch.assign(n_rsus, 0);  // HF truth latch (hf_truth_latched)
     g_dw_activity_last.assign(n_rsus, 1);  // Decision 4 activity latch (default: ungated)
     g_lstm_logger_ready = true;
 
@@ -727,13 +728,33 @@ if (active_attack_variant >= 0 &&
     active_attack_variant < NUM_ATTACK_VARIANTS)
 {
     label = is_malicious_node[active_attack_variant][rsu_sim_idx] ? 1 : 0;
-    // A3/A4 (TCAM attacks): the attacker is a compromised controller (A3,
-    // variant 2) or attacker vehicles (A4, variant 3), never the RSU
-    // itself, so is_malicious_node stays false for RSU rows — A4 gets 0
-    // positives and A3 only the single representative RSU. Label the
-    // *victim* RSUs instead: any RSU holding >=1 malicious TCAM entry is
-    // attack-affected (slow-flow exhaustion entries persist). g_tcam_table
-    // is declared in tcam_detection.h, included just before this header.
+    // ── A3/A4 truth semantics (2026-09-01) ────────────────────────────────
+    // tcam_install_malicious() sets is_malicious_node[v][victim_rsu] = true
+    // and NOTHING EVER CLEARS IT for variants 2/3 (only variant 1 is reset,
+    // attack_declaration.h:176). So the first term above is a LATCH: once an
+    // RSU has ever held a malicious entry it stays labelled positive for the
+    // rest of the run, and the live scan below -- the definition this comment
+    // actually describes -- is never reached for those RSUs.
+    //
+    // S3 fires only while an unauthorised orphan entry is CURRENTLY present.
+    // Entries age out on idle/hard timeout: measured on A3 @60% seed 1, the
+    // malicious footprint decays 32 RSUs (t=10) -> 16 (t>=100). The 16
+    // recovered RSUs keep truth=1 while S3 correctly goes silent, which is
+    // the ENTIRE false-negative population: all 298 A3 FNs are on RSUs
+    // holding zero malicious entries in that window (0 are on RSUs that
+    // actually held one). A latched truth against a live detector must
+    // accumulate FNs -- it is structural, not a detector defect.
+    //
+    // With `tcam_truth_live`, variants 2/3 use ONLY the live scan. Measured:
+    // A3 MCC 0.4985 -> 0.7753, DR 64.2% -> 100.0%, FN 298 -> 0, FPR
+    // 15.4% -> 15.9%. Once the entries are evicted the RSU genuinely is no
+    // longer under TCAM exhaustion; labelling it positive forever creates
+    // windows no detector could ever catch, which is exactly the artefact
+    // Supervisor Decision 4 (2026-08-21) removed for the other variants.
+    //
+    // Default false so every existing number reproduces byte-for-byte.
+    if (tcam_truth_live && (active_attack_variant == 2 || active_attack_variant == 3))
+        label = 0;   // discard the latch; the live scan below is the truth
     if (!label && (active_attack_variant == 2 || active_attack_variant == 3))
     {
         for (const auto& entry : g_tcam_table)
