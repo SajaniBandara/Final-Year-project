@@ -35,16 +35,17 @@ const PLOT = {
 // labels a few physical pixels tall. `compact: true` swaps in a smaller
 // viewBox with its own (still legible at that size) font scale, rather than
 // the same 12.5-13.5px text stretched over a quarter of the space.
-// Sized close to this call's actual rendered width (a 2x2 grid cell in a
-// 560px sidebar column, see .pem-grid in app.css) rather than an arbitrary
-// round number -- an SVG's font-size is in viewBox units, so what ends up
-// legible is the ratio of font-size to viewBox width once scaled down to
-// the container, not the font-size number alone.
-// Flatter than the default 860x380 ratio on purpose: this feeds a 2x2 grid
-// that has to fit beside the map, in view together with it, not stack tall
-// enough to push the bottom row off-screen.
-const VIEW_COMPACT = { w: 250, h: 100 };
-const PAD_COMPACT = { top: 6, right: 8, bottom: 16, left: 30 };
+// Sized close to this call's actual rendered width (one full-width cell in
+// the 560px sidebar column, see .pem-grid in app.css -- one column of 4
+// stacked charts, not a 2x2 grid) rather than an arbitrary round number --
+// an SVG's font-size is in viewBox units, so what ends up legible is the
+// ratio of font-size to viewBox width once scaled down to the container,
+// not the font-size number alone.
+// Flat on purpose: 4 of these stack in a column beside the map, in view
+// together with it, so each has to stay short even though it is now full
+// width.
+const VIEW_COMPACT = { w: 480, h: 100 };
+const PAD_COMPACT = { top: 6, right: 10, bottom: 18, left: 38 };
 const FONT = { default: { tick: 12.5, axis: 13.5, label: 12.5 }, compact: { tick: 10, axis: 0, label: 0 } };
 
 /** The eight validated categorical slots, read from CSS so themes swap freely. */

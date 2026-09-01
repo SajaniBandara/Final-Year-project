@@ -756,22 +756,24 @@ table.mini td { padding: 4px 0; font-variant-numeric: tabular-nums; }
 .lab-right { display: flex; flex-direction: column; gap: var(--gap); }
 .lab-right .panel { margin-bottom: 0; }
 
-/* Kept short on purpose -- this sits beside the map, and the point is
-   watching both change together, so all 4 cells need to actually fit in
-   view alongside it rather than pushing the bottom row past the fold. A
-   max-height + scroll is still here as a last resort for a very short
-   window, same pattern as .map-legend, but the flattened chart aspect ratio
-   (VIEW_COMPACT in charts.js) is what should make it unnecessary in practice. */
-.pem-panel { display: flex; flex-direction: column; gap: 2px; max-height: 85vh; overflow-y: auto; }
+/* A grid row's height always follows its tallest item, so next to the
+   (intentionally tall) map this column has empty space below it either
+   way -- one column of 4 stacked charts uses more of that height with its
+   own natural content, rather than a flex/stretch trick to force-fill it
+   (tried that; flex:1 on a stretched parent collapsed the panel instead of
+   filling it -- reverted). */
+/* No height cap/inner scroll -- that trapped scrolling in a small nested
+   box you had to find and scroll separately to reach the 4th chart. Sized
+   to its natural content instead, so it just flows with the page like
+   everything else and the ordinary page scroll shows all 4. */
+.pem-panel { display: flex; flex-direction: column; gap: 2px; }
 .pem-panel .hint { margin: 2px 0; }
 .pem-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
   margin-top: 4px;
 }
-@media (max-width: 480px) { .pem-grid { grid-template-columns: 1fr; } }
 .pem-cell {
   display: flex;
   flex-direction: column;

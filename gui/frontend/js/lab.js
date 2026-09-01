@@ -532,22 +532,12 @@ async function loadRun(root, run, { trimTo } = {}) {
   syncConfiguratorSelection(root, scene);
   loadPemPanel(root);
 
-  const gt = scene.ground_truth;
   status.innerHTML = `
     <div class="run-badge">
       <strong>Attack ${scene.attack_id}</strong> at ${scene.attack_percentage}%,
       seed ${scene.seed} · ${fmt.int(scene.event_count)} accusations over
       ${fmt.num(scene.duration, 0)} s
       ${trimTo ? `<span class="warn"> (trimmed to first ${fmt.num(trimTo, 0)} s of the recorded run — it still ran its full length when captured)</span>` : ''}
-    </div>
-    <div class="run-sources">
-      ${gt.known
-        ? `<span class="good">Ground truth available</span> (${gt.attackers.length} attackers, ${gt.source})`
-        : `<span class="warn">Ground truth not recorded</span>${
-            gt.expected_count === null
-              ? ' — and the count is not derivable for this variant either: it depends on which RSUs were on-path at injection time.'
-              : ` — expected ${gt.expected_count} attackers.`
-          } ${gt.source}`}
     </div>
     <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
       <span class="scenario-plane-pill ctrl" style="font-size: 11px;">🛡 MOBIGUARD Defense Pipeline Active:</span>
@@ -949,6 +939,7 @@ async function renderPemCharts(root) {
   }
   if (forRunId !== currentRunId) return; // superseded by a later run switch
 
+  note.textContent = ''; // clear any stale error from a previous fetch
   pemSeries = series;
   pemSeriesRunId = forRunId;
   drawPemAtTime(root);
@@ -963,12 +954,10 @@ async function renderPemCharts(root) {
  */
 function drawPemAtTime(root) {
   if (!pemSeries || pemSeriesRunId !== currentRunId || !map) return;
-  const note = root.querySelector('#pem-note');
   const t = map.time ?? 0;
   const count = pemSeries.cycles.filter((c) => c <= t).length;
   const cycles = pemSeries.cycles.slice(0, count);
 
-  const caveats = new Set();
   pemSelection.forEach((name, slot) => {
     const cell = root.querySelector(`.pem-chart[data-slot="${slot}"]`);
     if (!cell || !name) return;
@@ -977,7 +966,6 @@ function drawPemAtTime(root) {
       cell.innerHTML = '<p class="empty">Not in this attack’s columns.</p>';
       return;
     }
-    if (pemSeries.caveats[name]) caveats.add(pemSeries.caveats[name]);
 
     renderLineChart(cell, {
       // Compact: this panel sits beside the map, at map height, not below
@@ -998,10 +986,6 @@ function drawPemAtTime(root) {
       vlines: t >= pemSeries.attack_start_s ? [{ x: pemSeries.attack_start_s, label: 'attack starts' }] : [],
     });
   });
-
-  note.innerHTML = caveats.size
-    ? `<span class="warn">⚠</span> ${[...caveats].join(' ')}`
-    : '';
 }
 
 // -- defence board -----------------------------------------------------------
