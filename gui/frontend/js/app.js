@@ -9,7 +9,6 @@
 import { api, ApiError } from './api.js';
 import { initLive, stopLive } from './live.js';
 import { initCrypto } from './crypto.js';
-import { initTcam, stopTcam } from './tcam.js';
 import { initLstm } from './lstm.js';
 import { initOffline } from './offline.js';
 import { initLab, stopLab } from './lab.js';
@@ -88,8 +87,6 @@ function initTabs(panels) {
     // Leaving the Live tab closes the socket: a stream left running in a
     // hidden panel keeps the server busy and confuses the next connection.
     if (name !== 'live') stopLive();
-    // Same reason: a grid animating in a hidden panel is wasted work.
-    if (name !== 'tcam') stopTcam();
     // The map's playback timer and the run poller are the same class of
     // problem: work continuing behind a hidden panel.
     if (name !== 'lab') stopLab();
@@ -114,7 +111,6 @@ async function main() {
     live: document.querySelector('#panel-live'),
     lstm: document.querySelector('#panel-lstm'),
     crypto: document.querySelector('#panel-crypto'),
-    tcam: document.querySelector('#panel-tcam'),
   };
   initTabs(panels);
 
@@ -151,7 +147,6 @@ async function main() {
     await initSimulation(panels.simulation);
     await initBaselines(panels.baselines);
     await initLstm(panels.lstm);
-    await initTcam(panels.tcam);
     await initCrypto(panels.crypto);
   } catch (error) {
     const hint =
