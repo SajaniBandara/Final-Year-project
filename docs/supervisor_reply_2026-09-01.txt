@@ -1,0 +1,136 @@
+Subject: Enforcement is already in and validated — plus a feature defect that
+         changes what threshold recalibration can achieve
+
+Hi Sir
+
+Your message crossed with two days of work, so most of priority one is already
+done. Answering your four points first, then one new finding that affects the
+calibration decision you just approved.
+
+
+1. QUARANTINE ENFORCEMENT — IMPLEMENTED AND VALIDATED
+
+The enforcement path is in (commit 6cb1189) and gated behind
+--enable_quarantine_enforcement. Post-quarantine firing drops to zero on all
+four HF variants. Your reading was right: g_quarantined[] was write-only, and
+nothing on the data path consulted it.
+
+Your scoping question has a specific answer, and it is not what we expected.
+It is NOT specific to how HF attacks schedule duplicates. It is specific to the
+ATTACKER TYPE:
+
+    A3 (attacker is an RSU)      malicious installs 25,234 -> 25,176   enforced
+    A4 (attacker is a vehicle)   malicious installs 49,689 -> 49,689   INERT
+
+A4 is byte-identical with enforcement on. The cause is that
+tcam_install_malicious() guards only node_id, and A4's attacker is a vehicle
+that never crosses the RSU trust path, so quarantine_blocks() is never
+consulted for it. A3 was run as the control precisely to prove the flag itself
+works — it does. Written up in docs/A4_QUARANTINE_LEAK_2026-08-31.md.
+
+So the remaining enforcement gap is the vehicle-attacker path, not the RSU one.
+We are fixing that next.
+
+On the vehicle-side local-quarantine hold path: it exists (eq:local_quarantine
+is implemented, lrad.h) and defaults OFF. We have not yet measured whether
+turning it on actually stops vehicle forwarding. That measurement is part of the
+A4 work.
+
+
+2. ITEM 11 / THE A8 DECLINE — YOU WERE RIGHT TO DOUBT IT
+
+We went back and checked, as you asked. The decline is not mitigation, and it is
+not attack tapering or a seed effect either. It is a measurement artefact.
+
+A8 @60%, 300 s, 5 seeds, two arms varying only enforcement:
+
+    peak UCR   96.0% +/- 4.90 in BOTH arms, identical to three significant figures
+
+The curve reproduces with enforcement OFF, so quarantine cannot have caused it.
+The real mechanism: UCR's numerator counted newly distinct (flow_id, packet_id)
+pairs, but packet_id is a per-cycle slot index that restarts every cycle, so only
+~32 distinct pairs exist in an entire 300 s run. The metric exhausts its
+identifier space by about t=100 s and reads zero thereafter. Meanwhile
+interception volume PEAKS at t=140-160 s — the attack is strongest exactly where
+the published figure shows it defeated.
+
+We have fixed the metric per main.tex: H(p) (SHA3-512, main.tex:1306) as the
+packet identity, and |P_total| as the observed-packet population rather than the
+demanding-flow injection count. eq:tvr settled the second one — it defines its
+set as a predicate over packets, not a flow-size parameter.
+
+Corrected, UCR discriminates by attack intensity for the first time:
+
+    A8 @20%   76.49%        A8 @60%   89.19%
+
+The old A8 caption has to change under any reading. And the honest mitigation
+number is lower than the send-side figure suggests: enforcement cuts intentional
+duplicate sends by 99.1% (9,950 -> 89) but eavesdropper receptions by only 24.3%
+(168,097 -> 127,203), because a quarantined RSU still forwards legitimate traffic
+that reaches the eavesdropper. That is your open question 2.3, now with a number:
+scheduling-only enforcement leaves about 76% of interception intact.
+
+
+3. NEW — WHY PER-VARIANT RECALIBRATION WILL NOT FIX A5-A8 FPR
+
+This is the one item that changes a decision you just made. Measured over
+1,372,800 rows (32 RSUs, all variants, 4 percentages, 5 seeds).
+
+Two of the eleven LSTM features — d_div and a_tp — are simulation-wide GLOBAL
+SCALARS. They carry the same value for all 64 RSUs in every cycle. They are also
+the largest-magnitude inputs under hidden forwarding. So in any A5-A8 run every
+RSU receives a network-wide "an attack is happening" signal, while ground truth
+labels only the attacker. Every other RSU is a structurally guaranteed false
+positive. Within-stratum AUC is 0.500 — literally zero per-node information.
+
+This matters for your threshold instruction: theta_HF^(k) = max across
+per-variant thetas is the right construction, and we will implement it as
+specified. But it cannot fix the A5-A8 FPR, because no threshold can separate
+RSUs on a feature that is identical at every RSU. The 73-82% A5-A8 FPR is a
+feature-construction defect upstream of any calibration.
+
+Separately, five of the eleven features have exactly zero benign variance, and
+fit_scaler substitutes std=1.0 for them, so they enter the network unnormalised
+at raw scale while the real-valued features are z-scored.
+
+We would rather you rule on this than have us assume: do we fix d_div/a_tp to be
+per-RSU quantities and re-collect, or keep them and report A5-A8 FPR with this
+limitation stated? The first is correct but costs a full dataset regeneration.
+
+
+4. CALIBRATION DECISIONS — ACCEPTED
+
+Decision 5 closed, per-variant theta as a labeled diagnostic table only, latch
+and recalibration in one pass with no intermediate reported, decisions 3 and 4
+and A7 closed. All understood and being actioned.
+
+On your latch reset-boundary flag — noted, and it connects to something we
+found. The dominant source of primary-column false positives (95-100%) is a
+mismatch between a LATCHED detector and an EVENT-GATED truth. That is not a
+tuning problem; it is the same specification question you raised: does a dormant
+compromised RSU count as a positive? Once the enforcement fix lands, the
+compromised state genuinely ends at quarantine, so moving the latch boundary to
+quarantine time would make truth and detector agree by construction rather than
+by tuning. We will not move it until you confirm.
+
+
+5. M4 — HELD, AS YOU INSTRUCTED
+
+We are not reporting it. One thing to know for when we do: M4 has a second
+defect independent of enforcement. eq:l_mit has no defined t_onset for a node
+quarantined before it ever sent an attack-conforming packet, so those nodes are
+excluded from the mean — but they are the SUCCESSES. In our last run 58 of 67
+quarantined nodes fell into that bucket, and the reported latency was the mean
+over the 9 slowest survivors. The metric therefore moves the WRONG WAY as
+mitigation improves. The exclusion count was being computed and then discarded;
+we now export it so the mean can never be read alone.
+
+
+NEXT
+
+A4 vehicle-attacker enforcement fix and its validation; the combined
+latch-plus-per-variant pass under the max-threshold construction; and which
+variant binds the threshold at each RSU. Awaiting your call on d_div/a_tp before
+touching the feature set.
+
+Thank you
