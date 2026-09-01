@@ -117,7 +117,29 @@ uint32_t pp_fn_global = 0;
 // PIR counter — incremented in MacRx before the eavesdropper-return early exit
 uint32_t fade_eavesdrop_counter = 0;
 uint64_t g_total_copies_scheduled = 0;
-std::set<std::pair<uint32_t, uint32_t>> fade_eavesdropped_packets;
+// Keyed by H(p) (crypto_layer.h: ucr_packet_identity), the SHA3-512 packet
+// identity of main.tex:1306 -- NOT (flow_id, packet_id), which is a per-cycle
+// slot index that repeats every cycle and capped this set at ~32 entries per
+// run, saturating eq:ucr's numerator to zero from about t=100 s.
+std::set<uint64_t> fade_eavesdropped_packets;
+
+// eq:ucr denominator: |P_total|, the set of distinct packets OBSERVED in the
+// window, keyed by the same H(p).  eq:ucr is a subset ratio -- its numerator is
+// {p in P_total : ...} -- so the denominator must be the population the numerator
+// is drawn from.  It previously used sum(f_size), the demanding-flow injection
+// count, which is a different and smaller population: measured 1,238 distinct
+// eavesdropped packets against 778 sum(f_size) on A8@60%/60s, clamping UCR to
+// 100% in 37 of 58 cycles.
+//
+// Populated at the single per-received-packet point in MacRx, upstream of both
+// eavesdrop sites, so numerator subset-of denominator is guaranteed structurally
+// rather than by argument.
+//
+// P_crit in eq:tvr includes packets never forwarded; this set can only contain
+// packets that were received somewhere, so it slightly undercounts that ideal.
+// The effect is conservative (UCR reads marginally high), never optimistic.
+std::set<uint64_t> fade_all_packets_seen;
+uint32_t fade_allseen_counter = 0;
 uint32_t hf_target_flow_id = 0;   // malicious RSU duplicates ONLY this flow; all others honest
 
 // ── FADE per-cycle CSV state ──────────────────────────────────────────────────

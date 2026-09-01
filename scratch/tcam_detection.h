@@ -347,6 +347,31 @@ inline TcamCycleMetrics ComputeTcamDetection(
         if (flag_s4) {
             ++metrics.s4_fired_count;
             if (!g_disable_s3_s4) record_detection_event(3, node_id, DSRC_RULE_S4);
+
+            // eq:quarantine enforcement for A4 (2026-08-31).
+            //
+            // The guard at tcam_attack_helper.h's injector already checks
+            // quarantine_blocks(node_id), and for A4 that node_id IS the
+            // attacking vehicle -- but no vehicle was ever quarantined, so the
+            // guard never fired and A4 was byte-identical with enforcement on
+            // (measured: 49,689 malicious installs both arms, vs A3's -58).
+            //
+            // Cause: quarantine is driven by g_trust_score[node] < TRUST_T_MIN,
+            // and nothing anywhere decremented the ATTACKER's trust. S3/S4
+            // record_detection_event() against node_id, the VICTIM RSU, which is
+            // correct for detection attribution but leaves the attacker's trust
+            // untouched forever.
+            //
+            // v_atk = argmax_v lambda_PI(v,r,t) is already computed above and was
+            // being used only for a log line. Feeding it to trust_update_negative()
+            // closes the loop: attacker trust decays -> crosses T_MIN ->
+            // g_quarantined[v_atk] -> the existing injector guard starts blocking.
+            //
+            // Detection attribution is deliberately unchanged -- S3/S4 still fire
+            // at the RSU that observes the saturation. Only the trust/mitigation
+            // path learns who caused it.
+            if (!g_disable_s3_s4 && v_atk != UINT32_MAX)
+                trust_update_negative(v_atk);
             // S4 (eq:rule_s4): TCAM saturation — utilisation U_TCAM exceeds the
             // threshold; the attacker is the vehicle with the highest packet-in
             // rate (argmax λ_PI), the data-plane TCAM-exhaustion signature.

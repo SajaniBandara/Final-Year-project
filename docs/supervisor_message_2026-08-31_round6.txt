@@ -1,0 +1,213 @@
+Subject: A8 rise-and-fall is a measurement artefact, not quarantine — plus four
+         spec/code mismatches found in the same check. Round-5 question still open.
+
+Hi Sir
+
+Since our last message we completed P1 (the item 11 A8 recheck) on the LSTM
+machine and, on the second machine, cross-checked the metric definitions against
+main.tex rather than against our own notes. The recheck came back with a result
+that changes a figure caption, and the cross-check found four places where the
+code and main.tex disagree. Both are below, with what we propose to do.
+
+The round-5 blocking question (latch + per-variant recalibration in one pass, or
+A5 alone first) is still open and still blocking. Nothing below depends on it.
+
+
+1. THE A8 RISE-AND-FALL IS NOT QUARANTINE
+
+We ran A8 at 60%, 300 s, seeds 1-5, two arms, varying only quarantine
+enforcement. All ten runs rc=0, error gate 0, 298 cycles.
+
+The published shape reproduces exactly. It also reproduces in the arm with
+enforcement OFF:
+
+    t (s)        10      12      15      19     >=25
+    OFF        96.0    0.0    14.67    3.33    ~0
+    ON         96.0    0.0    18.67    4.44    ~0
+
+Peak UCR is 96.0% +/- 4.90 in both arms, identical to three significant figures.
+The decline is present when the defence is absent and unchanged when it is added,
+so quarantine cannot be causing it. This is ruled out on data, not on code
+reading.
+
+The actual mechanism is counter saturation. UCR's numerator counts newly distinct
+(flow, packet_ID) pairs, and the dedup set is cleared once per RUN, not per
+cycle. Only ~32 distinct pairs exist in an entire 300 s run, so the delta is
+permanently zero from about t=100 s. Seed 1, enforcement OFF:
+
+    t bucket (s)    interceptions    new pairs    cumulative
+    0-20                   5,144           28            28
+    20-40                  9,516            3            31
+    40-60                 10,713            0            31
+    140-160               14,396            0            32
+    280-300               10,109            0            32
+    total                167,171           32            32
+
+Interception volume PEAKS at t=140-160 s, long after the metric reads zero.
+Across five seeds a mean of 149,799 interceptions occur after t=50 s, entirely
+inside the region the published figure shows as defeated.
+
+The A8 caption must change. It attributes the decline to quarantine; the decline
+is the metric running out of distinct identifiers.
+
+
+2. WHAT MITIGATION ACTUALLY ACHIEVES — AND WHY THE HEADLINE NUMBER IS 24%, NOT 99%
+
+Enforcement works, but not to the degree the send-side figure suggests:
+
+                                  OFF        ON      reduction
+    intentional duplicate sends  9,950        89        99.1 %
+    eavesdropper receives      168,097   127,203        24.3 %
+
+The gap is because the receive-side counter fires on any packet reaching an
+eavesdropper via a malicious RSU, not only on deliberately scheduled duplicates.
+With duplication essentially eliminated (89 sends), 127,203 interceptions still
+occur - a ratio of 1,011 receives per intentional send. A quarantined RSU is
+still permitted to forward legitimate traffic, and that traffic still reaches the
+eavesdropper.
+
+We initially read that as the metric over-counting. Checking eq:ucr in main.tex
+shows it is not: the equation counts packets received at ANY d' outside the
+committed forwarding policy, deliberate copy or not. So counting that relay
+traffic is correct, and the honest conclusion is the less flattering one:
+
+    scheduling-only enforcement removes about 24% of unauthorised copies.
+
+The 99.1% figure measures suppression of the attack mechanism, which is a real
+and reportable result, but it is not containment in the sense eq:ucr defines. We
+propose reporting both, with the 99.1% explicitly labelled as scheduling
+suppression and the 24.3% as containment.
+
+This also puts a number on your open question 2.3: scheduling-only enforcement
+leaves roughly 76% of interception intact. Whether legitimate forwarding by a
+quarantined RSU should also be blocked is your decision 3, still open.
+
+An independent check that we are reading this correctly: wall-clock time fell
+24.2% between arms (3,183 s -> 2,411 s). That matches the receive-side reduction
+almost exactly and not the send-side one, so simulation cost confirms that
+receive volume is what actually changed.
+
+
+3. FOUR PLACES WHERE THE CODE AND main.tex DISAGREE
+
+Checking the implementation against main.tex rather than our own documentation
+surfaced these. Only the first was suspected beforehand.
+
+(a) Packet identity. main.tex:1306 specifies H(p), a SHA3-512 hash, as "the
+    universal packet identity across UCR, witness cache, and S6". The code uses
+    (flow_id, packet_id). packet_id is a per-cycle slot index that restarts at 1
+    every cycle and is bounded by the transmission arrays, so the pair repeats
+    every cycle. sha3_512_hash() exists in the tree but no packet hash is ever
+    computed. This is the direct cause of section 1: under the specified identity
+    there would be no recycling and no saturation.
+
+(b) The window. eq:ucr is defined over R(d', W), an explicit window. The code
+    clears the dedup set once per run, so W is the whole run. S6 does implement a
+    30 s window, so the mechanism exists in the codebase - UCR just does not use
+    it.
+
+(c) The off-path test. eq:ucr tests d' not in P(s_p,d_p), the blockchain-committed
+    policy. The code tests membership of the attack's own designated eavesdropper
+    list. The metric is therefore defined in terms of the attack configuration
+    rather than the policy, and cannot see an unauthorised receiver that was not
+    pre-registered as an eavesdropper.
+
+(d) main.tex:4302 states "UCR returns to 0 post-quarantine". Section 1 disproves
+    this.
+
+We would like your ruling on UCR. Two options:
+
+    Option 1 - Redefine and re-run. Implement H(p), a per-cycle window, and the
+    policy-based test. Correct, but every hidden-forwarding result is regenerated.
+
+    Option 2 - Retire UCR as a temporal curve. Report it only as a peak-onset
+    figure (the 96.0% peak is real and reproducible in both arms), and evidence
+    mitigation with send volume and interception volume as in section 2. No
+    re-runs.
+
+We recommend Option 2 for the thesis timeline and Option 1 recorded as future
+work, but this is a reporting decision and we would rather you make it.
+
+
+4. TVR SHOULD COME OUT OF THE A8 TABLE
+
+avg_TVR is identically 0.000 in all ten runs, both arms, all five seeds. This is
+correct behaviour, not a defect: main.tex:1280 assigns TVR and UCR to "selective
+time delay and hidden forwarding respectively". TVR was never an A8 metric.
+We propose removing it from A8 reporting rather than presenting a structural zero
+as a result.
+
+
+5. WHAT WE FIXED, AND ONE THING WE DELIBERATELY DID NOT
+
+Having found that a per-cycle index was being used as a durable identity in one
+place, we traced every detection path that uses it:
+
+    S1              does not use it (logging only)            correct
+    S2 / TAP        already fixed - identity from the tag      correct
+    S6              keeps the pair, expires after 30 s         correct
+    crypto layer    composes flow_id into the key (FV688 fix)  correct
+    LRAD HMAC map   no flow component, never expired           FIXED NOW
+    UCR             run-scoped set                             section 3
+
+The LRAD fix is in and measured on A2 at 40%, 40 s: flag_S2p fires 2,197 ->
+2,272 (+3.4%) with the lookup-miss count bit-identical. The collision was masking
+genuine detections rather than fabricating false ones, so the fix recovers
+detections. PDR unchanged.
+
+We also predicted a second LRAD defect - stale entries firing the flag
+spuriously - and instrumented both builds to test it. Zero stale entries in
+40,000 calls. The prediction was wrong and we are recording it as wrong rather
+than leaving the claim standing.
+
+One item we are declaring rather than fixing, and would like you to confirm.
+LRAD's HMAC verification recomputes the tag from the stored record's own fields,
+so the comparison cannot fail - it is a threshold test with a decorative
+verification step. We propose documenting it as modelled rather than
+implementing it, because implementing it would not help: HMAC authenticates
+origin, not truthfulness. In S2 the attacker IS the forwarder, holds its own key,
+and can sign a false timestamp validly. That is precisely why eq:sig_s2 pairs the
+check with a ZKP and why alg:lrad_obu annotates S2-partial "threshold only, no
+ZKP". None of the eight variants models impersonation, so the forgery that HMAC
+verification rejects never occurs.
+
+Tag GENERATION and its CPU cost remain real and measured, so the Lightweight Mode
+overhead claim is unaffected. This is the same treatment already agreed for the
+STARK/ZKP timing proofs, and it is recorded in docs/CRYPTO_IMPLMENTATION.md 2.5.
+
+
+6. ONE THING YOU SHOULD KNOW ABOUT THE LSTM
+
+eq:lstm_input in main.tex lists 10 features. The pipeline uses 11 - your Fix 3 of
+2026-08-14 appended delta_t_exceeded, and changed delta_t from mean to per-cycle
+max at the same time. The shipped weights file is a 10-feature checkpoint and the
+code marks it INCOMPATIBLE, so a retrain is already owed independently of
+everything above. main.tex needs the 11th feature added to eq:lstm_input.
+
+We have not started that retrain and are not proposing to until the decisions
+below are settled, since some of them affect what gets reported from it.
+
+
+7. DECISIONS WE NEED
+
+    1. (Carried over, still blocking) Latch AND per-variant recalibration in one
+       pass, or rescore A5 alone first so you see the two effects separately?
+    2. (Carried over) Is per-variant theta a diagnostic table or the deployed
+       number?
+    3. (Carried over) Should legitimate forwarding by a quarantined RSU also be
+       blocked? Section 2 now quantifies the cost of not doing so: ~76% of
+       interception remains.
+    4. NEW - UCR: Option 1 (redefine and re-run) or Option 2 (retire as a
+       temporal curve, report peak-onset)? We recommend Option 2.
+    5. NEW - Confirm TVR comes out of the A8 table.
+    6. NEW - Confirm the HMAC verification is declared modelled rather than
+       implemented.
+
+The A8 caption has to change under either UCR option, so we will draft the
+replacement wording while we wait.
+
+Everything above is written up in full at
+docs/BUGS_MISMATCHES_AND_OPEN_DOUBTS_2026-08-31.md and
+docs/ITEM11_P1_A8_RISE_FALL_2026-08-31.md, both uncommitted pending your reply.
+
+Thank you

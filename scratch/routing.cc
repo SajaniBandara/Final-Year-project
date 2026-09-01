@@ -114753,6 +114753,7 @@ double t_quarantine[total_size] = {0.0};
 // send-side truth, set before any detector runs.
 double t_first_attack[total_size] = {0.0};
 uint32_t g_lmit_blocked_before_acting = 0;   // quarantined having never acted
+uint32_t g_lmit_scored_n            = 0;   // nodes actually averaged into L_mit
 bool     enable_corrected_lmit = false;      // --enable_corrected_lmit
 
 // Latch the first attack action for `node`. Cheap and idempotent.
@@ -114786,6 +114787,7 @@ double   g_tvr_cumulative  = 0.0;
 // fade_eavesdropped_packets dedup set in efade_detection.h).
 // Denominator: total packets across all active flows (same as PDR).
 double   current_UCR       = 0.0;
+uint32_t g_ucr_prev_allseen = 0;   // eq:ucr denominator running total
 double   average_UCR       = 0.0;
 double   g_ucr_cumulative  = 0.0;
 // eq:ucr is a per-window ratio, so its numerator is the NEW copies this cycle,
@@ -115628,6 +115630,8 @@ void hardcode_attack7_test_network()
     // routing_2_.cc, applies to all Hidden Forwarding variants 4-7)
     fade_eavesdrop_counter   = 0;
     fade_eavesdropped_packets.clear();
+    fade_allseen_counter     = 0;
+    fade_all_packets_seen.clear();
     g_total_copies_scheduled = 0;
     g_hdup_intentional       = false;
     fade_cum_pdr = 0.0; fade_cum_pir = 0.0; fade_cum_mcc = 0.0;
@@ -117612,6 +117616,13 @@ void calculate_mitigation_latency_metric()
         }
     }
 
+    // eq:l_mit's domain is nodes with a defined t_onset, i.e. those that emitted
+    // an attack-conforming packet. Nodes quarantined before ever acting have no
+    // t_onset and are excluded -- but they are the SUCCESSES, so the mean alone
+    // moves the wrong way as mitigation improves. Publish the two population
+    // counts with it so the mean is never read on its own.
+    g_lmit_scored_n = valid_count;
+
     if (valid_count > 0)
         current_mitigation_latency = total_latency / (double)valid_count;
     else
@@ -117700,14 +117711,56 @@ void ufcr_attempt_unauthorized_flowmod()
         if (enable_controller_failover &&
             Simulator::Now().GetSeconds() >= attack_start_time)
         {
+            // ── eq:delay_evidence ────────────────────────────────────────
+            // E_delay(c_i,t) = |{ r_k in R_ci(t) : f_S1(r_k,t) = 1 }|.
+            // Previously unimplemented: controller trust reacted only to
+            // unauthorized FlowMods, so a controller whose FlowMods induce
+            // timing anomalies was never penalised (eq:ctrl_trust_update's
+            // second disjunct was dead).
+            //
+            // f is taken over each controller's OWN assigned RSU set, not over
+            // all N_RSUs. main.tex says only "f+1 independent RSUs"; with
+            // N_RSUs=64 across N_Controllers=4, a global f+1 = 22 exceeds the
+            // ~16 RSUs any one controller owns, which would make the mechanism
+            // unreachable by construction. Per-set f keeps the BFT intent
+            // ("preventing a single compromised RSU from falsely accusing a
+            // controller") and matches bc_blockchain_helper.h:126's (n-1)/3+1.
+            uint32_t e_delay[16]   = {};
+            uint32_t rsu_count[16] = {};
+            for (uint32_t r = 0; r < (uint32_t)N_RSUs && r < 300; r++)
+            {
+                uint32_t c = rsu_controller_assignment[r];
+                if (c >= (uint32_t)N_Controllers || c >= 16) continue;
+                rsu_count[c]++;
+                if (g_s1_rsu_fired[r]) e_delay[c]++;
+            }
+
             for (uint32_t c = 0; c < (uint32_t)N_Controllers; c++)
             {
                 if (g_ctrl_revoked[c]) continue; // already revoked — no re-fire
-                if (controller_compromised[c] && !committed)
-                    ctrl_trust_update_negative(c);   // conflict evidence ≥ f+1
+
+                const uint32_t f_plus_1 =
+                    (c < 16 && rsu_count[c] > 0) ? ((rsu_count[c] - 1) / 3) + 1 : 1;
+                const bool delay_evidence = (c < 16) && (e_delay[c] >= f_plus_1);
+
+                if (delay_evidence)
+                    std::cout << "[CTRL-DELAY-EVIDENCE] controller=" << c
+                              << " E_delay=" << e_delay[c]
+                              << " >= f+1=" << f_plus_1
+                              << " (of " << rsu_count[c] << " assigned RSUs)"
+                              << " at t=" << Simulator::Now().GetSeconds() << "s\n";
+
+                // eq:ctrl_trust_update: penalise on conflict evidence >= f+1
+                // OR delay evidence >= f+1; reward only when BOTH are below.
+                if ((controller_compromised[c] && !committed) || delay_evidence)
+                    ctrl_trust_update_negative(c);
                 else if (!controller_compromised[c])
-                    ctrl_trust_update_positive(c);   // clean behaviour, < f+1
+                    ctrl_trust_update_positive(c);
             }
+
+            // f_S1 is a per-cycle indicator; clear after this cycle's evaluation.
+            for (uint32_t r = 0; r < (uint32_t)N_RSUs && r < 300; r++)
+                g_s1_rsu_fired[r] = false;
         }
     }
     if (Simulator::Now().GetSeconds() < simTime)
@@ -117764,13 +117817,12 @@ void calculate_tvr_metric()
 // ============================================================
 void calculate_ucr_metric()
 {
-    uint32_t total_pkts = 0;
-    for (uint32_t fid = 0; fid < 2 * (uint32_t)flows; fid++)
-    {
-        uint32_t f_size = (demanding_flow_struct_nodes_inst + fid)->f_size;
-        if (f_size > 0)
-            total_pkts += f_size;
-    }
+    // eq:ucr denominator |P_total|: distinct packets observed in THIS window.
+    // Was sum(f_size) -- the demanding-flow injection count -- which is a smaller
+    // population than the numerator draws from, so the ratio exceeded 1 and
+    // clamped. See fade_all_packets_seen in efade_detection.h.
+    uint32_t total_pkts = (uint32_t)(fade_allseen_counter - g_ucr_prev_allseen);
+    g_ucr_prev_allseen  = fade_allseen_counter;
 
     // eq:ucr numerator: distinct packets copied to an unauthorized destination
     // THIS window (the new copies since last cycle), over the same-window
@@ -117980,7 +118032,8 @@ void write_security_metrics_csv()
 			 << " o_crypto_bytes_pkt, t_batch_ms_avg, batch_B_avg, t_consensus_ms_avg, t_stark_ms_avg,"
 			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
 			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
-			 << " ufcr_unauth_total, ufcr_blocked, UFCR\n";
+			 << " ufcr_unauth_total, ufcr_blocked, UFCR,"
+			 << " lmit_scored_n, lmit_blocked_before_acting\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118098,6 +118151,8 @@ void write_security_metrics_csv()
 		 << ", " << g_ufcr_unauth_total
 		 << ", " << g_ufcr_blocked
 		 << ", " << (current_UFCR * 100.0)
+		 << ", " << g_lmit_scored_n
+		 << ", " << g_lmit_blocked_before_acting
 		 << "\n";
 
 	fout.close();
@@ -121551,7 +121606,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						record_claimed_forward_timestamp(current_hop, flow_id, packet_id);
 						// S2-partial HMAC tag: same reasoning — stamp pre-delay so
 						// lrad_s2_partial_check() sees (t_recv - t_stamp) = attack_delay + propagation.
-						lrad_hmac_tag_packet(current_hop, packet_id, packet_id);
+						lrad_hmac_tag_packet(current_hop, packet_id, flow_id);
 
 						// §7.2 — ML-DSA-87 sign outgoing packet
 						{
@@ -122040,6 +122095,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			g_rx_claimed_sender = tagmodified_routing.Getprevious_senderId();
 			g_rx_claimed_ts     = previous_timestamp.GetSeconds();
 			Time originail_timestamp = tagmodified_routing.Getoriginal_timestamp();
+
+			// eq:ucr denominator: record this packet in P_total.  Computed once
+			// here and reused by both eavesdrop sites below, so a received packet
+			// costs exactly one H(p).
+			const uint64_t hp_rx = ucr_packet_identity(
+			    fid, packet_ID, originail_timestamp.GetNanoSeconds());
+			if (fade_all_packets_seen.insert(hp_rx).second)
+			    fade_allseen_counter++;
 			//cout<<previous_sender_ID<<endl;
 			
 			//uint32_t packets = txop_inst[fid].pending_packets[previous_sender_ID];
@@ -122084,11 +122147,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                 if (prev_sender < (uint32_t)total_size &&
                     passive_hf_malicious_nodes[prev_sender])
                 {
-                    if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
-                    {
-                        fade_eavesdropped_packets.insert({fid, packet_ID});
+                    // eq:ucr numerator: distinct PACKETS reaching an off-path
+                    // receiver, identified by H(p) (main.tex:1306).
+                    if (fade_eavesdropped_packets.insert(hp_rx).second)
                         fade_eavesdrop_counter++;
-                    }
                     // Fix 2b: a hidden forward IS a hop-proof violation by the
                     // malicious RSU. Populate its LSTM hop-fail counter so the
                     // 1[pi_hop=⊥] feature (eq:lstm_input) fires for that RSU's
@@ -122178,11 +122240,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     if (prev_sender < (uint32_t)total_size &&
                         active_hf_malicious_nodes[prev_sender])
                     {
-                        if (fade_eavesdropped_packets.find({fid, packet_ID}) == fade_eavesdropped_packets.end())
-                        {
-                            fade_eavesdropped_packets.insert({fid, packet_ID});
+                        // eq:ucr numerator, H(p) identity — see the passive-HF
+                        // receive block above.
+                        if (fade_eavesdropped_packets.insert(hp_rx).second)
                             fade_eavesdrop_counter++;
-                        }
                         // Fix 2b: active hidden forward = hop-proof violation by
                         // the malicious RSU. Populate its LSTM hop-fail counter so
                         // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal
@@ -124460,9 +124521,11 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     // S2 hop_delay = attack_delay + propagation rather than propagation only.
     if (claimed_forward_timestamp(source, flow_id, packet_ID) == 0.0)
         record_claimed_forward_timestamp(source, flow_id, packet_ID);
-    // Guard: skip if already stamped pre-delay by the vehicle attack path.
-    if (g_hmac_tags.find({source, packet_ID}) == g_hmac_tags.end())
-        lrad_hmac_tag_packet(source, packet_ID, packet_ID);
+    // Was write-if-absent, which meant a slot stamped in an earlier cycle was
+    // never refreshed and lrad_s2_partial_check() read an ever-older ts_recv.
+    // Restamping is what the pre-delay vehicle attack path wants anyway: the
+    // S2 hop_delay it measures is (t_recv - t_stamp) for THIS forward.
+    lrad_hmac_tag_packet(source, packet_ID, flow_id);
 
     Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest_address, protocolwave);
 }
@@ -124991,7 +125054,7 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						// both S2-full (t_claimed_packet) and S2-partial (HMAC ts) see only
 						// propagation delay, never triggering.
 						record_claimed_forward_timestamp(source, fid, packet_id);
-						lrad_hmac_tag_packet(source, packet_id, packet_id);
+						lrad_hmac_tag_packet(source, packet_id, fid);
 
 						bool attacked = schedule_unified_selective_delay_attack(
 							present_selective_delay_attack_nodes,
@@ -142418,6 +142481,17 @@ int main(int argc, char *argv[])
     // contains the 80 ms A1/A2 inject, so no threshold can separate them.
     // See s1_suppress_handoff_fp in s1_detection.h. Default 0 = unchanged.
     cmd.AddValue("s1_suppress_handoff_fp", "S1 item 7 follow-up: do not fire on packets carrying the 50-300ms handoff jitter this detector injects (default 0)", s1_suppress_handoff_fp);
+    // eq:trust_update / eq:quarantine calibration parameters. crypto_layer.h
+    // labels this block "Tunable Parameters (all CLI-exposed)" but no AddValue
+    // existed for any of them, so the sweep main.tex asks for could not be run
+    // without editing the constant and rebuilding per value.
+    // main.tex marks all three [tbd]: "Delta_r, Delta_p (vehicle/RSU trust
+    // reward/penalty) & [tbd]; Delta_p > Delta_r enforced" and "T_min
+    // (vehicle/RSU quarantine threshold) & [tbd: {0.3, 0.5, 0.7}]".
+    // Defaults are unchanged, so omitting these reproduces every prior result.
+    cmd.AddValue("trust_t_min",   "T_min: quarantine threshold for vehicles/RSUs (eq:quarantine, main.tex [tbd: {0.3,0.5,0.7}]; default 0.50)", TRUST_T_MIN);
+    cmd.AddValue("trust_delta_p", "Delta_p: trust penalty per negative event (eq:trust_update, main.tex [tbd]; default 0.10)", TRUST_DELTA_P);
+    cmd.AddValue("trust_delta_r", "Delta_r: trust reward per clean event (eq:trust_update, main.tex [tbd]; default 0.05)", TRUST_DELTA_R);
     // eq:quarantine enforcement (2026-08-30). Default 0 reproduces every result
     // produced before this date; 1 makes SC.Quarantine actually deny data-path
     // actions instead of only setting a flag. See crypto_layer.h.

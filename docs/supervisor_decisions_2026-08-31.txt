@@ -1,0 +1,43 @@
+Subject: Six points where we are blocked on your decision
+
+Hi Sir
+
+Short list of things we cannot settle ourselves. Happy to send the full
+detail or the measurements behind any of them.
+
+1. delta_t_exceeded — most urgent, it blocks the LSTM retrain
+   Our own records contradict each other. preprocessor.py carries it as
+   FEATURES[10] with N_FEATURES=11; crypto_layer.h records it as banned as a
+   training/eval feature under your Fix 3. SUPERVISOR_FIXES_2026-08-14 measures
+   it at 100% agreement, MCC 1.0000, against the A1/A2 label. Keep it (11
+   features) or drop it (10)? This decides the weights format and whether the
+   A1/A2 detection numbers are leak-free, so we have not started the retrain.
+
+2. Latched label (carried over from round 5)
+   Adopt the latch AND recalibrate per variant in one pass, or rescore A5 alone
+   first so you can see the two effects separately?
+
+3. Per-variant theta (carried over)
+   Diagnostic table, or the deployed number?
+
+4. Quarantined RSU forwarding (carried over, now with a number)
+   Should legitimate forwarding by a quarantined RSU also be blocked? Measured:
+   blocking scheduling alone leaves about 76% of interception intact.
+
+5. M4 reporting
+   eq:l_mit has no defined onset for a node quarantined before it ever acted, so
+   those nodes are excluded — but they are the successes, 58 of 67 in our last
+   run. Should we report L_mit over nodes that acted WITH the blocked-count
+   beside it? And should the corrected mode become the default? It changes every
+   M4 figure produced so far.
+
+6. T_min calibration
+   main.tex marks Delta_r, Delta_p and T_min as [tbd] and asks for a T_min sweep
+   over {0.3, 0.5, 0.7}. It drives time-to-quarantine directly, and is the main
+   reason M4 is slow. Do you want that sweep run now?
+
+Two items that no longer need a decision: UCR is fixed — the A8 decline was a
+measurement artefact, not quarantine — and S5/S7 false-positive rate now
+measures 0% against the 37% recorded in July.
+
+Thank you
