@@ -139,6 +139,28 @@ export class NetworkMap {
     this.draw();
   }
 
+  /**
+   * Swap in a freshly-fetched scene for a run that is still being simulated,
+   * without the full reset `setScene` does -- that would restart playback,
+   * clear the fade window and snap every car's heading back to 0 on every
+   * poll. Frame indices from an earlier poll stay valid: `mapview.scene()`
+   * always builds frames from t=0 with the same step, so a growing run only
+   * appends new frames rather than renumbering existing ones.
+   */
+  followLive(newScene) {
+    if (!this.scene) {
+      this.setScene(newScene);
+      return;
+    }
+    const wasAtEnd = this.frameIndex >= this.scene.frames.length - 1;
+    this.scene = newScene;
+    const lastIndex = Math.max(0, newScene.frames.length - 1);
+    // Keep following the live edge unless the operator scrubbed back to look
+    // at something earlier -- a poll landing shouldn't yank the view forward
+    // out from under them.
+    this.setFrame(wasAtEnd ? lastIndex : Math.min(this.frameIndex, lastIndex));
+  }
+
   _appendEvents(index) {
     const frame = this.scene?.frames[index];
     if (!frame) return;

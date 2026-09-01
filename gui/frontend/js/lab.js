@@ -49,6 +49,27 @@ const columnsByAttack = new Map();
 const PEM_DEFAULTS = ['avg_DR', 'avg_FPR', 'avg_MCC', 'avg_lat_ms'];
 const pemSelection = [...PEM_DEFAULTS];
 
+// -- crypto/blockchain live strip -----------------------------------------
+// The signature chips prove *what* was detected; this proves *that it was
+// signed and chain-committed as it happened* -- same overlay card, same
+// "counts that grow as the map plays" idiom, not a separate tab a panel
+// member has to go find. All in schema.BASE_HEAD/TAIL, so present for every
+// attack variant.
+// flowmod_endorsement_rate deliberately excluded: it can only ever read
+// 1.0. g_flowmod_endorsements tracks one flow id, and flowmod_endorse() is
+// attack-agnostic -- every RSU unconditionally endorses whatever fid it's
+// given, with no check for whether it's the attacker's injected flow
+// (routing.cc ~118887, an intentional, documented, unfixed limitation, not
+// something wrong with this chart). Showing it would claim the endorsement
+// layer discriminates good/bad FlowMods, which it does not.
+const CRYPTO_COLUMNS = [
+  'sig_valid_rate',
+  'rsu_chain_len', 'global_chain_len',
+  'stark_timing_fail_count', 'stark_hop_fail_count',
+];
+let cryptoSeries = null;
+let cryptoSeriesRunId = null;
+
 export async function initLab(root) {
   root.innerHTML = shell();
   bindStaticControls(root);
@@ -142,6 +163,7 @@ export async function initLab(root) {
 
       if (targetRun) {
         await loadRun(root, targetRun);
+        if (event.detail?.live) startLiveMapFollow(root, targetRun.id);
       }
 
       // Ensure canvas is resized and drawn after DOM layout stabilizes
@@ -219,6 +241,7 @@ function shell() {
           </label>
           <input type="range" id="map-time" min="0" max="0" value="0" step="1">
           <output id="map-clock" class="clock">t = 0 s</output>
+          <span id="map-live-badge" class="tag attack" hidden>🔴 LIVE</span>
         </div>
 
         <div class="map-stage">
@@ -460,12 +483,75 @@ function pickDefaultRun() {
   return [...runs].sort((a, b) => score(b) - score(a))[0];
 }
 
+// -- live map follow ----------------------------------------------------------
+
+/**
+ * Re-fetch a still-running simulation's map every few seconds and merge it
+ * in via `NetworkMap.followLive`, so a run launched from the Simulation tab
+ * is watchable on the map *while it runs* -- vehicle positions come from the
+ * mobility trace (a function of elapsed time, not sim progress) and
+ * accusations from bc_detection_log_, both of which the simulator appends to
+ * continuously, the same way its metrics CSV does for Live PEM Monitor.
+ *
+ * Not a WebSocket tail like that stream: a plain poll reusing the existing
+ * /api/map endpoint, on the same ~4 wall-s/cycle cadence an optimized build
+ * actually writes at (stream.py's own comment for the CSV tail) -- no new
+ * backend endpoint needed for what is, from the map's point of view, just
+ * "the same run, asked again."
+ */
+const LIVE_MAP_POLL_MS = 4000;
+let liveFollowTimer = null;
+let liveFollowRunId = null;
+
+function startLiveMapFollow(root, runId) {
+  stopLiveMapFollow();
+  liveFollowRunId = runId;
+  const badge = document.querySelector('#map-live-badge');
+  if (badge) badge.hidden = false;
+
+  const poll = async () => {
+    if (liveFollowRunId !== runId) return; // superseded by a later run switch
+    let fresh;
+    try {
+      fresh = await api.mapScene(runId);
+    } catch {
+      return; // transient (e.g. mid-write); next poll retries
+    }
+    if (liveFollowRunId !== runId) return;
+
+    scene = fresh;
+    map.followLive(fresh);
+    const slider = root.querySelector('#map-time');
+    if (slider) {
+      slider.max = String(Math.max(0, fresh.frames.length - 1));
+      slider.value = String(map.frameIndex);
+    }
+    updateClock(root);
+    renderOverlay(root);
+    // The metrics CSV backing these grows the same way; keep them current too.
+    loadPemPanel(root);
+    loadCryptoSeries(root);
+  };
+
+  poll();
+  liveFollowTimer = setInterval(poll, LIVE_MAP_POLL_MS);
+}
+
+function stopLiveMapFollow() {
+  if (liveFollowTimer) clearInterval(liveFollowTimer);
+  liveFollowTimer = null;
+  liveFollowRunId = null;
+  const badge = document.querySelector('#map-live-badge');
+  if (badge) badge.hidden = true;
+}
+
 // -- run loading -------------------------------------------------------------
 
 async function loadDemoScene(root) {
   const status = root.querySelector('#lab-status');
   status.innerHTML = `<span class="spinner"></span> Loading demo scene…`;
   stopPlayback(root);
+  stopLiveMapFollow();
   currentRunId = 'demo';
   try {
     scene = await api.mapDemoScene();
@@ -490,6 +576,7 @@ async function loadDemoScene(root) {
   updateClock(root);
   syncConfiguratorSelection(root, scene);
   loadPemPanel(root);
+  loadCryptoSeries(root);
 
   status.innerHTML = `
     <div class="run-badge demo-badge">
@@ -502,6 +589,7 @@ async function loadRun(root, run, { trimTo } = {}) {
   const status = root.querySelector('#lab-status');
   status.innerHTML = `<span class="spinner"></span> Building the map for ${run.id}…`;
   stopPlayback(root);
+  stopLiveMapFollow();
   currentRunId = run.id;
   try {
     // `trimTo` only trims playback of this already-recorded run to the first
@@ -531,6 +619,7 @@ async function loadRun(root, run, { trimTo } = {}) {
 
   syncConfiguratorSelection(root, scene);
   loadPemPanel(root);
+  loadCryptoSeries(root);
 
   status.innerHTML = `
     <div class="run-badge">
@@ -645,6 +734,7 @@ export function stopLab() {
   state.playing = false;
   if (timer) clearInterval(timer);
   timer = null;
+  stopLiveMapFollow();
 }
 
 function updateClock(root) {
@@ -658,6 +748,39 @@ function updateClock(root) {
       ? '<span class="tag attack">attack active</span>'
       : '<span class="tag benign">benign baseline</span>'
   }`;
+}
+
+/**
+ * Fetch the crypto/blockchain columns for the current run once, so the
+ * map overlay can show them growing as the map plays -- the same "counts
+ * update live" idiom as the signature chips, proving each accusation was
+ * actually signed and chain-committed rather than just detected.
+ */
+async function loadCryptoSeries(root) {
+  cryptoSeries = null;
+  cryptoSeriesRunId = null;
+  if (!currentRunId || currentRunId === 'demo') return;
+  const forRunId = currentRunId;
+  try {
+    const series = await api.series(forRunId, CRYPTO_COLUMNS);
+    if (forRunId !== currentRunId) return; // superseded by a later run switch
+    cryptoSeries = series;
+    cryptoSeriesRunId = forRunId;
+    renderOverlay(root); // the first render (above) ran before this resolved
+  } catch {
+    /* No crypto/chain data for this run -- the overlay just omits that section. */
+  }
+}
+
+/** The most recent cryptoSeries value at or before sim-time `t`. */
+function cryptoValueAt(name, t) {
+  if (!cryptoSeries || cryptoSeriesRunId !== currentRunId) return null;
+  const values = cryptoSeries.columns[name];
+  const cycles = cryptoSeries.cycles;
+  if (!values || !cycles || !cycles.length) return null;
+  let idx = -1;
+  for (let i = 0; i < cycles.length && cycles[i] <= t; i += 1) idx = i;
+  return idx >= 0 ? values[idx] : null;
 }
 
 /** Live counters over the currently visible window. */
@@ -674,6 +797,24 @@ function renderOverlay(root) {
   const load = Object.values(map.frame.density || {});
   const peak = load.length ? Math.max(...load.map(Number)) : 0;
 
+  const t = map.time ?? 0;
+  const chainLen = cryptoValueAt('global_chain_len', t);
+  const sigRate = cryptoValueAt('sig_valid_rate', t);
+  const starkFails =
+    (cryptoValueAt('stark_timing_fail_count', t) ?? 0) +
+    (cryptoValueAt('stark_hop_fail_count', t) ?? 0);
+
+  const cryptoHtml =
+    chainLen === null
+      ? ''
+      : `
+      <div class="overlay-sigs">
+        <span class="sig">🔏 ${fmt.int(events.length)} signed (ML-DSA-87)</span>
+        <span class="sig">⛓ chain ${fmt.int(chainLen)}</span>
+        ${sigRate !== null ? `<span class="sig">✅ ${fmt.pct(sigRate * 100)} verified</span>` : ''}
+        <span class="sig">🧮 STARK ${starkFails > 0 ? `${fmt.int(starkFails)} failed` : 'OK'}</span>
+      </div>`;
+
   host.innerHTML = `
     <div class="overlay-card">
       <div class="overlay-row"><span>Accusations (last 3 s)</span><strong>${events.length}</strong></div>
@@ -685,6 +826,7 @@ function renderOverlay(root) {
           .map(([s, n]) => `<span class="sig sig-${s}">${s} ${n}</span>`)
           .join('') || '<span class="quiet">no accusations</span>'}
       </div>
+      ${cryptoHtml}
     </div>`;
 }
 

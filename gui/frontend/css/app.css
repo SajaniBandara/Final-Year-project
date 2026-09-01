@@ -823,6 +823,7 @@ table.mini td { padding: 4px 0; font-variant-numeric: tabular-nums; }
   border-top: 1px solid var(--border);
 }
 .cfg-status { font-size: 14.5px; color: var(--text-secondary); }
+.cfg-actions .btn { padding: 6px 13px; font-size: 13px; }
 
 .scenario-grid {
   display: grid;

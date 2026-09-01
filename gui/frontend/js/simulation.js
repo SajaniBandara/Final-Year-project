@@ -505,7 +505,8 @@ function renderActive(root, record) {
         <strong class="${stateClass}">${record.state}</strong>
         <code>${record.metrics_file}</code>
         ${record.state === 'running'
-          ? `<button class="btn ghost small" id="sim-stop">Stop</button>`
+          ? `<button class="btn ghost small" id="sim-stop">Stop</button>
+             <button class="btn primary small" id="sim-view-map" data-live="true" style="margin-left: 8px;">🔴 View Live Map</button>`
           : ''}
         ${record.state === 'finished'
           ? `<button class="btn primary small" id="sim-view-map" style="margin-left: 8px;">🗺️ View on Map</button>`
@@ -537,13 +538,14 @@ function renderActive(root, record) {
     }
   });
 
-  root.querySelector('#sim-view-map')?.addEventListener('click', () => {
+  root.querySelector('#sim-view-map')?.addEventListener('click', (e) => {
     window.dispatchEvent(
       new CustomEvent('mobiguard:open-run-map', {
         detail: {
           run_id: record.run_id,
           metrics_file: record.metrics_file,
           attack: record.values?.attack_number,
+          live: e.currentTarget.dataset.live === 'true',
         },
       })
     );
