@@ -19,6 +19,7 @@ MOBIGUARD is a mobility-aware, zero-trust SDVN (Software-Defined Vehicular Netwo
 11. [Node Architecture](#11-node-architecture)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Blockchain Integration (Hyperledger Fabric)](#13-blockchain-integration-hyperledger-fabric)
+14. [GUI Dashboard](#14-gui-dashboard)
 
 > **New to this project?** Read Sections 2 and 2.1 first — the cryptographic layer added in v2 requires two extra dependencies (`liboqs` and `libssl-dev`) that must be installed before the first build.
 
@@ -794,3 +795,124 @@ Stop the Node.js bridge using `Ctrl+C` in Terminal 1, then tear down the Fabric 
 cd "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/final yr project updated/Final-Year-project/blockchain/fabric-samples/test-network"
 ./network.sh down
 ```
+
+---
+
+## 14. GUI Dashboard
+
+MOBIGUARD includes a browser-based dashboard for offline analytics, live simulation monitoring, and the interactive Attack Lab. The backend is a FastAPI/Uvicorn server that reads from `results_routing/`.
+
+### 14.1 — Running locally (Windows or Linux)
+
+**Prerequisites:** Python virtual environment `.venv-gui` must exist in the project root.
+
+```bash
+# Create the venv (first time only)
+python -m venv .venv-gui
+
+# Activate (Windows PowerShell)
+.venv-gui\Scripts\Activate.ps1
+
+# Activate (Linux / macOS)
+source .venv-gui/bin/activate
+
+# Install dependencies (first time only)
+pip install uvicorn fastapi
+
+# Start the server
+python -m uvicorn gui.backend.app:app --host 127.0.0.1 --port 8021 --log-level info
+```
+
+Open your browser at **http://127.0.0.1:8021/**.
+
+The backend auto-detects the results directory in this order:
+1. `$MOBIGUARD_RESULTS_DIR` environment variable (if set)
+2. `~/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/` (HPC default)
+3. `<repo_root>/results_routing/` (fallback)
+
+If no CSV files are found the GUI starts in **Demo Mode** — all tabs are functional with synthetic data.
+
+---
+
+### 14.2 — Accessing HPC results from a Windows laptop via SSH tunnel
+
+Use this when the simulation data lives on the HPC and you want to view it on your local machine without copying files.
+
+#### Architecture
+
+```
+[Windows browser] → localhost:8022 → [SSH tunnel] → [HPC localhost:8021] → results_routing/
+```
+
+#### Step 1 — Start the GUI server on the HPC
+
+SSH into the HPC normally and start the backend:
+
+```bash
+ssh hpc-tunnel          # or however you normally SSH in
+cd /path/to/Final-Year-project
+source .venv-gui/bin/activate
+python -m uvicorn gui.backend.app:app --host 127.0.0.1 --port 8021 --log-level info
+```
+
+Leave this terminal open — the server must keep running.
+
+#### Step 2 — Open the SSH tunnel from your Windows machine
+
+Open a **new** PowerShell window (do NOT run this on the HPC):
+
+```powershell
+ssh -L 8022:localhost:8021 hpc-tunnel
+```
+
+> **Why port 8022?** If something else is already using port 8021 on your Windows machine, using 8022 as the local port avoids the `bind: Permission denied` error. You can use any free local port.
+
+Leave this PowerShell window open — the tunnel must stay alive.
+
+#### Step 3 — Open the dashboard
+
+In your Windows browser, go to:
+
+```
+http://127.0.0.1:8022/
+```
+
+Press **Ctrl + Shift + R** to hard-refresh. The GUI now reads all CSV data directly from the HPC's `results_routing/` folder with no file copying.
+
+---
+
+### 14.3 — Cloudflare-proxied SSH (if your HPC uses cloudflared)
+
+If the HPC is exposed via Cloudflare Tunnel instead of a direct SSH port, add this to your Windows `~/.ssh/config`:
+
+```
+Host hpc-tunnel
+    HostName <your-cloudflare-hostname>.trycloudflare.com
+    User <your_hpc_username>
+    ProxyCommand C:\cloudflared\cloudflared.exe access ssh --hostname <your-cloudflare-hostname>.trycloudflare.com
+```
+
+Then Steps 1–3 above work exactly the same — just use `hpc-tunnel` as the SSH target.
+
+**`cloudflared.exe` download:** https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+---
+
+### 14.4 — Simulation constraints (hard limits)
+
+The Run Simulation tab enforces these hard upper bounds:
+
+| Parameter | Maximum |
+|---|---|
+| Vehicles (`N_Vehicles`) | 200 |
+| Controllers (`N_Controllers`) | 4 |
+| RSUs (`N_RSUs`) | 64 |
+| Simulation Time (`simTime`) | 330 seconds |
+| Attack Percentage | 0, 20, 40, 60, 80, 100 (dropdown) |
+
+---
+
+### 14.5 — Shutting down
+
+- **Stop the GUI server:** Press `Ctrl + C` in the HPC terminal running uvicorn.
+- **Close the tunnel:** Press `Ctrl + C` or type `exit` in the Windows PowerShell running the SSH tunnel.
