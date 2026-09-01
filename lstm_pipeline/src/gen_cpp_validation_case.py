@@ -27,6 +27,8 @@ import json
 import struct
 from pathlib import Path
 
+import argparse
+
 import numpy as np
 import torch
 
@@ -39,7 +41,27 @@ WINDOW = 10
 
 
 def main():
-    ckpt = torch.load(MODEL_DIR / "global.pt", map_location="cpu", weights_only=False)
+    # --ckpt added 2026-09-01. This script previously HARDCODED global.pt while
+    # export_weights_cpp.py accepted --ckpt, so the two could silently describe
+    # DIFFERENT models and the section-5 verify would compare the exported
+    # weights against the wrong reference.
+    #
+    # It never surfaced because every checkpoint exported until now
+    # (global_clshead_*) was trained with the ENCODER FROZEN, so its encoder is
+    # bit-identical to global.pt's and the mismatch cancelled. The verify was
+    # passing for the wrong reason. It breaks the moment an end-to-end
+    # (--unfreeze) checkpoint is exported, whose encoder genuinely differs:
+    # measured abs_diff 0.81 against a 1e-3 tolerance.
+    #
+    # Pass the SAME --ckpt you gave export_weights_cpp.py, or the PASS means
+    # nothing.
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ckpt", default=str(MODEL_DIR / "global.pt"),
+                    help="checkpoint to build the reference case from; MUST "
+                         "match the one given to export_weights_cpp.py")
+    a = ap.parse_args()
+    print(f"reference checkpoint: {a.ckpt}")
+    ckpt = torch.load(a.ckpt, map_location="cpu", weights_only=False)
     model = LSTMAutoencoder(n_features=N_FEATURES)
     model.load_state_dict(ckpt["weights"])
     model.eval()

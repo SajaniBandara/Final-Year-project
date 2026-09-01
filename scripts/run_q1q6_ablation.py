@@ -53,6 +53,7 @@ WITHOUT committing:  NS3_DIR=~/ns3_g13/ns-allinone-3.35/ns-3.35 python3 scripts/
 
 import argparse
 import os
+import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -179,7 +180,7 @@ def print_table(params: dict):
 
 
 def fixed_params(args) -> dict:
-    return {
+    base = {
         "routing_test": "false", "N_Vehicles": 200, "N_RSUs": 64, "N_Controllers": 4,
         "mobility_scenario": 0, "maxspeed": 150, "use_sumo_mobility": 1,
         "architecture": 3, "simTime": args.sim_time,
@@ -195,6 +196,16 @@ def fixed_params(args) -> dict:
         # at all (Q3/Q6). Inert in configs with the LSTM disabled.
         "enable_lstm_cls": args.lstm_cls,
     }
+    # Passthrough extras (2026-09-01): lets a new sim flag be swept without
+    # editing this file each time. Applied after the base dict so it wins over
+    # it; config-specific keys in Q_CONFIGS are applied later still and so
+    # still take precedence over these.
+    for kv in filter(None, (x.strip() for x in getattr(args, "extra", "").split(","))):
+        k, _, v = kv.partition("=")
+        if not v:
+            raise SystemExit(f"--extra entry '{kv}' must be key=value")
+        base[k.strip()] = v.strip()
+    return base
 
 
 def result_filename(attack_number: int, pct: int, seed: int) -> str:
@@ -269,8 +280,34 @@ def run_lane(attack_number: int, params: dict, dry_run: bool, configs=None) -> l
         # and rsu_density_Attack5 held Q4 while MOBIGUARD_Attack5 held Q6.
         # Cannot recover what is already gone; this only protects future runs.
         sim_tag = src.name.replace("MOBIGUARD", "").replace(".csv", "")
+        # TCAM dumps use a DIFFERENT name shape and were silently missed by the
+        # glob above (found 2026-09-01). tcam_snapshot_dump() builds its own
+        # `mode` string (tcam_attack_helper.h): Attack{N}_{pct}_seed{S}, with
+        #   * NO _d{X}ms delay segment -- unlike MOBIGUARD, so sim_tag's
+        #     "_Attack1_60_d80ms_seed1" never matches "Attack1_60_seed1"
+        #   * a trailing _cpint{X} (A3) or _n{N} (A4) sweep suffix
+        # Net effect: tcam_snapshots_* and tcam_occupancy_* were never tagged,
+        # so every run on the same (attack, pct, seed) OVERWROTE the previous
+        # config's TCAM diagnostics -- exactly the loss this block was added to
+        # prevent, for the two variants (A3/A4) whose diagnosis needs them most.
+        # Build the alternate stem by stripping the delay segment, and glob it
+        # with a trailing wildcard to catch the sweep suffixes.
+        tcam_stem = re.sub(r"_d\d+ms", "", sim_tag)
+        # Match ONLY this run's own dumps: stem, then an optional sweep suffix
+        # (_cpint{X} for A3, _n{N} for A4), then an optional _final. Anything
+        # else after the stem is a DIFFERENT run's run_tag (_CTRLnewbin,
+        # _THOLD0.01, _SMOKE..., _prim, ...) and must not be swept up -- a
+        # trailing-wildcard glob would re-tag other experiments' files and
+        # destroy them, which is the same class of loss this block prevents.
+        tcam_re = re.compile(
+            rf"^tcam_[a-z]+{re.escape(tcam_stem)}"
+            rf"(?:_cpint\d+|_n\d+)?(?:_final)?\.csv$")
+        candidates = dict.fromkeys(
+            list(RESULTS_DIR.glob(f"*{sim_tag}.csv"))
+            + [p for p in RESULTS_DIR.glob("tcam_*.csv")
+               if tcam_re.match(p.name)])
         n_aux = 0
-        for aux in RESULTS_DIR.glob(f"*{sim_tag}.csv"):
+        for aux in candidates:
             if aux.name.startswith("MOBIGUARD") or aux.name.endswith(f"_{tag}.csv"):
                 continue
             aux_dst = aux.with_name(aux.name.replace(".csv", f"_{tag}.csv"))
@@ -504,6 +541,10 @@ def main():
     # simTime=300... any run shorter than this is unaffected") -- no change
     # needed there, only here.
     ap.add_argument("--sim-time", type=int, default=300, help="supervisor spec (2026-08-14): 300 s")
+    ap.add_argument("--extra", default="",
+                    help="passthrough sim params, comma-separated k=v "
+                         "(e.g. 'require_lstm_high_conf=1'). Merged last, so "
+                         "it overrides both the base params and the config.")
     ap.add_argument("--lstm-cls", type=int, default=1,
                     help="use the trained classification head's P(attack) as the "
                          "LSTM detection signal (supervisor Fix 2, 2026-08-20)")

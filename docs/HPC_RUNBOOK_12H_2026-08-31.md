@@ -72,20 +72,47 @@ find . -name 'Attack[5-8]_*' -printf '%TY-%Tm-%Td\n' | sort -u
 **GO requires all four:**
 
 1. A5, A6, A7, A8 all present, 5 seeds each
-2. Header width **uniform** across every file (mixed widths = mixed formats)
-3. `delta_t_exceeded`, `std_send_gt`, `tcam_send_gt` all present in the header
-4. `hf_send_gt` **non-zero** on A5-A8 files, `std_send_gt` non-zero on A1/A2 files
+2. `delta_t_exceeded` present in **every** file's header
+3. Each attack family carries **its own** injection-side ground-truth column:
+   `hf_send_gt` on A5-A8, `std_send_gt` on A1/A2, `tcam_send_gt` on A3/A4
+4. That column is **non-zero** in each family's files
 
-**Why item 4 matters:** `preprocessor.py` backfills a zero when a column is
-missing from an older file. A backfilled zero is indistinguishable from a real
-measurement downstream, and it silently produces an all-negative label. The
-preprocessor's own warning says those windows are "unusable -- re-collect before
-trusting". A column that exists but is all zeros is the failure mode to catch.
+**Corrected 2026-08-31 (HPC).** An earlier draft of this section demanded a
+*uniform header width* across the whole set and *all three* GT columns in every
+file. That is stricter than the pipeline and produces a **false NO-GO** on this
+machine's data. Measured here: 18 cols (A0, A5-A8), 19 (A1/A2), 20 (A3/A4) —
+three widths, because the GT columns were appended over time and are only
+written by the runs that can produce them.
 
-**Known-bad reference:** the other machine's copy is A0-A4 only, 18 columns,
-with a `delta_exceed` column at position 13 and no `std_send_gt`/`tcam_send_gt`.
-That header matches **no** documented format. If HPC's data looks like that,
-it is NO-GO.
+That is fine, and `preprocessor.py` already knows it
+([`load_all_csvs`](../lstm_pipeline/src/preprocessor.py), lines 124-169): it
+backfills a missing GT column with 0 but only *counts it as harmful* for the
+family it can harm — `std_send_gt` for A1/A2, `tcam_send_gt` for A3/A4. Its own
+comment: "every other run legitimately has nothing to record, so a backfilled
+zero there is the true value, not a gap. Counting all files would fire this
+warning on ~10k benign/HF files and train people to ignore it." An A5 run has no
+STD and no TCAM attack, so `std_send_gt = 0` there is a *measurement*, not a gap.
+
+**The real failure mode** is narrower than "a missing column": it is a family's
+**own** GT column being absent or all-zero, because `y_indep` is built from it
+(`make_windows`, lines 265-270) and a backfilled zero silently yields an
+all-negative label. That is what item 4 catches — and it is the only thing that
+should stop you.
+
+**Measured on this machine 2026-08-31 — all four PASS:**
+
+| check | result |
+|---|---|
+| A5-A8 coverage | 5 variants × 5 pct × 5 seeds, 6400 files |
+| `hf_send_gt` on A5-A8 | present, nonzero 15-115 / 298 rows (A5/6/7/8 @60% seed1) |
+| `std_send_gt` on A1/A2 | present (19-col), nonzero 62/298 |
+| `tcam_send_gt` on A3/A4 | present (20-col) |
+
+**Still a genuine NO-GO:** a 16-col header (predates `hf_send_gt` entirely — the
+preprocessor warns and HF labels fall back to `zkp_delay_fail|zkp_hop_fail`), or
+a family's own GT column reading all-zero. The other machine's A0-A4-only copy
+with a `delta_exceed` column at position 13 matches no documented format and
+remains NO-GO.
 
 ---
 
@@ -103,12 +130,21 @@ Then check what step 1 produced:
 ```bash
 python3 -c "
 import numpy as np, json
-X=np.load('../preprocessed/train_X.npy'); y=np.load('../preprocessed/train_yi.npy')
+X=np.load('../preprocessed/train_X.npy'); y=np.load('../preprocessed/train_y_indep.npy')
 print('X shape:', X.shape, '<- last dim MUST be 11')
 print('label balance: %.1f%% positive' % (100*y.mean()))
 print('scaler features:', json.load(open('../scaler_params.json')).get('features'))
 "
 ```
+
+**Filename corrected 2026-08-31:** the label file is `train_y_indep.npy`, not
+`train_yi.npy` ([`preprocessor.py:459`](../lstm_pipeline/src/preprocessor.py)).
+The old name throws `FileNotFoundError`, which mid-window reads as a pipeline
+failure when the pipeline is fine.
+
+Note the train split holds **all** variants for seeds 1-3 — only the *scaler* is
+benign-only (`fit_scaler`, line 181). So a positive balance well above 0% is
+expected here; a 0% reading means the split, not the scaler, is wrong.
 
 **Pass criteria:**
 
@@ -126,9 +162,38 @@ would have surfaced right here.
 
 ## 4. Hours 0:45-3:30 — train, skipping the grid search
 
-**Skip step 2.** `lstm_pipeline/hparams.json` already contains tuned
-hyperparameters for all 64 RSUs (`grid_mcc` ~0.98). Re-running the GPU grid
-search buys nothing and is the most expensive stage.
+**Skip step 2** — but not for the reason originally given here.
+
+**Corrected 2026-08-31 (HPC).** This section claimed `hparams.json` has
+`grid_mcc` ~0.98 for all 64 RSUs. **It does not.** Measured across all 64 keys:
+**mean 0.4664, min -0.2287** — several RSUs sit at *negative* MCC, i.e. worse
+than chance. The ~0.98 figure is RSU 0's value (0.9834), which is what you get
+if you eyeball the first entry. Do not repeat "grid_mcc ~0.98" to the
+supervisor; it is a per-RSU spread with a long bad tail, and that tail is
+itself a finding worth reporting.
+
+The **real** reason step 2 is skippable tonight is stronger. Re-running step 1
+with the latch changes **only `y_indep`** — verified byte-for-byte on this
+machine: `{train,val,test}_{X,y,y_multi,meta}.npy` are all identical to the
+pre-latch build; only `*_y_indep.npy` differs. And `local_trainer.py` selects on
+`_y.npy` (`y_binary`), not `y_indep` (line 45). So:
+
+- the **autoencoder** path (`local_trainer` → `fed_aggregator` → `global.pt`)
+  is **unaffected by the latch**. Existing `rsu_*.pt` / `global.pt` stay valid;
+  steps 2 **and 3** are both unnecessary for §6b
+- only the **classifier head** (§6a) trains on `y_indep` and genuinely needs a
+  retrain
+
+This means **§6b can run immediately against the existing `global.pt`** rather
+than waiting on the 2h45m in this section. Do §6b first — it is the
+highest-confidence win and it is not blocked by anything.
+
+```bash
+python pipeline.py --from-step 3      # fed_aggregator -> evaluator
+```
+
+Run the above only if you want the autoencoder numbers refreshed end-to-end;
+it is **not** a prerequisite for §6b.
 
 ```bash
 python pipeline.py --from-step 3      # fed_aggregator -> evaluator
@@ -160,12 +225,19 @@ will fail fast at simulation time — but only if you actually run a sim.
 
 ---
 
-## 5b. CRITICAL — two flags you must set, and neither is CLI-settable
+## 5b. CRITICAL — two flags you must set (they ARE CLI-settable here)
 
-Added 2026-08-31 evening. **`enable_lstm_cls` and `enable_hf_theta` both default
-to `false` and have NO `AddValue` registration**, so they cannot be turned on from
-the command line. They require editing the declaration in `crypto_layer.h` and
-rebuilding.
+Added 2026-08-31 evening. **Corrected on the HPC machine the same night: both
+flags are already registered with `cmd.AddValue` at
+[`crypto_layer.h:2127-2131`](../scratch/crypto_layer.h), so
+`--enable_lstm_cls=1 --enable_hf_theta=1` works from the command line. No
+`crypto_layer.h` edit and no rebuild are required for them.**
+
+They do both still default to `false`, so they must be passed explicitly — that
+part of the warning stands. The original text said they had no `AddValue`
+registration and needed a source edit; that was true of the tree the runbook was
+written on, not this one. Per §11, treat every C++-side claim in this document
+the same way: **check the source before acting on it.**
 
 | flag | gates | why it matters tonight |
 |---|---|---|

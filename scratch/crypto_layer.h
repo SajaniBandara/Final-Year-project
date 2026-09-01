@@ -275,12 +275,55 @@ bool enable_quarantine_enforcement = false; // --enable_quarantine_enforcement
 // with/without comparison the thesis needs to justify the mechanism.
 bool   enable_local_quarantine     = false;
 // T_hold is NOT given a numeric value anywhere in main.tex — the symbol table
-// (main.tex:1319) defines it only as "maximum duration for OBU local forwarding
-// suspension pending RSU confirmation". 0.1 s is a placeholder chosen to exceed
-// the 1 ms simulated OBU->RSU escalation delay (lrad.h escalate_to_rsu) by two
-// orders of magnitude, so RSU.Confirm virtually always releases the hold before
-// the timeout does. IT IS NOT CALIBRATED — treat as an open parameter.
-double T_HOLD                      = 0.1;
+// (main.tex:1274) defines it only as "maximum duration for OBU local forwarding
+// suspension pending RSU confirmation" (see also main.tex:2371, 2377).
+//
+// SELECTION CRITERION (2026-09-01). The value is not arbitrary even though the
+// paper leaves it open, because the mechanism bounds it from both sides:
+//
+//   Lower bound — the hold must outlast the RSU.Confirm round trip, or a real
+//   attacker resumes forwarding before confirmation can arrive and the
+//   mitigation leaks. escalate_to_rsu() schedules RSU-side processing exactly
+//   1 ms out (lrad.h:746, Simulator::Schedule(Seconds(0.001))), and that
+//   handler calls rsu_confirm_release() (lrad.h:687). So the floor is ~1 ms
+//   plus scheduling jitter.
+//
+//   Upper bound — T_hold is the latency penalty paid by any vehicle held in
+//   error. A false D_OBU costs that vehicle exactly T_hold of deferred
+//   forwarding, so oversizing it degrades delivery/latency in proportion to the
+//   OBU false-positive rate.
+//
+//   Criterion: pick the SMALLEST T_hold at which releases are dominated by
+//   RSU.Confirm rather than timeout expiry. The instrumentation to decide this
+//   already exists -- g_fwd_release_confirm vs g_fwd_release_timeout below --
+//   so the answer is measured, not argued. scripts/sweep_t_hold.py runs it.
+//
+// MEASURED 2026-09-01 (scripts/sweep_t_hold.py, attack 2 @60%, seed 1, 90 s,
+// 17k+ hold events per point). The floor is exactly 1 ms -- the confirm RTT:
+//
+//     T_hold     confirm   timeout   timeout%
+//     0.0002      16973       476      2.7%
+//     0.0005      16832       342      2.0%
+//     0.00075     16440       201      1.2%
+//     0.001       17499         0      0.0%   <- floor
+//     0.01        16126         0      0.0%
+//     0.1         3882          0      0.0%   (old default)
+//
+// Timeout releases appear below 1 ms and vanish at it, matching the analytic
+// prediction exactly. Containment is identical for every value at or above the
+// floor, so the only thing larger values buy is latency: cost is linear
+// (mean hold tracks T_hold almost exactly, ~250-1250 packets caught in the
+// 1 ms gap and charged the full remaining window).
+//
+// 0.01 = 10x the measured floor: real margin against confirm-latency jitter
+// under load, at 9.74 ms mean hold. The previous 0.1 was 100x the floor and
+// bought nothing -- identical containment for 10x the latency.
+//
+// Do NOT lower this toward the floor for cheapness: below 1 ms containment
+// fails SILENTLY (a timeout release lets a real attacker resume forwarding,
+// with nothing in the logs saying so), which is the exact failure the
+// mechanism exists to prevent.
+double T_HOLD                      = 0.01;
 double g_fwd_hold_until[268]       = {};          // 0.0 = not held
 uint32_t g_fwd_hold_flow[268]      = {};          // flagged flow id
 uint32_t g_fwd_hold_events         = 0;           // HOLD_FORWARD invocations
@@ -364,6 +407,57 @@ bool enable_hf_theta                = false;
 // Threshold comes from cls_theta.json (per-RSU, swept on the validation
 // split for FPR<=1% at highest DR), defaulting to P>0.5 where absent.
 bool enable_lstm_cls                = false;
+
+// FPR fix 1 (2026-08-31) — CLI: --require_lstm_high_conf (default false).
+//
+// D_RSU (lrad.h) currently ORs in `flag_LSTM` alone, so a SOFT LSTM-only hit
+// (flag_LSTM set, flag_LSTM_high_conf clear, no signature co-firing) marks the
+// window via dw_mark_rsu() and lands in M1.
+//
+// That is inconsistent with how this codebase already treats soft LSTM hits
+// everywhere else. Both existing sites deliberately withhold them:
+//   * lrad.h:571-574 -- `lstm_only_soft` blocks the BTMM trust gate entirely,
+//     for either outcome, rather than hand out an unearned trust update.
+//   * lrad.h:628     -- only `flag_LSTM && flag_LSTM_high_conf` latches into
+//     the per-node confusion matrix; "only the permanent TP/FP confusion-matrix
+//     latch is withheld from soft hits".
+// So the project twice ruled a soft LSTM-only hit too weak to act on, and then
+// let it into the one score M1 actually reports.
+//
+// When true, D_RSU admits the LSTM term only at high confidence. Signatures are
+// untouched: whenever any of S2f/S5-S8 fires, D_RSU is true regardless, so this
+// removes exactly the soft-LSTM-ONLY windows and nothing else.
+//
+// Default false so every pre-existing number reproduces byte-for-byte; turn on
+// explicitly to measure. Motivation and measured FP attribution:
+// docs/FPR_REDUCTION_ANALYSIS_2026-08-31.md.
+bool require_lstm_high_conf         = false;
+
+// FPR fix 2 (2026-09-01) — CLI: --dw_mark_suspect (default false).
+//
+// dw_mark_rsu() is called with `rsu` -- the RSU *processing* the packet -- so an
+// RSU that correctly detects a malicious neighbour is marked positive against
+// its OWN truth=0. lrad.h's own comment on the primary column says it plainly:
+// such a node is "penalised for detecting... why benign nodes fire in 58/58
+// windows, and why all six detectors with node-level FP=0 (S3-S8) still
+// collapse at window level."
+//
+// The 2026-08-22 fix corrected this by marking the SUSPECT (prev_sender), but
+// was applied ONLY to the primary column (dw_mark_rsu_primary, lrad.h:550).
+// The `score` column -- the one M1 is actually computed from -- kept the
+// observer attribution. Measured on arm A: 44.7% of A5-A8 `score` false
+// positives land on RSUs that are not declared attackers at all (39.3-48.9%
+// per variant), versus 0-4.9% for the primary column.
+//
+// When true, dw_mark_rsu() is handed prev_sender instead, making the two
+// columns consistent. This is MEASUREMENT-ONLY: dw_mark_rsu() writes only
+// g_dw_rsu_fired[] (detector_windows.h:109-115) and touches no simulation
+// state -- D_RSU itself is unchanged, so BC.Write, the BTMM trust penalty and
+// quarantine all behave exactly as before.
+//
+// Default false so every existing M1 number reproduces byte-for-byte.
+// See docs/S5_S8_ORACLE_GATE_2026-09-01.md and the FPR reduction analysis.
+bool dw_mark_suspect                = false;
 
 // Crypto on/off switch — CLI: --disable_crypto (default 0 = crypto ON).
 // When set to 1, short-circuits the DKG ceremony's key generation and the
@@ -682,6 +776,54 @@ std::vector<uint32_t> g_ranom_rule_prev;
 // array, kept separate so this delta and the LSTM feature's own
 // consumption of g_lstm_hf_sendgt_count never collide.
 std::vector<uint8_t>  g_hf_send_flag_last;
+
+// ── HF truth semantics (2026-09-01) — CLI: --hf_truth_latched (default false)
+//
+// The A5-A8 window truth is gated per-cycle by g_hf_send_flag_last, i.e. "did
+// this RSU schedule a duplicate in THIS cycle" — EVENT semantics. S5-S8 fire on
+// persistent compromise state: their conjunctions are latched, the unendorsed
+// FlowMod stays installed, and active_hf_malicious_nodes is never cleared.
+// s5_detection.h says so directly: "every [S5] line is evidence of an ongoing
+// compromised state, not of a discrete send event -- which is exactly why S5
+// fires far more often than hf_send_gt." Detector and truth were given OPPOSITE
+// temporal semantics and the score is taken across the gap.
+//
+// Measured 2026-09-01 (arm D, A5-A8): 1,432 of 1,621 false positives (88%) are
+// windows where a declared attacker simply did not fire that cycle. Aligning the
+// semantics moves A5-A8 MCC 0.5928 -> 0.7674 and FPR 38.9% -> 8.5%. NOTHING
+// about detection changes -- this corrects a measurement mismatch, and must be
+// reported that way, never as a detector improvement.
+//
+// This is the SAME latch preprocessor.py already applies to y_indep's HF term
+// (`hflat = np.maximum.accumulate(hfgt > 0)`, line 229), which the supervisor
+// approved. Today the LSTM label uses latched semantics while the M1 truth uses
+// event semantics; this makes them agree.
+//
+// Kept in its OWN array, not folded into g_dw_activity_last: that one is
+// std::fill()'d to 0 after every dw_end_cycle() (routing.cc), so a latch stored
+// there would be silently erased each cycle and appear to do nothing.
+//
+// RESET BOUNDARY. End-of-run is correct only while the compromised state never
+// actually ends -- which is true today ONLY because quarantine does not enforce
+// (enable_quarantine_enforcement defaults off). Once enforcement is on, the
+// latch must be released at quarantine time per eq:local_quarantine, or a
+// contained attacker keeps counting as a positive forever. hf_truth_latch_clear()
+// below is that hook; wire it into the quarantine path when enforcement lands.
+bool hf_truth_latched = false;
+
+// A3/A4 truth semantics (2026-09-01) — CLI: --tcam_truth_live (default false).
+// Use the LIVE "holds >=1 malicious TCAM entry" scan for variants 2/3 instead
+// of the never-cleared is_malicious_node latch. See the full rationale at
+// lstm_rsu_ground_truth_label() in lstm_logger.h. Measurement-only: this label
+// feeds the window grid and the LSTM CSV, never a detection or enforcement path.
+bool tcam_truth_live = false;
+std::vector<uint8_t> g_hf_activity_latch;
+
+// Release the latch for one node (call when it is genuinely contained).
+inline void hf_truth_latch_clear(uint32_t rsu_local_idx) {
+    if (rsu_local_idx < g_hf_activity_latch.size())
+        g_hf_activity_latch[rsu_local_idx] = 0;
+}
 std::vector<uint32_t> g_hf_send_rule_prev;
 
 // Supervisor Decision 4 (2026-08-21): per-RSU, per-cycle ATTACK-ACTIVITY
@@ -2118,7 +2260,10 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
     cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);
     cmd.AddValue("enable_local_quarantine",       "eq:local_quarantine / HOLD_FORWARD: OBU suspends forwarding of the flagged flow pending RSU.Confirm or T_hold (default OFF — changes all delivery metrics)", enable_local_quarantine);
-    cmd.AddValue("T_hold",                        "eq:local_quarantine max hold window (s). NOT specified numerically in main.tex — uncalibrated placeholder", T_HOLD);
+    cmd.AddValue("T_hold",                        "eq:local_quarantine max hold window (s). Not given numerically in main.tex; "
+                                                  "bounded below by the ~1ms RSU.Confirm RTT and above by the latency cost of a "
+                                                  "false hold. Criterion: smallest value where RSU.Confirm dominates timeout "
+                                                  "releases (scripts/sweep_t_hold.py). Default 0.1 provisional until swept", T_HOLD);
     cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
@@ -2126,6 +2271,17 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
                                                    "(needs lstm_weights_cpp.bin already exported)", enable_lstm_inference);
     cmd.AddValue("enable_lstm_cls",               "Fix 2 (2026-08-20): detect on the classification head's P(attack) "
                                                   "instead of reconstruction error", enable_lstm_cls);
+    cmd.AddValue("tcam_truth_live",               "A3/A4 truth (2026-09-01): use the live 'holds >=1 malicious TCAM entry' "
+                                                  "scan instead of the never-cleared is_malicious_node latch. Measurement-only", tcam_truth_live);
+    cmd.AddValue("hf_truth_latched",              "HF truth semantics (2026-09-01): latch the A5-A8 window activity gate "
+                                                  "(compromised state persists) instead of per-cycle send events, matching "
+                                                  "S5-S8's design and y_indep's existing latch. Measurement-only", hf_truth_latched);
+    cmd.AddValue("dw_mark_suspect",               "FPR fix 2 (2026-09-01): mark the SUSPECT (prev_sender) in the M1 "
+                                                  "window grid instead of the observing RSU, matching the 2026-08-22 "
+                                                  "fix already applied to score_primary. Measurement-only", dw_mark_suspect);
+    cmd.AddValue("require_lstm_high_conf",        "FPR fix 1 (2026-08-31): admit the LSTM into D_RSU only at "
+                                                  "high confidence, dropping soft LSTM-only windows from M1 "
+                                                  "(matches the existing BTMM/confusion-matrix policy)", require_lstm_high_conf);
     cmd.AddValue("enable_hf_theta",               "Use pooled HF-context theta (hf_theta.json) for "
                                                    "A5-A8 instead of the standard per-RSU value "
                                                    "(supervisor Change 2, 2026-08-20)", enable_hf_theta);

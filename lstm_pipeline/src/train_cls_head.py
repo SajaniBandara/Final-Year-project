@@ -35,7 +35,7 @@ HF = [5, 6, 7, 8]; TIMING = [1, 2]
 R_ANOM_IDX, DT_EXC_IDX = 9, 10
 
 
-def build_labels(X, meta, y_indep, mode):
+def build_labels(X, meta, y_indep, mode, timing_labels="indep"):
     av = meta[:, 1].astype(int)
     y = np.zeros(len(X), dtype=np.int8)
     hf_m, tm_m = np.isin(av, HF), np.isin(av, TIMING)
@@ -43,7 +43,25 @@ def build_labels(X, meta, y_indep, mode):
         y[hf_m] = (X[hf_m][:, :, R_ANOM_IDX] > 0).any(axis=1)
     else:
         y[hf_m] = y_indep[hf_m]
-    y[tm_m] = (X[tm_m][:, :, DT_EXC_IDX] > 0).any(axis=1)
+    # A1/A2 target. The delta_t_exceeded form is a LABEL LEAK: DT_EXC_IDX is
+    # FEATURES index 10, an input the head can read, so it can satisfy the
+    # label by echoing one column -- the same defect this file already
+    # documents for --labels supervisor on r_anom.
+    #
+    # The docstring's justification ("no independent alternative exists in the
+    # collected data") was true when written on 2026-08-20 and became FALSE on
+    # 2026-08-27: std_send_gt, A1/A2's send-side injection counter, is now
+    # collected and is deliberately excluded from FEATURES. preprocessor.py
+    # folds it into y_indep (make_windows, `_inj = max(_hf, stdgt, tcamgt)`),
+    # so y_indep now carries a leak-free A1/A2 label, not just an HF one.
+    # Verified 2026-08-31: std_send_gt present on all 3840 A1/A2 files.
+    #
+    # Default is the leak-free form. The legacy form stays selectable so the
+    # inflation stays measurable rather than argued about.
+    if timing_labels == "dt_exceeded":
+        y[tm_m] = (X[tm_m][:, :, DT_EXC_IDX] > 0).any(axis=1)
+    else:
+        y[tm_m] = y_indep[tm_m]
     return y
 
 
@@ -70,6 +88,12 @@ def metrics(yt, yp):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--labels", choices=["supervisor","indep"], default="indep")
+    # A1/A2 target form. "indep" uses std_send_gt via y_indep (leak-free,
+    # available since 2026-08-27); "dt_exceeded" is the legacy form that reads
+    # FEATURES index 10 and is therefore a label leak -- kept only so the
+    # inflation can be measured. See build_labels().
+    ap.add_argument("--timing-labels", choices=["indep","dt_exceeded"],
+                    default="indep")
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--fpr-target", type=float, default=0.01)
     # Deviates from the 2026-08-20 spec ("Do not touch the encoder") on
@@ -91,7 +115,7 @@ def main():
     for sp in ("train","val","test"):
         d[sp] = (np.load(PRE/f"{sp}_X.npy"), np.load(PRE/f"{sp}_meta.npy"),
                  np.load(PRE/f"{sp}_y_indep.npy"))
-    y = {sp: build_labels(*d[sp], a.labels) for sp in d}
+    y = {sp: build_labels(*d[sp], a.labels, a.timing_labels) for sp in d}
     print(f"positive fraction: " + "  ".join(f"{s}={y[s].mean():.3f}" for s in y))
 
     if not a.unfreeze:

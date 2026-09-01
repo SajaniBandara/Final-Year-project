@@ -448,9 +448,43 @@ inline LRADRSUFlags lrad_rsu(
         }
     }
 
+    // FPR fix 1 (2026-08-31, --require_lstm_high_conf, default false): admit
+    // the LSTM term only at high confidence. Signatures are unchanged, so this
+    // drops exactly the SOFT LSTM-ONLY windows -- the ones lrad.h:571-574
+    // already refuse to open the BTMM trust gate for, and lrad.h:628 already
+    // refuses to latch into the per-node confusion matrix. Measured
+    // attribution: 71% of all M1 false positives come from disjuncts outside
+    // the primary detector, concentrated in A5-A8 (FPR 73-82%).
+    // See docs/FPR_REDUCTION_ANALYSIS_2026-08-31.md and crypto_layer.h's
+    // declaration of the flag.
+    const bool lstm_term = require_lstm_high_conf
+                               ? (flags.flag_LSTM && flags.flag_LSTM_high_conf)
+                               : flags.flag_LSTM;
     flags.D_RSU = flags.flag_S2f || flags.flag_S5 || flags.flag_S6 ||
-                  flags.flag_S7 || flags.flag_S8 || flags.flag_LSTM;
-    if (flags.D_RSU) dw_mark_rsu(rsu);   // M1 window grid (detector_windows.h)
+                  flags.flag_S7 || flags.flag_S8 || lstm_term;
+    // M1 window grid (detector_windows.h). `rsu` is the OBSERVER (the RSU
+    // processing this packet); prev_sender is the SUSPECT the detectors are
+    // accusing. Marking the observer penalises a node for correctly detecting a
+    // malicious neighbour -- see the comment on dw_mark_rsu_primary() below,
+    // and crypto_layer.h's declaration of dw_mark_suspect. Measurement-only:
+    // D_RSU itself is untouched, so BC.Write / BTMM / quarantine are unaffected.
+    //
+    // SCOPED to exclude A3/A4 (variants 2/3), measured 2026-09-01. Which node
+    // the accusation belongs to differs by family:
+    //   A1/A2/A5-A8 — S2f and S5-S8 fire on the packet's SENDER, and ground
+    //     truth marks that attacker node. Marking prev_sender aligns the two.
+    //     Measured: A5 0.2412->0.5538, A6 0.2727->0.5988, A2 0.6060->0.7027.
+    //   A3/A4 — S3/S4 fire at the VICTIM RSU whose TCAM is being exhausted, and
+    //     lstm_rsu_ground_truth_label() labels that same victim ("any RSU
+    //     holding >=1 malicious TCAM entry"). The attacker is a different node
+    //     entirely (a vehicle, for A4), so prev_sender accuses the wrong one.
+    //     Measured unscoped: A3 0.5278->0.4392, A4 0.6490->0.6272 -- both WORSE.
+    // This is the same asymmetry that forced A3/A4 onto the separate
+    // dw_end_cycle() fold-in instead of dw_mark_rsu_primary(); see the no-op
+    // `case 2: case 3:` below.
+    const bool _tcam_family = (active_attack_variant == 2 || active_attack_variant == 3);
+    const uint32_t _dw_node = (dw_mark_suspect && !_tcam_family) ? prev_sender : rsu;
+    if (flags.D_RSU) dw_mark_rsu(_dw_node);
     // Primary-detector grid: ONLY the detector this variant is scored by, per
     // the supervisor's 2026-08-21 assignment. Excludes the OR-composite so
     // e.g. S2f firings during an A5 run (measured 1,572-3,313 per run, all
