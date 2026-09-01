@@ -29,6 +29,24 @@ const PLOT = {
   h: VIEW.h - PAD.top - PAD.bottom,
 };
 
+// A quarter-panel cell (e.g. a 2x2 metrics grid beside a map) cannot show the
+// full-size chart's viewBox at a readable physical text size -- SVG text
+// scales with the whole drawing, so shrinking only the container leaves axis
+// labels a few physical pixels tall. `compact: true` swaps in a smaller
+// viewBox with its own (still legible at that size) font scale, rather than
+// the same 12.5-13.5px text stretched over a quarter of the space.
+// Sized close to this call's actual rendered width (a 2x2 grid cell in a
+// 560px sidebar column, see .pem-grid in app.css) rather than an arbitrary
+// round number -- an SVG's font-size is in viewBox units, so what ends up
+// legible is the ratio of font-size to viewBox width once scaled down to
+// the container, not the font-size number alone.
+// Flatter than the default 860x380 ratio on purpose: this feeds a 2x2 grid
+// that has to fit beside the map, in view together with it, not stack tall
+// enough to push the bottom row off-screen.
+const VIEW_COMPACT = { w: 250, h: 100 };
+const PAD_COMPACT = { top: 6, right: 8, bottom: 16, left: 30 };
+const FONT = { default: { tick: 12.5, axis: 13.5, label: 12.5 }, compact: { tick: 10, axis: 0, label: 0 } };
+
 /** The eight validated categorical slots, read from CSS so themes swap freely. */
 export const SERIES_VARS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`);
 
@@ -92,6 +110,10 @@ export function renderLineChart(container, config) {
     hlines = [],
     band = false,
     errorBars = false,
+    // A quarter-panel cell: smaller viewBox, smaller (still legible at that
+    // physical size) type, and the chrome a reader doesn't need at a glance
+    // (axis titles, direct end labels) dropped rather than shrunk illegibly.
+    compact = false,
   } = config;
 
   container.innerHTML = '';
@@ -101,12 +123,21 @@ export function renderLineChart(container, config) {
     return;
   }
 
+  const view = compact ? VIEW_COMPACT : VIEW;
+  const pad = compact ? PAD_COMPACT : PAD;
+  const plot = {
+    x: pad.left, y: pad.top,
+    w: view.w - pad.left - pad.right,
+    h: view.h - pad.top - pad.bottom,
+  };
+  const font = compact ? FONT.compact : FONT.default;
+
   const wrap = document.createElement('div');
   wrap.className = 'chart-wrap';
   container.appendChild(wrap);
 
   const svg = el('svg', {
-    viewBox: `0 0 ${VIEW.w} ${VIEW.h}`,
+    viewBox: `0 0 ${view.w} ${view.h}`,
     role: 'img',
     'aria-label': `${yLabel} against ${xLabel}`,
     preserveAspectRatio: 'xMidYMid meet',
@@ -121,7 +152,7 @@ export function renderLineChart(container, config) {
     s.points.flatMap((p) => [p.y, p.lo, p.hi].filter((v) => Number.isFinite(v)))
   );
 
-  const yScale = niceScale(Math.min(...ysAll), Math.max(...ysAll));
+  const yScale = niceScale(Math.min(...ysAll), Math.max(...ysAll), compact ? 3 : 5);
   const xMin = xsAll[0];
   const xMax = xsAll[xsAll.length - 1];
 
@@ -129,68 +160,72 @@ export function renderLineChart(container, config) {
     if (categoricalX) {
       const i = xsAll.indexOf(x);
       return xsAll.length === 1
-        ? PLOT.x + PLOT.w / 2
-        : PLOT.x + (i / (xsAll.length - 1)) * PLOT.w;
+        ? plot.x + plot.w / 2
+        : plot.x + (i / (xsAll.length - 1)) * plot.w;
     }
     return xMax === xMin
-      ? PLOT.x + PLOT.w / 2
-      : PLOT.x + ((x - xMin) / (xMax - xMin)) * PLOT.w;
+      ? plot.x + plot.w / 2
+      : plot.x + ((x - xMin) / (xMax - xMin)) * plot.w;
   };
   const sy = (y) =>
-    PLOT.y + PLOT.h - ((y - yScale.lo) / (yScale.hi - yScale.lo)) * PLOT.h;
+    plot.y + plot.h - ((y - yScale.lo) / (yScale.hi - yScale.lo)) * plot.h;
 
   // --- grid + axes (recessive) -------------------------------------------
   const gridGroup = el('g', {}, svg);
   for (let v = yScale.lo; v <= yScale.hi + yScale.step / 2; v += yScale.step) {
     const y = sy(v);
     el('line', {
-      x1: PLOT.x, x2: PLOT.x + PLOT.w, y1: y, y2: y,
+      x1: plot.x, x2: plot.x + plot.w, y1: y, y2: y,
       stroke: 'var(--grid)', 'stroke-width': 1,
     }, gridGroup);
     el('text', {
-      x: PLOT.x - 10, y: y + 4, 'text-anchor': 'end',
-      fill: 'var(--text-muted)', 'font-size': 12.5,
+      x: plot.x - (compact ? 6 : 10), y: y + 4, 'text-anchor': 'end',
+      fill: 'var(--text-muted)', 'font-size': font.tick,
     }, gridGroup).textContent = formatTick(v, unit);
   }
 
   // x ticks: every category, or a thinned subset for dense continuous axes.
   const xTickValues = categoricalX
     ? xsAll
-    : xsAll.filter((_, i) => i % Math.max(1, Math.ceil(xsAll.length / 10)) === 0);
+    : xsAll.filter((_, i) => i % Math.max(1, Math.ceil(xsAll.length / (compact ? 4 : 10))) === 0);
   for (const x of xTickValues) {
     el('text', {
-      x: sx(x), y: PLOT.y + PLOT.h + 20, 'text-anchor': 'middle',
-      fill: 'var(--text-muted)', 'font-size': 12.5,
+      x: sx(x), y: plot.y + plot.h + (compact ? 14 : 20), 'text-anchor': 'middle',
+      fill: 'var(--text-muted)', 'font-size': font.tick,
     }, gridGroup).textContent = categoricalX ? `${x}%` : String(x);
   }
 
   el('line', {
-    x1: PLOT.x, x2: PLOT.x + PLOT.w, y1: PLOT.y + PLOT.h, y2: PLOT.y + PLOT.h,
+    x1: plot.x, x2: plot.x + plot.w, y1: plot.y + plot.h, y2: plot.y + plot.h,
     stroke: 'var(--axis)', 'stroke-width': 1,
   }, svg);
 
-  el('text', {
-    x: PLOT.x + PLOT.w / 2, y: VIEW.h - 8, 'text-anchor': 'middle',
-    fill: 'var(--text-secondary)', 'font-size': 13.5, 'font-weight': 600,
-  }, svg).textContent = xLabel;
+  if (!compact) {
+    el('text', {
+      x: plot.x + plot.w / 2, y: view.h - 8, 'text-anchor': 'middle',
+      fill: 'var(--text-secondary)', 'font-size': font.axis, 'font-weight': 600,
+    }, svg).textContent = xLabel;
 
-  el('text', {
-    x: 16, y: PLOT.y + PLOT.h / 2, 'text-anchor': 'middle',
-    fill: 'var(--text-secondary)', 'font-size': 13.5, 'font-weight': 600,
-    transform: `rotate(-90 16 ${PLOT.y + PLOT.h / 2})`,
-  }, svg).textContent = yLabel;
+    el('text', {
+      x: 16, y: plot.y + plot.h / 2, 'text-anchor': 'middle',
+      fill: 'var(--text-secondary)', 'font-size': font.axis, 'font-weight': 600,
+      transform: `rotate(-90 16 ${plot.y + plot.h / 2})`,
+    }, svg).textContent = yLabel;
+  }
 
   // --- annotation lines (e.g. attack start) -------------------------------
   for (const marker of vlines) {
     if (marker.x < xMin || marker.x > xMax) continue;
     const x = sx(marker.x);
     el('line', {
-      x1: x, x2: x, y1: PLOT.y, y2: PLOT.y + PLOT.h,
-      stroke: 'var(--status-serious)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4',
+      x1: x, x2: x, y1: plot.y, y2: plot.y + plot.h,
+      stroke: 'var(--status-serious)', 'stroke-width': compact ? 1 : 1.5, 'stroke-dasharray': '4 4',
     }, svg);
-    el('text', {
-      x: x + 5, y: PLOT.y + 12, fill: 'var(--status-serious)', 'font-size': 12.5, 'font-weight': 600,
-    }, svg).textContent = marker.label;
+    if (!compact) {
+      el('text', {
+        x: x + 5, y: plot.y + 12, fill: 'var(--status-serious)', 'font-size': font.tick, 'font-weight': 600,
+      }, svg).textContent = marker.label;
+    }
   }
 
   // --- horizontal reference lines (e.g. a detector threshold) -------------
@@ -198,13 +233,15 @@ export function renderLineChart(container, config) {
     if (marker.y < yScale.lo || marker.y > yScale.hi) continue;
     const y = sy(marker.y);
     el('line', {
-      x1: PLOT.x, x2: PLOT.x + PLOT.w, y1: y, y2: y,
-      stroke: 'var(--status-critical)', 'stroke-width': 1.5, 'stroke-dasharray': '6 3',
+      x1: plot.x, x2: plot.x + plot.w, y1: y, y2: y,
+      stroke: 'var(--status-critical)', 'stroke-width': compact ? 1 : 1.5, 'stroke-dasharray': '6 3',
     }, svg);
-    el('text', {
-      x: PLOT.x + PLOT.w - 4, y: y - 5, 'text-anchor': 'end',
-      fill: 'var(--status-critical)', 'font-size': 12.5, 'font-weight': 600,
-    }, svg).textContent = marker.label;
+    if (!compact) {
+      el('text', {
+        x: plot.x + plot.w - 4, y: y - 5, 'text-anchor': 'end',
+        fill: 'var(--status-critical)', 'font-size': font.tick, 'font-weight': 600,
+      }, svg).textContent = marker.label;
+    }
   }
 
   // --- confidence bands (drawn under the lines) ---------------------------
@@ -224,7 +261,7 @@ export function renderLineChart(container, config) {
   for (const s of drawable) {
     const path = s.points.map((p, i) => `${i ? 'L' : 'M'} ${sx(p.x)} ${sy(p.y)}`).join(' ');
     el('path', {
-      d: path, fill: 'none', stroke: s.color, 'stroke-width': 2,
+      d: path, fill: 'none', stroke: s.color, 'stroke-width': compact ? 1.5 : 2,
       'stroke-linejoin': 'round', 'stroke-linecap': 'round',
     }, svg);
 
@@ -246,8 +283,9 @@ export function renderLineChart(container, config) {
     }
 
     // Markers only when the series is sparse enough for them to be readable;
-    // a 30-cycle time series becomes a caterpillar otherwise.
-    if (s.points.length <= 12) {
+    // a 30-cycle time series becomes a caterpillar otherwise. Compact charts
+    // skip them entirely -- at this size they'd touch.
+    if (!compact && s.points.length <= 12) {
       for (const p of s.points) {
         el('circle', {
           cx: sx(p.x), cy: sy(p.y), r: 4.5, fill: s.color,
@@ -260,8 +298,9 @@ export function renderLineChart(container, config) {
 
   // --- direct labels (<= 4 series) ----------------------------------------
   // Also the relief for the light-mode contrast warning: identity never rests
-  // on colour alone.
-  if (drawable.length <= 4) {
+  // on colour alone. Skipped in compact mode -- the picker above the chart
+  // already names the one series, and there is no room to set it in type.
+  if (!compact && drawable.length <= 4) {
     const placed = [];
     for (const s of drawable) {
       const last = s.points[s.points.length - 1];
@@ -269,13 +308,13 @@ export function renderLineChart(container, config) {
       while (placed.some((p) => Math.abs(p - y) < 13)) y += 13;
       placed.push(y);
       el('text', {
-        x: sx(last.x) + 10, y, fill: s.color, 'font-size': 12.5, 'font-weight': 600,
+        x: sx(last.x) + 10, y, fill: s.color, 'font-size': font.tick, 'font-weight': 600,
       }, svg).textContent = s.name;
     }
   }
 
   // --- crosshair + tooltip -------------------------------------------------
-  attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categoricalX });
+  attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categoricalX, view, plot });
 
   // --- legend (>= 2 series) ------------------------------------------------
   if (drawable.length >= 2) {
@@ -294,9 +333,9 @@ export function renderLineChart(container, config) {
   }
 }
 
-function attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categoricalX }) {
+function attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categoricalX, view = VIEW, plot = PLOT }) {
   const crosshair = el('line', {
-    y1: PLOT.y, y2: PLOT.y + PLOT.h,
+    y1: plot.y, y2: plot.y + plot.h,
     stroke: 'var(--axis)', 'stroke-width': 1, 'stroke-dasharray': '3 3',
     opacity: 0,
   }, svg);
@@ -313,7 +352,7 @@ function attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categorical
 
   // Transparent capture layer: a hit target far larger than the marks.
   const capture = el('rect', {
-    x: PLOT.x, y: PLOT.y, width: PLOT.w, height: PLOT.h,
+    x: plot.x, y: plot.y, width: plot.w, height: plot.h,
     fill: 'transparent', style: 'cursor:crosshair',
   }, svg);
 
@@ -327,7 +366,7 @@ function attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categorical
   capture.addEventListener('pointermove', (event) => {
     const box = svg.getBoundingClientRect();
     // Map client pixels back into viewBox units.
-    const vx = ((event.clientX - box.left) / box.width) * VIEW.w;
+    const vx = ((event.clientX - box.left) / box.width) * view.w;
 
     let nearest = xsAll[0];
     let best = Infinity;
@@ -380,8 +419,8 @@ function attachCrosshair({ wrap, svg, drawable, xsAll, sx, sy, unit, categorical
         })
         .join('');
 
-    tooltip.style.left = `${(cx / VIEW.w) * 100}%`;
-    tooltip.style.top = `${(PLOT.y / VIEW.h) * 100}%`;
+    tooltip.style.left = `${(cx / view.w) * 100}%`;
+    tooltip.style.top = `${(plot.y / view.h) * 100}%`;
     tooltip.setAttribute('data-visible', 'true');
   });
 }

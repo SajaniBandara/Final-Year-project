@@ -341,7 +341,9 @@ class SnapshotService:
         # slicing it in memory covers a demo's "scrub to a window" case, just
         # not a genuinely different --step re-render.
         frames = [f for f in scene["frames"] if f["t"] >= start and (end is None or f["t"] <= end)]
-        return {**scene, "frames": frames}
+        kept_events = sum(len(f.get("events") or []) for f in frames)
+        duration = min(end, scene["duration"]) if end is not None else scene["duration"]
+        return {**scene, "frames": frames, "duration": round(duration, 3), "event_count": kept_events}
 
     def map_node(self, run_id: str, node_id: int) -> dict[str, Any]:
         try:

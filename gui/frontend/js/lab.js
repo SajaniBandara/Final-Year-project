@@ -22,7 +22,8 @@
 
 import { api, ApiError } from './api.js';
 import { NetworkMap, signalLegend } from './mapview.js';
-import { fmt } from './format.js';
+import { renderLineChart } from './charts.js';
+import { fmt, prettyColumn } from './format.js';
 
 let map = null;
 let scene = null;
@@ -38,6 +39,16 @@ const state = {
   revealed: false,
 };
 
+// -- PEM-over-time panel state -------------------------------------------
+// Columns available per attack (attacks 3/4/baseline carry extra TCAM
+// fields), fetched once and cached the same way offline.js does it.
+const columnsByAttack = new Map();
+//: One metric name per grid cell; defaults are the headline PEMs -- present
+// on every attack variant (they live in schema.BASE_HEAD, not the
+// attack-specific TCAM block) -- so the grid is never empty on first load.
+const PEM_DEFAULTS = ['avg_DR', 'avg_FPR', 'avg_MCC', 'avg_lat_ms'];
+const pemSelection = [...PEM_DEFAULTS];
+
 export async function initLab(root) {
   root.innerHTML = shell();
   bindStaticControls(root);
@@ -47,6 +58,8 @@ export async function initLab(root) {
     onSelect: (hit) => onSelect(root, hit),
     onGuess: () => renderGuessPanel(root),
   });
+
+  initPemPanel(root);
 
   try {
     [options, catalog] = await Promise.all([api.simOptions(), api.catalog()]);
@@ -188,6 +201,7 @@ function shell() {
     </section>
 
     <div class="lab-body">
+     <div class="lab-top">
       <section class="panel map-panel">
         <div class="map-status-bar" id="lab-status"></div>
 
@@ -208,70 +222,85 @@ function shell() {
         </div>
 
         <div class="map-stage">
-          <canvas id="map-canvas"></canvas>
-          <div class="map-overlay" id="map-overlay"></div>
-        </div>
+          <div class="map-canvas-wrap">
+            <canvas id="map-canvas"></canvas>
+          </div>
 
-        <div class="map-legend">
-          <div class="legend-group">
-            <span class="legend-label">Signatures</span>
-            <div id="signal-legend" class="chips">${signalLegend()}</div>
-          </div>
-          <div class="legend-group">
-            <span class="legend-label">Layers</span>
-            <div class="chips">
-              <label class="chip"><input type="checkbox" id="toggle-coverage" checked> RSU coverage</label>
-              <label class="chip"><input type="checkbox" id="toggle-control" checked> Control plane</label>
+          <div class="map-sidebar">
+          <div class="map-overlay" id="map-overlay"></div>
+
+          <div class="map-legend">
+            <div class="legend-group">
+              <span class="legend-label">Signatures</span>
+              <div id="signal-legend" class="chips">${signalLegend()}</div>
+            </div>
+            <div class="legend-group">
+              <span class="legend-label">Symbols</span>
+              <div class="chips static">
+                <span class="chip">
+                  <svg class="legend-icon" viewBox="0 0 16 16" width="14" height="14">
+                    <path d="M3.5,3.5 A5.5,5.5 0 0,1 12.5,3.5" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round"/>
+                    <path d="M5.5,5.5 A3,3 0 0,1 10.5,5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round"/>
+                    <rect x="7.2" y="6" width="1.6" height="7" fill="var(--axis)"/>
+                    <circle cx="8" cy="13.5" r="2" fill="var(--axis)"/>
+                  </svg>
+                  RSU (tower height = load)
+                </span>
+                <span class="chip">
+                  <svg class="legend-icon" viewBox="0 0 16 16" width="14" height="14">
+                    <polygon points="8,1.2 14.5,4.8 14.5,11.2 8,14.8 1.5,11.2 1.5,4.8" fill="var(--series-7)" stroke="var(--surface-raised)" stroke-width="1.2"/>
+                    <line x1="4.5" y1="6" x2="11.5" y2="6" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+                    <line x1="4.5" y1="8" x2="11.5" y2="8" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+                    <line x1="4.5" y1="10" x2="11.5" y2="10" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
+                  </svg>
+                  Controller
+                </span>
+                <span class="chip">
+                  <svg class="legend-icon" viewBox="0 0 18 12" width="16" height="11">
+                    <rect x="1" y="1" width="16" height="10" rx="2.5" fill="var(--series-2)" stroke="var(--surface-raised)" stroke-width="0.8"/>
+                    <rect x="5.5" y="2.5" width="6.5" height="7" rx="1.2" fill="rgba(0,0,0,0.35)"/>
+                    <rect x="15" y="2" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                    <rect x="15" y="7.5" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
+                  </svg>
+                  Vehicle
+                </span>
+                <span class="chip">
+                  <svg class="legend-icon" viewBox="0 0 20 14" width="18" height="12">
+                    <!-- outer dashed warning halo -->
+                    <rect x="0.5" y="0.5" width="19" height="13" rx="4" fill="rgba(239,68,68,0.22)" stroke="rgba(239,68,68,0.85)" stroke-width="0.8" stroke-dasharray="2 1.5"/>
+                    <!-- car body -->
+                    <rect x="2.5" y="2" width="15" height="10" rx="2.5" fill="var(--status-critical)" stroke="#ffffff" stroke-width="0.8"/>
+                    <rect x="6.5" y="3.5" width="6.5" height="7" rx="1.2" fill="rgba(60,0,0,0.55)"/>
+                    <!-- yellow beacon -->
+                    <circle cx="9.75" cy="7" r="1.5" fill="#fde047" stroke="#ffffff" stroke-width="0.4"/>
+                    <rect x="16" y="3" width="1.5" height="2.5" fill="rgba(255,220,220,0.95)" rx="0.4"/>
+                    <rect x="16" y="8.5" width="1.5" height="2.5" fill="rgba(255,220,220,0.95)" rx="0.4"/>
+                  </svg>
+                  Accused vehicle (warning halo + beacon)
+                </span>
+              </div>
+            </div>
+            <div class="legend-group">
+              <span class="legend-label">Layers</span>
+              <div class="chips">
+                <label class="chip"><input type="checkbox" id="toggle-coverage" checked> RSU coverage</label>
+                <label class="chip"><input type="checkbox" id="toggle-control" checked> Control plane</label>
+              </div>
             </div>
           </div>
-          <div class="legend-group">
-            <span class="legend-label">Symbols</span>
-            <div class="chips static">
-              <span class="chip">
-                <svg class="legend-icon" viewBox="0 0 16 16" width="14" height="14">
-                  <path d="M3.5,3.5 A5.5,5.5 0 0,1 12.5,3.5" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round"/>
-                  <path d="M5.5,5.5 A3,3 0 0,1 10.5,5.5" fill="none" stroke="var(--text-muted)" stroke-width="1.3" stroke-linecap="round"/>
-                  <rect x="7.2" y="6" width="1.6" height="7" fill="var(--axis)"/>
-                  <circle cx="8" cy="13.5" r="2" fill="var(--axis)"/>
-                </svg>
-                RSU (tower height = load)
-              </span>
-              <span class="chip">
-                <svg class="legend-icon" viewBox="0 0 16 16" width="14" height="14">
-                  <polygon points="8,1.2 14.5,4.8 14.5,11.2 8,14.8 1.5,11.2 1.5,4.8" fill="var(--series-7)" stroke="var(--surface-raised)" stroke-width="1.2"/>
-                  <line x1="4.5" y1="6" x2="11.5" y2="6" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
-                  <line x1="4.5" y1="8" x2="11.5" y2="8" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
-                  <line x1="4.5" y1="10" x2="11.5" y2="10" stroke="var(--surface-raised)" stroke-width="1.1" stroke-linecap="round" opacity="0.8"/>
-                </svg>
-                Controller
-              </span>
-              <span class="chip">
-                <svg class="legend-icon" viewBox="0 0 18 12" width="16" height="11">
-                  <rect x="1" y="1" width="16" height="10" rx="2.5" fill="var(--series-2)" stroke="var(--surface-raised)" stroke-width="0.8"/>
-                  <rect x="5.5" y="2.5" width="6.5" height="7" rx="1.2" fill="rgba(0,0,0,0.35)"/>
-                  <rect x="15" y="2" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
-                  <rect x="15" y="7.5" width="1.5" height="2.5" fill="rgba(255,245,160,0.95)" rx="0.4"/>
-                </svg>
-                Vehicle
-              </span>
-              <span class="chip">
-                <svg class="legend-icon" viewBox="0 0 20 14" width="18" height="12">
-                  <!-- outer dashed warning halo -->
-                  <rect x="0.5" y="0.5" width="19" height="13" rx="4" fill="rgba(239,68,68,0.22)" stroke="rgba(239,68,68,0.85)" stroke-width="0.8" stroke-dasharray="2 1.5"/>
-                  <!-- car body -->
-                  <rect x="2.5" y="2" width="15" height="10" rx="2.5" fill="var(--status-critical)" stroke="#ffffff" stroke-width="0.8"/>
-                  <rect x="6.5" y="3.5" width="6.5" height="7" rx="1.2" fill="rgba(60,0,0,0.55)"/>
-                  <!-- yellow beacon -->
-                  <circle cx="9.75" cy="7" r="1.5" fill="#fde047" stroke="#ffffff" stroke-width="0.4"/>
-                  <rect x="16" y="3" width="1.5" height="2.5" fill="rgba(255,220,220,0.95)" rx="0.4"/>
-                  <rect x="16" y="8.5" width="1.5" height="2.5" fill="rgba(255,220,220,0.95)" rx="0.4"/>
-                </svg>
-                Accused vehicle (warning halo + beacon)
-              </span>
-            </div>
           </div>
         </div>
       </section>
+
+      <div class="lab-right">
+        <section class="panel pem-panel">
+          <h3>📈 Performance Metrics Over Time</h3>
+          <p class="hint">How the loaded run's own metrics evolved cycle by cycle -- the same per-cycle series the Live PEM Monitor streams, read back after the fact.</p>
+          <div id="pem-grid" class="pem-grid"></div>
+          <div id="pem-note" class="pem-note"></div>
+        </section>
+      </div>
+     </div>
 
       <aside class="lab-side">
         <section class="panel" id="guess-panel">
@@ -345,7 +374,10 @@ function initScenarioConfigurator(root) {
 
   root.querySelector('#cfg-load').addEventListener('click', async () => {
     const best = bestMatchingRun(currentSelection(root));
-    if (best) await loadRun(root, best);
+    if (best) {
+      const simTime = Number(simTimeInput.value);
+      await loadRun(root, best, { trimTo: Number.isFinite(simTime) && simTime > 0 ? simTime : undefined });
+    }
   });
 
   root.querySelector('#cfg-launch').addEventListener('click', () => {
@@ -457,6 +489,7 @@ async function loadDemoScene(root) {
   renderOverlay(root);
   updateClock(root);
   syncConfiguratorSelection(root, scene);
+  loadPemPanel(root);
 
   status.innerHTML = `
     <div class="run-badge demo-badge">
@@ -465,13 +498,17 @@ async function loadDemoScene(root) {
     </div>`;
 }
 
-async function loadRun(root, run) {
+async function loadRun(root, run, { trimTo } = {}) {
   const status = root.querySelector('#lab-status');
   status.innerHTML = `<span class="spinner"></span> Building the map for ${run.id}…`;
   stopPlayback(root);
   currentRunId = run.id;
   try {
-    scene = await api.mapScene(run.id);
+    // `trimTo` only trims playback of this already-recorded run to the first
+    // N seconds -- it does not shorten how long the run itself took to
+    // produce. Changing "Simulation time" alone never re-runs anything; that
+    // only happens through "Configure & launch new run".
+    scene = await api.mapScene(run.id, trimTo ? { end: trimTo } : {});
   } catch (error) {
     status.innerHTML = `<span class="bad">${error.message}</span>`;
     return;
@@ -493,6 +530,7 @@ async function loadRun(root, run) {
   updateClock(root);
 
   syncConfiguratorSelection(root, scene);
+  loadPemPanel(root);
 
   const gt = scene.ground_truth;
   status.innerHTML = `
@@ -500,6 +538,7 @@ async function loadRun(root, run) {
       <strong>Attack ${scene.attack_id}</strong> at ${scene.attack_percentage}%,
       seed ${scene.seed} · ${fmt.int(scene.event_count)} accusations over
       ${fmt.num(scene.duration, 0)} s
+      ${trimTo ? `<span class="warn"> (trimmed to first ${fmt.num(trimTo, 0)} s of the recorded run — it still ran its full length when captured)</span>` : ''}
     </div>
     <div class="run-sources">
       ${gt.known
@@ -539,6 +578,7 @@ function bindStaticControls(root) {
     map.setFrame(Number(e.target.value));
     updateClock(root);
     renderOverlay(root);
+    drawPemAtTime(root);
   });
   root.querySelector('#toggle-coverage').addEventListener('change', (e) => {
     map.showCoverage = e.target.checked;
@@ -576,6 +616,16 @@ function bindStaticControls(root) {
 
 function startPlayback(root) {
   if (!scene || !scene.frames.length) return;
+  // At the end already (e.g. a previous playthrough ran out, or the time
+  // slider was dragged to the last frame) -- Play means "play from the
+  // start" here, not "advance past the last frame and immediately stop".
+  if (map.frameIndex >= scene.frames.length - 1) {
+    map.setFrame(0);
+    root.querySelector('#map-time').value = '0';
+    updateClock(root);
+    renderOverlay(root);
+    drawPemAtTime(root);
+  }
   state.playing = true;
   root.querySelector('#map-play').textContent = '❚❚ Pause';
   const period = 1000 / state.speed;
@@ -589,6 +639,7 @@ function startPlayback(root) {
     root.querySelector('#map-time').value = String(next);
     updateClock(root);
     renderOverlay(root);
+    drawPemAtTime(root);
   }, period);
 }
 
@@ -789,6 +840,168 @@ async function onSelect(root, hit) {
            <tr><th>Signatures</th><td>${sigRow(detail.raised.signals)}</td></tr>
          </table>`
       : ''}`;
+}
+
+// -- performance metrics over time -------------------------------------------
+
+/**
+ * Four small per-cycle time-series charts beside the map, each with its own
+ * metric picker. Reuses `renderLineChart` from charts.js (the same primitive
+ * Offline Analytics draws its trend chart with) rather than a bespoke
+ * sparkline, so the mark specs, crosshair and 2px-line conventions stay one
+ * system rather than two.
+ */
+function initPemPanel(root) {
+  const grid = root.querySelector('#pem-grid');
+  grid.innerHTML = pemSelection
+    .map(
+      (_, slot) => `
+      <div class="pem-cell" data-slot="${slot}">
+        <select class="pem-metric-select" data-slot="${slot}"></select>
+        <div class="pem-chart" data-slot="${slot}"></div>
+      </div>`
+    )
+    .join('');
+
+  grid.querySelectorAll('.pem-metric-select').forEach((select) => {
+    select.addEventListener('change', () => {
+      pemSelection[Number(select.dataset.slot)] = select.value;
+      renderPemCharts(root);
+    });
+  });
+}
+
+/** Fetch this attack's column list (cached) and populate all four selects. */
+async function ensurePemColumns(root, attackId) {
+  if (!columnsByAttack.has(attackId)) {
+    try {
+      const meta = await api.metrics(attackId);
+      columnsByAttack.set(attackId, meta.columns);
+    } catch {
+      return null;
+    }
+  }
+  const columns = columnsByAttack.get(attackId);
+  const known = new Set(columns.map((c) => c.name));
+
+  // A metric picked under a previous (TCAM-wide) attack may not exist here;
+  // fall back to that slot's default, and only as a last resort to whatever
+  // the schema offers first, so a select is never left without a value.
+  pemSelection.forEach((name, slot) => {
+    if (!known.has(name)) {
+      pemSelection[slot] = known.has(PEM_DEFAULTS[slot]) ? PEM_DEFAULTS[slot] : columns[0]?.name;
+    }
+  });
+
+  root.querySelectorAll('.pem-metric-select').forEach((select) => {
+    const slot = Number(select.dataset.slot);
+    select.innerHTML = columns
+      .map((c) => `<option value="${c.name}"${c.name === pemSelection[slot] ? ' selected' : ''}>${prettyColumn(c.name)}</option>`)
+      .join('');
+  });
+  return columns;
+}
+
+/** Load the current run's PEM panel from scratch: columns, then series, then draw. */
+async function loadPemPanel(root) {
+  const note = root.querySelector('#pem-note');
+  if (!scene) return;
+
+  pemSeries = null;
+  pemSeriesRunId = null;
+
+  if (currentRunId === 'demo') {
+    root.querySelectorAll('.pem-chart').forEach((c) => (c.innerHTML = ''));
+    note.textContent = 'Per-cycle metrics need a real recorded run -- the synthetic demo scene has none to read back.';
+    return;
+  }
+
+  note.textContent = '';
+  const columns = await ensurePemColumns(root, scene.attack_id);
+  if (!columns) {
+    note.textContent = 'Could not load this attack’s metric list.';
+    return;
+  }
+  await renderPemCharts(root);
+}
+
+//: The current run's full fetched series, so scrubbing/playing the map only
+// re-slices already-fetched data instead of re-requesting on every frame.
+// Keyed to the run it belongs to, so a fetch that resolves after the user has
+// already switched runs is never drawn against the wrong one.
+let pemSeries = null;
+let pemSeriesRunId = null;
+
+/** Fetch the four selected columns for the current run (one request), then draw. */
+async function renderPemCharts(root) {
+  if (!currentRunId || currentRunId === 'demo') return;
+  const note = root.querySelector('#pem-note');
+  const metrics = [...new Set(pemSelection.filter(Boolean))];
+  if (!metrics.length) return;
+
+  const forRunId = currentRunId;
+  let series;
+  try {
+    series = await api.series(forRunId, metrics);
+  } catch (error) {
+    note.textContent = error.message;
+    return;
+  }
+  if (forRunId !== currentRunId) return; // superseded by a later run switch
+
+  pemSeries = series;
+  pemSeriesRunId = forRunId;
+  drawPemAtTime(root);
+}
+
+/**
+ * Redraw the four charts up to the map's current playhead (`map.time`),
+ * exactly the way Live PEM Monitor's chart grows as cycles stream in --
+ * scrubbing or playing the map advances these the same way watching a live
+ * stream would, just replayed from an already-fetched run instead of a
+ * WebSocket.
+ */
+function drawPemAtTime(root) {
+  if (!pemSeries || pemSeriesRunId !== currentRunId || !map) return;
+  const note = root.querySelector('#pem-note');
+  const t = map.time ?? 0;
+  const count = pemSeries.cycles.filter((c) => c <= t).length;
+  const cycles = pemSeries.cycles.slice(0, count);
+
+  const caveats = new Set();
+  pemSelection.forEach((name, slot) => {
+    const cell = root.querySelector(`.pem-chart[data-slot="${slot}"]`);
+    if (!cell || !name) return;
+    const values = pemSeries.columns[name];
+    if (!values) {
+      cell.innerHTML = '<p class="empty">Not in this attack’s columns.</p>';
+      return;
+    }
+    if (pemSeries.caveats[name]) caveats.add(pemSeries.caveats[name]);
+
+    renderLineChart(cell, {
+      // Compact: this panel sits beside the map, at map height, not below
+      // it at page width -- narrow again, so the cramped-viewBox style
+      // (see charts.js) is what stays legible here.
+      compact: true,
+      series: [{
+        key: name,
+        name: prettyColumn(name),
+        color: 'var(--series-1)',
+        points: cycles.map((c, i) => ({ x: c, y: values[i] })),
+      }],
+      unit: pemSeries.units[name] || 'count',
+      yLabel: prettyColumn(name),
+      xLabel: 's',
+      // Only draw the marker once the playhead has reached it, same as a
+      // live stream never shows "attack starts" before cycle 10 arrives.
+      vlines: t >= pemSeries.attack_start_s ? [{ x: pemSeries.attack_start_s, label: 'attack starts' }] : [],
+    });
+  });
+
+  note.innerHTML = caveats.size
+    ? `<span class="warn">⚠</span> ${[...caveats].join(' ')}`
+    : '';
 }
 
 // -- defence board -----------------------------------------------------------

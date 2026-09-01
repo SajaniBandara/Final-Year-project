@@ -34,6 +34,26 @@ const SIGNAL_COLORS = Object.fromEntries(
 /** How long an accusation stays lit, in simulated seconds. */
 const EVENT_FADE_S = 3.0;
 
+/**
+ * SUMO-GUI's actual default "real world" scheme -- the green terrain, near-
+ * black arterials, thin grey footways a SUMO screenshot is instantly
+ * recognisable by, not this app's own theme. Literal colours, not
+ * design-system tokens, and (unlike the rest of the map) not theme-aware
+ * either: the whole point is to match SUMO's own fixed look regardless of
+ * light/dark mode, the same reason the car/RSU icons elsewhere in this file
+ * use fixed rgba() rather than --series-n for their non-identity details.
+ * Bucketed (not per-road) so each bucket is one Path2D stroked once, not
+ * 4,400 individual line-width calls.
+ */
+const SUMO_GROUND = '#3f6b30';
+const ROAD_STYLES = {
+  'road-major': { test: (r) => r.class === 'road' && r.lanes >= 3, color: '#161616', width: 3.4, alpha: 0.95 },
+  'road-minor': { test: (r) => r.class === 'road' && r.lanes < 3, color: '#2b2b2b', width: 2, alpha: 0.9 },
+  cycle: { test: (r) => r.class === 'cycle', color: '#a8433c', width: 1, alpha: 0.75, dash: [2, 2] },
+  foot: { test: (r) => r.class === 'foot', color: '#c9c9c9', width: 0.9, alpha: 0.85 },
+  rail: { test: (r) => r.class === 'rail', color: '#2b2b2b', width: 1.6, alpha: 0.9, dash: [6, 3] },
+};
+
 /** Click tolerance, in *screen* pixels.
  *
  * Screen space, not simulation metres: the RSU grid is spaced 260 x 270 m, so a
@@ -163,7 +183,42 @@ export class NetworkMap {
     this.offsetX = (this.viewW - map.width * this.scale) / 2;
     this.offsetY = (this.viewH - map.height * this.scale) / 2;
     this.mapH = map.height;
+    this._buildRoadsPath();
     this.draw();
+  }
+
+  /**
+   * Cache the SUMO road network as one Path2D per style bucket, in current
+   * screen space.
+   *
+   * ~4,400 road segments is too many to re-walk with individual `stroke()`
+   * calls every frame at 10fps; building each bucket's path once (here, and
+   * again only when the scale/offset actually change, i.e. on resize or a
+   * new scene) and calling `ctx.stroke(path)` per frame per bucket is the
+   * difference between a smooth map and a dropped-frame one.
+   */
+  _buildRoadsPath() {
+    const roads = this.scene?.layout?.roads;
+    this._roadsPaths = null;
+    if (!roads || !roads.length) return;
+
+    const paths = {};
+    for (const key of Object.keys(ROAD_STYLES)) paths[key] = new Path2D();
+
+    for (const road of roads) {
+      const points = road.points;
+      if (!points || points.length < 2) continue;
+      const bucket = Object.keys(ROAD_STYLES).find((key) => ROAD_STYLES[key].test(road));
+      if (!bucket) continue;
+      const path = paths[bucket];
+      const [x0, y0] = this.project(points[0][0], points[0][1]);
+      path.moveTo(x0, y0);
+      for (let i = 1; i < points.length; i += 1) {
+        const [x, y] = this.project(points[i][0], points[i][1]);
+        path.lineTo(x, y);
+      }
+    }
+    this._roadsPaths = paths;
   }
 
   /** Simulation metres -> canvas pixels, flipping y (sim is y-up). */
@@ -254,6 +309,7 @@ export class NetworkMap {
     this._hits = [];
 
     this._drawGround(ctx, token, layout);
+    this._drawRoads(ctx);
     if (this.showControlPlane) this._drawControlPlane(ctx, token, layout);
     if (this.showCoverage) this._drawCoverage(ctx, token, layout);
     this._drawAccusations(ctx, token, layout);
@@ -273,11 +329,37 @@ export class NetworkMap {
 
   _drawGround(ctx, token, layout) {
     const [x0, y0] = this.project(0, layout.map.height);
-    ctx.fillStyle = token('--surface-1');
+    // SUMO's own default terrain green, not the app's theme surface -- see
+    // the note on ROAD_STYLES.
+    ctx.fillStyle = SUMO_GROUND;
     ctx.fillRect(x0, y0, layout.map.width * this.scale, layout.map.height * this.scale);
-    ctx.strokeStyle = token('--border');
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x0, y0, layout.map.width * this.scale, layout.map.height * this.scale);
+  }
+
+  /**
+   * The SUMO road network vehicles actually drive on -- real street geometry
+   * under the abstract RSU grid, not a background image (nothing to align,
+   * no extra asset to ship; it's the same coordinate space as everything
+   * else on the map already), styled in SUMO-GUI's own default network
+   * colours (see `ROAD_STYLES`) rather than one undifferentiated line.
+   * Drawn thin/quiet foot & rail lines first, arterials last, so the roads
+   * that matter most stay crisp on top instead of buried under them.
+   */
+  _drawRoads(ctx) {
+    if (!this._roadsPaths) return;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const key of ['foot', 'cycle', 'rail', 'road-minor', 'road-major']) {
+      const path = this._roadsPaths[key];
+      const style = ROAD_STYLES[key];
+      if (!path || !style) continue;
+      ctx.strokeStyle = style.color;
+      ctx.globalAlpha = style.alpha;
+      ctx.lineWidth = style.width;
+      ctx.setLineDash(style.dash || []);
+      ctx.stroke(path);
+    }
+    ctx.restore();
   }
 
   /** RSU-to-controller assignment, which is nearest-controller in the C++. */
@@ -390,8 +472,11 @@ export class NetworkMap {
       // Antenna height grows with load so a busy RSU is visible at a glance.
       const h = 9 + Math.min(6, load * 0.5);
 
-      let color = token('--axis');
-      let signalColor = token('--text-muted');
+      // A theme-muted grey (tuned for a light/dark UI surface) all but
+      // disappears against the fixed dark-green SUMO ground -- fixed light
+      // colours instead, same reasoning as the road/vehicle colours above.
+      let color = '#eef2f7';
+      let signalColor = '#b9c8dd';
       if (accusing.has(rsu.id)) {
         color = token('--series-1');
         signalColor = token('--series-1');
@@ -544,13 +629,20 @@ export class NetworkMap {
    * Draw a top-down car silhouette centred on (cx, cy), rotated by `angle`
    * radians (canvas space: 0 = pointing right, positive = clockwise).
    *
-   * The shape has three layers:
-   *   1. Car body  — rounded rectangle, coloured by threat status.
-   *   2. Cabin     — smaller rounded rect with a dark tint for the glass area.
-   *   3. Headlights — two small bright rectangles at the front.
+   * A plain rounded rectangle reads as a pill or a badge at 13px, not a
+   * car -- nothing about it says "vehicle" without wheels or a directional
+   * front. This adds both:
+   *   1. Wheels     — four dark rectangles at the axle positions, drawn
+   *                   *before* the body so only their outer half peeks past
+   *                   its edge (the same trick top-down map vehicle icons
+   *                   use to read as wheels rather than body texture).
+   *   2. Car body   — tapers to a point at the front instead of a flat
+   *                   rounded end, so heading is legible at a glance.
+   *   3. Cabin      — a dark tint for the glass area.
+   *   4. Headlights — two small bright marks at the nose.
    *
-   * Sizes are kept small (body ≈ 13×8 px) so 200 cars fit on the map without
-   * occluding the RSU grid.
+   * Sizes are kept small (body ≈ 14×8 px) so 200 cars fit on the map
+   * without occluding the RSU grid.
    */
   _drawCar(ctx, token, cx, cy, angle, isAccused) {
     if (isAccused) {
@@ -567,35 +659,49 @@ export class NetworkMap {
       ctx.restore();
     }
 
-    const bw = isAccused ? 15 : 13;   // slightly larger length for accused
-    const bh = isAccused ? 9 : 8;     // width
-    const r  = 2.2;
+    const bw = isAccused ? 13 : 11;   // slightly larger length for accused
+    const bh = isAccused ? 7.5 : 6.5; // width
+    const halfW = bw / 2;
+    const halfH = bh / 2;
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle);
 
-    // --- body ---------------------------------------------------------------
-    const bodyColor = isAccused
-      ? token('--status-critical')
-      : token('--series-2');
+    // --- wheels (drawn under the body so only the outer half shows) --------
+    const wheelLen = bw * 0.24;
+    const wheelW = 2.2;
+    const axleFront = halfW * 0.42;
+    const axleRear = -halfW * 0.55;
+    ctx.fillStyle = 'rgba(12, 12, 12, 0.9)';
+    for (const axle of [axleFront, axleRear]) {
+      for (const side of [-1, 1]) {
+        ctx.fillRect(axle - wheelLen / 2, side * halfH - wheelW / 2, wheelLen, wheelW);
+      }
+    }
+
+    // --- body: rounded rear, tapered to a point at the nose -----------------
+    // SUMO-GUI's own default vehicle colour is yellow; matched here rather
+    // than the app's --series-2 orange for the same reason the road/ground
+    // colours are literal rather than theme tokens (see ROAD_STYLES).
+    const bodyColor = isAccused ? token('--status-critical') : '#f0c419';
 
     ctx.beginPath();
-    this._roundedRect(ctx, -bw / 2, -bh / 2, bw, bh, r);
+    this._carBodyPath(ctx, halfW, halfH);
     ctx.fillStyle = bodyColor;
     ctx.fill();
 
-    // Outline
-    ctx.lineWidth = isAccused ? 1.4 : 0.8;
-    ctx.strokeStyle = isAccused
-      ? '#ffffff'
-      : token('--surface-raised');
+    // Outline. A light theme-coloured stroke reads as a stray halo against
+    // the fixed dark-green ground, so this is a fixed dark line instead --
+    // barely visible, just enough to separate the body from the road under it.
+    ctx.lineWidth = isAccused ? 1.4 : 0.6;
+    ctx.strokeStyle = isAccused ? '#ffffff' : 'rgba(0, 0, 0, 0.45)';
     ctx.stroke();
 
     // --- cabin (windscreen + roof) ------------------------------------------
-    const cw = bw * 0.42;
+    const cw = bw * 0.4;
     const ch = bh - 2.5;
-    const cx2 = -cw / 2 + 0.5;   // slightly forward of centre
+    const cx2 = -cw / 2;   // roughly centred; the nose taper narrows the front
     const cy2 = -ch / 2;
     ctx.beginPath();
     this._roundedRect(ctx, cx2, cy2, cw, ch, 1.2);
@@ -613,14 +719,34 @@ export class NetworkMap {
       ctx.stroke();
     }
 
-    // --- headlights ---------------------------------------------------------
-    const hlX = bw / 2 - 1.5;
+    // --- headlights, at the nose ---------------------------------------------
+    const hlX = halfW - 3.2;
     const hlH = (bh - 2) / 2 - 0.5;
     ctx.fillStyle = isAccused ? 'rgba(255, 220, 220, 0.95)' : 'rgba(255, 245, 160, 0.95)';
-    ctx.fillRect(hlX, -bh / 2 + 1.2, 1.5, hlH);
-    ctx.fillRect(hlX,  0.3,           1.5, hlH);
+    ctx.fillRect(hlX, -bh / 2 + 1.2, 1.4, hlH);
+    ctx.fillRect(hlX,  0.3,          1.4, hlH);
 
     ctx.restore();
+  }
+
+  /**
+   * Body outline for `_drawCar`: rounded at the rear, tapering to a point at
+   * the front (+x, before rotation) so the shape itself says which way the
+   * car is heading, not just its wheel/light placement.
+   */
+  _carBodyPath(ctx, halfW, halfH) {
+    const r = 2;
+    const noseX = halfW - halfH * 0.7;   // where the taper begins
+    const shoulderY = halfH * 0.75;
+    ctx.moveTo(-halfW + r, -halfH);
+    ctx.lineTo(noseX, -halfH);
+    ctx.quadraticCurveTo(halfW, -shoulderY, halfW, 0);
+    ctx.quadraticCurveTo(halfW, shoulderY, noseX, halfH);
+    ctx.lineTo(-halfW + r, halfH);
+    ctx.arcTo(-halfW, halfH, -halfW, halfH - r, r);
+    ctx.lineTo(-halfW, -halfH + r);
+    ctx.arcTo(-halfW, -halfH, -halfW + r, -halfH, r);
+    ctx.closePath();
   }
 
   /** Canvas rounded-rect path helper (pre-CanvasRenderingContext2D.roundRect). */

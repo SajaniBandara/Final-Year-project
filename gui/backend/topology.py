@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import math
 import re
+import xml.etree.ElementTree as ET
 from bisect import bisect_right
 from dataclasses import dataclass
 from functools import lru_cache
@@ -127,6 +128,130 @@ def nearest_controller(x: float, y: float) -> int:
     return best
 
 
+def _real_net_xml() -> Path | None:
+    """Find the SUMO road network ``osm.net.xml``, coping with a degraded checkout.
+
+    ``sumo_sim/seed<1-5>/osm.net.xml`` are symlinks to one shared network file
+    (all seeds drive on the same roads; only traffic/routes differ). On a
+    checkout without symlink support (this Windows tree, confirmed
+    2026-09-01) each one degraded into a plain ~110-byte text file holding the
+    *original* machine's absolute path rather than a working link -- so this
+    tries the working-symlink case first, then salvages the repo-relative
+    tail of that leftover text.
+    """
+    base = REPO_ROOT / "sumo_sim"
+    if not base.is_dir():
+        return None
+    candidates = sorted(base.glob("*/osm.net.xml"))
+
+    def _big_enough(p: Path) -> bool:
+        try:
+            return p.is_file() and p.stat().st_size > 1_000_000
+        except OSError:
+            return False
+
+    for candidate in candidates:
+        target = candidate.resolve() if candidate.is_symlink() else candidate
+        if _big_enough(target):
+            return target
+
+    for candidate in candidates:
+        try:
+            text = candidate.read_text(encoding="utf-8", errors="ignore").strip()
+        except OSError:
+            continue
+        if "\n" in text or len(text) > 400:
+            continue  # not a small pointer file
+        normalised = text.replace("\\", "/")
+        idx = normalised.find("sumo_sim/")
+        if idx == -1:
+            continue
+        resolved = (REPO_ROOT / normalised[idx:]).resolve()
+        if _big_enough(resolved):
+            return resolved
+    return None
+
+
+#: SUMO/OSM ``edge type`` -> the class the frontend styles it as, matching
+#: SUMO-GUI's own default network colouring (grey asphalt for motor traffic,
+#: tan footways, red-brown cycleways, dashed dark rail) rather than one
+#: undifferentiated line for every road.
+_NON_MOTOR_TYPES = frozenset({
+    "highway.footway", "highway.pedestrian", "highway.steps", "highway.path",
+})
+
+
+def _road_class(edge_type: str | None) -> str:
+    if not edge_type:
+        return "road"
+    if edge_type.startswith("railway."):
+        return "rail"
+    if edge_type in _NON_MOTOR_TYPES:
+        return "foot"
+    if edge_type == "highway.cycleway":
+        return "cycle"
+    return "road"
+
+
+@lru_cache(maxsize=1)
+def road_network() -> list[dict[str, Any]] | None:
+    """Road centrelines, in the same coordinate space as everything else on the map.
+
+    ``osm.net.xml``'s ``<location convBoundary="0.00,0.00,2061.77,2137.46">``
+    matches :data:`MAP_WIDTH`/:data:`MAP_HEIGHT` exactly (both derive from the
+    same SUMO->ns-2 export), so these polylines need no reprojection -- they
+    draw in the identical coordinate system RSU and vehicle positions already
+    use. Skips SUMO's internal junction-connector edges (the ``:``-prefixed
+    ids), which are stubs a few metres long and not roads a reader would
+    recognise.
+
+    Each entry carries ``lanes`` (the edge's real lane count, so the frontend
+    can draw a 4-lane arterial thicker than a service alley) and ``class``
+    (:func:`_road_class`, so it can colour motor roads, footways, cycleways
+    and rail differently -- the point of "standard SUMO colours"). The
+    centreline is the *middle* lane's shape rather than the first: on a
+    multi-lane edge the first lane is offset a full lane width from the
+    road's true centre, which reads as visibly off-alignment once the road is
+    drawn with real width.
+
+    Cached for the process lifetime: parsing the ~8MB network XML takes a
+    moment, and the network is identical for every run.
+    """
+    path = _real_net_xml()
+    if path is None:
+        return None
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+
+    roads: list[dict[str, Any]] = []
+    for edge in root.iter("edge"):
+        if edge.get("function") == "internal":
+            continue
+        lanes = edge.findall("lane")
+        if not lanes:
+            continue
+        shape = lanes[len(lanes) // 2].get("shape")
+        if not shape:
+            continue
+        points: list[tuple[float, float]] = []
+        for pair in shape.split():
+            x_str, _, y_str = pair.partition(",")
+            try:
+                points.append((round(float(x_str), 1), round(float(y_str), 1)))
+            except ValueError:
+                break
+        if len(points) < 2:
+            continue
+        roads.append({
+            "points": points,
+            "lanes": len(lanes),
+            "class": _road_class(edge.get("type")),
+        })
+    return roads
+
+
 def layout(n_vehicles: int = 200, n_rsus: int = 64, n_controllers: int = 4) -> dict[str, Any]:
     """The static scene: every fixed node, its logical id, and its position.
 
@@ -153,6 +278,7 @@ def layout(n_vehicles: int = 200, n_rsus: int = 64, n_controllers: int = 4) -> d
     ]
     return {
         "map": {"width": MAP_WIDTH, "height": MAP_HEIGHT},
+        "roads": road_network(),
         "rsus": rsus,
         "controllers": controllers,
         "vehicle_ids": [0, max(0, n_vehicles - 1)],

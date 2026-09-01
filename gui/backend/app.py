@@ -31,6 +31,7 @@ from .catalog import REPO_ROOT
 from .parser import SchemaError
 from .service import BadRequestError, NotFoundError, ResultsService, ServiceError
 from .snapshot_service import SnapshotService
+from . import topology as _topology
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +403,7 @@ def map_demo_scene() -> dict:
 
     layout = {
         "map": {"width": MAP_W, "height": MAP_H},
+        "roads": _topology.road_network(),
         "rsus": rsus,
         "controllers": controllers,
         "n_vehicles": N_V, "n_rsus": N_RSU, "n_controllers": N_CTRL,

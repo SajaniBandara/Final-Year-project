@@ -317,7 +317,10 @@ def scene(
         "notes": [n for n in (
             trace_error,
             "Detection events truncated at the read cap; the map shows the "
-            f"first {MAX_EVENTS:,}." if truncated else None,
+            f"first {MAX_EVENTS:,}, covering t=0 to t={events[-1].t:.0f}s of this "
+            f"{round(horizon):,}s run. Accusations after t={events[-1].t:.0f}s are real "
+            "but not shown here -- this is a display limit, not the simulator "
+            "stopping." if truncated and events else None,
             "No detection log for this run -- the map will show topology and "
             "movement but no accusations." if detection_path is None else None,
         ) if n],
