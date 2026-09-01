@@ -19,8 +19,9 @@ Point it at a different results copy with ``MOBIGUARD_RESULTS_DIR``.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, Union
 
 from fastapi import Body, Depends, FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
@@ -29,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from .catalog import REPO_ROOT
 from .parser import SchemaError
 from .service import BadRequestError, NotFoundError, ResultsService, ServiceError
+from .snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +38,17 @@ FRONTEND_DIR = REPO_ROOT / "gui" / "frontend"
 
 #: Single service instance for the process. Read-only over the filesystem, so
 #: sharing it is safe and lets the parsed-run cache actually pay off.
-_service = ResultsService()
+#:
+#: Set MOBIGUARD_SNAPSHOT_DIR to serve from a pre-exported JSON snapshot
+#: (built by ``python -m gui.backend.export_snapshot``) instead of scanning
+#: ``results_routing/`` on every request -- see that module's docstring.
+_snapshot_dir = os.environ.get("MOBIGUARD_SNAPSHOT_DIR")
+_service: Union[ResultsService, SnapshotService] = (
+    SnapshotService(_snapshot_dir) if _snapshot_dir else ResultsService()
+)
 
 
-def get_service() -> ResultsService:
+def get_service() -> Union[ResultsService, SnapshotService]:
     """FastAPI dependency yielding the shared service."""
     return _service
 

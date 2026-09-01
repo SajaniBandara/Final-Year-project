@@ -55,7 +55,7 @@ export async function initLab(root) {
     return;
   }
 
-  renderScenarioPicker(root);
+  initScenarioConfigurator(root);
   renderDefenceBoard(root);
 
   window.addEventListener('mobiguard:tab-changed', (e) => {
@@ -70,7 +70,7 @@ export async function initLab(root) {
   window.addEventListener('mobiguard:catalog-updated', async () => {
     try {
       catalog = await api.catalog();
-      renderScenarioPicker(root);
+      updateConfiguratorStatus(root);
     } catch {
       /* ignore */
     }
@@ -90,7 +90,7 @@ export async function initLab(root) {
         /* ignore refresh error, fall back to existing catalog */
       }
       catalog = await api.catalog();
-      renderScenarioPicker(root);
+      updateConfiguratorStatus(root);
 
       const runId = event.detail?.run_id;
       const metricsFile = event.detail?.metrics_file;
@@ -162,7 +162,29 @@ function shell() {
     </header>
 
     <section class="panel" id="scenario-panel">
-      <div id="scenario-picker" class="scenario-grid"></div>
+      <div class="scenario-configurator">
+        <div class="cfg-row">
+          <label class="param">
+            <span class="param-label">Attack</span>
+            <select id="cfg-attack"></select>
+          </label>
+          <label class="param">
+            <span class="param-label">Attacker percentage</span>
+            <select id="cfg-pct"></select>
+          </label>
+          <label class="param">
+            <span class="param-label">Simulation time (s)</span>
+            <input type="number" id="cfg-simtime" min="5" max="330" step="1">
+          </label>
+        </div>
+        <div class="cfg-actions">
+          <div id="cfg-status" class="cfg-status"></div>
+          <div class="row">
+            <button class="btn primary" id="cfg-load" disabled>▶ Load recorded run</button>
+            <button class="btn" id="cfg-launch">⚙ Configure &amp; launch new run →</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <div class="lab-body">
@@ -279,71 +301,112 @@ function shell() {
   </div>`;
 }
 
-// -- scenario picker ---------------------------------------------------------
+// -- scenario configurator ----------------------------------------------------
 
 /**
- * One card per attack variant, showing what data exists for it.
+ * Attack / percentage / simulation-time, picked directly rather than through
+ * nine fixed scenario cards. Two ways out of it:
  *
- * Variants with no run on disk are shown disabled rather than hidden: their
- * absence is information, and a panel asking "what about attack 6?" deserves
- * "no run has been collected for it here" rather than a menu that quietly
- * omits it.
+ * - **Load recorded run**, when a matching run already exists on disk --
+ *   opens it on the map immediately, same as the old cards did.
+ * - **Configure & launch new run**, always available -- hands the exact
+ *   combination to the Run Simulation tab (which is where `simTime` actually
+ *   takes effect; a recorded run's duration is fixed, so browsing one plays
+ *   it at whatever length it was captured at).
+ *
+ * The percentage list matches `attack_percentage`'s own choices in
+ * `params.py` (0/20/40/60/80/100) rather than the free-form catalog values --
+ * anything picked here is guaranteed launchable, not just guaranteed to have
+ * existed once as an ablation run.
  */
-function renderScenarioPicker(root) {
-  const byAttack = new Map();
-  for (const run of catalog.runs || []) {
-    if (!byAttack.has(run.attack)) byAttack.set(run.attack, []);
-    byAttack.get(run.attack).push(run);
-  }
+const STANDARD_PERCENTAGES = [0, 20, 40, 60, 80, 100];
 
-  root.querySelector('#scenario-picker').innerHTML = (options.attacks || [])
-    .map((attack) => {
-      const runs = byAttack.get(attack.number) || [];
-      const available = runs.length > 0;
-      const sigs = attack.signatures.length
-        ? attack.signatures.map((s) => `<span class="sig sig-${s}">${s}</span>`).join('')
-        : '<span class="sig sig-none">baseline</span>';
-      
-      const planeClass = attack.plane.toLowerCase().includes('control')
-        ? 'ctrl'
-        : attack.plane.toLowerCase().includes('data')
-        ? 'data'
-        : 'base';
+function initScenarioConfigurator(root) {
+  const attackSelect = root.querySelector('#cfg-attack');
+  const pctSelect = root.querySelector('#cfg-pct');
+  const simTimeInput = root.querySelector('#cfg-simtime');
 
-      return `
-      <button class="scenario-card${available ? '' : ' is-empty'}"
-              data-attack="${attack.number}" ${available ? '' : 'disabled'}>
-        <div class="card-top">
-          <span class="scenario-num-badge">Attack 0${attack.number}</span>
-          <span class="scenario-plane-pill ${planeClass}">${attack.plane}</span>
-        </div>
-        <div class="scenario-name">${attack.name}</div>
-        <div class="scenario-sigs">${sigs}</div>
-        <div class="card-bottom">
-          <span class="scenario-runs-badge ${available ? 'active' : ''}">
-            ${available ? `<span class="dot"></span> ${runs.length} run${runs.length === 1 ? '' : 's'}` : 'No data'}
-          </span>
-        </div>
-      </button>`;
-    })
+  attackSelect.innerHTML = (options.attacks || [])
+    .map((a) => `<option value="${a.number}">${a.number} — ${a.name}${a.plane && a.plane !== '--' ? ` (${a.plane})` : ''}</option>`)
+    .join('');
+  pctSelect.innerHTML = STANDARD_PERCENTAGES
+    .map((p) => `<option value="${p}">${p}%${p === 0 ? ' (no attack)' : ''}</option>`)
     .join('');
 
-  root.querySelectorAll('.scenario-card').forEach((card) => {
-    card.addEventListener('click', async () => {
-      const attack = Number(card.dataset.attack);
-      const runs = (catalog.runs || []).filter((r) => r.attack === attack);
-      if (!runs.length) return;
+  const simTimeParam = (options.groups || [])
+    .flatMap((g) => g.params || [])
+    .find((p) => p.name === 'simTime');
+  simTimeInput.value = String(simTimeParam?.default ?? 40);
+  if (simTimeParam?.min != null) simTimeInput.min = String(simTimeParam.min);
+  if (simTimeParam?.max != null) simTimeInput.max = String(simTimeParam.max);
 
-      // Instant UI feedback (0ms responsiveness)
-      root.querySelectorAll('.scenario-card').forEach((c) => c.classList.remove('is-selected'));
-      card.classList.add('is-selected');
+  attackSelect.addEventListener('change', () => updateConfiguratorStatus(root));
+  pctSelect.addEventListener('change', () => updateConfiguratorStatus(root));
 
-      // Highest attacker percentage first: the most visible instance of the
-      // attack is the one worth opening on.
-      runs.sort((a, b) => b.pct - a.pct);
-      await loadRun(root, runs[0]);
-    });
+  root.querySelector('#cfg-load').addEventListener('click', async () => {
+    const best = bestMatchingRun(currentSelection(root));
+    if (best) await loadRun(root, best);
   });
+
+  root.querySelector('#cfg-launch').addEventListener('click', () => {
+    const { attack, pct } = currentSelection(root);
+    const simTime = Number(simTimeInput.value) || undefined;
+    window.dispatchEvent(
+      new CustomEvent('mobiguard:configure-run', {
+        detail: { attack, pct, simTime },
+      })
+    );
+    document.querySelector('.tab[data-tab="simulation"]')?.click();
+  });
+
+  updateConfiguratorStatus(root);
+}
+
+function currentSelection(root) {
+  return {
+    attack: Number(root.querySelector('#cfg-attack').value),
+    pct: Number(root.querySelector('#cfg-pct').value),
+  };
+}
+
+function matchingRuns(attack, pct) {
+  return (catalog.runs || []).filter((r) => r.attack === attack && r.pct === pct);
+}
+
+/** Prefer an untagged, higher-seed-count run over a one-off ablation variant. */
+function bestMatchingRun({ attack, pct }) {
+  const runs = matchingRuns(attack, pct);
+  if (!runs.length) return null;
+  const score = (run) =>
+    (run.tag ? 0 : 100) + ((run.tag || '').startsWith('GUI') ? 400 : 0) +
+    Math.min(run.size_bytes || 0, 500_000) / 1000;
+  return [...runs].sort((a, b) => score(b) - score(a))[0];
+}
+
+/** Sets the selects to reflect a scene already on the map, without loading anything. */
+function syncConfiguratorSelection(root, scene) {
+  const attackSelect = root.querySelector('#cfg-attack');
+  const pctSelect = root.querySelector('#cfg-pct');
+  if (!attackSelect || !pctSelect) return;
+  if ([...attackSelect.options].some((o) => Number(o.value) === scene.attack_id)) {
+    attackSelect.value = String(scene.attack_id);
+  }
+  if ([...pctSelect.options].some((o) => Number(o.value) === scene.attack_percentage)) {
+    pctSelect.value = String(scene.attack_percentage);
+  }
+  updateConfiguratorStatus(root);
+}
+
+function updateConfiguratorStatus(root) {
+  const status = root.querySelector('#cfg-status');
+  const loadBtn = root.querySelector('#cfg-load');
+  if (!status || !loadBtn) return;
+  const selection = currentSelection(root);
+  const runs = matchingRuns(selection.attack, selection.pct);
+  loadBtn.disabled = runs.length === 0;
+  status.innerHTML = runs.length
+    ? `<span class="good">✓ ${runs.length} recorded run${runs.length === 1 ? '' : 's'}</span> at this exact combination — Load opens the best one.`
+    : `<span class="warn">No recorded run</span> at this combination yet — Configure &amp; launch to collect one.`;
 }
 
 function pickDefaultRun() {
@@ -393,6 +456,7 @@ async function loadDemoScene(root) {
   renderGuessPanel(root);
   renderOverlay(root);
   updateClock(root);
+  syncConfiguratorSelection(root, scene);
 
   status.innerHTML = `
     <div class="run-badge demo-badge">
@@ -428,10 +492,7 @@ async function loadRun(root, run) {
   renderOverlay(root);
   updateClock(root);
 
-  root.querySelectorAll('.scenario-card').forEach((card) => {
-    const isSel = Number(card.dataset.attack) === scene.attack_id;
-    card.classList.toggle('is-selected', isSel);
-  });
+  syncConfiguratorSelection(root, scene);
 
   const gt = scene.ground_truth;
   status.innerHTML = `

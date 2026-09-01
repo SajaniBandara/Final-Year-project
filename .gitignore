@@ -11,6 +11,11 @@ attack1_prefix_backup/
 *.csv
 !sfto_pipeline/results/**/*.csv
 
+# The repo-root results copy (hand-copied from the HPC) and the GUI's
+# exported JSON snapshots of it -- both derived data, not source.
+/results_routing/
+/gui/snapshots/
+
 # Evidence screenshots (Task 8 deliverables, local capture only)
 screenshots/
 

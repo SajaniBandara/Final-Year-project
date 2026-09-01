@@ -58,6 +58,7 @@ export async function initSimulation(root) {
     Object.assign(defences, event.detail.defences || {});
     if (event.detail.attack !== undefined) values.attack_number = event.detail.attack;
     if (event.detail.pct !== undefined) values.attack_percentage = event.detail.pct;
+    if (event.detail.simTime !== undefined) values.simTime = event.detail.simTime;
     renderForm(root);
     renderDefences(root);
     bind(root);
