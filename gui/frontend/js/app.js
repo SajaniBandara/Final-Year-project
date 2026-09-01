@@ -8,7 +8,6 @@
 
 import { api, ApiError } from './api.js';
 import { initLive, stopLive } from './live.js';
-import { initCrypto } from './crypto.js';
 import { initLstm } from './lstm.js';
 import { initOffline } from './offline.js';
 import { initLab, stopLab } from './lab.js';
@@ -110,7 +109,6 @@ async function main() {
     baselines: document.querySelector('#panel-baselines'),
     live: document.querySelector('#panel-live'),
     lstm: document.querySelector('#panel-lstm'),
-    crypto: document.querySelector('#panel-crypto'),
   };
   initTabs(panels);
 
@@ -147,7 +145,6 @@ async function main() {
     await initSimulation(panels.simulation);
     await initBaselines(panels.baselines);
     await initLstm(panels.lstm);
-    await initCrypto(panels.crypto);
   } catch (error) {
     const hint =
       error instanceof ApiError && error.status === 503
