@@ -138,6 +138,22 @@ giving each baseline row a same-length MOBIGUARD counterpart.
 
 ---
 
+### 2.5 Plot-ready data + figures
+
+- **`results_routing/baseline_summary_60s.csv`** — tidy long format, one row per
+  `(method, attack, family, pct)` with `avg_PDR, avg_lat_ms, avg_MCC, avg_DR,
+  avg_FPR, TP..FN, avg_TVR, avg_UCR, src`. Built by
+  `scripts/build_baseline_summary.py` (re-run after `_cmp60` completes).
+- **`scripts/plot_baseline_summary.py`** → `results/baseline_figs/`:
+  `baseline_STD_A1A2.png` (MOBIGUARD vs TAP), `baseline_HF_A5-A8.png`
+  (MOBIGUARD vs FADE), `baseline_TCAM_A3A4.png` (SFTO-Guard). Line-per-method,
+  rows = MCC / DR% / FPR% vs attack %, one panel per variant. Okabe-Ito palette
+  (CVD-validated): blue = MOBIGUARD, orange = baseline.
+- NOTE: the MOBIGUARD rows currently mix `_cmp60` (60 s) and canonical (180 s)
+  where a `_cmp60` point isn't done yet — `src` column shows which. The HF
+  MOBIGUARD FPR spikes at 20/40/80/100 % are pre-existing canonical-data
+  behaviour (S5–S8 false positives, see `phase63_fp`), not introduced here.
+
 ## 3. CSV → figure mapping (HPC_PLAN §0)
 
 | Fig | Metric / column | Source files |
