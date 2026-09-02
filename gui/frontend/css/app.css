@@ -1153,6 +1153,23 @@ table.mini td { padding: 4px 0; font-variant-numeric: tabular-nums; }
 .sim-advanced-details summary:hover, .sim-command-details summary:hover { color: var(--series-7); }
 .advanced-body { margin-top: 12px; }
 
+/* The generated CLI command is one long path plus several flags -- left as
+   a bare <pre> it never wraps and overflows straight out of the panel
+   (and the tab) instead of staying inside its own box. */
+.command {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 .launch-hero { display: flex; flex-direction: column; gap: 12px; align-items: stretch; margin-bottom: 16px; }
 .launch-btn {
   font-size: 16px; font-weight: 700; padding: 16px 20px;

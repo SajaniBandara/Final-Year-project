@@ -75,9 +75,14 @@ export function initLive(root, catalog) {
               ).join('')}
             </select>
           </div>
-          <button class="icon-button" id="live-toggle" style="width:100%">Start</button>
+          <button class="icon-button" id="live-toggle" style="width:100%">Watch</button>
           <p class="sub" id="live-hint" style="margin-top:10px">
             Live mode follows the CSV as ns-3 appends to it — one row per simulated second.
+          </p>
+          <p class="sub" style="margin-top:6px">
+            This only detaches the viewer — it does not stop the simulation itself.
+            To actually terminate a running simulation, use <strong>Stop</strong> on the
+            Run Simulation tab, next to that run's progress bar.
           </p>
         </div>
       </aside>
@@ -157,7 +162,7 @@ function connect(root) {
 
   socket.addEventListener('open', () => {
     state.connected = true;
-    root.querySelector('#live-toggle').textContent = 'Stop';
+    root.querySelector('#live-toggle').textContent = 'Stop watching';
   });
 
   socket.addEventListener('message', (event) => {
@@ -170,7 +175,7 @@ function connect(root) {
 
   socket.addEventListener('close', () => {
     state.connected = false;
-    root.querySelector('#live-toggle').textContent = 'Start';
+    root.querySelector('#live-toggle').textContent = 'Watch';
   });
 
   socket.addEventListener('error', () => {
@@ -181,7 +186,7 @@ function connect(root) {
 function disconnect(root) {
   if (state.socket) state.socket.close();
   state.connected = false;
-  root.querySelector('#live-toggle').textContent = 'Start';
+  root.querySelector('#live-toggle').textContent = 'Watch';
   setStatus(root, 'good', 'Stopped', `${state.cycles.length} cycles received.`);
 }
 
@@ -245,13 +250,13 @@ function recordEvents(message, previous) {
 
 function onEnd(root) {
   setStatus(root, 'good', 'Stream complete', `${state.cycles.length} cycles received.`);
-  root.querySelector('#live-toggle').textContent = 'Start';
+  root.querySelector('#live-toggle').textContent = 'Watch';
   state.connected = false;
 }
 
 function onError(root, detail) {
   setStatus(root, 'critical', 'Stream failed', detail);
-  root.querySelector('#live-toggle').textContent = 'Start';
+  root.querySelector('#live-toggle').textContent = 'Watch';
   state.connected = false;
 }
 
