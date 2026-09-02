@@ -54,6 +54,18 @@ def num(v):
         return ""
 
 
+def mcc_from_matrix(tp, fp, tn, fn):
+    """Cumulative-matrix MCC. '' if any cell missing or denominator 0."""
+    try:
+        tp, fp, tn, fn = float(tp), float(fp), float(tn), float(fn)
+    except (TypeError, ValueError):
+        return ""
+    den = ((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
+    if den == 0:
+        return ""
+    return round((tp * tn - fp * fn) / den, 4)
+
+
 def add_percycle(method, attack, path):
     v = last_data_row(path)
     if not v:
@@ -124,8 +136,16 @@ for a, base in ((3, "a3"), (4, "a4")):
             TP=m["TP"], FP=m["FP"], TN=m["TN"], FN=m["FN"],
             avg_TVR="", avg_UCR="", src=os.path.relpath(d, REPO)))
 
-cols = ["method", "attack", "family", "pct", "avg_PDR", "avg_lat_ms", "avg_MCC",
-        "avg_DR", "avg_FPR", "TP", "FP", "TN", "FN", "avg_TVR", "avg_UCR", "src"]
+# Uniform cumulative-matrix MCC for every row (matches FADE's fade_metrics mcc
+# and SFTO's metrics.json mcc; replaces the per-cycle-average avg_MCC for
+# TAP/MOBIGUARD). Plot + tables should use mcc_matrix for a like-for-like
+# cross-method comparison.
+for r in rows:
+    r["mcc_matrix"] = mcc_from_matrix(r.get("TP"), r.get("FP"), r.get("TN"), r.get("FN"))
+
+cols = ["method", "attack", "family", "pct", "avg_PDR", "avg_lat_ms",
+        "mcc_matrix", "avg_MCC", "avg_DR", "avg_FPR", "TP", "FP", "TN", "FN",
+        "avg_TVR", "avg_UCR", "src"]
 rows.sort(key=lambda r: (r["method"], r["attack"], r["pct"] or 0))
 with open(OUT, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=cols)

@@ -61,22 +61,28 @@ Files: `results_routing/TAP_Attack{1,2}_<pct>_d100ms_seed1.csv`,
 ### 2.1 TAP (Arsalan & Rehman, FIT 2018) — Selective Time Delay, A1 / A2
 
 All six re-run 2026-09-02 on the fixed binary (`d4652fa`); A1 numbers identical
-to the pre-fix run (deterministic), A2 now valid.
+to the pre-fix run (deterministic), A2 now valid. **MCC (matrix)** = MCC from
+the final-row cumulative `TP/FP/TN/FN` — the like-for-like definition used for
+FADE (§2.2) and SFTO (§2.3). `avg_MCC` (CSV) is the per-cycle time-average and
+is shown only for reference.
 
-| variant | pct | avg_PDR % | avg_lat ms | avg_MCC | avg_DR % | avg_FPR % | TP | FP | TN | FN | avg_TVR |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| A1 (CP) | 20  | 64.32 | 35.8  | **−0.075** | 85.67 | 91.64 | 14 | 245 | 7 | 2 | 2.46 |
-| A1 (CP) | 60  | 65.62 | 42.4  | **−0.169** | 80.71 | 92.50 | 27 | 230 | 6 | 5 | 4.05 |
-| A1 (CP) | 100 | 65.62 | 43.7  | **−0.207** | 81.79 | 93.64 | 55 | 200 | 4 | 9 | 9.09 |
-| A2 (DP) | 20  | 64.90 | 78.2  | 0.097 | 100 | 89.53 | 46 | 214 | 8 | 0 | 6.37 |
-| A2 (DP) | 60  | 62.45 | 219.2 | 0.194 | 100 | 88.16 | 136 | 125 | 7 | 0 | 25.15 |
-| A2 (DP) | 100 | 56.24 | 311.3 | 0.346 | 100 | 79.91 | 228 | 34 | 6 | 0 | 43.21 |
+| variant | pct | avg_PDR % | avg_lat ms | **MCC (matrix)** | avg_MCC | avg_DR % | avg_FPR % | TP | FP | TN | FN | avg_TVR |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| A1 (CP) | 20  | 64.32 | 35.8  | **−0.128** | −0.075 | 85.67 | 91.64 | 14 | 245 | 7 | 2 | 2.46 |
+| A1 (CP) | 60  | 65.62 | 42.4  | **−0.214** | −0.169 | 80.71 | 92.50 | 27 | 230 | 6 | 5 | 4.05 |
+| A1 (CP) | 100 | 65.62 | 43.7  | **−0.240** | −0.207 | 81.79 | 93.64 | 55 | 200 | 4 | 9 | 9.09 |
+| A2 (DP) | 20  | 64.90 | 78.2  | **0.080** | 0.097 | 100 | 89.53 | 46 | 214 | 8 | 0 | 6.37 |
+| A2 (DP) | 60  | 62.45 | 219.2 | **0.166** | 0.194 | 100 | 88.16 | 136 | 125 | 7 | 0 | 25.15 |
+| A2 (DP) | 100 | 56.24 | 311.3 | **0.361** | 0.346 | 100 | 79.91 | 228 | 34 | 6 | 0 | 43.21 |
 
 - **A1: negative MCC** — TAP performs worse than chance on the control-plane
   delay variant (FP 200–245 vs TP 14–55). Headline baseline-weakness result.
-- **A2: recall 100 %, poor precision** — MCC rises 0.10 → 0.35 with intensity
-  only because FP falls as more of the fleet is genuinely malicious.
+- **A2: recall 100 %, poor precision** — MCC rises with intensity only because
+  FP falls as more of the fleet is genuinely malicious.
 - A2 latency 78 → 219 → 311 ms is raw attack impact.
+- matrix vs per-cycle MCC differ by ~0.03–0.05 here (more negative for A1,
+  mixed for A2) — the same divergence HPC_PLAN §0 flags; pick one and use it
+  everywhere.
 
 ### 2.2 FADE (eFADE) — Hidden Forwarding, A5–A8
 
