@@ -25,7 +25,7 @@ os.makedirs(OUT, exist_ok=True)
 
 COLOR = {"MOBIGUARD": "#0072B2", "TAP": "#E69F00", "FADE": "#E69F00", "SFTO": "#E69F00"}
 MARK = {"MOBIGUARD": "o", "TAP": "s", "FADE": "s", "SFTO": "s"}
-METRICS = [("avg_MCC", "MCC", (-1.05, 1.05)),
+METRICS = [("mcc_matrix", "MCC (matrix)", (-1.05, 1.05)),
            ("avg_DR", "DR  (%)", (-3, 105)),
            ("avg_FPR", "FPR  (%)", (-3, 105))]
 

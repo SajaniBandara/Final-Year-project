@@ -61,48 +61,61 @@ Files: `results_routing/TAP_Attack{1,2}_<pct>_d100ms_seed1.csv`,
 ### 2.1 TAP (Arsalan & Rehman, FIT 2018) — Selective Time Delay, A1 / A2
 
 All six re-run 2026-09-02 on the fixed binary (`d4652fa`); A1 numbers identical
-to the pre-fix run (deterministic), A2 now valid.
+to the pre-fix run (deterministic), A2 now valid. **MCC (matrix)** = MCC from
+the final-row cumulative `TP/FP/TN/FN` — the like-for-like definition used for
+FADE (§2.2) and SFTO (§2.3). `avg_MCC` (CSV) is the per-cycle time-average and
+is shown only for reference.
 
-| variant | pct | avg_PDR % | avg_lat ms | avg_MCC | avg_DR % | avg_FPR % | TP | FP | TN | FN | avg_TVR |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| A1 (CP) | 20  | 64.32 | 35.8  | **−0.075** | 85.67 | 91.64 | 14 | 245 | 7 | 2 | 2.46 |
-| A1 (CP) | 60  | 65.62 | 42.4  | **−0.169** | 80.71 | 92.50 | 27 | 230 | 6 | 5 | 4.05 |
-| A1 (CP) | 100 | 65.62 | 43.7  | **−0.207** | 81.79 | 93.64 | 55 | 200 | 4 | 9 | 9.09 |
-| A2 (DP) | 20  | 64.90 | 78.2  | 0.097 | 100 | 89.53 | 46 | 214 | 8 | 0 | 6.37 |
-| A2 (DP) | 60  | 62.45 | 219.2 | 0.194 | 100 | 88.16 | 136 | 125 | 7 | 0 | 25.15 |
-| A2 (DP) | 100 | 56.24 | 311.3 | 0.346 | 100 | 79.91 | 228 | 34 | 6 | 0 | 43.21 |
+| variant | pct | avg_PDR % | avg_lat ms | **MCC (matrix)** | avg_MCC | avg_DR % | avg_FPR % | TP | FP | TN | FN | avg_TVR |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| A1 (CP) | 20  | 64.32 | 35.8  | **−0.128** | −0.075 | 85.67 | 91.64 | 14 | 245 | 7 | 2 | 2.46 |
+| A1 (CP) | 60  | 65.62 | 42.4  | **−0.214** | −0.169 | 80.71 | 92.50 | 27 | 230 | 6 | 5 | 4.05 |
+| A1 (CP) | 100 | 65.62 | 43.7  | **−0.240** | −0.207 | 81.79 | 93.64 | 55 | 200 | 4 | 9 | 9.09 |
+| A2 (DP) | 20  | 64.90 | 78.2  | **0.080** | 0.097 | 100 | 89.53 | 46 | 214 | 8 | 0 | 6.37 |
+| A2 (DP) | 60  | 62.45 | 219.2 | **0.166** | 0.194 | 100 | 88.16 | 136 | 125 | 7 | 0 | 25.15 |
+| A2 (DP) | 100 | 56.24 | 311.3 | **0.361** | 0.346 | 100 | 79.91 | 228 | 34 | 6 | 0 | 43.21 |
 
 - **A1: negative MCC** — TAP performs worse than chance on the control-plane
   delay variant (FP 200–245 vs TP 14–55). Headline baseline-weakness result.
-- **A2: recall 100 %, poor precision** — MCC rises 0.10 → 0.35 with intensity
-  only because FP falls as more of the fleet is genuinely malicious.
+- **A2: recall 100 %, poor precision** — MCC rises with intensity only because
+  FP falls as more of the fleet is genuinely malicious.
 - A2 latency 78 → 219 → 311 ms is raw attack impact.
+- matrix vs per-cycle MCC differ by ~0.03–0.05 here (more negative for A1,
+  mixed for A2) — the same divergence HPC_PLAN §0 flags; pick one and use it
+  everywhere.
 
 ### 2.2 FADE (eFADE) — Hidden Forwarding, A5–A8
 
-From the 2026-09-01 P1 run (binary-independent for A5–A8; a re-run reproduces
-these byte-for-byte and was skipped).
+**Source: `results_routing/fade_metrics_Attack<N>_<pct>_seed1.csv`** (flow-level
+confusion + MCC, written by `efade_detection.h`) — **not** the per-cycle
+`FADE_Attack*.csv`, whose `avg_MCC` is a time-average that collapses to ~0
+because each cycle carries only 1–2 positives. From the 2026-09-01 P1 run
+(binary-independent for A5–A8).
 
-| variant | pct | avg_PDR % | avg_lat ms | avg_DR % | avg_FPR % | TP | FP | TN | FN | avg_UCR* |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| A5 (HF CP)   | 20  | 64.22 | 28.1 | 0.00  | 1.15 | 0 | 0 | 0 | 2 | 52.8 |
-| A5           | 60  | 61.19 | 28.2 | 32.76 | 1.15 | 1 | 0 | 0 | 1 | 72.8 |
-| A5           | 100 | 63.64 | 28.1 | 59.48 | 1.15 | 2 | 0 | 0 | 0 | 74.5 |
-| A6 (HF DP)   | 20  | 62.85 | 29.3 | 30.17 | 1.15 | 2 | 0 | 0 | 0 | 75.4 |
-| A6           | 60  | 60.74 | 30.2 | 29.31 | 1.15 | 1 | 0 | 0 | 1 | 81.0 |
-| A6           | 100 | 60.23 | 33.2 | 59.48 | 1.15 | 2 | 0 | 0 | 0 | 80.5 |
-| A7 (HF CP v2)| 20  | 63.73 | 27.4 | 0.00  | 1.15 | 0 | 0 | 0 | 2 | 53.5 |
-| A7           | 60  | 63.20 | 29.0 | 25.00 | 1.15 | 1 | 0 | 0 | 1 | 73.1 |
-| A7           | 100 | 63.81 | 28.3 | 29.31 | 1.15 | 1 | 0 | 0 | 1 | 73.0 |
-| A8 (HF DP v2)| 20  | 63.28 | 27.7 | 10.34 | 1.15 | 1 | 0 | 0 | 1 | 76.4 |
-| A8           | 60  | 29.52 | 26.6 | 61.21 | 1.15 | 2 | 0 | 0 | 0 | 81.7 |
-| A8           | 100 | 13.87 |  8.4 | 36.21 | 1.15 | 2 | 0 | 0 | 0 | 83.2 |
+| variant | pct | PDR % | TP | FP | TN | FN | DR % | FPR % | **MCC** |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| A5 (HF CP)    | 20  | 64.22 | 0  | 1 | 238 | 59  | 0.0  | 0.42 | **−0.029** |
+| A5            | 60  | 61.19 | 5  | 1 | 236 | 56  | 8.2  | 0.42 | **0.223** |
+| A5            | 100 | 63.64 | 9  | 1 | 237 | 53  | 14.5 | 0.42 | **0.318** |
+| A6 (HF DP)    | 20  | 62.85 | 3  | 1 | 199 | 123 | 2.4  | 0.50 | **0.083** |
+| A6            | 60  | 60.74 | 8  | 1 | 152 | 146 | 5.2  | 0.65 | **0.135** |
+| A6            | 100 | 60.23 | 42 | 1 | 121 | 209 | 16.7 | 0.82 | **0.234** |
+| A7 (HF CP v2) | 20  | 63.73 | 0  | 1 | 236 | 56  | 0.0  | 0.42 | **−0.028** |
+| A7            | 60  | 63.20 | 4  | 1 | 229 | 54  | 6.9  | 0.43 | **0.198** |
+| A7            | 100 | 63.81 | 2  | 2 | 336 | 58  | 3.3  | 0.59 | **0.098** |
+| A8 (HF DP v2) | 20  | 63.28 | 3  | 1 | 179 | 102 | 2.9  | 0.56 | **0.094** |
+| A8            | 60  | 29.52 | 12 | 1 | 127 | 64  | 15.8 | 0.78 | **0.297** |
+| A8            | 100 | 13.87 | 6  | 1 | 100 | 23  | 20.7 | 0.99 | **0.363** |
 
-`* avg_UCR` = column 23 of the FADE CSV — **confirm against
-`write_security_metrics_csv()`** (no `#` header in these files). avg_MCC = 0 in
-every row (TP/FN of 1–2 collapse the denominator). FADE **barely fires** on
-Hidden Forwarding: DR 0–61 %, single-digit TP, fixed ~1.15 % FPR. A8 PDR
-collapse at 60/100 % is attack delivery impact, not a detector artefact.
+MCC is the cumulative-matrix value straight from `fade_metrics` (verified:
+A5@100 = (9·237 − 1·53)/√(10·62·238·290) = 0.318). FADE's characterisation:
+**very low FP (1–2) but high FN — it misses most HF events**, so recall drags
+MCC to −0.03…0.36, rising with attack intensity. DR/FPR here are recomputed
+from that same flow-level matrix (`TP/(TP+FN)`, `FP/(FP+TN)`) and are lower
+than the per-cycle `FADE_Attack*.csv` `avg_DR` (0–61 %), which counts a
+different unit — use one source consistently; this table uses `fade_metrics`
+throughout so MCC/DR/FPR reconcile. A8 PDR collapse at 60/100 % is attack
+delivery impact, not a detector artefact.
 
 ### 2.3 SFTO-Guard (Tang et al., 2023) — TCAM exhaustion, A3 / A4
 
@@ -150,7 +163,7 @@ giving each baseline row a same-length MOBIGUARD counterpart.
   rows = MCC / DR% / FPR% vs attack %, one panel per variant. Okabe-Ito palette
   (CVD-validated): blue = MOBIGUARD, orange = baseline.
 - NOTE: the MOBIGUARD rows currently mix `_cmp60` (60 s) and canonical (180 s)
-  where a `_cmp60` point isn't done yet — `src` column shows which. The HF
+  where a `_cmp60` point isn't done yet — `src` column shows which. FADE MCC now comes from `fade_metrics_*` (real cumulative-matrix values, not the collapsed per-cycle avg). The HF
   MOBIGUARD FPR spikes at 20/40/80/100 % are pre-existing canonical-data
   behaviour (S5–S8 false positives, see `phase63_fp`), not introduced here.
 

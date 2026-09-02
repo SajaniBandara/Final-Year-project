@@ -54,6 +54,18 @@ def num(v):
         return ""
 
 
+def mcc_from_matrix(tp, fp, tn, fn):
+    """Cumulative-matrix MCC. '' if any cell missing or denominator 0."""
+    try:
+        tp, fp, tn, fn = float(tp), float(fp), float(tn), float(fn)
+    except (TypeError, ValueError):
+        return ""
+    den = ((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
+    if den == 0:
+        return ""
+    return round((tp * tn - fp * fn) / den, 4)
+
+
 def add_percycle(method, attack, path):
     v = last_data_row(path)
     if not v:
@@ -80,10 +92,33 @@ def collect_percycle(method, prefix, attacks):
                 row["pct"] = p
 
 
-# --- TAP (A1,A2), FADE (A5-8), MOBIGUARD cmp60 (A1,2,5-8) ---
+# --- TAP (A1,A2), MOBIGUARD cmp60 (A1,2,5-8) from per-cycle CSVs ---
 collect_percycle("TAP", "TAP", [1, 2])
-collect_percycle("FADE", "FADE", [5, 6, 7, 8])
 collect_percycle("MOBIGUARD", "MOBIGUARD", [1, 2, 5, 6, 7, 8])
+
+# --- FADE (A5-8): use fade_metrics_*.csv (flow-level confusion + real MCC).
+# The per-cycle FADE_Attack*.csv avg_MCC collapses to ~0 (1-2 positives/cycle);
+# efade_detection.h already computes the cumulative-matrix MCC here. ---
+for a in [5, 6, 7, 8]:
+    for p in PCTS:
+        hits = sorted(glob.glob(os.path.join(R, f"fade_metrics_Attack{a}_{p}_seed1*.csv")))
+        if not hits:
+            continue
+        r = list(csv.DictReader(open(hits[0])))
+        if not r:
+            continue
+        m = r[-1]
+        rows.append(dict(
+            method="FADE", attack=a, family=FAMILY[a], pct=p,
+            avg_PDR=num(m.get("pdr", "")), avg_lat_ms="",
+            avg_MCC=num(m.get("mcc", "")),
+            avg_DR=(round(float(m["tp"]) / (float(m["tp"]) + float(m["fn"])) * 100, 2)
+                    if float(m["tp"]) + float(m["fn"]) > 0 else 0.0),
+            avg_FPR=(round(float(m["fp"]) / (float(m["fp"]) + float(m["tn"])) * 100, 2)
+                     if float(m["fp"]) + float(m["tn"]) > 0 else 0.0),
+            TP=int(float(m["tp"])), FP=int(float(m["fp"])),
+            TN=int(float(m["tn"])), FN=int(float(m["fn"])),
+            avg_TVR="", avg_UCR="", src=os.path.basename(hits[0])))
 
 # --- SFTO (A3,A4) from metrics.json ---
 for a, base in ((3, "a3"), (4, "a4")):
@@ -101,8 +136,16 @@ for a, base in ((3, "a3"), (4, "a4")):
             TP=m["TP"], FP=m["FP"], TN=m["TN"], FN=m["FN"],
             avg_TVR="", avg_UCR="", src=os.path.relpath(d, REPO)))
 
-cols = ["method", "attack", "family", "pct", "avg_PDR", "avg_lat_ms", "avg_MCC",
-        "avg_DR", "avg_FPR", "TP", "FP", "TN", "FN", "avg_TVR", "avg_UCR", "src"]
+# Uniform cumulative-matrix MCC for every row (matches FADE's fade_metrics mcc
+# and SFTO's metrics.json mcc; replaces the per-cycle-average avg_MCC for
+# TAP/MOBIGUARD). Plot + tables should use mcc_matrix for a like-for-like
+# cross-method comparison.
+for r in rows:
+    r["mcc_matrix"] = mcc_from_matrix(r.get("TP"), r.get("FP"), r.get("TN"), r.get("FN"))
+
+cols = ["method", "attack", "family", "pct", "avg_PDR", "avg_lat_ms",
+        "mcc_matrix", "avg_MCC", "avg_DR", "avg_FPR", "TP", "FP", "TN", "FN",
+        "avg_TVR", "avg_UCR", "src"]
 rows.sort(key=lambda r: (r["method"], r["attack"], r["pct"] or 0))
 with open(OUT, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=cols)
