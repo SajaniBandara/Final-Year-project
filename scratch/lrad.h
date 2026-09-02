@@ -281,6 +281,16 @@ inline LRADRSUFlags lrad_rsu(
     uint32_t     obu_orig_prev_sender   /* = UINT32_MAX */)  // S1/S2p suspect
 {
     LRADRSUFlags flags;
+
+    // A2 ground-truth latch — MUST run before the enable_lrad_rsu gate below.
+    // s2_detect_packet() (the only other latch site) is unreachable once this
+    // function early-returns, so with the RSU engine off (AB1-A, and the
+    // TAP/FADE baseline isolation runs) g_s2_gt_delay_exceeded[] stayed all-
+    // false and calculate_tap_security_metrics() scored A2 as TP+FN=0 every
+    // cycle. Latch only — no detection record, no trust/ledger side effects.
+    s2_latch_ground_truth(prev_sender, t_now, is_safety_critical_flow[fid],
+                          pkt_id, fid);
+
     if (!enable_lrad_rsu) return flags; // AB1-A: RSU engine off — all-false, no escalation processing
     auto _t0 = crypto_log_start();
 
@@ -304,11 +314,11 @@ inline LRADRSUFlags lrad_rsu(
     // ── S2-full (line 1 of alg:lrad_rsu): STARK.Verify(π_delay) = 0 ────────
     // s2_detect_packet() internally evaluates both the delay threshold AND
     // the STARK timing proof, covering the full eq:stark_delay_verify check.
-    // g_disable_s1_s2 is applied to the FLAG, not to the call — s2_detect_packet()
-    // latches g_s2_gt_delay_exceeded[], which is A2's ground truth at
-    // routing.cc:117329. Skipping the call zeroed that ground truth, so A2
-    // reported TP+FN=0 in every config with the flag set (Q2/Q3/Q4). The
-    // record_detection_event() inside is separately gated on the same flag.
+    // g_disable_s1_s2 is applied to the FLAG, not to the call, so the
+    // detector still runs; its record_detection_event() is separately gated
+    // on the same flag. A2's ground-truth latch (g_s2_gt_delay_exceeded[])
+    // is handled by the s2_latch_ground_truth() call above, which runs even
+    // when this function is entered with enable_lrad_rsu off.
     // Same asymmetry as g_disable_s3_s4; see crypto_layer.h.
     const bool _s2f = s2_detect_packet(prev_sender, t_now,
                                        is_safety_critical_flow[fid],

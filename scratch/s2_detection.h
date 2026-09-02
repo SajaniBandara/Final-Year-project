@@ -59,6 +59,43 @@ static const double S2_DELTA_MAX = 0.050; // 50 ms
 //   packet_id        — packet ID (for logging)
 //   flow_id          — flow ID (for logging)
 // =========================================================================
+
+// -------------------------------------------------------------------------
+// s2_latch_ground_truth():
+// A2's event-gated ground truth — "did sender's hop delay genuinely exceed
+// Δ_max on a safety-critical packet" — latched into g_s2_gt_delay_exceeded[].
+//
+// This is the SAME condition as the Issue-5 latch inside s2_detect_packet()
+// below, factored out so it can also run from a site that is NOT behind
+// enable_lrad_rsu. s2_detect_packet()'s only caller is lrad_rsu(), which
+// early-returns when the RSU engine is off (AB1-A, and the TAP/FADE baseline
+// isolation runs). That zeroed g_s2_gt_delay_exceeded[], making
+// calculate_tap_security_metrics() (tap_detection.h) score A2 with an
+// all-benign ground truth: TP+FN=0 every cycle. lrad_rsu() now calls this
+// BEFORE its enable_lrad_rsu gate, so the ground truth is populated in every
+// config. Latch only (no STARK proof, no record_detection_event, no logging)
+// — pure measurement, safe to call unconditionally on the RSU receive path.
+// -------------------------------------------------------------------------
+inline void s2_latch_ground_truth(uint32_t sender_sim_index,
+                                  double   t_recv_now,
+                                  bool     is_safety_crit,
+                                  uint32_t packet_id,
+                                  uint32_t flow_id)
+{
+    if (sender_sim_index >= (uint32_t)var) return;
+    if (packet_id >= (uint32_t)(Flow_size + 2)) return;
+    if (!is_safety_crit) return;
+
+    double t_fwd_by_sender = claimed_forward_timestamp(sender_sim_index, flow_id, packet_id);
+    if (t_fwd_by_sender <= 0.0) return;
+
+    double t_fwd_anchored = t_fwd_by_sender - node_clock_offset(sender_sim_index);
+    double hop_delay = t_recv_now - t_fwd_anchored;
+
+    if (hop_delay > S2_DELTA_MAX && sender_sim_index < (uint32_t)total_size)
+        g_s2_gt_delay_exceeded[sender_sim_index] = true;
+}
+
 inline bool s2_detect_packet(uint32_t sender_sim_index,
                               double   t_recv_now,
                               bool     is_safety_crit,
