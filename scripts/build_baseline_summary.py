@@ -80,10 +80,33 @@ def collect_percycle(method, prefix, attacks):
                 row["pct"] = p
 
 
-# --- TAP (A1,A2), FADE (A5-8), MOBIGUARD cmp60 (A1,2,5-8) ---
+# --- TAP (A1,A2), MOBIGUARD cmp60 (A1,2,5-8) from per-cycle CSVs ---
 collect_percycle("TAP", "TAP", [1, 2])
-collect_percycle("FADE", "FADE", [5, 6, 7, 8])
 collect_percycle("MOBIGUARD", "MOBIGUARD", [1, 2, 5, 6, 7, 8])
+
+# --- FADE (A5-8): use fade_metrics_*.csv (flow-level confusion + real MCC).
+# The per-cycle FADE_Attack*.csv avg_MCC collapses to ~0 (1-2 positives/cycle);
+# efade_detection.h already computes the cumulative-matrix MCC here. ---
+for a in [5, 6, 7, 8]:
+    for p in PCTS:
+        hits = sorted(glob.glob(os.path.join(R, f"fade_metrics_Attack{a}_{p}_seed1*.csv")))
+        if not hits:
+            continue
+        r = list(csv.DictReader(open(hits[0])))
+        if not r:
+            continue
+        m = r[-1]
+        rows.append(dict(
+            method="FADE", attack=a, family=FAMILY[a], pct=p,
+            avg_PDR=num(m.get("pdr", "")), avg_lat_ms="",
+            avg_MCC=num(m.get("mcc", "")),
+            avg_DR=(round(float(m["tp"]) / (float(m["tp"]) + float(m["fn"])) * 100, 2)
+                    if float(m["tp"]) + float(m["fn"]) > 0 else 0.0),
+            avg_FPR=(round(float(m["fp"]) / (float(m["fp"]) + float(m["tn"])) * 100, 2)
+                     if float(m["fp"]) + float(m["tn"]) > 0 else 0.0),
+            TP=int(float(m["tp"])), FP=int(float(m["fp"])),
+            TN=int(float(m["tn"])), FN=int(float(m["fn"])),
+            avg_TVR="", avg_UCR="", src=os.path.basename(hits[0])))
 
 # --- SFTO (A3,A4) from metrics.json ---
 for a, base in ((3, "a3"), (4, "a4")):
