@@ -1,0 +1,34 @@
+{
+  "accuracy": 0.9865771812080537,
+  "precision": 0.972972972972973,
+  "recall": 1.0,
+  "f1": 0.9863013698630136,
+  "auc": 1.0,
+  "mcc": 0.9734993311250644,
+  "fpr": 0.025974025974025976,
+  "dr_attack4": 1.0,
+  "TP": 72,
+  "FP": 2,
+  "TN": 75,
+  "FN": 0,
+  "confusion_matrix": [
+    [
+      75,
+      2
+    ],
+    [
+      0,
+      72
+    ]
+  ],
+  "selected_features": [
+    "APIT_mean",
+    "TNFE",
+    "APIT_IQR",
+    "APIT_std",
+    "APIT_skew",
+    "APIT_kurt",
+    "CP_median",
+    "PSE"
+  ]
+}
