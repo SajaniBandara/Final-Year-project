@@ -46,12 +46,13 @@ Usage:
 """
 
 import argparse
+import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-NS3_DIR     = Path.home() / "G_13/ns-allinone-3.35/ns-3.35"
+NS3_DIR     = Path(os.environ.get("NS3_DIR", Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"))
 RESULTS_DIR = NS3_DIR / "results_routing"
 LOGS_DIR    = Path(__file__).resolve().parent.parent / "logs" / "ablation_sweep2"
 BINARY_PATH = NS3_DIR / "build" / "scratch" / "routing" / "routing"
@@ -131,8 +132,13 @@ def main():
                      help="Parallel ns-3 runs (hard-capped at 10 per "
                           "2026-08-30 machine-safety guidance).")
     ap.add_argument("--only", choices=list(ABLATIONS) + ["all"], default="all")
+    ap.add_argument("--sim-time", type=int, default=None,
+                    help="Override simTime (default 40). HPC_PLAN P2 uses 180.")
     args = ap.parse_args()
     workers = min(args.workers, 10)
+    if args.sim_time:
+        BASE_PARAMS["simTime"] = args.sim_time
+        print(f"-- simTime overridden to {args.sim_time}s --")
 
     if not BINARY_PATH.exists():
         raise SystemExit(f"{BINARY_PATH} not found — build first (./waf build).")

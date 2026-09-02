@@ -119,7 +119,12 @@ def run_lane(attack_number: int, configs: dict) -> list:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--sim-time", type=int, default=None,
+                    help="Override simTime (default 40). HPC_PLAN P2 uses 180.")
     args = ap.parse_args()
+    if args.sim_time:
+        FIXED_PARAMS["simTime"] = args.sim_time
+        print(f"-- simTime overridden to {args.sim_time}s --")
 
     if not BINARY_PATH.exists():
         raise SystemExit(f"{BINARY_PATH} not found — build first (./waf build).")
