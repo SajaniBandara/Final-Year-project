@@ -13,7 +13,6 @@ import { initLstm } from './lstm.js';
 import { initOffline } from './offline.js';
 import { initLab, stopLab } from './lab.js';
 import { initSimulation, stopSimulation } from './simulation.js';
-import { initBaselines } from './baselines.js';
 
 const THEME_KEY = 'mobiguard-gui-theme';
 
@@ -107,7 +106,6 @@ async function main() {
     lab: document.querySelector('#panel-lab'),
     simulation: document.querySelector('#panel-simulation'),
     offline: document.querySelector('#panel-offline'),
-    baselines: document.querySelector('#panel-baselines'),
     live: document.querySelector('#panel-live'),
     lstm: document.querySelector('#panel-lstm'),
     crypto: document.querySelector('#panel-crypto'),
@@ -145,7 +143,6 @@ async function main() {
     // parameter registry, and the tab explains itself when no simulator is
     // reachable rather than being hidden.
     await initSimulation(panels.simulation);
-    await initBaselines(panels.baselines);
     await initLstm(panels.lstm);
     await initCrypto(panels.crypto);
   } catch (error) {
