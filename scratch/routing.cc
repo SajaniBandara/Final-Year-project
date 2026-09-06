@@ -114770,7 +114770,15 @@ uint32_t g_lmit_scored_n            = 0;   // nodes actually averaged into L_mit
 // pair moves coherently; either half alone is misleading. Undefined (reported
 // 0) when neither population has any members yet.
 double g_lmit_prevention_rate = 0.0;
-bool     enable_corrected_lmit = false;      // --enable_corrected_lmit
+// Q10 (supervisor round 8, 2026-09-06): default flipped false -> TRUE. The legacy
+// path reports L_mit as a time-average of a per-cycle mean over a node set that
+// GROWS as more nodes quarantine, which is not a mean of L_mit at all (measured
+// on A5: true mean 2,697 ms reported as 6,937 ms, a 2.6x accumulation artefact
+// independent of any mitigation behaviour) AND averages in nodes quarantined
+// before they ever acted -- the successes -- inverting the metric's direction.
+// There is no scenario where the inverted version is the right silent default.
+// Pass --enable_corrected_lmit=0 to reproduce pre-2026-09-06 M4 figures.
+bool     enable_corrected_lmit = true;       // --enable_corrected_lmit
 
 // Latch the first attack action for `node`. Cheap and idempotent.
 inline void lmit_mark_attack(uint32_t node)
@@ -142564,7 +142572,7 @@ int main(int argc, char *argv[])
     // M4 figure; 1 fixes all three defects (per-node onset, plain mean instead
     // of an accumulated per-cycle mean, and blocked-before-acting nodes counted
     // separately rather than averaged in as slow mitigations).
-    cmd.AddValue("enable_corrected_lmit", "M4/L_mit measured from each node's OWN first attack, as a plain mean, excluding nodes quarantined before they ever acted (default 0 = legacy)", enable_corrected_lmit);
+    cmd.AddValue("enable_corrected_lmit", "M4/L_mit measured from each node's OWN first attack, as a plain mean, excluding nodes quarantined before they ever acted. DEFAULT 1 since 2026-09-06 (supervisor Q10); pass 0 for the legacy inverted metric", enable_corrected_lmit);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);
