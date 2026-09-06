@@ -50,57 +50,53 @@ Two writing tasks, no code:
 
 ---
 
-## Item 3 — the richer D_div · **STOP — pre-build check does not support it**
+## Item 3 — the richer D_div · **GO — all three criteria pass**
 
-The supervisor asked for exactly this confirmation before building:
+**Superseded.** An earlier revision of this file recorded a STOP here, on the
+basis of a log-derived estimate that the feature would degenerate. **That estimate
+was wrong and the live smoke test overturned it.**
 
-> *"does the simulation already model multiple concurrent attacking source
-> vehicles routing through a shared RSU at the percentages you're testing… I don't
-> want you building on an assumption I haven't verified."*
+Measured 2026-09-06, `--ddiv_smoke_test` (instrumentation only, no feature
+changed), 60 s, seed 1, 60%, error gate 0 on all five runs:
 
-**Measured. The expectation is not borne out.** Per-cycle (1 s) distinct attacked
-flows per malicious forwarder — this is the value the proposed feature would take:
+| variant | max | nonzero | RSUs disagree | corr(feature, `R_anom`) |
+|---|---|---|---|---|
+| A5 | 5 | 21.4% | 48/48 (100%) | 0.783 |
+| A6 | 7 | 40.6% | 48/48 (100%) | 0.793 |
+| A7 | 5 | 21.3% | 48/48 (100%) | 0.811 |
+| A8 | 5 | 29.4% | 48/48 (100%) | 0.788 |
+| **benign** | **0** | **0.00%** | 0/48 | — |
 
-| variant | active cells | cells with >1 flow | % | max | mean |
-|---|---|---|---|---|---|
-| A5 | 7 | **0** | **0.00%** | **1** | 1.000 |
-| A7 | 17 | **0** | **0.00%** | **1** | 1.000 |
-| A6 | 49 | 5 | 10.20% | 2 | 1.102 |
-| A8 | 57 | 6 | 10.53% | 2 | 1.105 |
+- **(a) non-constant across the 64 RSUs:** yes, in 100% of attack cycles, all four
+  variants. Not a silent collapse.
+- **(b) exactly zero under benign traffic:** yes — max 0 across 3,712 samples.
+- **(c) correlation with `R_anom` below 1:** yes, 0.78–0.81. This is the
+  load-bearing number. The *simple* per-RSU form sits at ≈1.0 by construction
+  (it reduces to `1 + 1[r_anom > 0]`); the richer form counts how many distinct
+  sources misbehave where `R_anom` counts how many events occur, so one loud
+  attacker and five quiet ones are different states `R_anom` conflates.
 
-**The proposed feature never exceeds 2 anywhere, and for A5/A7 it is identically
-1** — exactly as degenerate as the simple version it was meant to replace.
+**Why the earlier estimate was wrong, recorded so it is not repeated.** The log
+analysis counted distinct *flows per forwarder*; the feature counts distinct
+*source vehicles per covering RSU*. Different quantities — and the
+vehicle→covering-RSU aggregation exists only at runtime, so no amount of log
+post-processing could have reached it. This feature's behaviour must not be
+predicted from logs.
 
-**Confidence split, stated honestly:**
+**Consequence:** per the supervisor's instruction ("if all three hold, go straight
+into the regeneration and retrain already planned"), the regeneration is
+**unblocked**, bundled with the oracle-gate removal since both need fresh runs.
 
-- **A5/A7 — definitive.** Their forwarders *are* RSUs (7 and 13 RSU forwarders,
-  0 vehicles), so forwarder-level measurement **is** RSU-level measurement. The
-  feature cannot carry information here. No further check will change this.
-- **A6/A8 — not yet resolved.** Their forwarders are mostly vehicles (32 and 35),
-  and several vehicles can share one covering RSU, which would aggregate upward.
-  The logs do not carry the covering-RSU attribution (it is computed at runtime
-  from link lifetimes), so this cannot be settled from existing data.
-  **Indirect evidence that sharing is real:** our latch-clear guard only releases
-  when no other non-quarantined attacker attributes to that RSU, and on A6 it
-  released just 52 times against 122 vehicle quarantines — ~70 suppressions, each
-  one an instance of two attackers sharing a covering RSU.
-
-**Also confirmed, and it matters regardless of the outcome:** attacks span **4–7
-distinct flows** (A5:4, A6:6, A7:6, A8:7) while the current accumulator is gated on
-`fid == 0` alone. The single-flow hardcoding the supervisor identified is real and
-discards most of the attack surface. Generalising to all flows is warranted on its
-own merits, independent of whether the per-source-vehicle count survives.
-
-**Recommendation:** run the smoke test as *instrumentation only* — log the
-per-RSU count under the real `hf_gt_attribution_node()` attribution without
-changing the feature — on a 60 s A6/A8 sample. That settles A6/A8 for the cost of
-one short run and no feature commitment. If it confirms ≤2 there too, take the
-supervisor's own fallback: the straightforward per-RSU fix, D_div characterised as
-a corroborating indicator.
+**Paper:** `eq:feat_ddiv` was already indexed $(v,r,t)$ — per source, per RSU — so
+the spec was never the problem; the aggregation step to a single per-RSU model
+input was left implicit and got implemented as a network-wide scalar. Corrected in
+`main.tex` with a new `eq:feat_ndiv` stating the aggregate explicitly, its
+relationship to `eq:feat_ddiv` (aggregation only, $D_{div}$ unchanged), and why it
+is not a restatement of `R_anom`.
 
 **A_tp (Q4, option two) — READY, unaffected.** Promote `fade_forwarded_count` /
-`fade_received_count` to RSU-keyed via the same attribution. Independent of the
-D_div question.
+`fade_received_count` to RSU-keyed via the same attribution. `eq:feat_atp` is
+already per $(v,r,t)$, so this is an implementation fix, not a spec change.
 
 ---
 

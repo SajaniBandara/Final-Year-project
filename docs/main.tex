@@ -3236,8 +3236,54 @@ $v$ within window $W$, normalized by the number of
 authorized destinations in $v$'s forwarding policy.
 Under benign operation $D_{div}{\approx}1$; under any
 hidden forwarding variant it exceeds 1 because packets
-reach unauthorized destinations. The per-flow
-throughput asymmetry is given in
+reach unauthorized destinations.
+
+\textit{Correction --- the \ac{RSU}-level aggregate actually
+supplied to the detector.}
+Equation~\eqref{eq:feat_ddiv} defines $D_{div}$ per
+\emph{source vehicle} $v$ observed at \ac{RSU} $r$. The
+federated \ac{LSTM}, however, consumes one feature vector per
+\ac{RSU} per cycle, not one per source. The aggregation step
+between the two was left implicit in earlier drafts, and was
+implemented as a single network-wide scalar --- identical at
+every \ac{RSU} in every cycle --- which carries no
+per-node information and makes every non-attacking \ac{RSU} a
+structurally guaranteed false positive whenever any attack is
+active. The aggregate is therefore stated explicitly here, in
+Equation~\eqref{eq:feat_ndiv}:
+\begin{equation}
+N_{div}(r,t) =
+\left|\left\{\,
+v \in \mathcal{V}(r,t) \;:\;
+D_{div}(v,r,t) > 1
+\,\right\}\right|
+\label{eq:feat_ndiv}
+\end{equation}
+where $\mathcal{V}(r,t)$ is the set of source vehicles whose
+traffic traverses \ac{RSU} $r$ during window $t$. As given in
+Equation~\eqref{eq:feat_ndiv}, $N_{div}$ counts how many
+distinct sources at $r$ are reaching more destinations than
+their forwarding policy authorizes, rather than whether a
+single designated flow is.
+
+The relationship to Equation~\eqref{eq:feat_ddiv} is one of
+aggregation only: $D_{div}$ is unchanged as the per-source
+quantity, and $N_{div}$ is its \ac{RSU}-level population count
+under the threshold $D_{div}>1$, which is exactly the condition
+Equation~\eqref{eq:feat_ddiv} already characterises as
+distinguishing benign from hidden-forwarding operation. Two
+consequences are worth stating. First, $N_{div}$ is identically
+zero under benign traffic, since no source exceeds its
+authorized destination set. Second, it is not a restatement of
+$R_{anom}$ (Equation~\eqref{eq:feat_ranom}): $R_{anom}$ counts
+unauthorized \emph{reception events}, so a single high-volume
+attacker and several low-volume ones are indistinguishable to
+it, whereas $N_{div}$ separates them by construction. Measured
+across the four hidden-forwarding variants, the two correlate
+at $0.78$--$0.81$, confirming that the aggregate contributes
+evidence the reception-rate feature does not.
+
+The per-flow throughput asymmetry is given in
 Equation~\eqref{eq:feat_atp}.
 \begin{equation}
 A_{tp}(v,r,t) =
