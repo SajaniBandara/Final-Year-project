@@ -40,6 +40,49 @@ inline double sample_attack_injection_delay()
     return rng->GetValue() / 1000.0;
 }
 
+// eq:quarantine enforcement for Selective Time Delay (A1/A2), 2026-09-05.
+//
+// A1 and A2 were the last two variants with NO enforcement guard of any kind --
+// not an inert guard, an absent one. A3/A4 have theirs at
+// tcam_attack_helper.h:784, A5-A8 at routing.cc:121655/:121751; this closes the
+// remaining two. eq:quarantine describes quarantine as instructing the network
+// to drop flows from a compromised node, with no RSU-only restriction, so this
+// is finishing the spec rather than adding a design decision.
+//
+// BOTH tests are required, exactly as the HF guard does it. A2's malicious-node
+// pool spans the full node space (declare_attackers(), attack_declaration.h:
+// n_candidates = N_Vehicles + N_RSUs), so its injector CAN be a vehicle relay.
+// Vehicles never cross the RSU trust threshold, so testing the injector alone
+// would let every vehicle-attacker injection through while
+// g_lstm_std_sendgt_count still attributes it to the covering RSU -- which IS
+// quarantined. That is the same leak measured on A6/A8 (2026-08-30) and closed
+// there the same way. hf_gt_attribution_node() maps an RSU to itself, so A1
+// (whose injector is always the RSU holding the poisoned FlowMod) is covered by
+// the same expression with no special case.
+//
+// Caveat, stated because it is a real modelling choice and not self-evident:
+// blocking the INJECTION lets the packet forward normally rather than dropping
+// it, i.e. a quarantined node is denied the malicious action but still relays
+// legitimate traffic. That matches the convention every other guard in this
+// codebase already uses, and it is open question 2.3 ("should legitimate
+// forwarding by a quarantined RSU also be blocked?"), not a new deviation.
+//
+// UINT32_MAX (no RSU currently covers the injecting vehicle) is safe:
+// quarantine_blocks() bounds-checks and returns false.
+//
+// Requires crypto_layer.h (quarantine_blocks) and routing.cc's
+// hf_gt_attribution_node definition to precede this header -- both do
+// (routing.cc:115177 and :115218 vs :115506).
+//
+// No-op while --enable_quarantine_enforcement is off: quarantine_blocks()
+// returns false unconditionally in that state, so every result produced before
+// 2026-09-05 reproduces bit-identically.
+inline bool std_delay_quarantine_blocks(uint32_t injector)
+{
+    return quarantine_blocks(injector)
+        || quarantine_blocks(hf_gt_attribution_node(injector));
+}
+
 // Unified Receiver Delay Calculator
 //
 // attack_delay_ms (global, CLI: --attack_delay_ms) — anchor delay (ms) used by
@@ -66,6 +109,11 @@ inline double calculate_unified_selective_delay(
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
+        // eq:quarantine -- see std_delay_quarantine_blocks() above. Tested here
+        // rather than at function entry so the covering-RSU lookup is paid only
+        // on packets an attack would actually fire on.
+        if (std_delay_quarantine_blocks(current_hop)) return 0.0;
+
         double actual_delay = sample_attack_injection_delay();
 
         cout << attack_tag() << " ③ "
@@ -89,6 +137,11 @@ inline double calculate_unified_selective_delay(
     if (present_selective_delay_cp && injected_delay_cp > 0.0
         && is_safety_critical)
     {
+        // eq:quarantine -- the A1 injector is always the RSU holding the
+        // poisoned FlowMod, so this is the RSU-attacker case A3 already proves
+        // the mechanism on.
+        if (std_delay_quarantine_blocks(current_hop)) return 0.0;
+
         cout << attack_tag() << " RSU (node " << current_hop
              << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
              << packet_id << ", flow " << flow_id
@@ -122,6 +175,12 @@ inline bool schedule_unified_selective_delay_attack(
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
         && is_safety_critical)
     {
+        // eq:quarantine -- see std_delay_quarantine_blocks(). Returning false
+        // (not scheduling a delayed forward) drops the caller through to its
+        // own `if (!attacked)` immediate-send path, which is exactly the
+        // "attack denied, traffic unaffected" semantics the other guards use.
+        if (std_delay_quarantine_blocks(source)) return false;
+
         double actual_delay = sample_attack_injection_delay();
 
         cout << attack_tag() << " ③ "
@@ -146,6 +205,9 @@ inline bool schedule_unified_selective_delay_attack(
     if (present_selective_delay_cp && injected_delay_cp > 0.0
         && is_safety_critical)
     {
+        // eq:quarantine -- A1 injector is always the poisoned-FlowMod RSU.
+        if (std_delay_quarantine_blocks(source)) return false;
+
         cout << attack_tag() << " RSU (node " << source
              << ", UNAWARE it is compromised) obeying poisoned flowMod for packet ID "
              << packet_ID << ", flow " << fid

@@ -114754,6 +114754,22 @@ double t_quarantine[total_size] = {0.0};
 double t_first_attack[total_size] = {0.0};
 uint32_t g_lmit_blocked_before_acting = 0;   // quarantined having never acted
 uint32_t g_lmit_scored_n            = 0;   // nodes actually averaged into L_mit
+
+// M4 must be reported as a PAIR, never as one number (supervisor round 7,
+// 2026-09-05). The two answer different questions and averaging them together
+// is what produced the inversion:
+//
+//   g_lmit_prevention_rate -- a SUCCESS RATE. Fraction of would-be attackers
+//       stopped before they ever managed to act at all:
+//           blocked_before_acting / (blocked_before_acting + scored_n)
+//   average_mitigation_latency -- a SPEED number, mean over ONLY the attackers
+//       that did act before being caught.
+//
+// As mitigation improves, attackers migrate from the second population into the
+// first, so the latency mean rises while the system gets strictly better. The
+// pair moves coherently; either half alone is misleading. Undefined (reported
+// 0) when neither population has any members yet.
+double g_lmit_prevention_rate = 0.0;
 bool     enable_corrected_lmit = false;      // --enable_corrected_lmit
 
 // Latch the first attack action for `node`. Cheap and idempotent.
@@ -117641,8 +117657,22 @@ void calculate_mitigation_latency_metric()
 		? current_mitigation_latency
 		: previous_cumulative_mitigation_latency / cycle;
 
-    std::cout << "[SECURITY] Avg mitigation latency: "
-              << 1000.0 * average_mitigation_latency << " ms" << std::endl;
+    // M4 as a PAIR (2026-09-05) -- see g_lmit_prevention_rate's declaration.
+    {
+        uint32_t pop = g_lmit_blocked_before_acting + g_lmit_scored_n;
+        g_lmit_prevention_rate = (pop > 0)
+            ? (double)g_lmit_blocked_before_acting / (double)pop
+            : 0.0;
+    }
+
+    // Printed together, on one line, so neither half can be quoted alone.
+    std::cout << "[SECURITY] M4 prevented="
+              << 100.0 * g_lmit_prevention_rate << "%"
+              << " (" << g_lmit_blocked_before_acting << "/"
+              << (g_lmit_blocked_before_acting + g_lmit_scored_n) << " stopped before acting)"
+              << "  |  latency=" << 1000.0 * average_mitigation_latency << " ms"
+              << " over n=" << g_lmit_scored_n << " that acted first"
+              << std::endl;
 }
 
 // ============================================================
@@ -118033,7 +118063,8 @@ void write_security_metrics_csv()
 			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
 			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
 			 << " ufcr_unauth_total, ufcr_blocked, UFCR,"
-			 << " lmit_scored_n, lmit_blocked_before_acting\n";
+			 << " lmit_scored_n, lmit_blocked_before_acting,"
+			 << " lmit_prevention_rate\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118153,6 +118184,7 @@ void write_security_metrics_csv()
 		 << ", " << (current_UFCR * 100.0)
 		 << ", " << g_lmit_scored_n
 		 << ", " << g_lmit_blocked_before_acting
+		 << ", " << g_lmit_prevention_rate
 		 << "\n";
 
 	fout.close();
@@ -122201,6 +122233,13 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     if (fid == 0) {
                         g_lstm_flow0_dest_set.insert(current_hop);
                         g_lstm_flow0_total_delivery_count++;
+                        // Item 3 (2026-09-05): the spec-conformant per-RSU form of
+                        // the same event. Credited to the duplicating forwarder's
+                        // covering RSU -- the identical attribution
+                        // g_lstm_ranom_count uses three lines above. No-op unless
+                        // --lstm_ddiv_atp_per_rsu.
+                        lstm_flow0_record_delivery(
+                            hf_gt_attribution_node(prev_sender), current_hop, false);
                     }
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
@@ -122276,6 +122315,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         if (fid == 0) {
                             g_lstm_flow0_dest_set.insert(current_hop);
                             g_lstm_flow0_total_delivery_count++;
+                            // Item 3 (2026-09-05) -- see passive-HF block above.
+                            lstm_flow0_record_delivery(
+                                hf_gt_attribution_node(prev_sender), current_hop, false);
                         }
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
@@ -122313,6 +122355,17 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// so both features silently defaulted to 1.0 every cycle.
 					g_lstm_flow0_dest_set.insert(current_hop);
 					g_lstm_flow0_total_delivery_count++;
+					// Item 3 (2026-09-05): per-RSU form. This is the event
+					// eq:feat_atp leaves unattributed -- it fires at the
+					// DESTINATION node, which is not an RSU. Credited to the
+					// covering RSU of the last-hop sender, i.e. the RSU that
+					// actually relayed this packet, per main.tex's "per-flow
+					// directional byte rate logs" wording. See
+					// lstm_flow0_record_delivery()'s declaration; this rule is
+					// the open question in the round-7 reply.
+					lstm_flow0_record_delivery(
+						hf_gt_attribution_node(tagmodified_routing.Getprevious_senderId()),
+						current_hop, true);
 				}
 
 				// S6: log this delivery for cross-destination duplication detection.

@@ -163,6 +163,16 @@ static double   g_lstm_flow0_legit_delta_cached = 0.0;
 static uint32_t g_lstm_ddiv_count_cached     = 0;
 static uint32_t g_lstm_total_delivery_cached = 0;
 
+// ── Item 3 (2026-09-05): per-RSU snapshots of the same three quantities, used
+// when --lstm_ddiv_atp_per_rsu is on. Same once-per-cycle snapshot-then-clear
+// discipline as the globals above, for the same reason: lstm_log_rsu_cycle() is
+// called once per RSU within one cycle, so the live maps must be frozen before
+// the first RSU consumes them and cleared only once. Per-cycle counts directly
+// (no running delta), which is why there is no _prev_ companion here.
+static std::map<uint32_t, uint32_t> g_lstm_ddiv_by_rsu_cached;
+static std::map<uint32_t, uint32_t> g_lstm_total_delivery_by_rsu_cached;
+static std::map<uint32_t, uint32_t> g_lstm_legit_by_rsu_cached;
+
 // ── Rule-engine → LSTM escalation counter (main.tex §5039/5307:
 // "Escalation to LSTM detector: immediate escalation occurs when the
 // lightweight anomaly score >= 0.5"). D_OBU (eq:composite_light) is a
@@ -993,6 +1003,18 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         g_lstm_total_delivery_cached = g_lstm_flow0_total_delivery_count;
         g_lstm_flow0_dest_set.clear();
         g_lstm_flow0_total_delivery_count = 0;
+
+        // Item 3 (2026-09-05): same snapshot-then-clear for the per-RSU maps.
+        if (lstm_ddiv_atp_per_rsu) {
+            g_lstm_ddiv_by_rsu_cached.clear();
+            for (auto const& kv : g_lstm_flow0_dest_set_by_rsu)
+                g_lstm_ddiv_by_rsu_cached[kv.first] = (uint32_t)kv.second.size();
+            g_lstm_total_delivery_by_rsu_cached = g_lstm_flow0_total_delivery_by_rsu;
+            g_lstm_legit_by_rsu_cached          = g_lstm_flow0_legit_by_rsu;
+            g_lstm_flow0_dest_set_by_rsu.clear();
+            g_lstm_flow0_total_delivery_by_rsu.clear();
+            g_lstm_flow0_legit_by_rsu.clear();
+        }
     }
     double legit_this_cycle = g_lstm_flow0_legit_delta_cached;
 
@@ -1010,6 +1032,27 @@ inline void lstm_log_rsu_cycle(uint32_t r,
     double A_tp  = (g_lstm_total_delivery_cached > 0)
                    ? (legit_this_cycle / (double)g_lstm_total_delivery_cached)
                    : 1.0;   // no traffic this cycle -> default "fully authorized"
+
+    // Item 3 (2026-09-05): spec-conformant per-RSU values. Same resting default
+    // of 1.0 when THIS RSU relayed no flow-0 traffic this cycle, so the benign
+    // baseline is unchanged and only the cross-RSU constancy goes away. Reading
+    // from the per-cycle snapshot keeps every RSU in a cycle consistent.
+    if (lstm_ddiv_atp_per_rsu) {
+        auto _it_tot = g_lstm_total_delivery_by_rsu_cached.find(rsu_sim_idx);
+        uint32_t _tot = (_it_tot != g_lstm_total_delivery_by_rsu_cached.end())
+                        ? _it_tot->second : 0u;
+        if (_tot > 0) {
+            auto _it_dd = g_lstm_ddiv_by_rsu_cached.find(rsu_sim_idx);
+            auto _it_lg = g_lstm_legit_by_rsu_cached.find(rsu_sim_idx);
+            D_div = (_it_dd != g_lstm_ddiv_by_rsu_cached.end())
+                    ? (double)_it_dd->second : 0.0;
+            A_tp  = ((_it_lg != g_lstm_legit_by_rsu_cached.end())
+                    ? (double)_it_lg->second : 0.0) / (double)_tot;
+        } else {
+            D_div = 1.0;
+            A_tp  = 1.0;
+        }
+    }
 
     // ── Features 4 & 5: ZKP failure indicators (binary {0, 1})
     int zkp_delay_fail = 0;
