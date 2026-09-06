@@ -122249,6 +122249,12 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         lstm_flow0_record_delivery(
                             hf_gt_attribution_node(prev_sender), current_hop, false);
                     }
+                    // Round 8 smoke test: NOT gated on fid, so it sees every
+                    // attacked flow rather than flow 0 alone. Diagnostic only.
+                    ddiv_smoke_record(hf_gt_attribution_node(prev_sender),
+                                      (delta_at_nodes_inst+fid)->source_f,
+                                      current_hop,
+                                      (delta_at_nodes_inst+fid)->destination_f);
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -122327,6 +122333,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                             lstm_flow0_record_delivery(
                                 hf_gt_attribution_node(prev_sender), current_hop, false);
                         }
+                        // Round 8 smoke test -- see passive-HF block above.
+                        ddiv_smoke_record(hf_gt_attribution_node(prev_sender),
+                                          (delta_at_nodes_inst+fid)->source_f,
+                                          current_hop,
+                                          (delta_at_nodes_inst+fid)->destination_f);
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {
@@ -122374,6 +122385,20 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					lstm_flow0_record_delivery(
 						hf_gt_attribution_node(tagmodified_routing.Getprevious_senderId()),
 						current_hop, true);
+				}
+				// Round 8 smoke test: the legitimate leg, ALL flows (not just
+				// flow 0), but ONLY on final delivery. current_hop == destination
+				// is essential -- this block also runs on every intermediate
+				// relay receive, and recording those as "destinations reached"
+				// makes every relayed hop look like an unauthorized destination,
+				// which showed up as n_anom_src > 0 at cycle 0 before the attack
+				// even starts.
+				if (current_hop == destination) {
+					ddiv_smoke_record(
+						hf_gt_attribution_node(tagmodified_routing.Getprevious_senderId()),
+						(delta_at_nodes_inst+fid)->source_f,
+						current_hop,
+						(delta_at_nodes_inst+fid)->destination_f);
 				}
 
 				// S6: log this delivery for cross-destination duplication detection.

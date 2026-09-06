@@ -169,6 +169,10 @@ static uint32_t g_lstm_total_delivery_cached = 0;
 // called once per RSU within one cycle, so the live maps must be frozen before
 // the first RSU consumes them and cleared only once. Per-cycle counts directly
 // (no running delta), which is why there is no _prev_ companion here.
+// Round 8 smoke-test per-cycle cache (see the emit block for why).
+static std::map<uint32_t, uint32_t> g_ddiv_smoke_counts_cached;
+static int                          g_ddiv_smoke_cycle_cached = -1;
+
 static std::map<uint32_t, uint32_t> g_lstm_ddiv_by_rsu_cached;
 static std::map<uint32_t, uint32_t> g_lstm_total_delivery_by_rsu_cached;
 static std::map<uint32_t, uint32_t> g_lstm_legit_by_rsu_cached;
@@ -918,6 +922,33 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         uint32_t cur_ranom = (it != g_lstm_ranom_count.end()) ? it->second : 0;
         uint32_t prev_ranom = (r < g_lstm_prev_ranom.size()) ? g_lstm_prev_ranom[r] : 0;
         R_anom = (cur_ranom >= prev_ranom) ? (double)(cur_ranom - prev_ranom) : 0.0;
+        // Round 8 D_div smoke test: emit the proposed feature's value beside
+        // R_anom for the same RSU/cycle, so criteria (a) spread across RSUs,
+        // (b) zero under benign, and (c) correlation with R_anom are all
+        // checkable from one log. Diagnostic only -- changes no feature.
+        //
+        // Snapshot-then-clear, ONCE per cycle, for the same reason the D_div
+        // accumulators above do it: lstm_log_rsu_cycle() runs once per RSU
+        // inside one cycle, so clearing on each call would leave RSU 0 with the
+        // whole cycle's data and RSUs 1..63 with nothing.
+        if (ddiv_smoke_test) {
+            const int _cyc = (int)(data_gathering_cycle_number - 1.0);
+            if (_cyc != g_ddiv_smoke_cycle_cached) {
+                g_ddiv_smoke_counts_cached.clear();
+                for (auto const& kv : g_ddiv_smoke_reached)
+                    g_ddiv_smoke_counts_cached[kv.first] = ddiv_smoke_count(kv.first);
+                g_ddiv_smoke_cycle_cached = _cyc;
+                g_ddiv_smoke_reached.clear();
+                g_ddiv_smoke_auth.clear();
+            }
+            auto _it = g_ddiv_smoke_counts_cached.find(rsu_sim_idx);
+            std::cout << "[DDIV-SMOKE] cycle=" << _cyc
+                      << " rsu=" << rsu_sim_idx
+                      << " n_anom_src="
+                      << (_it != g_ddiv_smoke_counts_cached.end() ? _it->second : 0u)
+                      << " r_anom=" << R_anom
+                      << std::endl;
+        }
         if (r < g_lstm_prev_ranom.size()) g_lstm_prev_ranom[r] = cur_ranom;
         // NOTE: the Decision 2 rule latch is deliberately NOT published here.
         // This function early-returns when neither --training nor

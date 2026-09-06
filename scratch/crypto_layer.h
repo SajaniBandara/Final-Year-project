@@ -1043,6 +1043,54 @@ uint32_t            g_lstm_flow0_total_delivery_count = 0;
 // and a full retrain INCLUDING the encoder -- a frozen-encoder fine-tune will not
 // transfer, since the latent was trained to treat the broadcast constant as
 // meaningful.
+// ── D_div smoke test (supervisor round 8, 2026-09-06) ───────────────────────
+//
+// INSTRUMENTATION ONLY. Measures what the supervisor's proposed richer D_div
+// WOULD read, without changing any feature the model consumes, so the three
+// acceptance criteria can be checked before committing to the definition:
+//   (a) non-constant across the 64 RSUs during an active attack,
+//   (b) exactly zero under benign traffic,
+//   (c) correlation with R_anom meaningfully below 1.
+//
+// Proposed feature: per RSU, the number of distinct SOURCE VEHICLES routing
+// through it whose destination set exceeds their authorized policy set. Unlike
+// the shipped accumulators this is NOT gated on flow 0 -- attacks span 4-7
+// distinct flows, so a single-flow gate discards most of the attack surface.
+//
+// Keyed rsu -> src -> {destinations}. A source counts as anomalous when it
+// reached any destination outside its authorized set for that flow.
+bool ddiv_smoke_test = false;
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_reached;
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_auth;
+
+inline void ddiv_smoke_record(uint32_t rsu_node, uint32_t src,
+                              uint32_t dest_reached, uint32_t auth_dest)
+{
+    if (!ddiv_smoke_test)       return;
+    if (rsu_node == UINT32_MAX) return;
+    g_ddiv_smoke_reached[rsu_node][src].insert(dest_reached);
+    g_ddiv_smoke_auth   [rsu_node][src].insert(auth_dest);
+}
+
+// Distinct source vehicles at this RSU that reached an unauthorized destination.
+inline uint32_t ddiv_smoke_count(uint32_t rsu_node)
+{
+    if (!ddiv_smoke_test) return 0;
+    auto itr = g_ddiv_smoke_reached.find(rsu_node);
+    if (itr == g_ddiv_smoke_reached.end()) return 0;
+    auto ita = g_ddiv_smoke_auth.find(rsu_node);
+    uint32_t n = 0;
+    for (auto const& kv : itr->second) {
+        const std::set<uint32_t>& reached = kv.second;
+        static const std::set<uint32_t> empty_set;
+        const std::set<uint32_t>& auth =
+            (ita != g_ddiv_smoke_auth.end() && ita->second.count(kv.first))
+                ? ita->second.at(kv.first) : empty_set;
+        for (uint32_t d : reached) { if (!auth.count(d)) { ++n; break; } }
+    }
+    return n;
+}
+
 bool lstm_ddiv_atp_per_rsu = false;
 std::map<uint32_t, std::set<uint32_t>> g_lstm_flow0_dest_set_by_rsu;
 std::map<uint32_t, uint32_t>           g_lstm_flow0_total_delivery_by_rsu;
@@ -2414,6 +2462,9 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("hf_truth_latched",              "HF truth semantics (2026-09-01): latch the A5-A8 window activity gate "
                                                   "(compromised state persists) instead of per-cycle send events, matching "
                                                   "S5-S8's design and y_indep's existing latch. Measurement-only", hf_truth_latched);
+    cmd.AddValue("ddiv_smoke_test",               "Round 8 smoke test (2026-09-06): log what the proposed per-source-vehicle "
+                                                  "D_div WOULD read, per RSU per cycle, WITHOUT changing any model feature. "
+                                                  "Emits [DDIV-SMOKE] lines. Diagnostic only", ddiv_smoke_test);
     cmd.AddValue("lstm_ddiv_atp_per_rsu",         "Item 3 (2026-09-05): compute D_div/A_tp per-RSU as eq:feat_ddiv/eq:feat_atp "
                                                   "specify, instead of as simulation-wide global scalars identical at every "
                                                   "RSU. Requires regenerating the A5-A8 training set and a full retrain "
