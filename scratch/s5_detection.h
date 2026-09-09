@@ -134,6 +134,33 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // so a benign packet on its intended path passes here and a duplicate
     // diverted to an eavesdropper does not.
     if (prev_sender >= (uint32_t)total_size) return false;
+
+    // ── S5 fix 1 (2026-09-09): the variant guard s6/s7/s8 already have ──────
+    // This signature's own header documents conjunction 1 as
+    // active_attack_variant == 4, but nothing implemented it; the oracle gate
+    // was standing in for it. s6_detection.h:145, s7:122 and s8:92 each carry
+    // the executable form. Consults only WHICH EXPERIMENT is configured, never
+    // which node is guilty, so unlike the oracle gate it cannot manufacture
+    // precision -- it removes cross-variant contamination, not false positives
+    // within Attack 5's own run.
+    if (s5_variant_guard && active_attack_variant != 4) return false;
+
+    // ── S5 fix 2 (2026-09-09): was this frame ADDRESSED to me? ──────────────
+    // Broadcast media deliver every frame to every neighbour. b_hop_fails is
+    // therefore true for all of them, and d_prime_unauthorized (below) excludes
+    // only the flow's final destination, so a passive overhearer satisfies both
+    // and fires. Measured pre-fix: one benign transmission made up to 4 distinct
+    // receivers fire S5.
+    //
+    // A hidden-forwarding duplicate IS addressed to the eavesdropper d' while
+    // still carrying the original signed next hop, so the attack keeps
+    // "addressed to me AND b_hop(u)=0" while overhearing loses it. UINT32_MAX
+    // means the tag carried no value; treat that as "cannot tell" and leave the
+    // legacy behaviour rather than inventing a fire.
+    if (s5_require_addressed
+        && g_s5_rx_intended_recipient != UINT32_MAX
+        && g_s5_rx_intended_recipient != current_hop) return false;
+
     if (hf_oracle_gate) {
         if (!active_hf_malicious_nodes[prev_sender]) return false;  // legacy, A/B only
     } else {

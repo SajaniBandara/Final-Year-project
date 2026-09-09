@@ -1095,6 +1095,42 @@ uint32_t            g_lstm_flow0_total_delivery_count = 0;
 // what the gate was worth; it must never be used for a reported number.
 bool hf_oracle_gate = false;
 
+// ── S5 soundness fixes (2026-09-09) ─────────────────────────────────────────
+// Both default FALSE: every number measured before today reproduces exactly.
+//
+// Context. Removing the oracle gate (Q5) exposed two latent defects in S5 that
+// the gate had been masking, because it restricted S5 to the injector's own
+// attacker list and so never let the remaining conjuncts be tested.
+//
+// Defect 1 -- s5_detect() has no active_attack_variant guard, while
+// s6/s7/s8_detect() all open with one (s6:145, s7:122, s8:92). S5's header
+// documents "conjunction 1: active_attack_variant == 4" but nothing implements
+// it. Post-Q5 S5 therefore fires in runs where Attack 5 is not injected at all.
+// Measured 90s/60%/seed1: benign 6,771 fires, A6 57,618, A7 9,045, A8 22,774,
+// against 0 for S6/S7/S8 outside their own variant.
+//   --s5_variant_guard
+//
+// Defect 2 -- S5's surviving conjuncts do not separate an attack from ordinary
+// broadcast overhearing. b_hop_fails is true for every neighbour that is not
+// the signed next hop, and d_prime_unauthorized (s5_detection.h) only excludes
+// the flow's FINAL destination, so every intermediate relay and every passive
+// overhearer satisfies both. Measured: a single benign transmission makes up to
+// 4 distinct receivers fire S5.
+//
+// The missing term is whether the frame was ADDRESSED to this node. That is
+// genuinely independent information -- the MAC destination, now carried on the
+// packet tag as intended_recipient -- and NOT ground truth: a hidden-forwarding
+// duplicate is addressed to d' while still carrying the original signed next
+// hop, so d' sees "addressed to me AND b_hop(u)=0" while an overhearer sees
+// "not addressed to me". No attack-injector state is consulted.
+//   --s5_require_addressed
+bool s5_variant_guard    = false;
+bool s5_require_addressed = false;
+
+// Set by the MacRx handler from the packet tag immediately before detection
+// runs for that reception. UINT32_MAX = unknown/not set.
+uint32_t g_s5_rx_intended_recipient = UINT32_MAX;
+
 // Declared ahead of the ddiv_* helpers below, which gate on it: the
 // per-source-vehicle accumulator is the production N_div feature when
 // --lstm_ddiv_atp_per_rsu=1, not only smoke-test instrumentation.
@@ -2505,6 +2541,15 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
                                                   "unless the sender is in the attack injector's own assignment array. Default 0 "
                                                   "= REMOVED (b_hop(u)=0 evaluated instead, per eq:sig_s5). Diagnostic A/B only -- "
                                                   "never report a number produced with this on", hf_oracle_gate);
+    cmd.AddValue("s5_variant_guard",              "S5 fix 1 (2026-09-09): give s5_detect() the active_attack_variant==4 guard "
+                                                  "that s6/s7/s8_detect() already have. Without it S5 fires in benign runs and "
+                                                  "inside the other HF variants' runs. Default 0 = legacy (no guard)",
+                                                  s5_variant_guard);
+    cmd.AddValue("s5_require_addressed",          "S5 fix 2 (2026-09-09): require the frame to have been ADDRESSED to this node "
+                                                  "(tag intended_recipient == receiver) before S5 may fire, so passive broadcast "
+                                                  "overhearing cannot trigger it. Consults no attack-injector state. "
+                                                  "Default 0 = legacy (any overhearer can fire)",
+                                                  s5_require_addressed);
     cmd.AddValue("ddiv_smoke_test",               "Round 8 smoke test (2026-09-06): log what the proposed per-source-vehicle "
                                                   "D_div WOULD read, per RSU per cycle, WITHOUT changing any model feature. "
                                                   "Emits [DDIV-SMOKE] lines. Diagnostic only", ddiv_smoke_test);

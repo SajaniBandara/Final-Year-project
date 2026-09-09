@@ -6411,6 +6411,14 @@ public:
 	uint32_t GetchannelId();
 	Time Getprevious_timestamp();
 	Time Getoriginal_timestamp();
+	// S5 addressing fix (2026-09-09): the node this frame was actually sent TO,
+	// i.e. the next hop the forwarder chose and addressed the MAC frame to.
+	// Distinct from signed_next_hop: a hidden-forwarding duplicate is addressed
+	// to the eavesdropper d' while still carrying the ORIGINAL signed next hop,
+	// so d' can observe "addressed to me AND b_hop(u)=0" while a passive
+	// overhearer cannot. UINT32_MAX = not set (pre-fix packets).
+	uint32_t Getintended_recipient();
+	void Setintended_recipient(uint32_t node_id);
 
 	void SetflowId(uint32_t destination_id);
 	void SetpacketId(uint32_t packet_id);
@@ -6427,6 +6435,7 @@ private:
 	uint32_t m_packetId;
 	uint32_t m_channelId;
 	uint32_t m_flowId;
+	uint32_t m_intended_recipient;
 	Time m_original_timestamp;
 	Time m_previous_timestamp;
 };
@@ -6438,6 +6447,9 @@ NS_OBJECT_ENSURE_REGISTERED (CustomDataUnicastTag_ModifiedRouting);
 CustomDataUnicastTag_ModifiedRouting::CustomDataUnicastTag_ModifiedRouting() {
 	//m_timestamp = Simulator::Now();
 	//m_nodeId = -1;
+	// UINT32_MAX = "not set". s5_detect()'s addressing conjunct treats an unset
+	// value as "cannot tell", so it never turns a missing field into a fire.
+	m_intended_recipient = UINT32_MAX;
 }
 /*
 CustomDataUnicastTag_ModifiedRouting::CustomDataUnicastTag_ModifiedRouting(uint32_t node_id) {
@@ -6466,7 +6478,7 @@ TypeId CustomDataUnicastTag_ModifiedRouting::GetInstanceTypeId (void) const
 uint32_t CustomDataUnicastTag_ModifiedRouting::GetSerializedSize (void) const
 {
 	//return sizeof (m_nodeId) + sizeof(m_acceleration) + sizeof(m_velocity) + sizeof(m_position) + sizeof(m_timestamp) + sizeof(uint32_t);
-	return (sizeof(uint32_t) + sizeof(uint32_t)  + sizeof(uint32_t) + sizeof(uint32_t) + (sizeof(double))*2);
+	return (sizeof(uint32_t) + sizeof(uint32_t)  + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + (sizeof(double))*2);
 }
 
 /*
@@ -6481,6 +6493,7 @@ void CustomDataUnicastTag_ModifiedRouting::Serialize (TagBuffer i) const
 	i.WriteU32(m_packetId);
 	i.WriteU32(m_channelId);
 	i.WriteU32(m_flowId);
+	i.WriteU32(m_intended_recipient);
 	i.WriteDouble(m_original_timestamp.GetDouble());
 	i.WriteDouble(m_previous_timestamp.GetDouble());
 }
@@ -6494,6 +6507,7 @@ void CustomDataUnicastTag_ModifiedRouting::Deserialize (TagBuffer i)
 	m_packetId = i.ReadU32();
 	m_channelId = i.ReadU32();
 	m_flowId = i.ReadU32();
+	m_intended_recipient = i.ReadU32();
 	m_original_timestamp =  Time::FromDouble (i.ReadDouble(), Time::NS);
 	m_previous_timestamp =  Time::FromDouble (i.ReadDouble(), Time::NS);
 }
@@ -6540,6 +6554,16 @@ uint32_t CustomDataUnicastTag_ModifiedRouting::GetchannelId()
 void CustomDataUnicastTag_ModifiedRouting::Setprevious_senderId(uint32_t previous_sender_id)
 {
 	m_previous_senderId = previous_sender_id;
+}
+
+void CustomDataUnicastTag_ModifiedRouting::Setintended_recipient(uint32_t node_id)
+{
+	m_intended_recipient = node_id;
+}
+
+uint32_t CustomDataUnicastTag_ModifiedRouting::Getintended_recipient()
+{
+	return m_intended_recipient;
 }
 
 uint32_t CustomDataUnicastTag_ModifiedRouting::Getprevious_senderId()
@@ -121504,6 +121528,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         tag.SetflowId(flow_id);
                         tag.SetpacketId(packet_id);
                         tag.Setprevious_senderId(current_hop);
+                        tag.Setintended_recipient(hop);   // S5 addressing fix: MAC frame is sent to `hop`
                         tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
                         tag.Setoriginal_timestamp(originail_timestamp);
                         packet_i->AddPacketTag(tag);
@@ -122011,6 +122036,7 @@ void send_hidden_copy(uint32_t flow_id, uint32_t packet_id, uint32_t from_node,
     hidden_tag.SetflowId(flow_id);
     hidden_tag.SetpacketId(packet_id);
     hidden_tag.Setprevious_senderId(from_node);
+    hidden_tag.Setintended_recipient(spy_node_id);   // S5 addressing fix: copy is addressed to the spy
     hidden_tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
     hidden_tag.Setoriginal_timestamp(original_timestamp);
     hidden_pkt->AddPacketTag(hidden_tag);
@@ -122125,6 +122151,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 			uint32_t fid = tagmodified_routing.GetflowId();
 			uint32_t packet_ID = tagmodified_routing.GetpacketId();
 			uint32_t channel = tagmodified_routing.GetchannelId();
+			// S5 addressing fix (2026-09-09): publish who this frame was actually
+			// addressed to, for s5_detect()'s --s5_require_addressed conjunct.
+			// Detection runs synchronously inside this handler, so a plain global
+			// is sufficient and needs no change to lrad_rsu()'s signature.
+			g_s5_rx_intended_recipient = tagmodified_routing.Getintended_recipient();
 			
 			//cout<<"Received at hop "<<current_hop<<"packet id "<<packet_ID<<"flow ID"<<fid<<"at time "<<Now().GetSeconds()<<endl;
 			
@@ -124489,6 +124520,7 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
     dup_tag.SetpacketId(packet_id);
     dup_tag.SetchannelId(channel);
     dup_tag.Setprevious_senderId(malicious_rsu_index);
+    dup_tag.Setintended_recipient(eavesdropper_index); // S5 addressing fix: duplicate is addressed to d'
     dup_tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
     dup_tag.Setoriginal_timestamp(original_timestamp);
     dup_pkt->AddPacketTag(dup_tag);
@@ -124596,6 +124628,7 @@ void routing_dsrc_data_unicast(Ptr <NetDevice> source_nd, Ptr <Node> source_node
     tag.SetpacketId(packet_ID);
     tag.SetchannelId(arguments.channel);
     tag.Setprevious_senderId(source);
+    tag.Setintended_recipient(final_next_hop);   // S5 addressing fix
     tag.Setprevious_timestamp(MicroSeconds(Now().GetMicroSeconds()));
     tag.Setoriginal_timestamp(MicroSeconds(Now().GetMicroSeconds()));
     
