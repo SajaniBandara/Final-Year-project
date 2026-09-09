@@ -114754,7 +114754,31 @@ double t_quarantine[total_size] = {0.0};
 double t_first_attack[total_size] = {0.0};
 uint32_t g_lmit_blocked_before_acting = 0;   // quarantined having never acted
 uint32_t g_lmit_scored_n            = 0;   // nodes actually averaged into L_mit
-bool     enable_corrected_lmit = false;      // --enable_corrected_lmit
+
+// M4 must be reported as a PAIR, never as one number (supervisor round 7,
+// 2026-09-05). The two answer different questions and averaging them together
+// is what produced the inversion:
+//
+//   g_lmit_prevention_rate -- a SUCCESS RATE. Fraction of would-be attackers
+//       stopped before they ever managed to act at all:
+//           blocked_before_acting / (blocked_before_acting + scored_n)
+//   average_mitigation_latency -- a SPEED number, mean over ONLY the attackers
+//       that did act before being caught.
+//
+// As mitigation improves, attackers migrate from the second population into the
+// first, so the latency mean rises while the system gets strictly better. The
+// pair moves coherently; either half alone is misleading. Undefined (reported
+// 0) when neither population has any members yet.
+double g_lmit_prevention_rate = 0.0;
+// Q10 (supervisor round 8, 2026-09-06): default flipped false -> TRUE. The legacy
+// path reports L_mit as a time-average of a per-cycle mean over a node set that
+// GROWS as more nodes quarantine, which is not a mean of L_mit at all (measured
+// on A5: true mean 2,697 ms reported as 6,937 ms, a 2.6x accumulation artefact
+// independent of any mitigation behaviour) AND averages in nodes quarantined
+// before they ever acted -- the successes -- inverting the metric's direction.
+// There is no scenario where the inverted version is the right silent default.
+// Pass --enable_corrected_lmit=0 to reproduce pre-2026-09-06 M4 figures.
+bool     enable_corrected_lmit = true;       // --enable_corrected_lmit
 
 // Latch the first attack action for `node`. Cheap and idempotent.
 inline void lmit_mark_attack(uint32_t node)
@@ -117641,8 +117665,22 @@ void calculate_mitigation_latency_metric()
 		? current_mitigation_latency
 		: previous_cumulative_mitigation_latency / cycle;
 
-    std::cout << "[SECURITY] Avg mitigation latency: "
-              << 1000.0 * average_mitigation_latency << " ms" << std::endl;
+    // M4 as a PAIR (2026-09-05) -- see g_lmit_prevention_rate's declaration.
+    {
+        uint32_t pop = g_lmit_blocked_before_acting + g_lmit_scored_n;
+        g_lmit_prevention_rate = (pop > 0)
+            ? (double)g_lmit_blocked_before_acting / (double)pop
+            : 0.0;
+    }
+
+    // Printed together, on one line, so neither half can be quoted alone.
+    std::cout << "[SECURITY] M4 prevented="
+              << 100.0 * g_lmit_prevention_rate << "%"
+              << " (" << g_lmit_blocked_before_acting << "/"
+              << (g_lmit_blocked_before_acting + g_lmit_scored_n) << " stopped before acting)"
+              << "  |  latency=" << 1000.0 * average_mitigation_latency << " ms"
+              << " over n=" << g_lmit_scored_n << " that acted first"
+              << std::endl;
 }
 
 // ============================================================
@@ -118033,7 +118071,8 @@ void write_security_metrics_csv()
 			 << " witness_TP_W, witness_FP_W, witness_FN_W, WAP_precision, WAP_recall,"
 			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
 			 << " ufcr_unauth_total, ufcr_blocked, UFCR,"
-			 << " lmit_scored_n, lmit_blocked_before_acting\n";
+			 << " lmit_scored_n, lmit_blocked_before_acting,"
+			 << " lmit_prevention_rate\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118153,6 +118192,7 @@ void write_security_metrics_csv()
 		 << ", " << (current_UFCR * 100.0)
 		 << ", " << g_lmit_scored_n
 		 << ", " << g_lmit_blocked_before_acting
+		 << ", " << g_lmit_prevention_rate
 		 << "\n";
 
 	fout.close();
@@ -122201,7 +122241,20 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     if (fid == 0) {
                         g_lstm_flow0_dest_set.insert(current_hop);
                         g_lstm_flow0_total_delivery_count++;
+                        // Item 3 (2026-09-05): the spec-conformant per-RSU form of
+                        // the same event. Credited to the duplicating forwarder's
+                        // covering RSU -- the identical attribution
+                        // g_lstm_ranom_count uses three lines above. No-op unless
+                        // --lstm_ddiv_atp_per_rsu.
+                        lstm_flow0_record_delivery(
+                            hf_gt_attribution_node(prev_sender), current_hop, false);
                     }
+                    // Round 8 smoke test: NOT gated on fid, so it sees every
+                    // attacked flow rather than flow 0 alone. Diagnostic only.
+                    ddiv_smoke_record(hf_gt_attribution_node(prev_sender),
+                                      (delta_at_nodes_inst+fid)->source_f,
+                                      current_hop,
+                                      (delta_at_nodes_inst+fid)->destination_f);
                 }
                 // === LRAD at eavesdropper (Passive HF path) ===
                 // Volume must be recorded first so volume_check_anomaly() has
@@ -122276,7 +122329,15 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         if (fid == 0) {
                             g_lstm_flow0_dest_set.insert(current_hop);
                             g_lstm_flow0_total_delivery_count++;
+                            // Item 3 (2026-09-05) -- see passive-HF block above.
+                            lstm_flow0_record_delivery(
+                                hf_gt_attribution_node(prev_sender), current_hop, false);
                         }
+                        // Round 8 smoke test -- see passive-HF block above.
+                        ddiv_smoke_record(hf_gt_attribution_node(prev_sender),
+                                          (delta_at_nodes_inst+fid)->source_f,
+                                          current_hop,
+                                          (delta_at_nodes_inst+fid)->destination_f);
                     }
                     // === LRAD at eavesdropper (Active HF path) ===
                     {
@@ -122313,6 +122374,31 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// so both features silently defaulted to 1.0 every cycle.
 					g_lstm_flow0_dest_set.insert(current_hop);
 					g_lstm_flow0_total_delivery_count++;
+					// Item 3 (2026-09-05): per-RSU form. This is the event
+					// eq:feat_atp leaves unattributed -- it fires at the
+					// DESTINATION node, which is not an RSU. Credited to the
+					// covering RSU of the last-hop sender, i.e. the RSU that
+					// actually relayed this packet, per main.tex's "per-flow
+					// directional byte rate logs" wording. See
+					// lstm_flow0_record_delivery()'s declaration; this rule is
+					// the open question in the round-7 reply.
+					lstm_flow0_record_delivery(
+						hf_gt_attribution_node(tagmodified_routing.Getprevious_senderId()),
+						current_hop, true);
+				}
+				// Round 8 smoke test: the legitimate leg, ALL flows (not just
+				// flow 0), but ONLY on final delivery. current_hop == destination
+				// is essential -- this block also runs on every intermediate
+				// relay receive, and recording those as "destinations reached"
+				// makes every relayed hop look like an unauthorized destination,
+				// which showed up as n_anom_src > 0 at cycle 0 before the attack
+				// even starts.
+				if (current_hop == destination) {
+					ddiv_smoke_record(
+						hf_gt_attribution_node(tagmodified_routing.Getprevious_senderId()),
+						(delta_at_nodes_inst+fid)->source_f,
+						current_hop,
+						(delta_at_nodes_inst+fid)->destination_f);
 				}
 
 				// S6: log this delivery for cross-destination duplication detection.
@@ -142511,7 +142597,7 @@ int main(int argc, char *argv[])
     // M4 figure; 1 fixes all three defects (per-node onset, plain mean instead
     // of an accumulated per-cycle mean, and blocked-before-acting nodes counted
     // separately rather than averaged in as slow mitigations).
-    cmd.AddValue("enable_corrected_lmit", "M4/L_mit measured from each node's OWN first attack, as a plain mean, excluding nodes quarantined before they ever acted (default 0 = legacy)", enable_corrected_lmit);
+    cmd.AddValue("enable_corrected_lmit", "M4/L_mit measured from each node's OWN first attack, as a plain mean, excluding nodes quarantined before they ever acted. DEFAULT 1 since 2026-09-06 (supervisor Q10); pass 0 for the legacy inverted metric", enable_corrected_lmit);
     cmd.AddValue("s1_sigma_floor","S1: lower clamp on sigma in seconds (default 0.001)",      s1_sigma_floor);
     cmd.AddValue("s1_beta",       "S1: EWMA forgetting factor β (default 0.9, sweep {0.7-0.95})", s1_beta);
     crypto_register_cli_params(cmd);

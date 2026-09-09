@@ -77,3 +77,13 @@ lstm_pipeline/*_backup_*.bin
 # Raw arrays are regenerable from results_routing via preprocessor.py (~27 s).
 *.npy
 .venv-gui/
+
+# Personal documents at the repo root -- logbooks, contribution templates,
+# exported PDFs. These are the author's own files, not project artefacts, and
+# must never be committed. docs/ is deliberately NOT covered: the .md write-ups
+# there are project deliverables.
+/*.docx
+/*.pdf
+/*.docx.bak
+/*.doc
+/.~lock.*#

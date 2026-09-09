@@ -122,9 +122,24 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // live, so this conjunction is now a genuine, non-vacuous check.
     if (bc_query_flowmod(base_flow_id)) return false;
 
-    // Conjunction 2: prev_sender must be a flagged active malicious RSU
+    // Conjunction: b_hop(u) = 0 (eq:sig_s5). ORACLE GATE REMOVED 2026-09-06,
+    // supervisor Q5 -- see hf_oracle_gate (crypto_layer.h) for the full
+    // rationale. This previously read active_hf_malicious_nodes[prev_sender],
+    // the attack injector's own assignment array, which made this signature
+    // structurally incapable of accusing an innocent node and so made its
+    // precision an identity rather than a measurement. eq:sig_s5 lists no
+    // such conjunct. stark_verify_hop() evaluates the hop-legitimacy proof
+    // the gate stood in for: it compares the receiving hop against the
+    // signed_next_hop embedded at sign time and consults no ground truth,
+    // so a benign packet on its intended path passes here and a duplicate
+    // diverted to an eavesdropper does not.
     if (prev_sender >= (uint32_t)total_size) return false;
-    if (!active_hf_malicious_nodes[prev_sender]) return false;
+    if (hf_oracle_gate) {
+        if (!active_hf_malicious_nodes[prev_sender]) return false;  // legacy, A/B only
+    } else {
+        if (stark_verify_hop(current_hop, prev_sender, packet_id, base_flow_id))
+            return false;   // b_hop(u) = 1 -> packet is on its signed path
+    }
 
     // Conjunction 3: ML-DSA-87.Verify(σ_copy, pk_s, m_copy) = 0 (content fabricated).
     //

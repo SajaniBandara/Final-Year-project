@@ -1343,6 +1343,7 @@ used in online threshold adaptation
 \end{longtable}
 \endgroup
 \section{Threat Model}
+\label{sec:threat_model_main}
 The threat model assumes an internal or external adversary capable of manipulating SDVN components to disrupt communication integrity and timing without triggering immediate volumetric alarms \cite{PASCOAL2020107223}\cite{DBLP:journals/air/QammarKND23}.
 
 The attacker can:
@@ -2345,6 +2346,15 @@ Algorithm~\ref{alg:lrad_obu}.
          no ZKP}
   \State $D_{OBU} \gets flag_{S1}\lor flag_{S2p}$
          \hfill\Comment{S3, S4 evaluated at RSU only}
+  \Statex \textit{Note: \texttt{HMAC.Verify} authenticates the
+         \emph{origin} of $ts_{recv}$, not its truthfulness. In S2
+         the malicious node is the forwarder itself, which signs its
+         own false timestamp validly, so under this work's threat
+         model (Section~\ref{sec:threat_model_main}) the verification
+         never rejects and $flag_{S2p}$ reduces in practice to its
+         threshold term $(t_{now}-ts_{recv})>\Delta_{max}$.
+         S2-partial is therefore a timing test, and is not claimed
+         to provide packet integrity verification.}
   \If{$D_{OBU}$}
     \State \texttt{HOLD\_FORWARD}$(v,r)$
            \hfill\Comment{Local quarantine: suspend
@@ -3226,8 +3236,54 @@ $v$ within window $W$, normalized by the number of
 authorized destinations in $v$'s forwarding policy.
 Under benign operation $D_{div}{\approx}1$; under any
 hidden forwarding variant it exceeds 1 because packets
-reach unauthorized destinations. The per-flow
-throughput asymmetry is given in
+reach unauthorized destinations.
+
+\textit{Correction --- the \ac{RSU}-level aggregate actually
+supplied to the detector.}
+Equation~\eqref{eq:feat_ddiv} defines $D_{div}$ per
+\emph{source vehicle} $v$ observed at \ac{RSU} $r$. The
+federated \ac{LSTM}, however, consumes one feature vector per
+\ac{RSU} per cycle, not one per source. The aggregation step
+between the two was left implicit in earlier drafts, and was
+implemented as a single network-wide scalar --- identical at
+every \ac{RSU} in every cycle --- which carries no
+per-node information and makes every non-attacking \ac{RSU} a
+structurally guaranteed false positive whenever any attack is
+active. The aggregate is therefore stated explicitly here, in
+Equation~\eqref{eq:feat_ndiv}:
+\begin{equation}
+N_{div}(r,t) =
+\left|\left\{\,
+v \in \mathcal{V}(r,t) \;:\;
+D_{div}(v,r,t) > 1
+\,\right\}\right|
+\label{eq:feat_ndiv}
+\end{equation}
+where $\mathcal{V}(r,t)$ is the set of source vehicles whose
+traffic traverses \ac{RSU} $r$ during window $t$. As given in
+Equation~\eqref{eq:feat_ndiv}, $N_{div}$ counts how many
+distinct sources at $r$ are reaching more destinations than
+their forwarding policy authorizes, rather than whether a
+single designated flow is.
+
+The relationship to Equation~\eqref{eq:feat_ddiv} is one of
+aggregation only: $D_{div}$ is unchanged as the per-source
+quantity, and $N_{div}$ is its \ac{RSU}-level population count
+under the threshold $D_{div}>1$, which is exactly the condition
+Equation~\eqref{eq:feat_ddiv} already characterises as
+distinguishing benign from hidden-forwarding operation. Two
+consequences are worth stating. First, $N_{div}$ is identically
+zero under benign traffic, since no source exceeds its
+authorized destination set. Second, it is not a restatement of
+$R_{anom}$ (Equation~\eqref{eq:feat_ranom}): $R_{anom}$ counts
+unauthorized \emph{reception events}, so a single high-volume
+attacker and several low-volume ones are indistinguishable to
+it, whereas $N_{div}$ separates them by construction. Measured
+across the four hidden-forwarding variants, the two correlate
+at $0.78$--$0.81$, confirming that the aggregate contributes
+evidence the reception-rate feature does not.
+
+The per-flow throughput asymmetry is given in
 Equation~\eqref{eq:feat_atp}.
 \begin{equation}
 A_{tp}(v,r,t) =
@@ -3765,6 +3821,23 @@ network-wide instruction to all RSUs to drop flows originating from
 $v$ without requiring any manual intervention or centralised
 controller decision, thereby eliminating the single point of failure
 inherent in controller-enforced isolation.
+
+\textit{Limitation --- attribution granularity of enforcement.} For the
+data-plane attack variants the malicious forwarder is a \emph{vehicle},
+and vehicle nodes do not participate in the \ac{RSU} trust path that
+Equation~\eqref{eq:quarantine} evaluates. Enforcement for these variants
+is therefore applied at the \ac{RSU} currently covering the suspect
+vehicle, which is the same attribution the ground-truth and detection
+paths already use. This is a conservative posture rather than an exact
+one: quarantining the covering \ac{RSU} also denies the malicious action
+to other, innocent vehicles in that zone for the duration of the
+quarantine. We accept this trade-off deliberately --- in a
+safety-critical vehicular network, briefly over-restricting a zone is
+preferable to allowing a confirmed attacker to continue --- and note that
+it does not bias the detection measurement, since what is scored is the
+containment of the attacker itself. Per-vehicle trust paths, which would
+localise enforcement to the individual offending vehicle, are left as
+future work.
 
 \subsubsection{Flow-Rule Commitment Scheme}
 At flow setup, the \emph{endorsed} forwarding policy
@@ -5440,11 +5513,24 @@ The permissioned ledger maintains a highly compressed transactional history with
     are triggered at the same boundary.
 
     \item \textbf{Observation window $W$
-    (Eq.~\ref{eq:dup_alert_cond}):}
-    $W$ \textbf{[tbd: $\{5, 10, 15\}$\,s]},
-    selected for best MCC, upper-bounded by the
-    9\,s minimum RSU zone residence time from
-    Section~\ref{sec:mobility_amplification}.
+    (Eq.~\ref{eq:dup_alert_cond}):} $W = 10$\,s.
+    Informed by the $\{5, 10, 15\}$\,s candidate
+    range and sized against the 9--22\,s zone
+    residence distribution of
+    Section~\ref{sec:mobility_amplification}: it is
+    long enough to accumulate duplication evidence
+    across several transmission periods, while
+    remaining shorter than a typical zone crossing so
+    that most windows are observed by a single
+    \ac{RSU}. Windows that do span a handoff are
+    attributed to the \ac{RSU} covering the suspect
+    at observation time, so a crossing does not
+    silently split the evidence. Note this is a
+    distributional criterion, not the hard
+    $W \leq 9$\,s bound stated in earlier drafts:
+    $W = 10$\,s exceeds the 9\,s \emph{minimum}
+    residence, so for the shortest crossings a window
+    can span two zones.
 \end{itemize}
 
 
@@ -5601,7 +5687,7 @@ One-time ceremony among 64 RSUs pre-simulation
             \hline
             $T_{fwd}$ (forwarding deadline) & 50\,ms ($= \Delta_{max}$) \\
             \hline
-            $W$ (witness observation window) & [tbd: $\{5, 10, 15\}$\,s]; $\leq 9$\,s zone residence bound \\
+            $W$ (witness observation window) & 10\,s; informed by the $\{5, 10, 15\}$\,s candidate range and the 9--22\,s zone residence distribution \\
                 
     
              \hline

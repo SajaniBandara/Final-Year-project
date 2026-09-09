@@ -91,9 +91,24 @@ inline bool s8_detect(uint32_t recv_flow_id,
     // Conjunction 1: DP passive variant only (Attack 8, index 7)
     if (active_attack_variant != 7) return false;
 
-    // Conjunction 2: prev_sender must be a flagged passive malicious RSU
+    // Conjunction: b_hop(u) = 0 (eq:sig_s5). ORACLE GATE REMOVED 2026-09-06,
+    // supervisor Q5 -- see hf_oracle_gate (crypto_layer.h) for the full
+    // rationale. This previously read passive_hf_malicious_nodes[prev_sender],
+    // the attack injector's own assignment array, which made this signature
+    // structurally incapable of accusing an innocent node and so made its
+    // precision an identity rather than a measurement. eq:sig_s5 lists no
+    // such conjunct. stark_verify_hop() evaluates the hop-legitimacy proof
+    // the gate stood in for: it compares the receiving hop against the
+    // signed_next_hop embedded at sign time and consults no ground truth,
+    // so a benign packet on its intended path passes here and a duplicate
+    // diverted to an eavesdropper does not.
     if (prev_sender >= (uint32_t)total_size) return false;
-    if (!passive_hf_malicious_nodes[prev_sender]) return false;
+    if (hf_oracle_gate) {
+        if (!passive_hf_malicious_nodes[prev_sender]) return false;  // legacy, A/B only
+    } else {
+        if (stark_verify_hop(current_hop, prev_sender, packet_id, base_flow_id))
+            return false;   // b_hop(u) = 1 -> packet is on its signed path
+    }
 
     // Conjunction 1: BatchVerify(σ, {pk_i}, {m_i}, r) = 1 — primary-path delivery
     // correct across all hops. g_batch_passed is a genuine system-wide signal

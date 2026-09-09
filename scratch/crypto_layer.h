@@ -824,6 +824,54 @@ inline void hf_truth_latch_clear(uint32_t rsu_local_idx) {
     if (rsu_local_idx < g_hf_activity_latch.size())
         g_hf_activity_latch[rsu_local_idx] = 0;
 }
+
+// ── Item 4 (supervisor round 7, 2026-09-05): the latch RESET BOUNDARY ────────
+//
+// Moving the reset from end-of-run to quarantine time is correct only for
+// variants whose enforcement is CONFIRMED working, because only there does the
+// compromised state genuinely end. Where enforcement is absent or unvalidated,
+// the state really does persist to end of run and the old boundary is the
+// correct one. So this is deliberately per-variant, split on ATTACKER TYPE --
+// which is the axis the enforcement evidence actually falls along:
+//
+//   A5/A7 (variants 4/6, CP) -- attacker IS the RSU. Enforcement confirmed
+//       directly: post-quarantine fires drop to 0. --hf_latch_reset_rsu_attacker
+//   A6/A8 (variants 5/7, DP) -- attacker is a VEHICLE. Enforcement confirmed
+//       2026-08-30, and it bites through hf_gt_attribution_node(), the COVERING
+//       RSU. Post-quarantine fires 50->0 and 137->0. Separate flag so this can
+//       be switched off independently if the proxy attribution is ruled
+//       unacceptable. --hf_latch_reset_vehicle_attacker
+//
+//       CORRECTION 2026-09-07: this note used to justify the covering-RSU proxy
+//       with "because vehicles never cross the trust threshold". That is not
+//       true and may never have been. Measured on the gate-removed build, 90s,
+//       60%, seed 1, counting distinct [TRUST-QUARANTINE] node ids:
+//           A5 199/200 vehicles   A6 199/200   A7 173/200   A8 167/200
+//       Even with the legacy oracle gate still in, A6 quarantines 128 vehicles
+//       and A8 125. Vehicles cross the threshold routinely. The proxy may still
+//       be the right attribution for other reasons -- it is what truth's latch
+//       is indexed on (hf_truth_latch_clear takes an RSU local index) -- but it
+//       is NOT justified by vehicles being unreachable by trust decay, and any
+//       reasoning that depends on that premise needs re-deriving.
+//
+// A1-A4 are not covered here at all and need no flag: the latch is HF-only
+// (g_hf_activity_latch is written only under variants 4-7, routing.cc:118534).
+// A3/A4 use --tcam_truth_live and A1/A2 their own per-cycle exceedance gate.
+//
+// BOTH DEFAULT FALSE = end-of-run reset = today's behaviour, bit-identical.
+// Once item 1 closes across all eight variants these collapse into one uniform
+// setting and the distinction disappears, as instructed.
+bool hf_latch_reset_rsu_attacker     = false;
+bool hf_latch_reset_vehicle_attacker = false;
+
+// Does the active variant reset its latch at quarantine time?
+inline bool hf_latch_resets_at_quarantine() {
+    switch (active_attack_variant) {
+        case 4: case 6: return hf_latch_reset_rsu_attacker;      // A5, A7 (CP)
+        case 5: case 7: return hf_latch_reset_vehicle_attacker;  // A6, A8 (DP)
+        default:        return false;                            // A1-A4: N/A
+    }
+}
 std::vector<uint32_t> g_hf_send_rule_prev;
 
 // Supervisor Decision 4 (2026-08-21): per-RSU, per-cycle ATTACK-ACTIVITY
@@ -962,6 +1010,146 @@ uint32_t g_lstm_flow0_legit_count = 0;
 // byte-count ratio main.tex specifies.
 std::set<uint32_t> g_lstm_flow0_dest_set;
 uint32_t            g_lstm_flow0_total_delivery_count = 0;
+
+// ── Item 3 (supervisor round 7, 2026-09-05): PER-RSU D_div / A_tp ───────────
+//
+// The three accumulators above are simulation-wide globals with no RSU key, so
+// every RSU's CSV row receives the identical value every cycle. Measured over
+// 1,372,800 rows: 100.0% of cycles have all sampled RSUs reporting the same
+// d_div/a_tp (r_anom control: 3.0%), and within-(pct,seed,cycle)-stratum AUC is
+// exactly 0.500 -- the theoretical value for a constant, i.e. zero per-node
+// information. Under A5-A8 that hands every bystander RSU a network-wide "an
+// attack is happening" signal while ground truth labels only the attacker, so
+// each bystander is a structurally guaranteed false positive and no threshold
+// can separate them. main.tex specifies both features per-RSU ("D_div is
+// computed from per-source per-destination byte counts logged at each RSU";
+// "A_tp is computed from per-flow directional byte rate logs"), so the global
+// scope is a defect against spec, not an alternative design.
+//
+// The maps below are the spec-conformant form. Keyed by RSU NODE ID, exactly
+// like g_lstm_ranom_count, and populated at the same three MacRx sites using
+// the same hf_gt_attribution_node() value already computed on the adjacent line.
+//
+// ATTRIBUTION RULE, and the part that needs a ruling. eq:feat_ddiv/eq:feat_atp
+// do not say who is credited with an AUTHORIZED delivery: that event fires at
+// flow 0's single destination node, which is not an RSU. We credit the covering
+// RSU of the packet's last-hop sender -- i.e. each RSU accounts for the flow-0
+// traffic it actually relayed -- which is the reading that matches main.tex's
+// "per-flow directional byte rate logs" wording. Unauthorized deliveries are
+// credited the same way, to the covering RSU of the duplicating forwarder.
+//
+// EXPECTED CONSEQUENCE, stated up front so it is not mistaken for a new bug.
+// passive_hf_rsu_to_eavesdropper maps one eavesdropper per malicious node, so a
+// per-RSU destination set has cardinality at most 2 (the legitimate destination
+// plus that RSU's own eavesdropper). Per-RSU D_div is therefore close to
+// 1 + 1[this RSU duplicated this cycle], which is largely a function of r_anom.
+// The fix REMOVES a broadcast false signal; it does not ADD an independent one.
+// That is still the correct outcome -- the current feature actively injects the
+// FPs -- but the paper should not claim new discriminative power from it.
+//
+// DEFAULT OFF. With --lstm_ddiv_atp_per_rsu=0 the globals above are used exactly
+// as before and every previously collected row is reproduced bit-identically.
+// Turning it on requires regenerating the A5-A8 training set (the per-RSU
+// granularity was never captured, so it cannot be recovered by post-processing)
+// and a full retrain INCLUDING the encoder -- a frozen-encoder fine-tune will not
+// transfer, since the latent was trained to treat the broadcast constant as
+// meaningful.
+// ── D_div smoke test (supervisor round 8, 2026-09-06) ───────────────────────
+//
+// INSTRUMENTATION ONLY. Measures what the supervisor's proposed richer D_div
+// WOULD read, without changing any feature the model consumes, so the three
+// acceptance criteria can be checked before committing to the definition:
+//   (a) non-constant across the 64 RSUs during an active attack,
+//   (b) exactly zero under benign traffic,
+//   (c) correlation with R_anom meaningfully below 1.
+//
+// Proposed feature: per RSU, the number of distinct SOURCE VEHICLES routing
+// through it whose destination set exceeds their authorized policy set. Unlike
+// the shipped accumulators this is NOT gated on flow 0 -- attacks span 4-7
+// distinct flows, so a single-flow gate discards most of the attack surface.
+//
+// Keyed rsu -> src -> {destinations}. A source counts as anomalous when it
+// reached any destination outside its authorized set for that flow.
+// ── Q5: the S5-S8 oracle gate (supervisor round 8, 2026-09-06) ─────────────
+//
+// All four HF signatures used to early-return unless
+// active_/passive_hf_malicious_nodes[prev_sender] -- the attack injector's own
+// ASSIGNMENT ARRAY. That made them structurally incapable of firing on an
+// innocent node, so every precision figure they produced was guaranteed by
+// construction rather than measured, and score_primary was attacker-identity-
+// aware and not an achievable ceiling. eq:sig_s5's five conjuncts contain no
+// such term; the gate is the same class of defect as training on a label
+// derived from an input feature, hiding in C++ control flow instead of a
+// training script.
+//
+// REMOVED BY DEFAULT. In its place each signature now evaluates the conjunct
+// the gate was standing in for -- b_hop(u) = 0, i.e. STARK.Verify(pi_hop) = 0 --
+// via stark_verify_hop(), which compares the receiving hop against the
+// signed_next_hop embedded at sign time and references no ground truth at all.
+// A benign packet arriving at its intended next hop passes and the signature
+// stays silent; a duplicate diverted to an eavesdropper fails and evaluation
+// continues. Crucially the signatures CAN now fire on an innocent node, which
+// is what makes their precision a measurement.
+//
+// Set --hf_oracle_gate=1 to restore the legacy gate. That exists ONLY to A/B
+// what the gate was worth; it must never be used for a reported number.
+bool hf_oracle_gate = false;
+
+// Declared ahead of the ddiv_* helpers below, which gate on it: the
+// per-source-vehicle accumulator is the production N_div feature when
+// --lstm_ddiv_atp_per_rsu=1, not only smoke-test instrumentation.
+bool lstm_ddiv_atp_per_rsu = false;
+bool ddiv_smoke_test = false;
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_reached;
+std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_auth;
+
+inline void ddiv_smoke_record(uint32_t rsu_node, uint32_t src,
+                              uint32_t dest_reached, uint32_t auth_dest)
+{
+    if (!ddiv_smoke_test && !lstm_ddiv_atp_per_rsu) return;
+    if (rsu_node == UINT32_MAX) return;
+    g_ddiv_smoke_reached[rsu_node][src].insert(dest_reached);
+    g_ddiv_smoke_auth   [rsu_node][src].insert(auth_dest);
+}
+
+// Distinct source vehicles at this RSU that reached an unauthorized destination.
+inline uint32_t ddiv_smoke_count(uint32_t rsu_node)
+{
+    if (!ddiv_smoke_test && !lstm_ddiv_atp_per_rsu) return 0;
+    auto itr = g_ddiv_smoke_reached.find(rsu_node);
+    if (itr == g_ddiv_smoke_reached.end()) return 0;
+    auto ita = g_ddiv_smoke_auth.find(rsu_node);
+    uint32_t n = 0;
+    for (auto const& kv : itr->second) {
+        const std::set<uint32_t>& reached = kv.second;
+        static const std::set<uint32_t> empty_set;
+        const std::set<uint32_t>& auth =
+            (ita != g_ddiv_smoke_auth.end() && ita->second.count(kv.first))
+                ? ita->second.at(kv.first) : empty_set;
+        for (uint32_t d : reached) { if (!auth.count(d)) { ++n; break; } }
+    }
+    return n;
+}
+
+std::map<uint32_t, std::set<uint32_t>> g_lstm_flow0_dest_set_by_rsu;
+std::map<uint32_t, uint32_t>           g_lstm_flow0_total_delivery_by_rsu;
+std::map<uint32_t, uint32_t>           g_lstm_flow0_legit_by_rsu;
+
+// Record one flow-0 delivery against the RSU that relayed it.
+//   rsu_node -- hf_gt_attribution_node(last-hop sender); UINT32_MAX = no RSU
+//               currently covers that sender, in which case nothing is recorded
+//               (the same discipline every other attributed counter uses).
+//   dest     -- the node that received the packet (authorized destination or
+//               eavesdropper); enters that RSU's distinct-destination set.
+//   legit    -- true for a delivery to the authorized destination_f.
+inline void lstm_flow0_record_delivery(uint32_t rsu_node, uint32_t dest, bool legit)
+{
+    if (!lstm_ddiv_atp_per_rsu)   return;
+    if (rsu_node == UINT32_MAX)   return;
+    g_lstm_flow0_dest_set_by_rsu[rsu_node].insert(dest);
+    ++g_lstm_flow0_total_delivery_by_rsu[rsu_node];
+    if (legit) ++g_lstm_flow0_legit_by_rsu[rsu_node];
+}
 
 // ── liboqs Singleton and Zone Helper ─────────────────────────────────────────
 
@@ -1554,6 +1742,43 @@ inline void trust_update_negative(uint32_t node) {
     if (g_trust_score[node] < TRUST_T_MIN && !g_quarantined[node]) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
+
+        // Item 4 (2026-09-05): release the HF activity latch here, per
+        // eq:local_quarantine -- but only for variants whose enforcement is
+        // confirmed (see hf_latch_resets_at_quarantine()). Default-off, so this
+        // block does nothing unless explicitly enabled.
+        //
+        // Which latch index. g_hf_activity_latch is keyed by RSU LOCAL index and
+        // is set through hf_gt_attribution_node(), so:
+        //   - node is an RSU (A5/A7): clear its own latch. Unambiguous.
+        //   - node is a vehicle (A6/A8): the latch sits on its COVERING RSU,
+        //     which may also cover other attacking vehicles. Clearing it
+        //     unconditionally would blank the truth for attackers that are still
+        //     active -- the mirror image of the guard's over-block. So clear only
+        //     once no non-quarantined HF attacker still attributes to that RSU.
+        //     Same iteration the witness path already uses (see g_witness_TP_W).
+        if (hf_latch_resets_at_quarantine()) {
+            uint32_t _tgt = hf_gt_attribution_node(node);
+            if (_tgt != UINT32_MAX && _tgt >= (uint32_t)N_Vehicles) {
+                bool _still_active = false;
+                for (int _n = 0; _n < total_size; ++_n) {
+                    if (!active_hf_malicious_nodes[_n]
+                        && !passive_hf_malicious_nodes[_n]) continue;
+                    if ((uint32_t)_n == node)   continue;  // the one just contained
+                    if (g_quarantined[_n])      continue;  // already contained
+                    if (hf_gt_attribution_node((uint32_t)_n) == _tgt) {
+                        _still_active = true;
+                        break;
+                    }
+                }
+                if (!_still_active) {
+                    hf_truth_latch_clear(_tgt - (uint32_t)N_Vehicles);
+                    std::cout << "[HF-LATCH-CLEAR] rsu=" << _tgt
+                              << " on quarantine of node=" << node
+                              << " t=" << ns3::Simulator::Now().GetSeconds() << "\n";
+                }
+            }
+        }
         // Supervisor Fix 1 (2026-08-19): record_detection_event() removed from
         // this path. Quarantine is a MITIGATION consequence of trust falling
         // below T_MIN, not a detection event -- the node was already recorded
@@ -2276,6 +2501,29 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("hf_truth_latched",              "HF truth semantics (2026-09-01): latch the A5-A8 window activity gate "
                                                   "(compromised state persists) instead of per-cycle send events, matching "
                                                   "S5-S8's design and y_indep's existing latch. Measurement-only", hf_truth_latched);
+    cmd.AddValue("hf_oracle_gate",                "Q5 (2026-09-06): restore the legacy S5-S8 oracle gate, which early-returns "
+                                                  "unless the sender is in the attack injector's own assignment array. Default 0 "
+                                                  "= REMOVED (b_hop(u)=0 evaluated instead, per eq:sig_s5). Diagnostic A/B only -- "
+                                                  "never report a number produced with this on", hf_oracle_gate);
+    cmd.AddValue("ddiv_smoke_test",               "Round 8 smoke test (2026-09-06): log what the proposed per-source-vehicle "
+                                                  "D_div WOULD read, per RSU per cycle, WITHOUT changing any model feature. "
+                                                  "Emits [DDIV-SMOKE] lines. Diagnostic only", ddiv_smoke_test);
+    cmd.AddValue("lstm_ddiv_atp_per_rsu",         "Item 3 (2026-09-05): compute D_div/A_tp per-RSU as eq:feat_ddiv/eq:feat_atp "
+                                                  "specify, instead of as simulation-wide global scalars identical at every "
+                                                  "RSU. Requires regenerating the A5-A8 training set and a full retrain "
+                                                  "INCLUDING the encoder -- the per-RSU granularity was never logged, so it "
+                                                  "cannot be recovered by post-processing. Default 0 = legacy global",
+                                                  lstm_ddiv_atp_per_rsu);
+    cmd.AddValue("hf_latch_reset_rsu_attacker",   "Item 4 (2026-09-05): release the HF activity latch at QUARANTINE time "
+                                                  "(eq:local_quarantine) instead of end-of-run, for the RSU-attacker HF "
+                                                  "variants A5/A7, whose enforcement is directly confirmed. Requires "
+                                                  "--hf_truth_latched to have any effect. Default 0 = end-of-run",
+                                                  hf_latch_reset_rsu_attacker);
+    cmd.AddValue("hf_latch_reset_vehicle_attacker", "Item 4 (2026-09-05): as above for the VEHICLE-attacker HF variants "
+                                                  "A6/A8, whose enforcement is confirmed but bites via the covering RSU "
+                                                  "(proxy attribution). Separate flag so it can be disabled independently "
+                                                  "if the proxy is ruled unacceptable. Default 0 = end-of-run",
+                                                  hf_latch_reset_vehicle_attacker);
     cmd.AddValue("dw_mark_suspect",               "FPR fix 2 (2026-09-01): mark the SUSPECT (prev_sender) in the M1 "
                                                   "window grid instead of the observing RSU, matching the 2026-08-22 "
                                                   "fix already applied to score_primary. Measurement-only", dw_mark_suspect);
