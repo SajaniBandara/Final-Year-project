@@ -210,8 +210,38 @@ def main() -> int:
     dr = 100 * tp / (tp + fn) if tp + fn else float("nan")
     fpr = 100 * fp / (fp + tn) if fp + tn else float("nan")
     print("-" * 69)
-    print(f"{'ALL':<10}{mcc(tp, fp, fn, tn):>9.4f}{dr:>8.1f}%{fpr:>8.1f}%"
+    # POOLED: one confusion matrix over every surviving row, so variants with
+    # more rows dominate. This is what the ALL row has always reported.
+    print(f"{'ALL(pooled)':<10}{mcc(tp, fp, fn, tn):>9.4f}{dr:>8.1f}%{fpr:>8.1f}%"
           f"{tp:>8}{fp:>8}{fn:>8}{tn:>8}")
+    # MACRO: unweighted mean of the per-variant MCCs, which is the headline the
+    # supervisor asked for (2026-09-09). It differs from pooled whenever the
+    # variants contribute unequal row counts or have unequal difficulty --
+    # measured on the item 4 baseline arm, macro 0.0410 vs pooled 0.0287.
+    #
+    # Degenerate variants (TP+FN == 0, i.e. no positive class survives warm-up
+    # and de-duplication) are EXCLUDED rather than counted as 0.0: mcc() returns
+    # 0.0 for a zero denominator, and averaging that in would silently pull the
+    # headline toward zero using cells that are not measurements. The count of
+    # excluded variants is printed so the exclusion is never invisible.
+    per_variant, degenerate = [], []
+    for v in sorted(counts):
+        c_tp, c_fp, c_fn, c_tn = counts[v]
+        if c_tp + c_fn == 0:
+            degenerate.append(v)
+        else:
+            per_variant.append(mcc(c_tp, c_fp, c_fn, c_tn))
+    if per_variant:
+        macro = sum(per_variant) / len(per_variant)
+        print(f"{'ALL(macro)':<10}{macro:>9.4f}"
+              f"{'':>9}{'':>9}{'':>8}{'':>8}{'':>8}{'':>8}"
+              f"  mean of {len(per_variant)} variants")
+    else:
+        print(f"{'ALL(macro)':<10}{'n/a':>9}  every variant degenerate")
+    if degenerate:
+        names = ", ".join("benign" if v == 0 else f"A{v}" for v in degenerate)
+        print(f"{'':10}{'':>9}  EXCLUDED from macro (TP+FN=0, no positive "
+              f"class): {names}")
     return 0
 
 
