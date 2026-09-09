@@ -10,8 +10,14 @@ trustworthy, including the ones reported as good news in
 
 All runs below: `optimized` build, `-O3` confirmed on `CXXFLAGS`, 90 s
 (**diagnostic length, not reportable**), seed 1, `--enable_detector_windows=1
---enable_quarantine_enforcement=1 --hf_truth_latched=1`. Error gate 0 on all 14
-runs. `simTime=90`, `attack_percentage=60` unless stated.
+--enable_quarantine_enforcement=1 --hf_truth_latched=1`. All 14 runs exited
+rc=0. `simTime=90`, `attack_percentage=60` unless stated.
+
+The pre-existing `[CRYPTO-ERROR] Batch verify tick FAILED` and `[ERROR] source`
+log lines are present at unchanged counts before and after this change (A5: 41
+in both), so they are background noise in this tree, not introduced here. Note
+for someone else's attention: that line reports FAILED while printing
+`N pkts verified=N`, which looks mislabelled.
 
 **Environment note.** The gate-removed build had never been compiled on this
 host — the binary was from 2026-09-02 and contained none of the round 8 flags
