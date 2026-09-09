@@ -143,7 +143,7 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // which node is guilty, so unlike the oracle gate it cannot manufacture
     // precision -- it removes cross-variant contamination, not false positives
     // within Attack 5's own run.
-    if (s5_variant_guard && active_attack_variant != 4) return false;
+    if (hf_variant_guard && !variant_active(4)) return false;
 
     // ── S5 fix 2 (2026-09-09): was this frame ADDRESSED to me? ──────────────
     // Broadcast media deliver every frame to every neighbour. b_hop_fails is
@@ -157,9 +157,12 @@ inline bool s5_detect(uint32_t recv_flow_id,
     // "addressed to me AND b_hop(u)=0" while overhearing loses it. UINT32_MAX
     // means the tag carried no value; treat that as "cannot tell" and leave the
     // legacy behaviour rather than inventing a fire.
-    if (s5_require_addressed
+    if (hf_require_addressed
         && g_s5_rx_intended_recipient != UINT32_MAX
         && g_s5_rx_intended_recipient != current_hop) return false;
+
+    // Round 10 (option b, approved): a contained node is out of scope.
+    if (hf_detector_suppressed(prev_sender)) return false;
 
     if (hf_oracle_gate) {
         if (!active_hf_malicious_nodes[prev_sender]) return false;  // legacy, A/B only

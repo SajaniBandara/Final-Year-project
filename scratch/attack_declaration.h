@@ -140,6 +140,12 @@ inline void declare_attack_states()
             break;
     }
 
+    // Round 10: register the armed variant in the set variant_active() reads.
+    // Single-variant runs register exactly one; a future joint/NEXUS mode
+    // registers all eight by calling this dispatcher per variant.
+    if (active_attack_variant >= 0 && active_attack_variant < 32)
+        g_active_variant_mask |= (1u << active_attack_variant);
+
     cout << "[declare_attack_states] attack_number=" << attack_number
          << " -> active_attack_variant=" << active_attack_variant
          << ", present_selective_delay_cp_attack=" << present_selective_delay_cp_attack

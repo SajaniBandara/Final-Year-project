@@ -114755,6 +114755,11 @@ bool g_s2_gt_delay_exceeded[total_size] = {false};
 // Which variant is active for this run (set at simulation start)
 // -1 means no attack (baseline run)
 int active_attack_variant = -1;
+// Round 10: set of ARMED variants, as a bitmask. Defined here rather than in
+// crypto_layer.h because attack_declaration.h (included first) populates it.
+// Zero means "nothing registered" and variant_active() falls back to the
+// legacy single-value test, so benign/baseline runs are unaffected.
+uint32_t g_active_variant_mask = 0;
 
 // Mitigation latency timestamps (seconds)
 // t_onset:     when malicious flag first becomes true for a node

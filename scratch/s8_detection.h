@@ -89,7 +89,24 @@ inline bool s8_detect(uint32_t recv_flow_id,
                        uint32_t base_flow_id)
 {
     // Conjunction 1: DP passive variant only (Attack 8, index 7)
-    if (active_attack_variant != 7) return false;
+    // Round 10: variant_active() replaces the bare == test so joint/NEXUS runs
+    // (all eight variants armed at once) do not silence this signature.
+    if (hf_variant_guard && !variant_active(7)) return false;
+
+    // Round 10: the addressing conjunct that fixed S5, applied here too --
+    // confirmed necessary, not precautionary. Broadcast media deliver every
+    // frame to every neighbour, so b_hop_fails holds for all of them and a
+    // passive overhearer could accuse the sender. Measured before this fix:
+    // up to 27 distinct nodes accusing one (sender, message, timestamp) event,
+    // and 11.6-22.3% of window-level firings landing on nodes never declared
+    // attackers. UINT32_MAX means the tag carried no value -- treat as "cannot
+    // tell" and fall through rather than inventing a fire.
+    if (hf_require_addressed
+        && g_s5_rx_intended_recipient != UINT32_MAX
+        && g_s5_rx_intended_recipient != current_hop) return false;
+
+    // Round 10 (option b, approved): stop asserting on a contained node.
+    if (hf_detector_suppressed(prev_sender)) return false;
 
     // Conjunction: b_hop(u) = 0 (eq:sig_s5). ORACLE GATE REMOVED 2026-09-06,
     // supervisor Q5 -- see hf_oracle_gate (crypto_layer.h) for the full

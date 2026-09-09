@@ -1124,8 +1124,27 @@ bool hf_oracle_gate = false;
 // hop, so d' sees "addressed to me AND b_hop(u)=0" while an overhearer sees
 // "not addressed to me". No attack-injector state is consulted.
 //   --s5_require_addressed
-bool s5_variant_guard    = false;
-bool s5_require_addressed = false;
+// ── Round 10 (2026-09-09), supervisor-approved. These four DEFAULT TRUE ──────
+// Pass =0 to restore the legacy path for A/B. This is the reverse of the
+// usual convention here, because these are approved corrections rather than
+// proposals: the legacy path is the one now known to be wrong.
+//
+// hf_variant_guard      -- s5_detect() gains the guard s6/s7/s8 already had.
+// hf_require_addressed  -- ALL FOUR now require the frame to have been
+//                          addressed to the accusing node, not merely
+//                          overheard. Confirmed necessary on S6/S7/S8 too:
+//                          22.3% of S7's window-level firings landed on nodes
+//                          never declared attackers, and up to 27 nodes were
+//                          accusing a single event.
+// hf_detector_quarantine_aware -- option (b): S5-S8 stop asserting once a node
+//                          is contained, so the detector's boundary moves with
+//                          truth's instead of measuring its own failure to
+//                          switch off.
+// dw_attribute_vehicle_accusations -- the metric fix. See dw_attribute_accused().
+bool hf_variant_guard                  = true;
+bool hf_require_addressed              = true;
+bool hf_detector_quarantine_aware      = true;
+bool dw_attribute_vehicle_accusations  = true;
 
 // Set by the MacRx handler from the packet tag immediately before detection
 // runs for that reception. UINT32_MAX = unknown/not set.
@@ -1588,6 +1607,64 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
 // lookup_vehicle_associated_rsu_local_idx (routing.cc:115058) -- both are inline
 // and defined later in this same translation unit.
 inline uint32_t hf_gt_attribution_node(uint32_t node);
+
+// ── Round 10: variant_active() ──────────────────────────────────────────────
+// active_attack_variant is a single int assigned in a switch with break, so it
+// can only ever name ONE armed variant. S6/S7/S8 have gated on it since long
+// before this session, which means the NEXUS joint experiments (N1-N3, all
+// eight variants live at once) would have silenced three of the four HF
+// signatures. Bitmask, so no new includes and no allocation on a per-packet
+// path. Zero = nothing registered, fall back to the legacy single-value test
+// so benign/baseline runs (active_attack_variant = -1) behave exactly as before.
+// g_active_variant_mask is defined in routing.cc, beside active_attack_variant,
+// because attack_declaration.h is included before this header and populates it.
+
+inline void register_active_variant(int v) {
+    if (v >= 0 && v < 32) g_active_variant_mask |= (1u << v);
+}
+
+inline bool variant_active(int v) {
+    if (g_active_variant_mask) return (g_active_variant_mask >> v) & 1u;
+    return active_attack_variant == v;
+}
+
+// ── Round 10: option (b), approved ──────────────────────────────────────────
+// A contained node is out of scope for accusation. Tests the accused AND its
+// attribution node, mirroring item 1's std_delay_quarantine_blocks(): for the
+// data-plane variants the accused is a VEHICLE while containment and truth are
+// both keyed on the covering RSU, so testing prev_sender alone would leave the
+// detector's boundary misaligned on exactly the variants the mismatch was
+// found on. quarantine_blocks() already returns false when enforcement is off,
+// so this is inert in non-enforcement runs by construction.
+inline bool hf_detector_suppressed(uint32_t accused) {
+    if (!hf_detector_quarantine_aware) return false;
+    // Tests ONLY the accused node's own containment.
+    //
+    // CORRECTED 2026-09-10. This first mirrored item 1's
+    // std_delay_quarantine_blocks(), which also tests
+    // hf_gt_attribution_node(accused). That is right for ENFORCEMENT, where
+    // the covering RSU is a deliberately conservative proxy: over-blocking a
+    // zone is the safe direction. It is wrong for DETECTION suppression,
+    // where it fails the other way -- quarantining one RSU silenced every
+    // accusation against every vehicle in its zone. Measured on A6 (90 s,
+    // 60%, seed 1): 44 RSUs quarantined, and the attribution test drove
+    // A6's primary detector to TP=0 / MCC=0.0000, converting all 33 true
+    // positives into false negatives. Testing the accused alone restores it.
+    return quarantine_blocks(accused);
+}
+
+// ── Round 10: the metric-side fix ───────────────────────────────────────────
+// dw_mark_rsu_primary() discards anything below N_Vehicles, so a detection that
+// accuses a VEHICLE forwarder had no RSU row to write to and vanished from M1
+// entirely -- 99.5% of A6's firings, 99.7% of A5's after t=27s. Routing it
+// through the covering RSU is the same proxy already used for the truth latch,
+// the LSTM counters and item 1's quarantine guard. UINT32_MAX (no RSU in range)
+// falls through to the caller's own bounds check and is still dropped, which is
+// correct: with no covering RSU there is genuinely no vantage point to credit.
+inline uint32_t dw_attribute_accused(uint32_t accused) {
+    if (!dw_attribute_vehicle_accusations) return accused;
+    return hf_gt_attribution_node(accused);
+}
 
 inline void stark_update_meta(uint32_t signer, uint32_t pkt_id, uint32_t flow_id,
                                bool timing_ok, bool hop_ok) {
@@ -2541,15 +2618,20 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
                                                   "unless the sender is in the attack injector's own assignment array. Default 0 "
                                                   "= REMOVED (b_hop(u)=0 evaluated instead, per eq:sig_s5). Diagnostic A/B only -- "
                                                   "never report a number produced with this on", hf_oracle_gate);
-    cmd.AddValue("s5_variant_guard",              "S5 fix 1 (2026-09-09): give s5_detect() the active_attack_variant==4 guard "
-                                                  "that s6/s7/s8_detect() already have. Without it S5 fires in benign runs and "
-                                                  "inside the other HF variants' runs. Default 0 = legacy (no guard)",
-                                                  s5_variant_guard);
-    cmd.AddValue("s5_require_addressed",          "S5 fix 2 (2026-09-09): require the frame to have been ADDRESSED to this node "
-                                                  "(tag intended_recipient == receiver) before S5 may fire, so passive broadcast "
-                                                  "overhearing cannot trigger it. Consults no attack-injector state. "
-                                                  "Default 0 = legacy (any overhearer can fire)",
-                                                  s5_require_addressed);
+    cmd.AddValue("hf_variant_guard",              "Round 10: s5_detect() gains the variant guard s6/s7/s8 already had, now "
+                                                  "expressed through variant_active() so joint runs work. Default 1; =0 legacy",
+                                                  hf_variant_guard);
+    cmd.AddValue("hf_require_addressed",          "Round 10: S5-S8 require the frame to have been ADDRESSED to the accusing node "
+                                                  "(tag intended_recipient), so broadcast overhearing cannot trigger them. "
+                                                  "Consults no attack-injector state. Default 1; =0 legacy",
+                                                  hf_require_addressed);
+    cmd.AddValue("hf_detector_quarantine_aware",  "Round 10 (option b, approved): S5-S8 stop asserting on a node once it is "
+                                                  "quarantined, so the detector's boundary moves with truth's. Default 1; =0 legacy",
+                                                  hf_detector_quarantine_aware);
+    cmd.AddValue("dw_attribute_vehicle_accusations", "Round 10: attribute a vehicle-accusing detection to its COVERING RSU in the "
+                                                  "M1 grid instead of discarding it. Legacy dropped 99.5% of A6's and 99.7% of "
+                                                  "A5's detections. Default 1; =0 legacy",
+                                                  dw_attribute_vehicle_accusations);
     cmd.AddValue("ddiv_smoke_test",               "Round 8 smoke test (2026-09-06): log what the proposed per-source-vehicle "
                                                   "D_div WOULD read, per RSU per cycle, WITHOUT changing any model feature. "
                                                   "Emits [DDIV-SMOKE] lines. Diagnostic only", ddiv_smoke_test);

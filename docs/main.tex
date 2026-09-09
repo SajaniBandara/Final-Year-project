@@ -1970,10 +1970,37 @@ Equation~\eqref{eq:sig_s5}.
   & \wedge\; \textsc{BatchVerify}(
     \boldsymbol{\sigma},\{pk_i\},\{m_i\},
     \mathbf{r}) = 0 \\
-  & \wedge\; b_{hop}(u) = 0
+  & \wedge\; b_{hop}(u) = 0 \\
+  & \wedge\; \textsc{Addressed}(p, d') = 1
 \end{aligned}
 \label{eq:sig_s5}
 \end{equation}
+
+\textit{On the addressing conjunct.} $\textsc{Addressed}(p,d')=1$ holds when
+$d'$ is the intended link-layer recipient of the frame carrying $p$, i.e. the
+next hop the forwarder selected and addressed the frame to. Without it the
+signature is not well posed on a broadcast medium: every neighbour within range
+receives every frame, so $b_{hop}(u)=0$ holds at all of them simultaneously and
+the remaining conjuncts cannot separate an eavesdropper that was \emph{sent} an
+unauthorized duplicate from a bystander that merely overheard a legitimate
+transmission. Measured on the reference configuration before this term was
+added, a single benign transmission caused up to four distinct nodes to raise
+S5, and $90.2\%$ of benign observation windows contained at least one such
+alert.
+
+Crucially, $\textsc{Addressed}$ is \emph{not} an appeal to trusted state, and
+so does not weaken the zero-trust premise of
+Section~\ref{sec:threat_model_main}. It is read from the frame the accusing
+node itself received, it is independent of the signed next hop carried in
+$\pi_{hop}$, and it is never taken from any privileged view of which nodes are
+compromised. The two quantities differ exactly where the attack lives: a hidden
+forwarding duplicate is addressed to $d'$ while still carrying the
+\emph{original} signed next hop, so $d'$ observes
+$\textsc{Addressed}=1 \wedge b_{hop}(u)=0$, a conjunction a passive overhearer
+cannot produce. An adversary can of course address a frame wherever it likes;
+doing so is precisely the act S5 detects, and it gains the adversary nothing,
+since the conjunct constrains \emph{who may raise} the alert rather than who may
+be accused by it.
 
 As given in Equation~\eqref{eq:sig_s5},
 $\textsc{ML-DSA-87.Verify}=0$ on the copy at $d'$
@@ -3833,11 +3860,24 @@ one: quarantining the covering \ac{RSU} also denies the malicious action
 to other, innocent vehicles in that zone for the duration of the
 quarantine. We accept this trade-off deliberately --- in a
 safety-critical vehicular network, briefly over-restricting a zone is
-preferable to allowing a confirmed attacker to continue --- and note that
-it does not bias the detection measurement, since what is scored is the
-containment of the attacker itself. Per-vehicle trust paths, which would
-localise enforcement to the individual offending vehicle, are left as
-future work.
+preferable to allowing a confirmed attacker to continue. Per-vehicle trust
+paths, which would localise enforcement to the individual offending
+vehicle, are left as future work.
+
+\textit{The same proxy is also used on the measurement path, and that use
+needs stating separately.} The window-level detection grid is indexed by
+\ac{RSU}, so a detection naming a \emph{vehicle} forwarder has no row of its
+own; it is credited to the \ac{RSU} covering that vehicle at observation
+time, exactly as enforcement and ground truth are. This is not cosmetic. Before
+the attribution was applied, such detections were discarded outright rather
+than re-attributed, which removed $99.5\%$ of Attack~6's firings and $99.7\%$
+of Attack~5's from the metric and drove both variants to a reported \ac{MCC}
+indistinguishable from zero while their detectors were in fact firing
+throughout the run. The consequence to note is that a reported per-\ac{RSU}
+figure for the data-plane variants is a statement about the covering zone
+rather than the individual vehicle, and where several vehicles share a zone the
+grid cannot separate them; an earlier draft asserted that this proxy did not
+enter the detection measurement at all, which is no longer accurate.
 
 \subsubsection{Flow-Rule Commitment Scheme}
 At flow setup, the \emph{endorsed} forwarding policy
@@ -4216,6 +4256,7 @@ resulting performance change is attributed
 solely to that component.
 
 \section{Performance Metrics}
+\label{sec:performance_metrics}
 \label{sec:metrics}
 
 Twelve metrics are defined to evaluate all formulated
@@ -4404,7 +4445,30 @@ $t_{onset}$ is the timestamp of the first
 attack-conforming packet and $t_{quarantine}$ is the
 timestamp at which \textsc{SC.Quarantine}$(v)$ is
 executed by the smart contract. Target: $L_{mit}
-\leq 100$\,ms. Compared against baseline mitigation mechanisms:
+\leq 100$\,ms.
+
+\textit{M4 is reported as a pair, never as a single mean.} A latency averaged
+over quarantined nodes is not interpretable on its own, because it is silent
+about how many attackers were contained \emph{before} they acted --- and those
+are exactly the nodes contributing no latency to the average. We therefore
+report $L_{mit}$ alongside the prevention rate of
+Equation~\eqref{eq:m4_prevention},
+\begin{equation}
+R_{prev} = \frac{|\{v \in \mathcal{Q} : t_{quarantine}(v) < t_{act}(v)\}|}
+                 {|\mathcal{Q}|}
+\label{eq:m4_prevention}
+\end{equation}
+where $\mathcal{Q}$ is the set of quarantined attackers and $t_{act}(v)$ is
+$v$'s first attack action, together with $|\mathcal{Q}|$ itself.
+
+The pairing exists because the two halves can move in opposite directions, and
+either alone is misleading. On A4 under enforcement the prevention rate falls
+from $0.479$ to $0.293$ purely because the denominator doubles, while the
+absolute number of attackers prevented \emph{rises} from $46$ to $49$: quoting
+the rate alone reports a regression where containment in fact improved, and
+quoting the count alone hides that a larger population went uncontained. Neither
+figure should appear in isolation, and both are stated with the run length
+alongside. Compared against baseline mitigation mechanisms:
 B1 (TAP) reports emergency packet duplication
 reduction via the Controller-Defaulter-List rather
 than an explicit quarantine-latency
@@ -4883,6 +4947,85 @@ WAP-R is reported as ablation context only.
 % UCR is evaluated per attack variant and per attack
 % percentage, and compared against all three external
 % baselines (B1--B3).
+
+\section{Evaluation Methodology}
+\label{sec:eval_methodology}
+
+The metrics of Section~\ref{sec:performance_metrics} admit several defensible
+scoring conventions, and they do not all yield the same number. This section
+fixes the convention used for every figure reported in this work, so that any
+quoted value can be reproduced exactly and so that figures which are
+\emph{not} deployment-representative are labelled as such at the point of use.
+
+\subsection{Scoring unit: per-\ac{RSU}, per 10-second block}
+Detection is scored on non-overlapping 10\,s blocks, per \ac{RSU}, following
+Equation~\eqref{eq:eval_dedup}. The window emitter produces a stride-5
+overlapping grid, so alternate windows are discarded to tile the run without
+double-counting; a node that fires once is otherwise counted twice, inflating
+both true and false positives without changing their ratio. Blocks beginning
+within the first 30\,s of a run are excluded, because the \ac{EWMA} baselines
+have not converged and every detector is unstable there.
+
+We do \emph{not} score per node over the whole run. That convention marks a node
+positive if it ever fired, which cannot distinguish a detector that identified an
+attacker within one cycle from one that identified it 200\,s later, and it
+rewards persistent false positives identically to persistent true ones.
+
+\subsection{Attribution: the suspect, not the observer}
+The reported column credits a detection to the node it \emph{accuses}, not the
+node that observed it. Where the accused is a vehicle --- the data-plane
+variants --- the detection is attributed to the \ac{RSU} covering that vehicle at
+observation time, as discussed in the limitation following
+Equation~\eqref{eq:quarantine}. Attributing to the observer instead measures
+which \ac{RSU} happened to be in radio range, which is a property of the mobility
+trace rather than of the detector.
+
+\subsection{Aggregation: macro-averaged, with pooled alongside}
+The headline \ac{MCC} is the unweighted mean of the per-variant \ac{MCC}s. The
+pooled figure --- one confusion matrix over every surviving block --- is reported
+alongside, never instead. The two are not interchangeable and can differ in
+sign: on one A/B in this work macro moved $-0.0168$ while pooled moved
+$+0.0249$, because pooled is dominated by whichever variants contribute the most
+blocks. Macro is the headline because each attack variant is an equally
+important detection target, irrespective of how much traffic it happens to
+generate.
+
+Variants whose positive class is empty after warm-up and de-duplication
+($\mathrm{TP}+\mathrm{FN}=0$) are excluded from the macro mean rather than
+entered as zero, and the exclusion is stated wherever it applies. Entering them
+as zero would silently drag the headline toward zero using cells that are not
+measurements.
+
+\subsection{Ground truth for the hidden-forwarding variants}
+For A5--A8 the compromised state persists once established, so ground truth is
+latched: a node counts as positive from its first attack-conforming action
+onward, rather than only in cycles where an action happens to occur. This
+matches the signatures' own semantics, which test for a persistent condition.
+Where enforcement is active and a node is genuinely contained, the latch is
+released at quarantine time; releasing it requires the detector to stop
+asserting on that node as well, or truth and the detector disagree by
+construction.
+
+\subsection{\ac{OBU}-stage detection reported separately}
+S1 operates at the \ac{OBU} stage and is reported in its own table. It is not
+folded into the per-\ac{RSU} figures: the firing node is the victim vehicle
+rather than the suspect, so the two are not the same quantity and averaging them
+produces a number with no operational meaning.
+
+\subsection{Diagnostic ceilings versus deployment figures}
+Any column computed with access to attacker identity is a \emph{diagnostic
+ceiling}: an upper bound on what a detector could achieve if it knew who the
+attackers were. Such columns are labelled as ceilings at every point of use and
+are never quoted as deployment performance. This distinction is not academic ---
+an earlier revision of this work reported precision of $1.0000$ on three of the
+four hidden-forwarding variants, which turned out to be an identity rather than
+a measurement, because the signature consulted the attack injector's own
+assignment array before deciding whether to fire.
+
+Finally, every reported figure is stated together with the run length that
+produced it. Detection rates are not stable across run lengths in this system:
+short runs are dominated by the warm-up exclusion, and quarantine under
+enforcement changes the attacker population as a run proceeds.
 
 \section{Ablation Study}
 \label{sec:ablation}
@@ -5513,24 +5656,31 @@ The permissioned ledger maintains a highly compressed transactional history with
     are triggered at the same boundary.
 
     \item \textbf{Observation window $W$
-    (Eq.~\ref{eq:dup_alert_cond}):} $W = 10$\,s.
-    Informed by the $\{5, 10, 15\}$\,s candidate
-    range and sized against the 9--22\,s zone
+    (Eq.~\ref{eq:dup_alert_cond}):} $W = 30$\,s.
+    This is the duplication-detection window of
+    Eq.~\eqref{eq:dup_alert_cond}, and it is
+    deliberately \emph{wider} than the 10\,s
+    evaluation block used for reporting
+    (Eq.~\eqref{eq:eval_dedup}); the two must not be
+    conflated. Detection needs to accumulate evidence
+    that the same message reached two distinct
+    destinations, which is a multi-transmission
+    observation, whereas the evaluation block exists
+    only to tile the run into non-overlapping scoring
+    units. Sizing $W$ to the evaluation block would
+    make duplication invisible whenever the two
+    receptions straddle a block boundary.
+    At $30$\,s, $W$ exceeds the $9$--$22$\,s zone
     residence distribution of
-    Section~\ref{sec:mobility_amplification}: it is
-    long enough to accumulate duplication evidence
-    across several transmission periods, while
-    remaining shorter than a typical zone crossing so
-    that most windows are observed by a single
-    \ac{RSU}. Windows that do span a handoff are
-    attributed to the \ac{RSU} covering the suspect
-    at observation time, so a crossing does not
-    silently split the evidence. Note this is a
-    distributional criterion, not the hard
-    $W \leq 9$\,s bound stated in earlier drafts:
-    $W = 10$\,s exceeds the 9\,s \emph{minimum}
-    residence, so for the shortest crossings a window
-    can span two zones.
+    Section~\ref{sec:mobility_amplification}, so a
+    window will frequently span a handoff. Those
+    windows are attributed to the \ac{RSU} covering
+    the suspect at observation time, so a crossing
+    does not silently split the evidence. We state
+    this plainly as a limitation rather than a bound:
+    earlier drafts claimed $W \leq 9$\,s, which
+    neither the implementation nor the mobility trace
+    supports.
 \end{itemize}
 
 

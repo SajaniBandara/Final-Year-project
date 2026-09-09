@@ -580,7 +580,13 @@ inline LRADRSUFlags lrad_rsu(
         // its own truth=0, i.e. penalised for detecting. That is why benign
         // nodes fire in 58/58 windows, and why all six detectors with
         // node-level FP=0 (S3-S8) still collapse at window level.
-        dw_mark_rsu_primary(prev_sender, _prim);
+        // Round 10: attribute a vehicle-accusing detection to its COVERING RSU.
+        // dw_mark_rsu_primary() discards anything below N_Vehicles, so before
+        // this the primary column lost 99.5% of A6's detections and 99.7% of
+        // A5's after t=27s -- the detectors were firing, the metric could not
+        // see them. Same covering-RSU proxy used for the truth latch, the LSTM
+        // counters and item 1's quarantine guard.
+        dw_mark_rsu_primary(dw_attribute_accused(prev_sender), _prim);
     }
 
     // ── BC.Write per-signal + BTMM (eq:rsu_write, alg:lrad_rsu) ─────────────
