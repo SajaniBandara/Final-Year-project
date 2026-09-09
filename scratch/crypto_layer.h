@@ -837,11 +837,22 @@ inline void hf_truth_latch_clear(uint32_t rsu_local_idx) {
 //   A5/A7 (variants 4/6, CP) -- attacker IS the RSU. Enforcement confirmed
 //       directly: post-quarantine fires drop to 0. --hf_latch_reset_rsu_attacker
 //   A6/A8 (variants 5/7, DP) -- attacker is a VEHICLE. Enforcement confirmed
-//       2026-08-30, but it bites through hf_gt_attribution_node(), the COVERING
-//       RSU, because vehicles never cross the trust threshold. Post-quarantine
-//       fires 50->0 and 137->0. Separate flag so this can be switched off
-//       independently if the proxy attribution is ruled unacceptable.
-//       --hf_latch_reset_vehicle_attacker
+//       2026-08-30, and it bites through hf_gt_attribution_node(), the COVERING
+//       RSU. Post-quarantine fires 50->0 and 137->0. Separate flag so this can
+//       be switched off independently if the proxy attribution is ruled
+//       unacceptable. --hf_latch_reset_vehicle_attacker
+//
+//       CORRECTION 2026-09-07: this note used to justify the covering-RSU proxy
+//       with "because vehicles never cross the trust threshold". That is not
+//       true and may never have been. Measured on the gate-removed build, 90s,
+//       60%, seed 1, counting distinct [TRUST-QUARANTINE] node ids:
+//           A5 199/200 vehicles   A6 199/200   A7 173/200   A8 167/200
+//       Even with the legacy oracle gate still in, A6 quarantines 128 vehicles
+//       and A8 125. Vehicles cross the threshold routinely. The proxy may still
+//       be the right attribution for other reasons -- it is what truth's latch
+//       is indexed on (hf_truth_latch_clear takes an RSU local index) -- but it
+//       is NOT justified by vehicles being unreachable by trust decay, and any
+//       reasoning that depends on that premise needs re-deriving.
 //
 // A1-A4 are not covered here at all and need no flag: the latch is HF-only
 // (g_hf_activity_latch is written only under variants 4-7, routing.cc:118534).
@@ -1059,6 +1070,35 @@ uint32_t            g_lstm_flow0_total_delivery_count = 0;
 //
 // Keyed rsu -> src -> {destinations}. A source counts as anomalous when it
 // reached any destination outside its authorized set for that flow.
+// ── Q5: the S5-S8 oracle gate (supervisor round 8, 2026-09-06) ─────────────
+//
+// All four HF signatures used to early-return unless
+// active_/passive_hf_malicious_nodes[prev_sender] -- the attack injector's own
+// ASSIGNMENT ARRAY. That made them structurally incapable of firing on an
+// innocent node, so every precision figure they produced was guaranteed by
+// construction rather than measured, and score_primary was attacker-identity-
+// aware and not an achievable ceiling. eq:sig_s5's five conjuncts contain no
+// such term; the gate is the same class of defect as training on a label
+// derived from an input feature, hiding in C++ control flow instead of a
+// training script.
+//
+// REMOVED BY DEFAULT. In its place each signature now evaluates the conjunct
+// the gate was standing in for -- b_hop(u) = 0, i.e. STARK.Verify(pi_hop) = 0 --
+// via stark_verify_hop(), which compares the receiving hop against the
+// signed_next_hop embedded at sign time and references no ground truth at all.
+// A benign packet arriving at its intended next hop passes and the signature
+// stays silent; a duplicate diverted to an eavesdropper fails and evaluation
+// continues. Crucially the signatures CAN now fire on an innocent node, which
+// is what makes their precision a measurement.
+//
+// Set --hf_oracle_gate=1 to restore the legacy gate. That exists ONLY to A/B
+// what the gate was worth; it must never be used for a reported number.
+bool hf_oracle_gate = false;
+
+// Declared ahead of the ddiv_* helpers below, which gate on it: the
+// per-source-vehicle accumulator is the production N_div feature when
+// --lstm_ddiv_atp_per_rsu=1, not only smoke-test instrumentation.
+bool lstm_ddiv_atp_per_rsu = false;
 bool ddiv_smoke_test = false;
 std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_reached;
 std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_auth;
@@ -1066,7 +1106,7 @@ std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_auth;
 inline void ddiv_smoke_record(uint32_t rsu_node, uint32_t src,
                               uint32_t dest_reached, uint32_t auth_dest)
 {
-    if (!ddiv_smoke_test)       return;
+    if (!ddiv_smoke_test && !lstm_ddiv_atp_per_rsu) return;
     if (rsu_node == UINT32_MAX) return;
     g_ddiv_smoke_reached[rsu_node][src].insert(dest_reached);
     g_ddiv_smoke_auth   [rsu_node][src].insert(auth_dest);
@@ -1075,7 +1115,7 @@ inline void ddiv_smoke_record(uint32_t rsu_node, uint32_t src,
 // Distinct source vehicles at this RSU that reached an unauthorized destination.
 inline uint32_t ddiv_smoke_count(uint32_t rsu_node)
 {
-    if (!ddiv_smoke_test) return 0;
+    if (!ddiv_smoke_test && !lstm_ddiv_atp_per_rsu) return 0;
     auto itr = g_ddiv_smoke_reached.find(rsu_node);
     if (itr == g_ddiv_smoke_reached.end()) return 0;
     auto ita = g_ddiv_smoke_auth.find(rsu_node);
@@ -1091,7 +1131,6 @@ inline uint32_t ddiv_smoke_count(uint32_t rsu_node)
     return n;
 }
 
-bool lstm_ddiv_atp_per_rsu = false;
 std::map<uint32_t, std::set<uint32_t>> g_lstm_flow0_dest_set_by_rsu;
 std::map<uint32_t, uint32_t>           g_lstm_flow0_total_delivery_by_rsu;
 std::map<uint32_t, uint32_t>           g_lstm_flow0_legit_by_rsu;
@@ -2462,6 +2501,10 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("hf_truth_latched",              "HF truth semantics (2026-09-01): latch the A5-A8 window activity gate "
                                                   "(compromised state persists) instead of per-cycle send events, matching "
                                                   "S5-S8's design and y_indep's existing latch. Measurement-only", hf_truth_latched);
+    cmd.AddValue("hf_oracle_gate",                "Q5 (2026-09-06): restore the legacy S5-S8 oracle gate, which early-returns "
+                                                  "unless the sender is in the attack injector's own assignment array. Default 0 "
+                                                  "= REMOVED (b_hop(u)=0 evaluated instead, per eq:sig_s5). Diagnostic A/B only -- "
+                                                  "never report a number produced with this on", hf_oracle_gate);
     cmd.AddValue("ddiv_smoke_test",               "Round 8 smoke test (2026-09-06): log what the proposed per-source-vehicle "
                                                   "D_div WOULD read, per RSU per cycle, WITHOUT changing any model feature. "
                                                   "Emits [DDIV-SMOKE] lines. Diagnostic only", ddiv_smoke_test);

@@ -70,7 +70,8 @@ struct LRADRSUFlags {
     // "covers residual anomalies" not caught by S2f/S5-S8.
     bool flag_LSTM = false;
     // Supervisor Fix 2 (2026-08-14): true iff flag_LSTM fired AND the score
-    // cleared the high-confidence tier (score > LSTM_HC_MULT * theta_used,
+    // cleared the high-confidence tier (score > LSTM_HC_THETA; was
+    // LSTM_HC_MULT * theta_used until the round-8 recalibration,
     // lstm_logger.h). Confusion-matrix recording (record_detection_event())
     // still keys on flag_LSTM alone, unchanged, per the fix spec ("confusion
     // matrix records detections at theta as before") -- this field only
