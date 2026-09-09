@@ -1153,7 +1153,15 @@ uint32_t g_s5_rx_intended_recipient = UINT32_MAX;
 // Declared ahead of the ddiv_* helpers below, which gate on it: the
 // per-source-vehicle accumulator is the production N_div feature when
 // --lstm_ddiv_atp_per_rsu=1, not only smoke-test instrumentation.
-bool lstm_ddiv_atp_per_rsu = false;
+// Round 10: flipped to TRUE. The supervisor's instruction is to bundle the
+// D_div fix with the oracle-gate removal and the round 10 detector changes so
+// they land as ONE build. Round 8's smoke test cleared it on all three
+// criteria (non-constant across all 64 RSUs in 100% of attack cycles; exactly
+// zero under benign across 3,712 samples; correlation with R_anom 0.78-0.81,
+// meaningfully below the ~1.0 the simple per-RSU form would give). Enabling it
+// requires regenerating the A5-A8 training set and retraining INCLUDING the
+// encoder -- which is what this build is for. =0 restores the legacy global.
+bool lstm_ddiv_atp_per_rsu = true;
 bool ddiv_smoke_test = false;
 std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_reached;
 std::map<uint32_t, std::map<uint32_t, std::set<uint32_t>>> g_ddiv_smoke_auth;

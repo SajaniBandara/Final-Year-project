@@ -3318,6 +3318,39 @@ A_{tp}(v,r,t) =
 {\lambda_{bytes}(v,\cdot,W)}
 \label{eq:feat_atp}
 \end{equation}
+
+As written, Equation~\eqref{eq:feat_atp} is indexed by $(v,r,t)$ but evaluates
+a purely per-source quantity: the \ac{RSU} index $r$ appears nowhere on the
+right-hand side. The federated \ac{LSTM} consumes one feature vector per
+\ac{RSU} per cycle, not one per source, so the aggregation step between the two
+must be stated rather than left implicit --- exactly the omission that, for
+$D_{div}$, allowed the feature to be implemented as a single network-wide
+scalar identical at every \ac{RSU}. The per-\ac{RSU} aggregate is given in
+Equation~\eqref{eq:feat_atp_rsu}.
+\begin{equation}
+A_{tp}^{\,\mathrm{RSU}}(r,t) =
+\frac{1}{|\mathcal{V}(r,t)|}
+\sum_{v \in \mathcal{V}(r,t)} A_{tp}(v,r,t)
+\label{eq:feat_atp_rsu}
+\end{equation}
+where $\mathcal{V}(r,t)$ is the set of source vehicles attributed to $r$ at
+time $t$ under the covering-\ac{RSU} attribution used throughout this work ---
+the same mapping applied to enforcement, to the ground-truth latch, and to the
+detection grid. A vehicle with no covering \ac{RSU} in range contributes to no
+feature vector, which is correct: with no vantage point there is no observer to
+credit.
+
+\textit{The model inputs are the aggregates, not the per-source quantities.}
+For the two features above, the values entering the input vector are
+$N_{div}(r,t)$ from Equation~\eqref{eq:feat_ndiv} and
+$A_{tp}^{\,\mathrm{RSU}}(r,t)$ from Equation~\eqref{eq:feat_atp_rsu}.
+$N_{div}$ is a count of distinct misbehaving source vehicles observed at $r$,
+not the destination-set size of any single flow; the distinction matters because
+one high-volume attacker and several low-volume ones are different network
+states that a flow-level or event-count feature conflates. Measured correlation
+between $N_{div}$ and the unauthorized-reception count $R_{anom}$ is
+$0.78$--$0.81$ across the four hidden-forwarding variants, confirming the two
+carry different information.
 As given in Equation~\eqref{eq:feat_atp},
 $A_{tp}$ is the ratio of throughput reaching the
 authorized destination $d$ to the total throughput
@@ -5485,7 +5518,7 @@ $p \geq 66\%$ assigns 3; $p = 100\%$ assigns all 4.
 \end{itemize}
 
 \subsection{Federated LSTM anomaly detector}
-\label{sec:fed_lstm}
+\label{sec:fed_lstm_params}
 The Federated LSTM parameters are structured as follows:
 
 \begin{itemize}
