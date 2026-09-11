@@ -409,4 +409,4 @@ We move to final experiments:
 If you want the Q6-vs-Q5 comparison settled, seeds 6 and 7 at 300 s can be added to
 final experiments. Each seed takes about 6.5 hours.
 
-Commits on A30: 73a0258, ad45c45, e9f1a27, 22be9ef, 7d3e389, [[FINAL_COMMIT]].
+Commits on A30: 73a0258, ad45c45, e9f1a27, 22be9ef, 7d3e389, 72ff32f.
