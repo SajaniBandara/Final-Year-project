@@ -1,0 +1,263 @@
+FINAL RESULTS BUNDLE  generated 2026-09-11 16:06
+seeds=[5]  configs=['Q1', 'Q2', 'Q3', 'Q4', 'Q4R', 'Q5', 'Q6']  simTime=300 s  attack_percentage=60
+scorer: scripts/m1_local.py load()/mcc(): RSU rows, 30 s warm-up, non-overlapping
+10 s blocks, truth=event. Macro excludes degenerate variants (TP+FN=0).
+NOTE: m1_local.py is a local re-implementation; the canonical metrics/ package is
+absent on this host, so absolute levels are this scorer's reading.
+
+==============================================================================
+1. COMPLETENESS (expected 8 variant files per config x seed)
+==============================================================================
+  Q1   s5:8/8
+  Q2   s5:8/8
+  Q3   s5:8/8
+  Q4   s5:8/8
+  Q4R  s5:8/8
+  Q5   s5:8/8
+  Q6   s5:8/8
+  total files: 56 / 56
+  MISSING: none
+
+==============================================================================
+2. Q1-Q6 TABLE  column=score  (mean +/- std over seeds [min..max] n)
+==============================================================================
+  cfg                         MACRO                        POOLED
+  Q1   0.2812 +/-   n/a  [0.281..0.281] n=1   0.3584 +/-   n/a  n=1
+  Q2   0.3820 +/-   n/a  [0.382..0.382] n=1   0.4050 +/-   n/a  n=1
+  Q3   0.3807 +/-   n/a  [0.381..0.381] n=1   0.3774 +/-   n/a  n=1
+  Q4   0.0000 +/-   n/a  [0.000..0.000] n=1   0.0000 +/-   n/a  n=1
+  Q4R  0.3824 +/-   n/a  [0.382..0.382] n=1   0.4058 +/-   n/a  n=1
+  Q5   0.6613 +/-   n/a  [0.661..0.661] n=1   0.6541 +/-   n/a  n=1
+  Q6   0.6578 +/-   n/a  [0.658..0.658] n=1   0.6498 +/-   n/a  n=1
+
+  per-variant MCC (mean over seeds), column=score
+  cfg         A1       A2       A3       A4       A5       A6       A7       A8
+  Q1      0.5011   0.5846   0.5683   0.5959   0.0000   0.0000   0.0000   0.0000
+  Q2      0.0000   0.0000   0.0000   0.0000   0.7204   0.8208   0.7246   0.7903
+  Q3      0.5342   0.7417  -0.0225  -0.0409   0.4568   0.3936   0.4275   0.5553
+  Q4      0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.0000
+  Q4R     0.0000   0.0000   0.0000   0.0000   0.7225   0.8208   0.7246   0.7913
+  Q5      0.5011   0.5846   0.5683   0.5959   0.7092   0.8208   0.7198   0.7903
+  Q6      0.5133   0.6152   0.5487   0.5885   0.6996   0.8081   0.7038   0.7851
+
+  degenerate (TP+FN=0) exclusions, column=score:
+    none
+
+==============================================================================
+2. Q1-Q6 TABLE  column=score_primary  (mean +/- std over seeds [min..max] n)
+==============================================================================
+  cfg                         MACRO                        POOLED
+  Q1   0.3536 +/-   n/a  [0.354..0.354] n=1   0.4545 +/-   n/a  n=1
+  Q2   0.3268 +/-   n/a  [0.327..0.327] n=1   0.3617 +/-   n/a  n=1
+  Q3   0.0000 +/-   n/a  [0.000..0.000] n=1   0.0000 +/-   n/a  n=1
+  Q4   0.0000 +/-   n/a  [0.000..0.000] n=1   0.0000 +/-   n/a  n=1
+  Q4R  0.1712 +/-   n/a  [0.171..0.171] n=1   0.2296 +/-   n/a  n=1
+  Q5   0.6844 +/-   n/a  [0.684..0.684] n=1   0.6632 +/-   n/a  n=1
+  Q6   0.6844 +/-   n/a  [0.684..0.684] n=1   0.6632 +/-   n/a  n=1
+
+  per-variant MCC (mean over seeds), column=score_primary
+  cfg         A1       A2       A3       A4       A5       A6       A7       A8
+  Q1      0.6319   0.9165   0.5618   0.7185   0.0000   0.0000   0.0000   0.0000
+  Q2      0.0000   0.0000   0.0000   0.0000   0.5297   0.6951   0.6051   0.7842
+  Q3      0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.0000
+  Q4      0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.0000
+  Q4R     0.0000   0.0000   0.0000   0.0000   0.0000   0.0000   0.5999   0.7693
+  Q5      0.6319   0.9165   0.5618   0.7185   0.5521   0.7046   0.6051   0.7845
+  Q6      0.6319   0.9165   0.5618   0.7185   0.5521   0.7046   0.6051   0.7845
+
+  degenerate (TP+FN=0) exclusions, column=score_primary:
+    none
+
+==============================================================================
+3. CLOSING CRITERION (supervisor: macro-MCC >= 0.80 and monotonic)
+==============================================================================
+  'monotonic' was not defined precisely in the instruction; three readings checked.
+  column=score
+    Q6 macro = 0.6578  -> >= 0.80 : NO
+    Q6 >= Q5 (full system not below signatures-only): NO  (Q5=0.6613)
+    Q6 >= every other config: NO  Q1=0.281 Q2=0.382 Q3=0.381 Q4=0.000 Q4R=0.382 Q5=0.661
+    Q6 variants below 0.80: A1=0.513, A2=0.615, A3=0.549, A4=0.588, A5=0.700, A7=0.704, A8=0.785
+  column=score_primary
+    Q6 macro = 0.6844  -> >= 0.80 : NO
+    Q6 >= Q5 (full system not below signatures-only): YES  (Q5=0.6844)
+    Q6 >= every other config: YES  Q1=0.354 Q2=0.327 Q3=0.000 Q4=0.000 Q4R=0.171 Q5=0.684
+    Q6 variants below 0.80: A1=0.632, A3=0.562, A4=0.719, A5=0.552, A6=0.705, A7=0.605, A8=0.784
+
+==============================================================================
+4. UCR (avg_UCR, final cycle) - HF variants, mean over seeds
+==============================================================================
+  cfg          A5        A6        A7        A8
+  Q1        84.63     91.35     84.89     93.65
+  Q2        84.63     91.35     84.89     93.65
+  Q3        84.63     91.35     84.89     93.65
+  Q4        84.63     91.35     84.89     93.65
+  Q4R       84.63     91.35     84.89     93.65
+  Q5        84.63     91.35     84.89     93.65
+  Q6        84.63     91.35     84.89     93.65
+  UCR files skipped: 0
+
+==============================================================================
+5. RETRAIN, VERIFICATION, CALIBRATION FACTS
+==============================================================================
+  gates: A_PASS C_PASS D_PASS Q_DONE _attempt1_0928 _attempt2_0933
+  -- orchestrator failures/notes
+    [09-11 09:28:07] FATAL: evaluator failed
+    [09-11 09:28:07] GATE A_FAIL
+    [09-11 09:33:35] FATAL: calibrate_hc_theta failed
+    [09-11 09:33:35] GATE A_FAIL
+    [09-11 09:36:50] new theta_hc = 39.824066162109375
+    [09-11 10:54:18] cls_theta.json <- in-sim thresholds
+    [09-11 10:54:18] INSIMCAL CSVs moved to /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_INSIMCAL_20260911
+  -- A1 preprocessor split
+      Loaded 4,291,200 rows across 64 RSUs, 9 attack variants, 5 seeds
+      Total windows: 820,800  positives: 308,612 (37.6%)
+      train: 492,480 windows  pos=186380 (37.8%)  seeds=[1, 2, 3]
+      test : 164,160 windows  pos=60565 (36.9%)  seeds=[5]
+  -- A2_local_trainer (selected lines)
+        RSU   0 best hparams (MCC-selected, FPR<=1%): lr=0.0001 batch=64 epochs=1 MCC=0.9564 FPR=0.0076
+        RSU   1 best hparams (MCC-selected, FPR<=1%): lr=0.0001 batch=64 epochs=1 MCC=0.9564 FPR=0.0076
+        RSU   2 best hparams (MCC-selected, FPR<=1%): lr=0.0001 batch=64 epochs=3 MCC=0.9564 FPR=0.0076
+        RSU   3 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.0001 batch=32 epochs=1 MCC=0.7886 FPR=0.0
+        RSU   4 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.0001 batch=64 epochs=1 MCC=0.7520 FPR=0.0
+        RSU   5 best hparams (MCC-selected, FPR<=1%): lr=0.0001 batch=32 epochs=1 MCC=0.9636 FPR=0.0033
+        RSU   6 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.001 batch=32 epochs=1 MCC=0.6796 FPR=0.03
+        RSU   7 best hparams (MCC-selected, FPR<=1%): lr=0.01 batch=32 epochs=5 MCC=0.9622 FPR=0.0008
+        RSU   8 best hparams (MCC-selected, FPR<=1%): lr=0.0001 batch=64 epochs=5 MCC=0.9564 FPR=0.0076
+        RSU   9 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.001 batch=32 epochs=3 MCC=0.2214 FPR=0.18
+        RSU  10 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.01 batch=32 epochs=1 MCC=-0.1085 FPR=0.23
+        RSU  11 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.01 batch=32 epochs=5 MCC=0.0625 FPR=0.233
+        RSU  12 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.0001 batch=32 epochs=1 MCC=0.3887 FPR=0.1
+        RSU  13 WARNING: no hparam combo met FPR<=1% during grid search — falling back to lowest-FPR combo: lr=0.0001 batch=64 epochs=3 MCC=0.4841 FPR=0.0
+  -- A3_fed_aggregator (selected lines)
+    Federated training over 64 RSUs on cuda (f=21, requiring >=2f+1=43 eligible RSUs each round)
+      BRFA-v2: 46/52 RSUs accepted (γ=11.4484, dists min=0.1252 max=22.7852)
+      BRFA-v2: 46/52 RSUs accepted (γ=11.4500, dists min=0.1256 max=25.1237)
+      BRFA-v2: 46/52 RSUs accepted (γ=11.1647, dists min=0.1261 max=22.6568)
+      BRFA-v2: 46/52 RSUs accepted (γ=11.0568, dists min=0.1223 max=22.8057)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.9209, dists min=0.1214 max=22.2753)
+      BRFA-v2: 46/52 RSUs accepted (γ=11.1805, dists min=0.1212 max=23.1902)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.8039, dists min=0.1197 max=21.4962)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.8543, dists min=0.1105 max=22.5943)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.4614, dists min=0.1062 max=20.9213)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.3990, dists min=0.1008 max=20.5220)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.8656, dists min=0.1035 max=24.3214)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.2268, dists min=0.1031 max=20.7186)
+      BRFA-v2: 46/52 RSUs accepted (γ=10.2685, dists min=0.0971 max=19.7544)
+  -- A4_cls_head (selected lines)
+    [indep] trainable: ['fc_cls.0.weight', 'fc_cls.0.bias', 'fc_cls.2.weight', 'fc_cls.2.bias']
+    === TEST, per-RSU calibrated (FPR<=1%), labels=indep ===
+      A1: MCC=+0.2897 DR=0.1818 FPR=0.0213 (TP=1026 FP=346 FN=4617 TN=15899)
+      A2: MCC=+0.4795 DR=0.3853 FPR=0.0258 (TP=2865 FP=373 FN=4571 TN=14079)
+      A5: MCC=+0.4069 DR=0.3123 FPR=0.0299 (TP=1617 FP=390 FN=3561 TN=12672)
+      A6: MCC=+0.6948 DR=0.6825 FPR=0.0329 (TP=5299 FP=345 FN=2465 TN=10131)
+      A7: MCC=+0.4196 DR=0.3171 FPR=0.0268 (TP=1625 FP=352 FN=3500 TN=12763)
+      A8: MCC=+0.5163 DR=0.4410 FPR=0.0294 (TP=2929 FP=341 FN=3713 TN=11257)
+      macro-MCC (A1,A2,A5-A8) = 0.4678
+    saved -> models/global_clshead_indep.pt
+  -- A5_evaluator (selected lines)
+      Benign                          MCC=+0.000  DR=0.000  FPR=0.023  n=1664
+  -- fed_summary.json scalars: n_total=64, f=21, t_min=0.5, selected_R=150, global_theta=0.8536992560231909, global_model_hash=349bfaa54c417467c63f407c0ed3fbd162a20be506700da61041ddf2e527a73d97a3e45a3e80e83331ce1c317140bb6f5782ad84a30a9be2ad29ebc27872aab3
+  -- hc_theta.json: theta_hc=39.824066162109375, hc_percentile=99.9, benign_p99=14.783341407775879, n_calibration_windows=102493, generated=calibrate_hc_theta.py, 2026-09-07
+  -- C1 export
+    hidden1=64 hidden2=32 n_features=11
+      wrote enc1.weight_ih_l0      shape=(256, 11) bytes=11264
+      wrote enc1.weight_hh_l0      shape=(256, 64) bytes=65536
+      wrote enc1.bias_ih_l0        shape=(256,) bytes=1024
+      wrote enc1.bias_hh_l0        shape=(256,) bytes=1024
+      wrote enc2.weight_ih_l0      shape=(128, 64) bytes=32768
+      wrote enc2.weight_hh_l0      shape=(128, 32) bytes=16384
+      wrote enc2.bias_ih_l0        shape=(128,) bytes=512
+      wrote enc2.bias_hh_l0        shape=(128,) bytes=512
+      wrote dec1.weight_ih_l0      shape=(256, 32) bytes=32768
+      wrote dec1.weight_hh_l0      shape=(256, 64) bytes=65536
+      wrote dec1.bias_ih_l0        shape=(256,) bytes=1024
+      wrote dec1.bias_hh_l0        shape=(256,) bytes=1024
+      wrote dec2.weight_ih_l0      shape=(256, 64) bytes=65536
+      wrote dec2.weight_hh_l0      shape=(256, 64) bytes=65536
+      wrote dec2.bias_ih_l0        shape=(256,) bytes=1024
+      wrote dec2.bias_hh_l0        shape=(256,) bytes=1024
+      wrote fc_recon.weight        shape=(11, 64) bytes=2816
+      wrote fc_recon.bias          shape=(11,) bytes=44
+      wrote 64 per-RSU thetas + 1 global_theta fallback
+  -- C4 C++ vs Python verification
+    Loaded weights: n_features=11 hidden1=64 hidden2=32 n_rsus_theta=64 global_theta=0.853699
+    normalize_features max diff vs Python reference = 1.9073486e-06
+    anomaly_score: PyTorch=1.38563967  C++=1.38563955  abs_diff=1.1920929e-07
+    max |x_hat_ref - x_hat_cpp| over all (t,f) = 2.9802322e-07
+    PASS (tolerance=1e-03)
+  -- D INSIMCAL
+    [09-11 09:38:43] INSIMCAL benign runs launched (seeds 1-3): 1220055 1220056 1220057
+    [09-11 10:54:17] INSIMCAL seed 1: 298 cycles, 289 scored rows
+    [09-11 10:54:17] INSIMCAL seed 2: 298 cycles, 289 scored rows
+    [09-11 10:54:18] INSIMCAL seed 3: 298 cycles, 289 scored rows
+    [09-11 10:54:18] START D2_calibrate: python3 calibrate_cls_theta_insim.py --tag INSIMCAL --target-fpr 0.01 --out ../cls_theta_insim.json
+    [09-11 10:54:18] INSIMCAL CSVs moved to /home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_INSIMCAL_20260911
+  -- cls_theta_insim.json: source=calibrate_cls_theta_insim.py (IN-SIM scores), target_fpr=0.01, floor=0.05, n_rows=57216, n_rsus=64, thresholds min=0.050 median=0.770 max=0.979
+  -- D2 calibrate (tail)
+    collected 57,216 benign score rows across 64 RSUs from 192 files
+      score range 0.0000..0.9989  mean 0.2775  nonzero 97.0%
+    threshold: min 0.0500  median 0.7701  max 0.9794   (target FPR 1.0%, floor 0.05)
+      achieved FPR on the calibration data: 0.86% (in-sample -- confirm on a held-out benign seed)
+    wrote ../cls_theta_insim.json
+    Deploy: cp that over lstm_pipeline/cls_theta.json, re-run, and re-measure the in-sim firing rate (was 21.8%).
+  -- evaluation_results.json (offline, test split seed 5), truncated:
+    {
+     "Benign": {
+      "TP": 0,
+      "TN": 1626,
+      "FP": 38,
+      "FN": 0,
+      "M1_MCC": 0.0,
+      "M2_DR": 0.0,
+      "M3_FPR": 0.0228,
+      "sim_metrics": {}
+     },
+     "A1 CP-SelectiveDelay": {
+      "TP": 883,
+      "TN": 6224,
+      "FP": 60,
+      "FN": 2817,
+      "M1_MCC": 0.3783,
+      "M2_DR": 0.2386,
+      "M3_FPR": 0.0095,
+      "sim_metrics": {
+       "pct20": {
+        "M4_L_mit_ms": 13131.8323,
+        "M5_PDR": 66.1693,
+        "M6_L_e2e_ms": 27.8176,
+        "M7_TVR_pct": 3.1607,
+        "M8_UCR_pct": 0.0
+       },
+       "pct40": {
+        "M4_L_mit_ms": 14324.2173,
+        "M5_PDR": 66.1913,
+        "M6_L_e2e_ms": 30.1569,
+        "M7_TVR_pct": 6.6654,
+        "M8_UCR_pct": 0.0
+       },
+       "pct60": {
+        "M4_L_mit_ms": 14324.2173,
+        "M5_PDR": 66.1913,
+        "M6_L_e2e_ms": 30.1569,
+        "M7_TVR_pct": 6.6654,
+        "M8_UCR_pct": 0.0
+       },
+       "pct80": {
+        "M4_L_mit_ms": 13730.6971,
+        "M5_PDR": 66.4274,
+        "M6_L_e2e_ms": 33.3682,
+        "M7_TVR_pct": 9.9881,
+        "M8_UCR_pct": 0.0
+       }
+      }
+     },
+     "A2 DP-SelectiveDelay": {
+      "TP": 1246,
+      "TN": 5858,
+      "FP": 53,
+      "FN": 2827,
+      "M1_MCC": 0.4338,
+      "M2_DR": 0.3059,
+      "M3_FPR": 0.009,
+      "sim_metrics": {
+       "pct20": {

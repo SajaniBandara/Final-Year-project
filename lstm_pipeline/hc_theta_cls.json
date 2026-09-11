@@ -1,0 +1,15 @@
+{
+  "theta_hc_cls": 0.9793592340000001,
+  "hc_percentile": 99.9,
+  "benign_p99": 0.9441413699999999,
+  "benign_max": 0.998905,
+  "benign_fire_rate_in_sample": 0.0010092272202998846,
+  "n_calibration_windows": 55488,
+  "n_files": 192,
+  "n_prewindow_rows_excluded": 1728,
+  "source_dir": "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/lstm_training_INSIMCAL_20260911",
+  "tag": "INSIMCAL",
+  "reachable": true,
+  "applies_to": "classifier-head path only (--enable_lstm_cls=1); the reconstruction path keeps LSTM_HC_THETA from hc_theta.json",
+  "generated": "calibrate_hc_theta_cls_insim.py, 2026-09-11"
+}

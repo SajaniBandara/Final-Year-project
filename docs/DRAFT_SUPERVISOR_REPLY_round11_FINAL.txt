@@ -1,0 +1,412 @@
+DRAFT - round 11 final reply (plain text)
+Numbers from docs/RESULTS_FINAL_Q1Q6_round11.txt (collector run 2026-09-11 16:06).
+Send everything below the dashed line.
+------------------------------------------------------------------------------
+
+Hi,
+
+Everything from your last message is done, and the final Q1-Q6 table is below. Per
+your process note, every write-up is in this one message with the numbers it
+explains. Nothing is deferred to a follow-up.
+
+The short version:
+- All six items landed together with the oracle-gate removal and the D_div fix.
+- The full regeneration (225 runs) and the retrain are complete and verified.
+- The final table is 7 configs x 8 variants at 300 s, single seed (seed 5), as you
+  allowed.
+- Closing criterion: NOT MET. Q6 macro-MCC is 0.658 (composite) and 0.684
+  (primary), below 0.80. Q6 is not above Q5 on the composite column (-0.0035). As
+  instructed, section 2 documents which variants fall short and why, and we move
+  to final experiments.
+
+Two things to flag up front, both detailed below:
+- There were two builds, not one. The second changed a single LSTM threshold, fixed
+  on the day before any LSTM-enabled run started (section 9).
+- That fix was a new finding that we chased rather than only logged, because it
+  made one LSTM tier impossible to trigger in every Q3/Q6 run (section 9).
+
+
+1. FINAL Q1-Q6 TABLE
+------------------------------------------------------------------------------
+56 runs: Q1-Q6 plus Q4R, x 8 attack variants, seed 5. 300 s, 60 % attack. Every run
+completed all 298 cycles.
+
+Configs:
+  Q1   S1-S4 only (no crypto)
+  Q2   crypto + S5-S8 + R_anom
+  Q3   LSTM only
+  Q4   witness only
+  Q4R  witness + R_anom
+  Q5   all signatures + R_anom + crypto
+  Q6   full system: Q5 + LSTM + witness + BTMM trust
+
+Scoring: M1 per RSU, non-overlapping 10 s blocks, 30 s warm-up. Macro-MCC is the
+headline, pooled is shown alongside. Macro excludes any variant with no positive
+class (TP+FN = 0); there were no such exclusions in this table.
+- "score" is the D_RSU composite: the column that changes as detection components
+  are switched on and off.
+- "score_primary" counts only the detector each variant is assigned to.
+
+                 score (composite)       score_primary
+  config         macro     pooled        macro     pooled
+  Q1             0.2812    0.3584        0.3536    0.4545
+  Q2             0.3820    0.4050        0.3268    0.3617
+  Q3             0.3807    0.3774        0.0000    0.0000
+  Q4             0.0000    0.0000        0.0000    0.0000
+  Q4R            0.3824    0.4058        0.1712    0.2296
+  Q5             0.6613    0.6541        0.6844    0.6632
+  Q6             0.6578    0.6498        0.6844    0.6632
+
+Per-variant MCC, score (composite):
+
+  cfg       A1      A2      A3      A4      A5      A6      A7      A8
+  Q1     0.501   0.585   0.568   0.596   0.000   0.000   0.000   0.000
+  Q2     0.000   0.000   0.000   0.000   0.720   0.821   0.725   0.790
+  Q3     0.534   0.742  -0.023  -0.041   0.457   0.394   0.428   0.555
+  Q4     0.000   0.000   0.000   0.000   0.000   0.000   0.000   0.000
+  Q4R    0.000   0.000   0.000   0.000   0.723   0.821   0.725   0.791
+  Q5     0.501   0.585   0.568   0.596   0.709   0.821   0.720   0.790
+  Q6     0.513   0.615   0.549   0.589   0.700   0.808   0.704   0.785
+
+Per-variant MCC, score_primary:
+
+  cfg       A1      A2      A3      A4      A5      A6      A7      A8
+  Q1     0.632   0.917   0.562   0.719   0.000   0.000   0.000   0.000
+  Q2     0.000   0.000   0.000   0.000   0.530   0.695   0.605   0.784
+  Q3     0.000   0.000   0.000   0.000   0.000   0.000   0.000   0.000
+  Q4     0.000   0.000   0.000   0.000   0.000   0.000   0.000   0.000
+  Q4R    0.000   0.000   0.000   0.000   0.000   0.000   0.600   0.769
+  Q5     0.632   0.917   0.562   0.719   0.552   0.705   0.605   0.785
+  Q6     0.632   0.917   0.562   0.719   0.552   0.705   0.605   0.785
+
+Why seed 5: it is the LSTM's held-out test seed.
+- Seeds 1-3 are its training data, and seed 4 is used for threshold calibration and
+  model selection.
+- Q3 and Q6 run with live LSTM inference, so seed 5 keeps those two rows off data
+  the model was fitted or tuned on.
+
+Caveats on reading this table:
+- Absolute level: this is m1_local.py, our re-implementation of M1. The canonical
+  metrics/ package does not exist on this host, so the 0.80 comparison uses this
+  scorer's reading.
+- One seed: it shows what happened in one simulation. A gap as small as Q6 vs Q5
+  (0.0035) cannot be separated from seed-to-seed variation.
+
+
+2. CLOSING CRITERION
+------------------------------------------------------------------------------
+Not met.
+
+- Q6 >= 0.80: NO. Composite 0.6578, primary 0.6844.
+- Q6 >= Q5 (full system not below signatures-only):
+  - composite: NO, 0.6578 vs 0.6613 (-0.0035).
+  - primary: equal, 0.6844 each, with identical confusion counts on all eight
+    variants.
+- Q6 >= every other config: composite NO (Q5 only); primary YES.
+
+"Monotonic" was not defined precisely, so we checked those three readings. Note
+that Q2, Q3, Q4 and Q4R are single-component configs, not nested steps, so a
+Q1 < ... < Q6 ordering is not a meaningful reading of this table (limitation h).
+
+Which variants fall short, and why (Q6, composite column). Only A6 clears 0.80
+(0.808).
+
+- A1 (0.513) and A2 (0.615) are limited by false positives.
+  - Recall is 0.97 and 0.98, but precision only 0.43 and 0.64.
+  - On A1 the primary detector (S2f) causes most of them itself: 313 false
+    positives in score_primary, a 24 % false-positive rate.
+  - On A2 the primary detector is at 0.917. The composite adds about 300 false
+    positives from other detectors firing during the run.
+
+- A3 (0.549) and A4 (0.589) are limited by missed detections in the TCAM detector
+  (S3/S4).
+  - Primary recall is 0.58 and 0.75. A4's primary detector has no false positives
+    at all (precision 1.000).
+  - The composite adds 88 and 170 false positives on top.
+
+- A5 (0.700), A7 (0.704) and A8 (0.785) are limited by false positives in the
+  composite: recall at least 0.96, precision 0.67-0.80.
+  - On A5 the primary detector (S5) finds only 48 % of attack blocks. The
+    composite recovers recall through other detectors at a cost in precision.
+  - On A7 the primary detector (S7) itself has 296 false positives (precision
+    0.62).
+  - A8 is 0.015 short.
+
+What the LSTM adds (Q6 vs Q5, composite):
+- It adds true positives on every variant (+1 to +23) and false positives on every
+  variant (+6 to +21).
+- The net effect is a gain on A1 (+0.012) and A2 (+0.031), and a loss on A3-A8
+  (-0.005 to -0.020).
+- That is why Q6 lands 0.0035 below Q5.
+- On score_primary the LSTM, witness and BTMM layers change nothing: Q5 and Q6
+  are identical.
+
+
+3. VEHICLE-ACCUSATION ATTRIBUTION  (top priority)
+------------------------------------------------------------------------------
+Fixed as specified. A detection that accuses a vehicle is now credited to its
+covering RSU (dw_attribute_accused -> hf_gt_attribution_node), the same proxy used
+by the truth latch, the LSTM counters and item 1's quarantine guard. Previously
+those detections were discarded outright: 99.5 % of A6's firings and 99.7 % of
+A5's after t = 27 s.
+
+Isolated effect: all fixes on, minus only this one. Windows recorded as primary
+detections, 90 s diagnostic:
+
+            with fix   without   recovered
+  A5           22         19        +3
+  A6           60         16       +44  (about 4x)
+  A7          519        440       +79
+  A8          529        451       +78
+
+
+4. GUARD + ADDRESSING ON S6, S7, S8
+------------------------------------------------------------------------------
+Applied: the same addressing conjunct that fixed S5. A frame must have been
+addressed to the accusing node, not merely overheard. Before the fix, 11.6-22.3 %
+of window-level firings landed on nodes never declared attackers (S7 worst), and up
+to 27 nodes accused a single event.
+
+Benign regression check on the regeneration build: S5, S6, S7 and S8 all fire zero
+times, and zero nodes are quarantined.
+
+
+5. variant_active()
+------------------------------------------------------------------------------
+Done. It is a set-backed (bitmask) predicate that replaces every
+active_attack_variant == N test in all four detectors. The mask lives in routing.cc
+beside active_attack_variant, because attack_declaration.h is included before
+crypto_layer.h and populates it. An empty mask falls back to the old single-value
+test, so benign and baseline runs are unchanged. NEXUS N1-N3 are no longer blocked
+by the single-variant assumption.
+
+
+6. W
+------------------------------------------------------------------------------
+Your call taken: the code keeps S6_WINDOW_S = 30.0, and the paper now says 30 s. The
+old justification cited a {5,10,15} s candidate range and a W <= 9 s bound, so it
+was rewritten too. It now explains why the detection window has to be wider than the
+10 s evaluation block: at 10 s, duplication would go unseen whenever the two
+receptions fall in different blocks. It also states, as a limitation, that a window
+this long often spans an RSU handoff.
+
+
+7. OPTION (b): STOP ASSERTING ON QUARANTINED NODES
+------------------------------------------------------------------------------
+Implemented, and on in every run in the table above.
+
+It was corrected once during validation. The first version also checked the
+accused vehicle's covering RSU. That is the right test for enforcement but the
+wrong one for suppressing detections. With 44 RSUs quarantined in A6, one RSU's
+quarantine silenced every accusation against every vehicle in its zone: A6 fell to
+TP = 0 and MCC 0.0000, with all 33 true positives turned into false negatives.
+Checking the accused node alone restores it (0.0000 -> 0.1219).
+
+Measured cost, logged as a limitation (HF variants, macro, 90 s diagnostic):
+
+  option (b) off                 0.2808
+  option (b) on (corrected)      0.2632
+  option (b) on + latch reset    0.2599
+
+So about -0.018 macro, almost exactly the latch reset's -0.0168 at 300 s. The
+approval assumed the system has stopped treating a quarantined node as compromised.
+That only holds if the truth latch is also released at quarantine. Otherwise truth
+keeps counting the node as positive, and silencing the detector turns true
+positives into false negatives.
+
+
+8. A6's 248-NODE QUARANTINE
+------------------------------------------------------------------------------
+Explained, and it is not a separate defect: S6 had the same overhearing problem as
+S5. Once the addressing conjunct landed, A6 quarantine fell from 248 to 88 and S6
+firings from 96,912 to 121 (90 s). With enforcement off, the same run gives 2,810
+S6 firings. That gap is option (b) suppressing accusations against nodes that are
+already contained.
+
+
+9. REGENERATION AND RETRAIN
+------------------------------------------------------------------------------
+Regeneration: one build carrying every item above plus the oracle-gate removal and
+the per-RSU D_div fix. 225 runs at 300 s, seeds 1-5: benign x 5, A1-A4 x 6
+intensities x 5, A5-A8 x 5 intensities x 5. Zero incomplete runs. The previous
+training set was archived before collection started.
+
+One near miss, disclosed: the training launcher builds a fixed command line and
+cannot pass extra flags, and the D_div fix was still off by default. Launched as it
+stood, the regeneration would have collected the old global D_div again. We turned
+the default on before launching.
+
+D_div verified in the regenerated data:
+- Benign and the non-HF variants are flat (max 1).
+- Under HF attacks it now differs from RSU to RSU. A6 shows 36 distinct per-RSU
+  means, where the old build gave one identical value at all 64 RSUs.
+- The five zero-variance features listed on 5 Sep now number zero.
+
+Retrain: the autoencoder was fully retrained on the new features. Split: train
+seeds 1-3 (492,480 windows), val seed 4 (164,160), test seed 5 (164,160), scaler
+fitted on benign training data only, 11 features.
+
+- Classifier head: FROZEN encoder, per your standing instruction. Offline test
+  macro-MCC with per-RSU calibration (A1, A2, A5-A8) = 0.4678.
+- C++ weights exported and checked against the Python forward pass: PASS.
+  - Anomaly score differs by 1.2e-7, reconstruction by at most 3.0e-7, feature
+    normalisation by 1.9e-6 (tolerance 1e-3).
+  - Header check: 64 RSUs, 11 features.
+- Classifier thresholds recalibrated on in-simulator benign scores.
+  - Data: three benign 300 s runs with the full Q6 configuration, 57,216 score
+    rows across 64 RSUs.
+  - Target false-positive rate 1 %; achieved 0.86 % on the same data.
+  - Per-RSU thresholds: median 0.770, range 0.050-0.979. Nine edge and corner RSUs
+    sit at the 0.05 floor; their benign scores stay near 0.012.
+  - These replace the offline thresholds, which fired on 6.85-21.8 % of benign
+    windows in-sim.
+- High-confidence (HC) tier: recalibrated for the reconstruction path, and FIXED
+  for the classifier path. This is the second build mentioned at the top.
+  - LSTM_HC_THETA became 39.824: the 99.9th percentile of reconstruction scores
+    over 102,493 benign validation windows. It was 12.628 before.
+  - Under the classifier head, which Q3 and Q6 use, the score is P(attack), which
+    can never exceed 1. The tier compared that probability with 39.824, and before
+    this round with 12.628. So under the classifier head it could never fire, and
+    had not since 7 Sep. That is the same unreachability round 8 fixed for the old
+    2x theta form.
+  - Found during the Q chain, before any Q3/Q6 run started. The classifier path now
+    has its own bar, LSTM_HC_THETA_CLS = 0.9794: the 99.9th percentile of benign
+    in-sim P(attack) over the same three runs (55,488 windows, 0.10 % firing rate on
+    that data). The reconstruction path keeps 39.824.
+  - Rebuilt at 12:28 while only non-LSTM configs were running. Those configs never
+    read this value, so their results are unaffected.
+  - All 16 Q3/Q6 runs were checked to load the new binary and print the new bar.
+  - What the tier controls: whether an LSTM-only detection may reach BTMM trust
+    evaluation (Q6 only), and the per-node confusion latch. It does not enter
+    score or score_primary directly.
+- Offline evaluator (test split, seed 5): LSTM MCC 0.528 overall.
+  - Per variant: A1 0.378, A2 0.434, A5 0.552, A6 0.642, A7 0.557, A8 0.546.
+  - Rule-based: A3 0.966, A4 0.873.
+  - These are the autoencoder's reconstruction path, not the classifier head that
+    ships (see limitation k).
+
+
+10. DISCLOSURES AND LIMITATIONS  (logged, not chased)
+------------------------------------------------------------------------------
+a) The LSTM deployed before this round was the end-to-end classifier head with
+   the encoder unfrozen, the one recorded on 1 Sep as "present it, don't ship it".
+   - Its weights match global_clshead_indep_e2e.pt exactly, and cls_theta.json was
+     that checkpoint's offline threshold block.
+   - An in-sim recalibration had been produced but was never put in use.
+   - LSTM_HC_THETA had been calibrated on a different encoder.
+   - No reported number used this model. Every Q1-Q6 and ablation-arm result
+     predates its export (1 Sep 10:19). Nothing since has enabled LSTM inference,
+     and the round 9 and 10 tables used score_primary, which excludes the LSTM.
+   - The retrain replaces it with the frozen head. The classifier thresholds and
+     both HC thresholds now come from the model that ships.
+
+b) Option (b) costs about -0.018 macro at 90 s (section 7).
+
+c) Enforcement is off in every Q config, so the table measures detection only.
+   - enable_quarantine_enforcement defaults to false and no Q config sets it. A
+     quarantine is recorded but never blocks forwarding.
+   - As a result, UCR is identical in all seven configs: A5 84.63 %, A6 91.35 %,
+     A7 84.89 %, A8 93.65 %.
+   - For A3 and A5-A8, PDR and UCR are identical at every one of the 298 cycles
+     between Q1 (no HF detection) and the regeneration run (full system).
+   - The enforcement effect was measured separately in round 10, with enforcement
+     on at 90 s.
+   - UCR by intensity was not run this round and is kept for final experiments.
+
+d) The M8 poisoning sweep was not re-run (it was not in this round's list), so M8
+   is stale against the new features.
+
+e) Paper label audit, beyond the four labels you asked us to confirm:
+   - sec:fed_lstm was a second live duplicate (now fixed). Our round 10 note
+     wrongly said eq:theta_adapt was the only one.
+   - eq:theta_adapt still has two live, different definitions. We recommend
+     keeping line 3472 (the k-sigma form), because s1_use_percentile is off by
+     default, which makes k-sigma the version the code actually runs.
+
+f) Result files overwritten by appends.
+   - Training runs write untagged filenames, and the logger appends to a file that
+     already exists. 223 of 504 MOBIGUARD_*.csv files contain rows from more than
+     one build.
+   - The Q1-Q6 runner also writes untagged names and renames each file after its
+     run. So the seed-5 Q1 files at 60 % also swallowed the regeneration's seed-5
+     rows. We preserved copies first, and the collector reads only the last
+     complete run in each file.
+   - The Q1-Q6 table reads detector_windows files, which are overwritten on every
+     write, so it is unaffected.
+   - Training CSVs were checked before the retrain resumed and are clean: all
+     14,400 files hold exactly 298 rows of a single schema.
+   - The offline evaluator first crashed on the mixed rows. It was then run on a
+     clean copy holding one complete regeneration run per file.
+   - A first rerun also picked up in-flight Q1 rows, which gave A3 0.941 and A4
+     0.842. The corrected figures in section 9 supersede them.
+   - evaluator.py's M4-M8 section pools every MOBIGUARD file for a variant and
+     intensity, so its offline M4-M8 figures should not be quoted.
+
+g) Per-RSU joint calibration misses its precision target at every RSU. During
+   federated training, fed_aggregator.py tries to find each RSU's threshold that
+   reaches precision >= 0.95 inside the FPR budget. After this retrain none of
+   the 64 RSUs reaches it (mean precision 0.730), and each falls back to the
+   lowest-FPR option. The warning is not new, and it has been in the code since
+   7 Jul: it fired 58 times on 9 Jul and 43 times on 9 Aug, so this run is worse.
+
+h) The ablation configs cannot isolate every component.
+   - Q4 ("witness only") scores exactly 0 by construction. D_RSU is S2f, S5, S6,
+     S7, S8 and the LSTM, and Q4 switches all of them off. The witness mechanism
+     acts through signed alerts and BFT trust penalties, which the window score
+     does not read.
+   - Q2 scores 0 on A1-A4 because it disables S1-S4.
+   - Q3 is near 0 on A3/A4 (recall 0.02 and 0.01). The LSTM is suppressed at any
+     RSU where a rule already covers the event: the raw S3/S4 condition, or the
+     raw R_anom rule. That gate deliberately ignores the disable flags. So "LSTM
+     only" never acts on TCAM-covered RSUs, and on HF variants it is also silent
+     wherever R_anom fires.
+   - Q4R scores only through R_anom, and on score_primary only on A7/A8.
+
+i) Single seed. Differences of a few thousandths between configs, including Q6 vs
+   Q5, are not established by this table.
+
+j) Classifier-path thresholds are calibrated in-sample. Both cls_theta.json and
+   LSTM_HC_THETA_CLS were fitted, and their firing rates measured, on the same three
+   benign runs. No held-out benign run was scored.
+
+k) The offline evaluator scores the autoencoder's reconstruction path, not the
+   classifier head that runs in the simulator.
+   - Its A5-A8 rows use hf_theta.json from 20 Aug, fitted on the previous model
+     with zero A5 and zero A6 calibration windows, and not recalibrated this round.
+   - The offline figure for the shipped path is the frozen head's 0.4678
+     (section 9).
+
+l) The Q1-Q6 runner does not add the config tag to lambda_l_true diagnostics for A1,
+   A3 and A4, so each config overwrote the previous one's. No reported number reads
+   those files.
+
+
+11. PAPER EDITS DONE (from your earlier list)
+------------------------------------------------------------------------------
+- eq:sig_s5: new Addressed(p,d') conjunct, with prose on why it does not weaken
+  zero trust. It constrains who may raise an alert, not who may be accused.
+- New Evaluation Methodology section covering all six points: 10 s per-RSU
+  blocks, suspect attribution, macro headline with pooled alongside, latched HF
+  ground truth, S1 reported separately, and diagnostic ceilings with run length.
+- M4 redefined as a pair: new eq:m4_prevention, justified with the A4 inversion.
+- eq:feat_atp_rsu added, with a note that the model inputs are the per-RSU
+  aggregates.
+- The covering-RSU limitation now covers the measurement path too, and the
+  outdated "does not bias measurement" claim is withdrawn.
+- W corrected to 30 s. Missing sec:performance_metrics label added.
+
+
+12. WHAT HAPPENS NEXT
+------------------------------------------------------------------------------
+Per your instruction, diagnostics are closed. The criterion was not met; section 2
+documents which variants fall short and why, and section 10 lists the limitations.
+
+We move to final experiments:
+- UCR by intensity, with enforcement on.
+- The M8 poisoning sweep on the new features.
+- NEXUS N1-N3.
+
+If you want the Q6-vs-Q5 comparison settled, seeds 6 and 7 at 300 s can be added to
+final experiments. Each seed takes about 6.5 hours.
+
+Commits on A30: 73a0258, ad45c45, e9f1a27, 22be9ef, 7d3e389, [[FINAL_COMMIT]].
