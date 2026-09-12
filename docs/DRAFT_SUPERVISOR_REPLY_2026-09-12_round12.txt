@@ -193,5 +193,5 @@ experiment is to hold the split fixed and vary only the model, which is a
 calibration study, not a debugging step.
 
 
-Commits on A30: <this round's commit>. The N3 confirmation runs are tagged
+Commits on A30: 538cdbd. The N3 confirmation runs are tagged
 N3CONF_FULL / N3CONF_NOZT in results_routing.
