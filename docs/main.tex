@@ -5569,18 +5569,7 @@ operational model.
     variance across seeds), each \ac{RSU} applies a
     30-second warm-up period at the start of each
     simulation run during which live benign
-    reconstruction errors update the threshold online:
-    \begin{equation}
-    \theta^{(k)}_{adapted} =
-    \text{pct}_{99}\!\left(
-    \mathcal{A}_{benign}^{(k)}
-    \cup
-    \mathcal{A}_{warmup}^{(k)}
-    \right)
-    \label{eq:theta_adapt}
-    \end{equation}
-    where $\mathcal{A}_{warmup}^{(k)}$ is the set of
-    anomaly scores collected during the warm-up window.
+    reconstruction errors update the threshold online.
     Warm-up windows are excluded from all \ac{FPR}
     and \ac{DR} computations.
 

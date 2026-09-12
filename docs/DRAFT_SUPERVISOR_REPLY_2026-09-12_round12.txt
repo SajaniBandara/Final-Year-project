@@ -1,0 +1,197 @@
+DRAFT - reply to the three-item message (2026-09-12). Plain text.
+Send everything below the dashed line.
+------------------------------------------------------------------------------
+
+Hi,
+
+All three items are done. Item 1 is fixed and rebuilt. Item 2 says stop: the flag
+flip is safe, but the N3 comparison cannot run yet, and the confirmation run is
+what showed why. Item 3 is the second of your two readings, with one caveat that
+changes the mechanism you would write down.
+
+
+1. eq:theta_adapt DUPLICATE LABEL - FIXED
+------------------------------------------------------------------------------
+The percentile-form definition is deleted outright, not commented out. The
+k-sigma form is now the only definition of eq:theta_adapt.
+
+Before the fix the duplicate was doing real damage, which we had not appreciated:
+LaTeX resolves a repeated label to the LAST definition, so every reference
+pointed at the percentile form.
+
+  compiled from the committed thesis      compiled with the fix
+  ------------------------------------    ------------------------------------
+  "multiply-defined labels" warning: 1    0
+  eq:theta_adapt defined twice:           defined once:
+    eq 3.50 p.46 (k-sigma)                  eq 3.50 p.46 (k-sigma)
+    eq 4.20 p.72 (percentile)
+  all 5 refs printed "(4.20)"             all 5 refs print "(3.50)"
+  100/101 pages                           100 pages
+
+That includes the two sentences beside the k-sigma equation itself -- "the
+warm-up adaptation is given in Equation (4.20)" and "As given in Equation
+(4.20)" -- and the three earlier "(Eq. 4.20)" citations at the algorithm and the
+FPR/DR exclusion note. All five now read (3.50).
+
+Build log after three passes (the third pass is needed because deleting an
+equation renumbers everything after it):
+
+  multiply-defined label warnings ......... 0
+  "Rerun to get cross-references right" ... 0
+  eq:theta_adapt entries in main.aux ...... 1  -> {3.50}{46}{Local LSTM Model}
+  undefined references (non-citation) ..... 2  -> alg:lrad_rsu (see below)
+  undefined citations ..................... 128
+  hard errors ............................. 1  -> acro, SHAKE (see below)
+
+Three things in that log are NOT clean, and none of them comes from this edit --
+all three are present when the committed thesis is built unchanged:
+
+a) The repo does not contain cover.tex, bibliography.bib, or any of the 23
+   figures main.tex includes. We built in a TeX Live container with an empty
+   cover stub and graphicx's "demo" option for the figures; the 128 undefined
+   citations are the missing .bib. If the thesis lives on Overleaf, the
+   authoritative clean build should be taken there -- our log can only prove the
+   label change.
+b) alg:lrad_rsu is referenced at main.tex:2178 and :2425 but never defined. The
+   algorithm was split into alg:lrad_rsu_detect and alg:lrad_rsu_respond and
+   these two references were not updated. One-line fix each, not touched here
+   because you said no paper edits beyond item 1.
+c) acro error at main.tex:265: the SHAKE acronym's long form is
+   "Secure Hash Algorithm 3, 512-bit", and the unbraced comma makes acro read
+   "512-bit" as a key. Braces around the long value fix it. Also not touched.
+
+Say the word and (b) and (c) go in with the next paper pass.
+
+
+2. ENFORCEMENT FLAG FOR N3 - DO NOT RUN N3 YET
+------------------------------------------------------------------------------
+The flag itself is clean. quarantine_blocks() (crypto_layer.h:623) reads exactly
+two things: enable_quarantine_enforcement, and that node's own g_quarantined
+state. N_Controllers and enable_controller_failover do not enter it, and all five
+enforcement call sites go through that one function. So node-level enforcement is
+NOT gated by the controller architecture.
+
+But the confirmation run you asked for earns its keep, because the comparison
+itself is inert. One 90 s run per arm, A1 at 40 %, enforcement on in both, only
+the controller architecture differing:
+
+                              Full NEXUS        No-ZeroTrust
+                              (4 controllers)   (1 controller)
+  controllers compromised     2 of 4            0 of 1
+  attacker RSUs (ground truth) 32               0
+  poisoned flowMods installed 32                0
+  SC.Revoke / failover        2 at t=15.0 s     none
+  nodes quarantined           63                51
+  M4 prevented                57.1 % (36/63)    100 % (51/51)
+  TP / FP / FN                23 / 35 / 0       0 / 51 / 0
+  UFCR blocked                88/88             88/88
+  [QUARANTINE-DROP] events    0                 0
+
+Six findings, in the order they block N3:
+
+(i) The No-ZeroTrust arm cannot be attacked. declare_attackers()
+    (attack_declaration.h:233) sets max_compromisable = N_Controllers - 1 for any
+    p < 100 %, so a single-controller network gets zero compromised controllers
+    at every penetration you would run. The run logged "0 of 1 controllers
+    compromised" and zero attacker RSUs. Whatever enforcement does, the arm has
+    nothing to contain. Two ways out, your call:
+      - treat a single controller as compromisable (p >= 33 % -> the one
+        controller), which is what "single point of failure" means in the
+        No-ZeroTrust design; or
+      - run the No-ZeroTrust arm at p = 100 %, and state that the arms are then
+        at different penetrations.
+    Also worth knowing: only A1 implements controller compromise at all.
+    controller_compromised[] is read by nothing else, so A3/A5/A7 are
+    control-plane in name only for this purpose.
+
+(ii) There is no zero-trust switch to turn off. DKG is skipped only under
+     --disable_crypto=1 (dkg_setup.h:6), which is the No-Crypto arm. Crypto off
+     also stops mldsa87_sign() from creating the per-packet records that the
+     BTMM trust path needs, so one of the five quarantine triggers goes dead with
+     it. Defining No-ZeroTrust as "DKG off" therefore does tangle node-level
+     enforcement with the arm -- exactly the pattern you flagged. It needs its
+     own flag (single-controller + controller write access + no DKG) before N3.
+     "Controller write access" has no representation in the code today.
+
+(iii) Controller revocation reads ground truth. routing.cc:117822 penalises
+      controller trust on (controller_compromised[c] && !committed) ||
+      delay_evidence. The first disjunct is the oracle: the blockchain is
+      credited with attributing the unauthorized FlowMod, but the code is told
+      who sent it. In the run, controller 0 was revoked with NO delay evidence at
+      all; only controller 1 had a genuine [CTRL-DELAY-EVIDENCE] event (E_delay=7
+      >= f+1=6, t=14 s). So Full NEXUS's advantage in N3 would be partly
+      oracle-driven. Same shape as the S5 oracle gate from round 9.
+
+(iv) M4's prevention rate counts benign quarantines as successes. A node
+     quarantined with no t_first_attack is counted as "stopped before acting"
+     whether or not it was ever an attacker (routing.cc:117649). The
+     No-ZeroTrust arm reports 100 % prevented with zero attackers in the run, and
+     in Full NEXUS at least 31 of the 36 "stopped before acting" cannot be
+     attackers (32 attackers exist, 27 of them are in the acted-first bucket).
+     The population needs restricting to declared attackers before this number
+     goes in any table.
+
+(v) Blocked forwarding is not observable. [QUARANTINE-DROP] fired 0 times in both
+    arms, and A1's send-side guard (std_delay_quarantine_blocks) returns silently
+    with no counter. We can report that quarantine FIRED (63 and 51 nodes) but not
+    that it BLOCKED anything. A counter at the five guard sites is a small change
+    and is what your "blocks forwarding identically in both" check actually needs.
+
+(vi) UFCR does not depend on the arm. ufcr_attempt_unauthorized_flowmod() makes
+     one synthetic attempt per cycle for any control-plane variant regardless of
+     whether any controller is compromised, which is why both arms report 88/88
+     blocked -- including the arm with no compromised controller.
+
+Our recommendation: fix (i), (ii) and (v) before N3 runs, log (iii), (iv) and (vi)
+against the N3 write-up, and re-run the two confirmation runs afterwards. None of
+this is in the final table; the Q1-Q6 table has enforcement off in every config,
+as you noted.
+
+
+3. FEDERATED CALIBRATION TREND - IT IS THE SECOND READING, WITH A CAVEAT
+------------------------------------------------------------------------------
+It is spread, not a traceable handful. But it is not the same shape across the
+three checkpoints either, and the mechanism is not the one already documented for
+A8.
+
+  checkpoint        RSUs missing 0.95    median precision    RSUs meeting target
+  09 Jul (log)      58 / 64              0.595 (missing only)  6, all interior
+  09 Aug (json)     43 / 64              0.920                 21, mostly edge
+  11 Sep (json)     64 / 64              0.750                 none
+
+- No RSU met the target in more than one checkpoint. The overlap between the
+  "met" sets is empty for all three pairs.
+- Per-RSU rankings do not carry over: Spearman +0.09 (09 Aug -> 11 Sep), -0.01
+  (09 Jul -> 11 Sep).
+- 09 Jul -> 09 Aug is -0.65, an inversion: all 28 edge RSUs missed in July, while
+  edge RSUs are most of August's 21 passes.
+- So there is no stable subset to trace. That rules out your first reading.
+
+The caveat. The level and the shape both move with the pipeline version (median
+0.595 -> 0.920 -> 0.750), so "similar shape across all three" does not hold, and
+the mechanism differs from A8's benign-window sparsity:
+
+- On 11 Sep the weakest RSUs are edge RSUs with PLENTY of benign windows and very
+  few attack windows: RSU 6 has 114 attack vs 2,451 benign windows and scores
+  0.346; RSUs 39, 47, 7, 31, 62 follow the same pattern. At a 1 % FPR budget the
+  false positives outnumber the available true positives. That is
+  attack-window scarcity, not benign-window scarcity.
+- Across all 64 RSUs on 11 Sep there is no correlation either way (precision vs
+  benign windows -0.09, vs attack/benign ratio +0.08), so it is not a clean
+  base-rate law; on 09 Aug the same test gives +0.57 / -0.54.
+
+Sources and their limits: 09 Jul is lstm_pipeline/pipeline_run.log, which prints
+only the RSUs that missed, so the 6 passing RSUs have no recorded value; 09 Aug is
+fed_summary.json at commit 2f82589, all 64 RSUs; 11 Sep is the current
+fed_summary.json. The 09 Aug window counts come from a preprocessed backup we
+cannot confirm is the split that run used.
+
+We propose logging it as a stated limitation, worded as attack-window scarcity at
+low-traffic RSUs plus pipeline-version dependence, rather than as the A8 sparsity
+issue. If you would rather have a real cause established, the one clean
+experiment is to hold the split fixed and vary only the model, which is a
+calibration study, not a debugging step.
+
+
+Commits on A30: <this round's commit>. The N3 confirmation runs are tagged
+N3CONF_FULL / N3CONF_NOZT in results_routing.
