@@ -1,0 +1,344 @@
+DRAFT - reply to the closing message (paper audit against the code), 2026-09-13.
+Plain text. Send everything below the dashed line, with docs/main_patched_2026-09-13.tex attached.
+------------------------------------------------------------------------------
+
+Hi,
+
+We checked every item against the simulation code, not against our earlier reports, as
+you asked. Most of your list holds. Several premises do not match what the code does,
+and the corrections change what the paper can claim. Those are marked CORRECTION below,
+each with the code location.
+
+Attached: main_patched_2026-09-13.tex, your file with 59 changes applied (6,546 -> 6,871
+lines). It builds with no errors, no duplicate labels and no undefined references
+(section F). Items we found but did not patch are marked "% AUDIT(2026-09-13)" in the
+.tex.
+
+Up front:
+- The file you audited is the 5 Aug Overleaf draft. All 18 of your line anchors match it.
+  None of the paper edits made since then were in it.
+- Five findings change how the ablation table can be described:
+  (1) it was scored with event truth, not latched truth;
+  (2) the composite column credits the observing RSU, not the suspect;
+  (3) S5-S8 each run only during their own variant, so cross-variant false positives are
+      not measured;
+  (4) enforcement and S1's handoff suppression were both off;
+  (5) S1's zero-attack false-positive rate on the reported build is 19.17 %.
+  Section D lists the decisions these need.
+- Of the three "never delivered" items, one is delivered now (recall decay at 300 s: there
+  is none on the final build). One is written up below (the handoff correction). One was
+  never run (the density sweep).
+
+
+A. EQUATIONS
+------------------------------------------------------------------------------
+A1. eq:sig_s5 -- CONFIRMED, plus a CORRECTION.
+    Addressed(p,d') is missing from the paper and is in the code (s5_detection.h, the
+    hf_require_addressed check). Added, with the prose on why it does not weaken zero
+    trust.
+    CORRECTION: the paper's BatchVerify = 0 conjunct is not in the code. It was added on
+    20 Jul and reverted on 21 Jul after runtime verification (s5_detection.h:41). Removed.
+    The "FlowMod(r) installed (s -> d')" conjunct is implemented as "no f+1-endorsed,
+    committed FlowMod for this flow" (s5_detection.h:108, bc_query_flowmod). Rewritten to
+    say that.
+
+A2. eq:sig_s6 / s7 / s8 -- CONFIRMED, with CORRECTIONS.
+    The addressing check is in all three detectors (commit 22be9ef). None of the three
+    formal statements had it. Added the identical conjunct to each.
+    CORRECTIONS, all now in the .tex:
+    - S6 and S7 have no FlowMod-absence conjunct in the code. Both were reverted on 20 Jul,
+      because the endorsement query reports the monitored flow as endorsed in every cycle,
+      which suppressed every correct detection (s7_detection.h:173). Removed from both.
+    - The code ORs the R_anom > 0 rule into flag_S7 and flag_S8 (lrad.h:370-371). The
+      paper never says so. Added. The LSTM gate in alg:lrad_rsu also treats that rule as
+      coverage (lrad.h:440); the gate condition is updated.
+    - Option (b) is not in any signature statement: S5-S8 stop asserting once the accused
+      node is quarantined. Added as a condition common to all four.
+    - S6's duplication window is 30 s. S7 uses a separate 10 s tumbling volume window with
+      epsilon_vol = 0.1 packets/s. Both are stated now.
+    FLAG: each of S5-S8 returns early unless its own variant is armed (hf_variant_guard,
+    default on, crypto_layer.h:1144). A deployed detector cannot know which attack is
+    running. This is not a signature conjunct, so the .tex states it in the Evaluation
+    Methodology section as a diagnostic-ceiling property. See D3.
+
+A3. eq:theta_adapt -- CONFIRMED.
+    The max-guard form at line 3425 is what the code runs: lstm_inference.h:262, z = 3.5,
+    30 s warm-up. The percentile block at line 5939 is deleted outright.
+    CORRECTION: it applies to the reconstruction path only. The classifier path, which
+    produced Q3/Q6, skips it (lstm_logger.h, "warm-up widening ... is skipped here"). The
+    .tex says so.
+    Also found: a second live duplicate label, sec:fed_lstm (lines 3182 and 5880). Its one
+    \ref points at the method section, so the settings copy is renamed sec:fed_lstm_params.
+
+A4. eq:feat_ddiv -- CONFIRMED, with a CORRECTION to the wording.
+    The code counts distinct source vehicles at an RSU whose reached destinations include
+    one outside their authorized policy (crypto_layer.h:1179, ddiv_smoke_count). Each
+    delivery is credited to the covering RSU of its last-hop sender.
+    CORRECTION: it does not count "attacking" vehicles. No attacker label is used; the
+    count comes only from observed deliveries against committed policies.
+    Two properties the paper must state, both now in the .tex:
+    (a) When the RSU relays no delivery of the monitored flow in a cycle, the input takes
+        the resting value 1 instead of the count (lstm_logger.h:1124). Under benign traffic
+        about 98 % of rows are therefore 1, not 0; the benign scaler mean of log1p is 0.678
+        against log1p(1) = 0.693. The feature is not "identically zero under benign".
+    (b) It enters the model as log(1 + x).
+
+A5. eq:feat_atp_rsu -- CONFIRMED as you describe it.
+    Authorized deliveries are credited to the covering RSU of each packet's last-hop sender
+    (crypto_layer.h:1213, lstm_flow0_record_delivery). The quantity is one pooled ratio:
+    authorized deliveries over all deliveries credited to that RSU.
+    CORRECTION on scope: it uses delivery counts, not bytes, from a single monitored flow
+    (flow 0), and rests at 1 when the RSU relays none of that flow. All stated.
+    Our own earlier draft of this equation defined a mean of per-vehicle ratios. That is
+    not what the code computes, and it is not used.
+
+A6. eq:l_mit / eq:m4_prevention -- CONFIRMED, plus a CORRECTION to the code.
+    Added the pair. The latency is averaged over attackers that acted before quarantine,
+    with onset at each node's own first attack action (enable_corrected_lmit, on). The
+    prevention rate is the share of quarantined attackers stopped before acting.
+    CORRECTION: the code's counter is not restricted to attackers. It counts every
+    quarantined node with no recorded attack action, benign quarantines included
+    (routing.cc:117649). In the N3 confirmation runs, the No-ZeroTrust arm reported "51/51
+    prevented" with zero attackers. In Full NEXUS, at least 31 of the 36 "stopped before
+    acting" cannot be attackers (32 attackers exist, 27 of them acted first). The .tex
+    defines the population as quarantined declared attackers, and carries an AUDIT note
+    that the counter must be restricted before M4 is regenerated.
+
+A7. The LSTM formulation, and which model shipped -- ANSWER: frozen encoder.
+    The chain behind the apparent reversal:
+    - 14 Aug fix specification: the classifier head trains on a frozen encoder.
+    - 1 Sep: an end-to-end variant that also fine-tunes the encoder went from macro-MCC
+      0.3142 to 0.6781 offline, on the earlier feature set. We recorded it as "present it,
+      don't ship it", because it deviated from "do not touch the encoder".
+    - 5 Sep: "full retrain including the encoder" meant retraining the autoencoder itself
+      on the new per-RSU features. It did not mean unfreezing it for the classifier.
+    - 11 Sep retrain: autoencoder retrained on the 225-run collection; classifier head
+      trained with the encoder frozen (train_cls_head.py, no --unfreeze). Held-out test
+      macro-MCC over A1, A2 and A5-A8 = 0.4678. That is the model behind Q3/Q6.
+    Head: FC(32->32) - ReLU - FC(32->1) - sigmoid on the encoder's final 32-unit state,
+    binary cross-entropy, Adam lr 1e-3, 20 epochs. Labels come from send-side injection
+    ground truth, never from an input feature.
+    Thresholds: per-RSU empirical (1 - alpha) quantile of that RSU's own benign
+    in-simulator P(attack), alpha = 0.01, floor 0.05 (calibrate_cls_theta_insim.py). That
+    is a percentile threshold, as you understood, not a Gaussian bound.
+    Since the facts are settled, the .tex drafts eq:lstm_cls and eq:lstm_cls_threshold.
+    Redraft them if you prefer. The reconstruction equations stay, because they are the
+    encoder's training objective and they back the second high-confidence bar. The anomaly
+    score is corrected to what the code computes: mean squared error over the 10 steps and
+    11 features of the window.
+
+A8. eq:lstm_input, 11 features -- CONFIRMED, with two precision CORRECTIONS.
+    In order (lstm_logger.h:1183):
+      1  max hop delay in the 1 s cycle
+      2  lambda_PI
+      3  U_TCAM
+      4  ZKP delay fail
+      5  ZKP hop fail
+      6  rho
+      7  mean speed
+      8  log1p(N_div)
+      9  log1p(A_tp^RSU)
+      10 log1p(R_anom)
+      11 1[max hop delay > Delta_max]
+    CORRECTION 1: the maximum is taken per 1 s cycle, not over a window.
+    CORRECTION 2: three features are log1p-transformed, which the paper never says.
+    Updated in the equation, its prose, the settings bullet and the notation table.
+
+A9. W -- CORRECTION.
+    The table row at line 6212 is the WITNESS observation window, which the code sets to
+    10 s (WITNESS_WINDOW, crypto_layer.h:116). The 30 s value belongs to S6's duplication
+    window (S6_WINDOW_S, s6_detection.h:82). These are two different windows sharing one
+    symbol.
+    The .tex now has three windows:
+    - W = 10 s, the witness window. Stated honestly as exceeding the <= 9 s zone-residence
+      bound, since it does.
+    - W_S6 = 30 s, with your justification: it must exceed the 10 s block, and it often
+      spans a handoff.
+    - The S7 volume window, 10 s.
+    Our own earlier edit in main.tex set the witness W to 30 s. That was wrong.
+
+
+B. TEXT ADDITIONS
+------------------------------------------------------------------------------
+B1. flag_S2p reduces to its threshold -- CONFIRMED by the code, which documents it: the
+    HMAC comparison recomputes the tag from the same entry, so it can never fail
+    (lrad.h:172-210, lrad_s2_partial_check). Added your sentence.
+
+B2. Quarantine text and the covering-RSU limitation -- CONFIRMED that enforcement is
+    implemented: an origin drop at relaying RSUs, plus send-side guards on hidden
+    duplicates, injected delays and TCAM installs. Two CORRECTIONS, both reflected in the
+    new paragraph:
+    (a) Enforcement is a switch, enable_quarantine_enforcement, default off
+        (crypto_layer.h:259). It was off in every Q1-Q6 configuration, so the table
+        measures detection only. Enforcement was measured separately, in 90 s diagnostic
+        runs.
+    (b) "Vehicles carry no independent trust score" is not true. Every vehicle has one,
+        and vehicles are quarantined individually. We reported the A2 case to you on 5 Sep
+        (76 vehicles quarantined with no proxy) and the A5-A8 counts on 7 Sep (199/200
+        vehicles crossed T_min in A5/A6, 167-173 in A7/A8). The covering-RSU check is an
+        extra proxy on top of that, approved as a conservative posture in round 8. The
+        paper states it that way, with the innocent-vehicle cost, and puts containment
+        without the proxy under future work.
+
+B3. Evaluation Methodology -- ADDED as a new section before the Ablation Study. It covers
+    all six points, but it states what the table actually used, which differs from your
+    list in three places:
+    (a) TRUTH. The table was scored with event truth: a block is positive only if the node
+        is a declared attacker and acted in that block (hf_truth_latched default off; the
+        collector used truth=event). The section gives both definitions in one equation,
+        eq:hf_truth_latch, and names latched truth as the convention for HF variants.
+        Re-scoring the same runs offline under latched truth, seed 5, 300 s:
+                           event (reported)    latched
+          Q6 composite     0.6578 / 0.6498     0.6216 / 0.6178    (macro / pooled)
+          Q6 primary       0.6844 / 0.6632     0.5294 / 0.5166
+          Q5 composite     0.6613 / 0.6541     0.6247 / 0.6213
+          Q5 primary       0.6844 / 0.6632     0.5294 / 0.5166
+        Under latched truth, A5's primary MCC is 0.335.
+    (b) ATTRIBUTION. Only the primary-detector column uses suspect attribution. The
+        composite "score" column credits the observing RSU, because dw_mark_suspect is off
+        (lrad.h:497). The section says the composite column must carry that label.
+    (c) CEILINGS. Both columns depend on the harness knowing which variant is armed: the
+        primary column picks its detector by variant, and S5-S8 are enabled only in their
+        own variant's runs (A2). The section labels both as diagnostic ceilings.
+    For A3/A4, truth is latched at the victim RSU (tcam_truth_live off); stated.
+
+B4. Federated calibration limitation -- ADDED, with a CORRECTION to the causal wording.
+    "Traces to attack-window scarcity" is stronger than the evidence:
+    - The scarcity pattern holds at the weakest RSUs. RSU 6, for example, has 114 attack
+      against 2,451 benign windows, at precision 0.346.
+    - Across all 64 RSUs on 11 Sep there is no relation (precision vs benign windows
+      -0.09, vs attack/benign ratio +0.08).
+    - On 9 Aug the relation ran the other way (+0.57 / -0.54).
+    The sentence says the shortfall coincides with scarce attack windows at the weakest
+    RSUs but not consistently, that the shape shifts with pipeline version, and that it is
+    not the same mechanism as any other sparsity issue.
+
+
+C. SIMULATION SETTINGS TABLE
+------------------------------------------------------------------------------
+Applied, as you listed them:
+- beta = 0.95 (N_eff = 20). Compiled: s1_detection.h:126.
+- k = 3 (compiled, s1_detection.h:99), with its measured false-positive rate on the
+  reported build. Source: three benign 300 s runs with the full Q6 configuration, 10 s
+  blocks after 30 s warm-up.
+    OBU stage (S1 or S2-partial) .... 19.17 %  (the row quotes this one)
+    RSU composite ................... 12.10 %
+    RSU primary ..................... 22.26 %
+  The 1 % target is not met. The 0.022 % figure (5 seeds) needs handoff suppression, which
+  is off in the reported configuration (s1_suppress_handoff_fp, s1_detection.h:427). The
+  row says both.
+- High-confidence tier: two bars, 39.824 (reconstruction) and 0.9794 (classification). All
+  16 Q3/Q6 runs were verified to load 0.9794.
+- Per-RSU LSTM thresholds: in-simulator calibration, median 0.770, range 0.050-0.979.
+- W: see A9 (10 s witness window, 30 s W_S6, 10 s S7 window).
+- variant_active(): one row added.
+Also applied, because the row was factually wrong:
+- The variant count is 2 selective delay + 2 TCAM + 4 HF, not 4 + 4.
+- No "escalation at score >= 0.5" exists; escalation happens when D_OBU fires.
+- Architecture row: autoencoder plus classification head.
+- Split: by seed 1-3 / 4 / 5, not 70/15/15.
+- LSTM threshold row: z = 3.5, not 2.326.
+- The notation table's input vector, N_div, A_tp^RSU, warm-up symbols and W rows now match
+  the new equations.
+Not patched, because they are design choices for final experiments; AUDIT comments in the
+.tex. Compiled defaults behind [tbd] rows:
+- Delta_r = 0.05, Delta_p = 0.10, T_min = 0.50
+- T_min^ctrl = 0.50, Delta^ctrl = 0.05 / 0.10 (the code itself calls these placeholders)
+- gamma = 2.0, f = 1 (quorum 3), B = 15, T_sync = 1.0 s, T_hold = 0.01 s
+Wrong as stated:
+- U_thresh = 0.2167 (recalibrated 8 Aug) sits below the table's claimed benign maximum of
+  29 %.
+- "268 peers (4 controllers + 64 RSUs)" does not add up, and no PBFT peer set is
+  implemented; consensus is modelled.
+- The mobility baseline's compiled alpha_v is negative (-1.502e-3), so the baseline rises
+  with speed. The paper's prose says it falls.
+
+
+D. DECISIONS NEEDED BEFORE THE RESULTS SECTIONS ARE WRITTEN
+------------------------------------------------------------------------------
+None of these is a new diagnostic. They decide which numbers the papers quote.
+D1. Truth convention for HF figures: event truth (as reported) or latched truth (your
+    convention, lower numbers). Latched needs only an offline re-score, no new runs.
+D2. The composite column's attribution: keep observer attribution and label it, or
+    re-run with suspect attribution. This one needs runs; the attribution is fixed in the
+    simulator when the grid is written.
+D3. The S5-S8 variant guard: report as a ceiling, or re-run the HF rows with all
+    signatures live (hf_variant_guard = 0).
+D4. S1 handoff suppression: enable it for final experiments or not. It is the difference
+    between 19.17 % and about 0.02 % zero-attack false positives.
+D5. Restrict the M4 prevention counter to declared attackers before any M4 number is
+    regenerated.
+Also flagged in the .tex:
+- The "Federated LSTM Validation Results" table still carries pre-retrain numbers
+  (10-feature input, 240 runs). Regenerate it.
+- alg:lrad_rsu's D_RSU includes S3/S4 and routes controller trust through S3/S5/S7. In the
+  code neither is true: controller trust is driven by the UFCR / delay-evidence path,
+  which also reads ground truth (the round-12 N3 finding).
+
+
+E. THE THREE ITEMS NEVER DELIVERED
+------------------------------------------------------------------------------
+E1. A1/A2 handoff correction: corrected implementation or new mechanism.
+    Mechanism, from the code (s1_detection.h:432-520, 700-712):
+    - S1 added a 50-300 ms handoff-jitter draw to a packet's delay and then tested that
+      inflated value against its own threshold.
+    - 94.8 % of zero-attack false positives fell in that band (median firing delay
+      246.9 ms). The jitter is larger than the 80 ms A1/A2 inject, so no threshold could
+      separate the two.
+    - The correction stops S1 from accusing on a packet carrying handoff jitter, using
+      handoff_just_occurred(vehicle). The serving RSU takes part in that handoff, so this
+      is information available at runtime, not oracle knowledge.
+    Our reading: a corrected implementation, not a new mechanism. The paper already
+    models handoff latency as legitimate (Mechanism 1, and the coefficients of
+    eq:mobility_baseline); the detector was double-counting it in its own evidence. If it
+    is adopted, it needs one sentence under eq:rule_s1, not a new equation.
+    Measured effect with it on:
+    - zero-attack false-positive rate 0.022 % +/- 0.014 % (5 seeds);
+    - A1 at 60 %, un-deduplicated: recall 95.55 %, FPR 6.48 %, MCC 0.8395, against
+      99.13 % / 23.56 % / 0.6368 without it;
+    - A2 recall 97.53 %.
+    It is OFF in the reported configuration, so the paper cannot claim it unless it is
+    enabled for final experiments (D4). The patch adds nothing about it.
+
+E2. Density sweep, 0/20/40/60 %, on A1's residual FPR.
+    Never run. It was listed on 31 Aug (HPC task P3) and never started. It needs new
+    simulations, so it cannot be delivered now. We propose it for final experiments,
+    together with D4, since the handoff suppression setting changes the residual it would
+    measure.
+
+E3. A1/A2 recall decay, time-bucketed.
+    A 90 s version was sent on 7 Sep (A1A2_RECALL_DECAY_2026-09-07.md). It covered only
+    0-80 s, so it could not show a decay across 300 s. Here it is at 300 s on the final
+    build: seed 5, event truth, per-RSU 10 s blocks after 30 s warm-up.
+    Recall per 30 s bucket, 30-300 s (ground-truth blocks per bucket in brackets):
+      A1 Q6 composite:  0.96 0.98 0.97 0.97 0.94 0.97 0.98 0.95 0.97   (30-55)
+      A1 Q6 primary:    1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.98 1.00
+      A2 Q6 composite:  1.00 0.99 0.99 0.97 0.94 0.99 1.00 0.98 1.00   (58-104)
+      A2 Q6 primary:    1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.99 1.00
+      A2 OBU stage:     0.99 0.98 0.96 0.98 0.97 0.99 0.98 0.97 0.97   (226-339)
+    Q5 matches within 0.10; its largest gap is A1's last bucket, 0.87 against 0.97. There
+    is no recall decay on the final build: the 96 % -> 74 % decline seen on earlier builds
+    does not reproduce. Caveats: one seed, and event truth. A1 has no OBU-stage ground
+    truth, because it is a control-plane variant.
+
+
+F. BUILD CHECK
+------------------------------------------------------------------------------
+Both files were built in a TeX Live container, three passes each. cover.tex,
+bibliography.bib and the 23 figures are not in the repo, so an empty cover stub and
+graphicx "demo" boxes stand in, and citations show as undefined in both builds.
+
+                                   your draft          patched
+  pages                              91                  98
+  multiply-defined label warnings     3                   0
+  undefined references                0                   0
+  rerun requested                     0                   0
+  hard errors                         1 (acro, SHAKE)     0
+  undefined citations               128                 127   (one removed \cite)
+
+The patched log contains nothing that was not already in the log of your draft. The
+authoritative build should still be taken on Overleaf, with the real cover, bibliography
+and figures.
+
+
+Nothing from this round is committed yet.
