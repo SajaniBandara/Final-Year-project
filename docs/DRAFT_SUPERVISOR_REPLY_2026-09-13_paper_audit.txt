@@ -14,13 +14,14 @@ Every figure carries its basis, as follows:
   [data]   measured this week from the reported build's own outputs or models
   [record] taken from the project record, because it is history the code cannot show;
            dated, and not re-verified
-Section G lists the [record] items. The .tex contains no [record] figure: we removed every
-number we could not re-verify on this build.
+Section G lists the [record] items. The patch introduces no [record] figure: every number
+we added was re-verified on this build. The draft's own results sections still carry older
+figures, which are flagged in the .tex for regeneration.
 
-Attached: main_patched_2026-09-13.tex, your file with 59 changes applied plus 9
-corrections from the re-verification. It builds with no errors, no duplicate labels and no
-undefined references (section F). Items we found but did not patch are marked
-"% AUDIT(2026-09-13)" in the .tex.
+Attached: main_patched_2026-09-13.tex, your file with the changes applied (6,546 -> 6,874
+lines). It builds with no errors, no duplicate labels and no undefined references
+(section F). Items we found but did not patch are marked "% AUDIT(2026-09-13)" in the
+.tex.
 
 Up front:
 - The file you audited is the 5 Aug Overleaf draft. All 18 of your line anchors match it.
@@ -94,9 +95,8 @@ A4. eq:feat_ddiv -- CONFIRMED, with a CORRECTION to the wording.
         files]. The feature is not "identically zero under benign".
     (b) It enters the model as log(1 + x) [code].
     (c) Its correlation with R_anom is Pearson 0.64 pooled over A5-A8, 0.47-0.69 per
-        variant [data]. The 0.78-0.81 figure that our earlier text carried came from a
-        code comment about a round-8 smoke test, and it does not hold for the shipped
-        data. Corrected in the .tex.
+        variant [data]. The 0.78-0.81 figure quoted after the round-8 smoke test does
+        not hold for the shipped data, so the .tex uses the measured range.
 
 A5. eq:feat_atp_rsu -- CONFIRMED as you describe it.
     Authorized deliveries are credited to the covering RSU of each packet's last-hop sender
@@ -145,9 +145,12 @@ A7. The LSTM formulation, and which model shipped -- ANSWER: frozen encoder [dat
     - The 14 Aug fix specification put the head on a frozen encoder.
     - On 1 Sep an end-to-end variant scored higher offline, on the earlier feature set, and
       was not adopted because it deviated from that instruction.
-    - On 5 Sep, "full retrain including the encoder" meant retraining the autoencoder on
-      the new features. It did not mean unfreezing it for the classifier. The checkpoint
-      comparison above confirms that is what was done.
+    - On 5 Sep we wrote that we were "budgeting a full retrain including the encoder". What
+      we ran on 11 Sep was a full retrain of the autoencoder on the new features, with the
+      classifier head then trained on that frozen encoder; the round-11 report said so. If
+      the 5 Sep wording read as approval to train end-to-end, that is our wording. No
+      end-to-end model was trained or shipped, and the checkpoint comparison above
+      confirms it.
     Since the facts are settled, the .tex drafts eq:lstm_cls and eq:lstm_cls_threshold.
     Redraft them if you prefer. The reconstruction equations stay, because they are the
     encoder's training objective and they back the second high-confidence bar. The anomaly
@@ -281,6 +284,8 @@ Also applied, because the row was factually wrong:
 - LSTM threshold row: z = 3.5, not 2.326 [code: local_trainer.py:72].
 - The notation table's input vector, N_div, A_tp^RSU, warm-up symbols and W rows now match
   the new equations.
+- SHAKE acronym: the long form is braced, as you asked. The acro error is gone from the
+  build (section F).
 - The data-collection bullet says 225 runs [data: counted from the training files: benign
   x 5 seeds; A1-A4 x 0-100 % x 5 seeds; A5-A8 x 20-100 % x 5 seeds].
 Not patched; AUDIT comments in the .tex. Compiled defaults behind the [tbd] rows [code]:
@@ -323,6 +328,15 @@ Also flagged in the .tex:
   (routing.cc:117822).
 - U_thresh sits below benign utilisation (above). Worth resolving before A3/A4 figures
   are regenerated.
+
+
+On your 14:32 notes:
+- alg:lrad_rsu: confirmed. It is defined in your draft, and every reference resolves
+  (section F). The undefined references we reported in round 12 were in our later main.tex,
+  where the algorithm had been split into two.
+- eq:ucr: its second copy is commented out in your draft. It is left untouched.
+- N3: its prerequisite fixes stay open for NEXUS drafting, as you said. Nothing in this
+  patch touches them.
 
 
 E. THE THREE ITEMS NEVER DELIVERED
@@ -407,4 +421,4 @@ G. PROJECT-RECORD ITEMS (history, not re-verified on this build, not used in the
   (round 9).
 
 
-Nothing from this re-verification is committed yet.
+The patched .tex is attached.

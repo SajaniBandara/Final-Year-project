@@ -2052,9 +2052,10 @@ established by the absence of an $f{+}1$-endorsed, committed forwarding policy
 for the flow toward $d'$ (Eq.~\ref{eq:policy_commit}): a rule installed by a
 compromised controller is, by construction, not endorsed by the \ac{RSU}s. An
 aggregate $\textsc{BatchVerify}=0$ conjunct appeared in earlier drafts. It is
-not part of the signature, because a single fabricated copy does not reliably
-fail batch verification at the aggregate level, and runtime verification showed
-the term suppressing otherwise correct detections.
+not part of the signature: batch verification covers the signatures recorded
+when packets are signed along the primary path, and a fabricated duplicate
+delivered off-path is not a separate signing event, so it never enters that
+batch and the term can never hold. Requiring it made S5 undetectable.
 
 As given in Equation~\eqref{eq:sig_s5},
 $\textsc{ML-DSA-87.Verify}=0$ on the copy at $d'$
@@ -3329,11 +3330,12 @@ reception log anomaly score $R_{anom,t}$
 unauthorized packet receptions via the blockchain
 receipt log and is the only feature providing
 direct signal for passive hidden forwarding variants
-S7 and S8. These three enter as $\log(1{+}x)$: all three
-are constant under benign traffic, so benign-only
-normalisation cannot scale them, and under attack they
-span up to three orders of magnitude, which would
-otherwise dominate the normalised input.
+S7 and S8. These three enter as $\log(1{+}x)$. Under
+benign traffic $A^{\mathrm{RSU}}_{tp}$ and $R_{anom}$ are
+constant, so benign-only normalisation cannot scale them,
+and $N_{div}$ takes only the values 0 and 1; under attack
+$R_{anom}$ reaches 1{,}155 and $N_{div}$ reaches 8, values
+that would otherwise dominate the normalised input.
 
 The three hidden-forwarding-specific features appended
 to the input vector are defined below. The per-\ac{RSU}
@@ -3992,8 +3994,9 @@ hidden duplicate, applying an injected delay and installing a flow
 rule. Because a hidden-forwarding duplicate carries another node's
 flow, origin-based dropping alone would not stop it, so both are
 required. Vehicles carry their own trust score and are quarantined
-individually. In addition, for the data-plane variants a vehicle is
-also denied the action while the \ac{RSU} covering it is quarantined.
+individually. In addition, a vehicle is denied a hidden-forwarding or
+injected-delay action while the \ac{RSU} covering it is quarantined;
+flow-rule installs are checked against the installing node only.
 This proxy is a deliberate conservative posture: it contains a vehicle
 attacker whose own trust has not yet crossed $T_{min}$, at the cost of
 denying service to innocent vehicles that share the flagged \ac{RSU}'s
