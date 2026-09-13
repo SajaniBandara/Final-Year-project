@@ -1377,9 +1377,10 @@ forwarding variants S7 and S8. \\
 
 
 \hline
-% AUDIT(2026-09-13): compiled U_thresh = 0.2167 (recalibrated 2026-08-08, near the benign p99
-% of 0.213), below the stated benign maximum of 29%, so 'separates benign (<=29%)' is
-% inaccurate. Not patched.
+% AUDIT(2026-09-13): compiled U_thresh = 0.2167. Measured on the reported build (3 benign
+% seeds x 300 s): the per-cycle maximum RSU utilisation has median 0.31-0.35 and p99 0.897,
+% and reaches 1.0; in 652 of 894 benign cycles some RSU exceeds 0.2167. 'Separates benign
+% utilisation (<=29%)' is therefore wrong. Not patched.
 $U_{thresh}$ & TCAM utilisation detection threshold for Signature~S4 (Eq.~\ref{eq:rule_s4}); calibrated from benign validation traces; separates benign utilisation ($\leq 29\%$) from attack saturation ($\approx 100\%$). \\
 \hline
 $\theta^{(k)}_{adapted}$ &
@@ -2036,8 +2037,7 @@ signature is not well posed on a broadcast medium: every neighbour within range
 receives every frame, so $b_{hop}(u)=0$ holds at all of them simultaneously and
 the remaining conjuncts cannot separate an eavesdropper that was \emph{sent} an
 unauthorized duplicate from a bystander that merely overheard a legitimate
-transmission. Measured before this term was added, a single benign transmission
-caused up to four distinct nodes to raise S5. $\textsc{Addressed}$ is not an
+transmission. $\textsc{Addressed}$ is not an
 appeal to trusted state and does not weaken the zero-trust premise: it is read
 from the frame the accusing node itself received, it is independent of the
 signed next hop carried in $\pi_{hop}$, and it never draws on any privileged
@@ -2212,11 +2212,9 @@ $\textsc{SC.Quarantine}(u)$ has fired
 (Eq.~\ref{eq:quarantine}), S5--S8 stop asserting
 against $u$: a detector that keeps accusing a node the
 system has already contained measures its own failure
-to switch off rather than a gap in detection. In 90\,s
-diagnostic runs this costs about $0.018$ macro-MCC over
-the hidden-forwarding variants, because the
-ground-truth latch continues to count a contained node
-as positive.
+to switch off rather than a gap in detection. When enforcement is disabled, a
+quarantined node can keep acting, and blocks in which
+it acts then count as missed detections.
 
 
 \subsection{Distributed Trusted Time Reference}
@@ -3362,7 +3360,7 @@ of which nodes are attackers, and it separates one
 high-volume attacker from several quiet ones, which
 $R_{anom}$ (Eq.~\ref{eq:feat_ranom}) cannot; across the
 hidden-forwarding variants the two correlate at
-0.78--0.81. It replaces a single-flow ratio
+0.47--0.69 (Pearson, per variant). It replaces a single-flow ratio
 $|\{d'\}|/|\mathcal{P}(v,\cdot)|$ that was implemented as one
 network-wide value, identical at every \ac{RSU}. When
 \ac{RSU} $r$ relays no delivery of the monitored flow in
@@ -3601,19 +3599,21 @@ where $\mathcal{P}^{(k)}_{benign}$ is the set of $r_k$'s own
 classifier outputs from benign in-simulator runs of the full
 configuration, $Q_{1-\alpha}$ is its empirical $(1-\alpha)$ quantile
 with $\alpha = 0.01$, and $0.05$ is a floor. The thresholds are
-fitted on in-simulator rather than offline scores, because thresholds
-fitted offline fired on $6.85$--$21.8\%$ of benign windows once
-deployed in the simulator. Across the 64 \ac{RSU}s the thresholds have
+fitted on in-simulator rather than offline scores, because the
+thresholds fitted offline on the validation split fire on $3.14\%$ of
+benign in-simulator windows overall, and on up to $58\%$ at individual
+\ac{RSU}s. Across the 64 \ac{RSU}s the thresholds have
 median $0.770$ and range $0.050$--$0.979$; nine edge and corner
 \ac{RSU}s sit at the floor, where benign outputs stay near $0.012$.
-The achieved false-positive rate is $0.86\%$ on the calibration data
+The achieved false-positive rate is $0.89\%$ on the calibration data
 itself; no held-out benign run was scored. The warm-up adaptation of
 Equation~\eqref{eq:theta_adapt} is not applied on this path. The
-encoder is kept frozen for the head: an end-to-end variant that also
-fine-tunes the encoder reached a higher offline macro-MCC ($0.3142$ to
-$0.6781$ on the earlier feature set) but was not adopted, and the
-frozen head used for the ablation results reaches a held-out
-test-split macro-MCC of $0.4678$ over A1, A2 and A5--A8.
+encoder is kept frozen for the head: the encoder weights of the
+deployed model are identical to those of the trained autoencoder, and
+only the head's parameters are trained. An end-to-end variant that
+also fine-tunes the encoder was evaluated offline on an earlier feature
+set and not adopted. The frozen head reaches a held-out test-split
+macro-MCC of $0.4678$ over A1, A2 and A5--A8.
 
 \textit{High-confidence tier.} A detection is additionally marked
 high-confidence, which admits an \ac{LSTM}-only detection to BTMM
@@ -5138,10 +5138,10 @@ run. In addition, each of S5--S8 is enabled only during its own
 variant's runs, so false positives that one hidden-forwarding
 signature would raise during another variant's attack are measured in
 neither column; a deployed detector runs all signatures concurrently
-and knows neither property. An earlier revision of this work reported
-precision $1.0000$ on three of the four hidden-forwarding variants
-because a signature consulted the attack injector's assignment array
-before firing; that condition has been removed.
+and knows neither property. An earlier configuration let the hidden-forwarding
+signatures consult the attack injector's assignment array before
+firing, which makes their precision an identity rather than a
+measurement; that condition is disabled for all reported results.
 
 Every figure is stated together with the run length that produced it.
 Detection rates are not stable across run lengths in this system:
@@ -6487,7 +6487,7 @@ One-time ceremony among 64 RSUs pre-simulation
   0.95 ($N_{eff}=1/(1-\beta)=20$) \\
    \hline
  $k$ (S1 threshold multiplier) &
-  3. Measured zero-attack false-positive rate at the \ac{OBU} stage (S1 $\lor$ S2-partial) on the reported build, 3 benign seeds $\times$ 300\,s, 10\,s blocks after 30\,s warm-up: $19.17\%$, against a $1\%$ target that $k$ alone does not meet. A handoff-jitter suppression that lowers the zero-attack rate to $0.022\%$ over 5 seeds is implemented but disabled in the reported configuration \\
+  3. Measured zero-attack false-positive rate at the \ac{OBU} stage (S1 $\lor$ S2-partial) on the reported build, 3 benign seeds $\times$ 300\,s, 10\,s blocks after 30\,s warm-up: $19.17\%$, against a $1\%$ target that $k$ alone does not meet. A handoff-jitter suppression is implemented but disabled in the reported configuration, and its effect has not been measured on this build \\
 
             \hline
             Rule engine thresholds & Hop-delay $= 50$\,ms; forwarding-ratio deviation $= 20$\% \\
