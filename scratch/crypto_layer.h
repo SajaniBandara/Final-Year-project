@@ -378,6 +378,19 @@ inline double fwd_hold_remaining(uint32_t v, uint32_t fid) {
 }
 
 bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
+// Fix 2 (N3, 2026-09-13): the No-ZeroTrust NEXUS arm, as ONE self-contained
+// switch that touches only the controller architecture. When set (applied in
+// main() right after cmd.Parse()), it does exactly three things: forces
+// N_Controllers = 1, skips the distributed key-generation ceremony
+// (dkg_setup.h -- keys are still provisioned per node on demand, so signing is
+// unaffected), and gives that single controller blockchain write access by
+// clearing enable_endorsement_requirement (it commits FlowMods unilaterally
+// rather than needing f+1 RSU endorsement). It deliberately does NOT touch
+// g_disable_crypto: ML-DSA-87 signing, STARK proofs, batch verification and
+// witness alert signing all stay fully active in this arm. Distinct from
+// --disable_crypto (the No-Crypto arm), which was the only prior way to remove
+// DKG and which silenced all four of those.
+bool no_zero_trust_arm = false;
 bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
 bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
 bool enable_lstm_inference         = false; // main.tex sec:fed_lstm: live in-sim LSTM
@@ -624,6 +637,29 @@ inline bool quarantine_blocks(uint32_t node) {
     if (!enable_quarantine_enforcement) return false;
     if (node >= 268u) return false;
     return g_quarantined[node];
+}
+
+// Fix 3 (N3, 2026-09-13): "quarantine fired" vs "quarantine blocked something".
+// quarantine_blocks() above answers only whether a node is quarantined. The
+// counters below record a genuine ENFORCEMENT BLOCK: a call from one of the five
+// guard sites where quarantine actually aborted an action the node was taking.
+// g_quarantine_block_events is the raw per-site abort count;
+// g_node_action_blocked marks distinct nodes, so quarantine_blocked_node_count()
+// is comparable to the quarantined-node count and is <= it -- strictly lower
+// whenever some quarantined node never attempted an action after containment,
+// which is exactly the "not identical to it by construction" signal N3 needs.
+uint32_t g_quarantine_block_events = 0;
+bool     g_node_action_blocked[268] = {};
+inline bool quarantine_blocks_action(uint32_t node) {
+    if (!quarantine_blocks(node)) return false;
+    ++g_quarantine_block_events;
+    if (node < 268u) g_node_action_blocked[node] = true;
+    return true;
+}
+inline uint32_t quarantine_blocked_node_count() {
+    uint32_t n = 0;
+    for (int i = 0; i < 268; ++i) if (g_node_action_blocked[i]) ++n;
+    return n;
 }
 double g_ctrl_trust_score[268]  = {};
 bool   g_ctrl_revoked[268]      = {};
@@ -2611,6 +2647,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
                                                   "false hold. Criterion: smallest value where RSU.Confirm dominates timeout "
                                                   "releases (scripts/sweep_t_hold.py). Default 0.1 provisional until swept", T_HOLD);
     cmd.AddValue("enable_endorsement_requirement","AB8: require f+1 RSU FlowMod endorsement",      enable_endorsement_requirement);
+    cmd.AddValue("no_zero_trust_arm",             "N3 No-ZeroTrust arm: N_Controllers=1, skip DKG (signing stays on), controller writes unilaterally", no_zero_trust_arm);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
     cmd.AddValue("enable_lstm_inference",         "sec:fed_lstm: live in-sim LSTM inference "

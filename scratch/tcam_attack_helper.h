@@ -781,7 +781,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     // has actually stopped is no longer attempting anything, so counting it
     // would re-create the very "flag set but nothing happens" gap this fixes.
     // No-op while enable_quarantine_enforcement is off.
-    if (quarantine_blocks(node_id)) return;
+    if (quarantine_blocks_action(node_id)) return;  // Fix 3 (N3): count the aborted install
 
     // A3/A4 injection-side ground truth (2026-08-28). Latched HERE, at the top
     // of the injector, so it counts the attacker's ATTEMPT rather than the

@@ -117710,6 +117710,21 @@ void calculate_mitigation_latency_metric()
               << "  |  latency=" << 1000.0 * average_mitigation_latency << " ms"
               << " over n=" << g_lmit_scored_n << " that acted first"
               << std::endl;
+
+    // Fix 3 (N3): quarantine ENFORCEMENT summary -- distinguishes "fired" from
+    // "blocked". quarantined = distinct nodes under SC.Quarantine; blocked_nodes
+    // = distinct nodes actually denied an action at a guard site (<= quarantined,
+    // strictly lower when a quarantined node never attempted an action after
+    // containment); block_events = raw guard-site aborts.
+    {
+        uint32_t _q_nodes = 0;
+        for (int _i = 0; _i < 268; ++_i) if (g_quarantined[_i]) ++_q_nodes;
+        std::cout << "[QUARANTINE-BLOCKED] quarantined=" << _q_nodes
+                  << " blocked_nodes=" << quarantine_blocked_node_count()
+                  << " block_events=" << g_quarantine_block_events
+                  << " (enforcement=" << (enable_quarantine_enforcement ? "on" : "off") << ")"
+                  << std::endl;
+    }
 }
 
 // ============================================================
@@ -121707,6 +121722,17 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						// RSU intercepts, forwards original normally, sends MODIFIED copy to eavesdropper.
 						// The modification is simulated by flipping a content-modified flag in the log.
 						// In the real system, EdDSA would fail on the modified copy.
+						// Fix 3 (N3): record a genuine enforcement block at the active-HF
+						// guard. Reads only -- no RNG draw, no state change -- so the guard
+						// if below (and its GetBooleanWithProbability draw) stays byte-identical.
+						if (enable_quarantine_enforcement && present_active_hf_attack &&
+						    active_hf_malicious_nodes[current_hop])
+						{
+							uint32_t _qn = quarantine_blocks(current_hop) ? current_hop
+							             : quarantine_blocks(hf_gt_attribution_node(current_hop))
+							                   ? hf_gt_attribution_node(current_hop) : UINT32_MAX;
+							if (_qn != UINT32_MAX) { ++g_quarantine_block_events; if (_qn < 268u) g_node_action_blocked[_qn] = true; }
+						}
 						if (present_active_hf_attack &&
 							active_hf_malicious_nodes[current_hop] &&
 							// eq:quarantine enforcement -- a quarantined forwarder is denied
@@ -121803,6 +121829,16 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                         // Malicious RSU intercepts packet and secretly duplicates it
                         // to the eavesdropper, while forwarding the original normally.
                         // Only fires on the FIRST attempt (== 0) to avoid duplicate floods.
+                        // Fix 3 (N3): record a genuine enforcement block at the passive-HF
+                        // guard. Reads only, so the guard if below stays byte-identical.
+                        if (enable_quarantine_enforcement && present_passive_hf_attack &&
+                            passive_hf_malicious_nodes[current_hop])
+                        {
+                            uint32_t _qn = quarantine_blocks(current_hop) ? current_hop
+                                         : quarantine_blocks(hf_gt_attribution_node(current_hop))
+                                               ? hf_gt_attribution_node(current_hop) : UINT32_MAX;
+                            if (_qn != UINT32_MAX) { ++g_quarantine_block_events; if (_qn < 268u) g_node_action_blocked[_qn] = true; }
+                        }
                         if (present_passive_hf_attack &&
 							passive_hf_malicious_nodes[current_hop] &&
 							// eq:quarantine enforcement -- a quarantined forwarder is denied
@@ -121903,7 +121939,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    current_hop <  (uint32_t)(N_Vehicles + N_RSUs) &&
 						    flow_id < (uint32_t)(2 * var))
 						{
-							_q_drop = quarantine_blocks((delta_at_nodes_inst + flow_id)->source_f);
+							_q_drop = quarantine_blocks_action((delta_at_nodes_inst + flow_id)->source_f);
 							if (_q_drop)
 								std::cout << "[QUARANTINE-DROP] rsu=" << current_hop
 								          << " flow=" << flow_id
@@ -142657,6 +142693,21 @@ int main(int argc, char *argv[])
                  attack_delay_pseudo_random);
 
     cmd.Parse (argc, argv);
+
+    // Fix 2 (N3, 2026-09-13): apply the No-ZeroTrust arm once, here, so every
+    // downstream consumer (topology, DKG, blockchain commit path) sees the same
+    // state. Forces a single controller, gives it unilateral write access
+    // (endorsement requirement off), and lets dkg_setup.h skip the distributed
+    // ceremony -- without disabling crypto, so signing/STARK/witness stay live.
+    if (no_zero_trust_arm)
+    {
+        N_Controllers = 1;
+        enable_endorsement_requirement = false;
+        cout << "[N3-ARM] No-ZeroTrust: N_Controllers=1, controller write access "
+                "(endorsement requirement OFF), DKG ceremony skipped; ML-DSA-87 "
+                "signing, STARK proofs, batch verification and witness signing "
+                "remain active." << endl;
+    }
 
     // Phase 1 / D1: Must be called BEFORE any ns-3 random variable is created or used.
     // Controls GetBooleanWithProbability() and any stochastic draws in the simulation.

@@ -79,8 +79,11 @@ inline double sample_attack_injection_delay()
 // 2026-09-05 reproduces bit-identically.
 inline bool std_delay_quarantine_blocks(uint32_t injector)
 {
-    return quarantine_blocks(injector)
-        || quarantine_blocks(hf_gt_attribution_node(injector));
+    // Fix 3 (N3): count a genuine block (this guard is reached only when the
+    // injecting node was about to apply the attack, so a true here is an aborted
+    // action). Covers the four A1/A2 call sites that route through this helper.
+    if (quarantine_blocks_action(injector)) return true;
+    return quarantine_blocks_action(hf_gt_attribution_node(injector));
 }
 
 // Unified Receiver Delay Calculator

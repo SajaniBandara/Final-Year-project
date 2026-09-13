@@ -229,9 +229,13 @@ inline void declare_attackers()
     if (present_selective_delay_cp_attack == true)
     {
         // At p=100% the thesis (§3503) specifies all controllers are compromised.
-        // Below 100%, always leave at least one controller honest.
-        uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers
-                                                                 : N_Controllers - 1;
+        // Below 100%, always leave at least one controller honest -- WHEN THERE
+        // IS MORE THAN ONE. A single-controller deployment (the No-ZeroTrust N3
+        // arm) has no honest controller to preserve: that single point of
+        // failure is the arm's whole premise, so the one controller is itself
+        // compromisable. Fix 1 (N3, 2026-09-13): the old ceiling was
+        // N_Controllers-1 unconditionally, which clamped the single-controller
+        // arm to zero at every penetration below 100% and made it unattackable.
         // main.tex simulation_table: "<33%:1; 33-66%:2; >=66%:3; 100%:4" — three
         // bands only. p==0 (no attack) is the sole zero-compromise case; an
         // earlier "<10% -> step 0" band left attack_percentage in [1,10) with
@@ -242,8 +246,25 @@ inline void declare_attackers()
         else if (attack_percentage < 66)  step = 2;
         else                              step = 3;
 
-        uint32_t num_to_compromise = (step * max_compromisable) / 3;
-        if (num_to_compromise > max_compromisable) num_to_compromise = max_compromisable;
+        uint32_t num_to_compromise;
+        if (N_Controllers == 1)
+        {
+            // The single controller follows the same ladder: any nonzero step
+            // compromises it (there is only one controller, so any nonzero
+            // share of the compromisable set is that controller). This is not a
+            // new threshold -- it is the single-controller image of the same
+            // step ladder, with the clamp-to-zero removed.
+            num_to_compromise = (step >= 1) ? 1u : 0u;
+        }
+        else
+        {
+            // N_Controllers > 1: unchanged. Leaves at least one honest below
+            // 100%; reproduces the established 2-of-4 at 40% exactly.
+            uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers
+                                                                    : N_Controllers - 1;
+            num_to_compromise = (step * max_compromisable) / 3;
+            if (num_to_compromise > max_compromisable) num_to_compromise = max_compromisable;
+        }
 
         for (uint32_t c = 0; c < num_to_compromise; c++)
         {

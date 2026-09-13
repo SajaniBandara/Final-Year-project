@@ -10,6 +10,21 @@ inline void dkg_run_ceremony() {
         std::cout << "[DKG] Ceremony SKIPPED (--disable_crypto=1) -- no PQC keys generated\n";
         return;
     }
+    if (no_zero_trust_arm) {
+        // Fix 2 (N3): No-ZeroTrust arm skips the DISTRIBUTED ceremony (no
+        // commitments, no aggregated vk_zkp, no bc_commit_dkg) -- keys are
+        // centrally provisioned instead. Crucially this does NOT set
+        // g_disable_crypto, so mldsa87_sign()/verify(), stark_verify_hop() and
+        // witness alert signing all still generate their per-node keys lazily on
+        // first use and stay fully active. STARK and batch verification read no
+        // DKG product, so nothing they depend on is skipped here.
+        g_dkg.ceremony_done = true;
+        g_dkg.last_rotation = ns3::Simulator::Now().GetSeconds();
+        std::cout << "[DKG] Ceremony SKIPPED (--no_zero_trust_arm: centralized key "
+                     "provisioning, no distributed ceremony; per-node signing keys "
+                     "generated on demand)\n";
+        return;
+    }
 
     // Phase 1: Real ML-DSA-87 keypairs for all RSUs + commitments Com_j = SHA3-512(pk_j)
     for (uint32_t r = 0; r < N_RSUs; ++r) {

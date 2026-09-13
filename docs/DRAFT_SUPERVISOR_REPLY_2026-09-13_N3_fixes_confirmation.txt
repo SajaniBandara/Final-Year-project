@@ -1,0 +1,78 @@
+DRAFT - N3 prerequisite fixes: confirmation before the four-configuration sweep.
+Plain text. Send everything below the dashed line.
+------------------------------------------------------------------------------
+
+Hi,
+
+All three fixes have landed and the two confirmation runs are back on the fixed
+build. Same protocol as before: A1 at 40 percent, enforcement on, 90 s, one run
+per arm, only the controller architecture differing. Both exited rc=0. The
+results clear the checks you set. Details, with what changed in the code.
+
+Fix 1 -- single-controller arm is now attackable.
+  attack_declaration.h: the compromise ceiling was N_Controllers - 1 for any
+  penetration below 100 percent, which is 0 when there is one controller. The
+  single-controller case now follows the same step ladder with the clamp-to-zero
+  removed: any nonzero ladder step compromises the one controller (there is only
+  one, so any nonzero share of the compromisable set is that controller). The
+  N_Controllers > 1 path is byte-identical -- Full NEXUS still gives 2 of 4 at
+  40 percent. Confirmed:
+    No-ZeroTrust:  1 of 1 controllers compromised, 64 attacker RSUs  (was 0 / 0)
+    Full NEXUS:    2 of 4 controllers compromised, 32 attacker RSUs  (unchanged)
+  This same un-clamping covers both the 40 percent main comparison and the
+  p >= 33 percent controller-compromise stress test.
+
+Fix 2 -- one clean No-ZeroTrust toggle that does not silence signing.
+  New flag --no_zero_trust_arm, applied once in main() right after cmd.Parse().
+  It does exactly three things and nothing else:
+    - forces N_Controllers = 1;
+    - skips the distributed key-generation ceremony (dkg_setup.h) -- keys are
+      provisioned per node on demand instead, so this does NOT set
+      g_disable_crypto;
+    - clears enable_endorsement_requirement, so the single controller commits
+      FlowMods unilaterally (blockchain write access) rather than needing f+1
+      RSU endorsement.
+  Your acceptance test was that signing, STARK proofs, batch verification and
+  witness alert signing all stay active in this arm. They do -- confirmed from
+  the run's own crypto outputs, not from the debug prints (those are compiled
+  off):
+    No-ZeroTrust crypto_timing_log: 420,385 rows, ops present = sign, verify,
+      stark_hop, batch_verify, consensus.
+    sig_valid_rate = 0.983, stark_timing_fail = 0, stark_hop_fail = 0 (proofs
+      verifying), witness_nfa_count = 3 (witness path active).
+  So the flag conflates nothing: DKG is gone, the four crypto mechanisms remain.
+
+Fix 3 -- a counter that confirms a quarantine blocked something.
+  Added a counting helper at the five enforcement guard sites, incremented only
+  when quarantine_blocks() returns true and the guard actually aborts the action.
+  It tracks distinct nodes denied an action (blocked_nodes) and raw guard-site
+  aborts (block_events), printed at end of run alongside the quarantined-node
+  count. The two hidden-forwarding guards are recorded beside the existing if
+  without touching it, so the RNG draw order -- and the simulation -- is
+  unchanged. Confirmed:
+    Full NEXUS:    quarantined = 26, blocked_nodes = 24, block_events = 864
+    No-ZeroTrust:  quarantined = 46, blocked_nodes = 42, block_events = 1728
+  blocked_nodes is strictly lower than quarantined in both arms (24 < 26,
+  42 < 46), not identical by construction: in each arm two quarantined nodes were
+  never caught attempting an action after containment, so they count as
+  quarantined but not blocked. That is exactly the "fired vs blocked" distinction
+  N3 needs.
+
+Not fixed, as you directed -- to be logged as stated limitations in the N3
+write-up:
+  - Controller revocation still partly reads ground truth (routing.cc:117822,
+    the controller_compromised term). Same family as the S5 oracle gate from
+    round 9, not a new, unrelated problem; we will note it that way.
+  - M4's prevention counter still includes benign quarantines (it is unrelated
+    to the Fix 3 counter above, which is attacker-agnostic by design and
+    node-level).
+  - UFCR still reports the same value regardless of arm.
+  N3's three prerequisite fixes are the ones above; these three stay open and
+  documented.
+
+Build: clean optimized rebuild, -O3 confirmed on routing.cc, 39 optimized .so /
+0 debug. Both confirmation runs rc=0.
+
+The four-configuration sweep has NOT been started -- per your instruction to
+send this back first. On your go, we run it, then the placeholder note in the
+Results section is replaced with real N3 numbers.
