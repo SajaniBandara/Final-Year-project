@@ -118146,7 +118146,7 @@ void write_security_metrics_csv()
 			                   // occupancy alone (see the eq:rule_s4 DEVIATION note in tcam_detection.h).
 			                   // Kept in sync with calibrated_params.json so the code and the calibration
 			                   // record agree if S4 is ever restored to the paper's rate-based conjunct.
-			0.216667,          // tcam_util_thresh — S4 OCCUPANCY gate. Recalibrated 2026-08-08 on
+			g_tcam_util_thresh, // tcam_util_thresh — S4 OCCUPANCY gate (default 0.216667; CLI --tcam_util_thresh). Recalibrated 2026-08-08 on
 			                   // lambda_PI-fixed benign data (seeds 1-3, 120s) using the PAPER'S rule:
 			                   // benign 99th percentile (FPR <= 1% budget per signal), same method as
 			                   // S1/S3 (rule_calibrator.py Step 5). benign util p99=0.216667

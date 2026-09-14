@@ -103,9 +103,9 @@ static inline bool hmac_sha3_512(const uint8_t* key, size_t klen,
 
 // ── Tunable Parameters (all CLI-exposed) ─────────────────────────────────────
 
-double   TRUST_DELTA_R      = 0.05;
-double   TRUST_DELTA_P      = 0.10;
-double   TRUST_T_MIN        = 0.50;
+double   TRUST_DELTA_R      = 0.04;  // sensitivity-optimum 2026-09-14 (was 0.05)
+double   TRUST_DELTA_P      = 0.30;  // sensitivity-optimum 2026-09-14 (was 0.10; A2 30s avg_MCC 0.756->0.940). Delta_p>Delta_r holds.
+double   TRUST_T_MIN        = 0.70;  // sensitivity-optimum 2026-09-14 (was 0.50; A2 30s avg_MCC 0.756->0.868)
 double   TRUST_T_MIN_CTRL   = 0.50;
 double   TRUST_DELTA_R_CTRL = 0.05;
 double   TRUST_DELTA_P_CTRL = 0.10;
@@ -113,8 +113,9 @@ double   STARK_DELTA_MAX    = 0.050;
 double   ML_DSA_SIGN_DELAY  = 0.0015;
 double   T_SYNC_INTERVAL    = 1.0;
 uint32_t BATCH_SIZE         = 15;
-double   WITNESS_WINDOW     = 10.0;
+double   WITNESS_WINDOW     = 9.0;   // sensitivity-optimum 2026-09-14 (was 10.0; A7 30s avg_MCC 0.560->0.582, marginal)
 uint32_t WITNESS_F          = 1;
+double   g_tcam_util_thresh = 0.20;  // sensitivity-optimum 2026-09-14 (was 0.216667; A4 30s avg_MCC best at 0.20) // S4 TCAM occupancy gate U_thresh; CLI --tcam_util_thresh (sensitivity-swept 2026-09-14)
 double   VOL_RATE_THRESH    = 5.0;
 
 // M5 — Controller failover latency modeling (eq:sc_revoke → eq:ctrl_failover).
@@ -2603,6 +2604,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
                  TIME_REF_DELTA_ATTACK);
     cmd.AddValue("batch_size",         "Packets per batch verify cycle B",    BATCH_SIZE);
     cmd.AddValue("witness_window",     "Witness observation window W (s)",    WITNESS_WINDOW);
+    cmd.AddValue("tcam_util_thresh",   "S4 TCAM occupancy detection threshold U_thresh", g_tcam_util_thresh);
     cmd.AddValue("witness_f",          "Witness BFT parameter f",             WITNESS_F);
     cmd.AddValue("vol_rate_thresh",    "Volume rate threshold ε_vol (pkt/s)", VOL_RATE_THRESH);
     cmd.AddValue("failover_bcast_base_ms",

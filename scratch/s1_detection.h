@@ -96,7 +96,7 @@ using namespace std;
 double s1_delta0    = 0.00447305;   // s  — OLS intercept (≈4.473 ms)
 double s1_alpha_rho = 0.00011315;   // s/vehicle — density term
 double s1_alpha_v   = -0.00150238;  // s²/m — speed term
-double s1_k         = 3.0;          // sigma multiplier — k sweep: smallest k with FPR ≤ 1%
+double s1_k         = 1.0;          // sensitivity-optimum 2026-09-14 (was 3.0; A1 30s avg_MCC 0.636->0.713)          // sigma multiplier — k sweep: smallest k with FPR ≤ 1%
 
 // ── Robust variance update (2026-08-24) ─────────────────────────────────
 // sigma2 was updated on EVERY packet, attack packets included. Since

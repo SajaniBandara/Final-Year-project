@@ -1,0 +1,93 @@
+Full-system sensitivity analysis (Task 8.5) -- 2026-09-14 09:38
+OFAT, 30s/point, seed 1, Q6. Metric: MOBIGUARD final-row avg_MCC (detection) or avg_lat_ms (overhead).
+
+== s1_k  (--s1_k, A1 60%, max_mcc, default 3.0)
+   1          MCC=0.712604  DR=96.4286  FPR=4.38203  lat=29.1319  <== best
+   2          MCC=0.622021  DR=82.1429  FPR=3.86002  lat=29.1319
+   3          MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   -> optimum 1 (was 3.0, CHANGED)
+
+== s1_beta  (--s1_beta, A1 60%, max_mcc, default 0.95)
+   0.7        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.75       MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.8        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.85       MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.9        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.95       MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   -> INSENSITIVE at 30s (metric does not move); keep default 0.95
+
+== trust_t_min  (--trust_t_min, A2 60%, max_mcc, default 0.5)
+   0.3        MCC=0.741075  DR=100.0  FPR=24.2983  lat=113.946
+   0.4        MCC=0.777889  DR=100.0  FPR=19.5034  lat=107.28
+   0.5        MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   0.6        MCC=0.825443  DR=100.0  FPR=13.6882  lat=85.9251
+   0.7        MCC=0.867988  DR=100.0  FPR=10.4052  lat=70.0416  <== best
+   -> optimum 0.7 (was 0.5, CHANGED)
+
+== trust_t_min_ctrl  (--trust_t_min_ctrl, A1 60%, max_mcc, default 0.5)
+   0.3        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.4        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.5        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.6        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   0.7        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   -> INSENSITIVE at 30s (metric does not move); keep default 0.5
+
+== trust_delta_p  (--trust_delta_p, A2 60%, max_mcc, default 0.1)
+   0.05       MCC=0.766989  DR=100.0  FPR=22.0441  lat=102.323
+   0.1        MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   0.15       MCC=0.883178  DR=100.0  FPR=8.74061  lat=69.467
+   0.2        MCC=0.855407  DR=100.0  FPR=10.3721  lat=65.5038
+   0.25       MCC=0.821709  DR=100.0  FPR=13.8208  lat=60.1516
+   0.3        MCC=0.940436  DR=100.0  FPR=3.73613  lat=55.5604  <== best
+   -> optimum 0.3 (was 0.1, CHANGED)
+
+== trust_delta_r  (--trust_delta_r, A2 60%, max_mcc, default 0.05)
+   0.02       MCC=0.806414  DR=100.0  FPR=16.9875  lat=99.7634
+   0.04       MCC=0.843817  DR=100.0  FPR=12.9251  lat=104.842  <== best
+   0.06       MCC=0.797161  DR=100.0  FPR=18.0794  lat=95.2645
+   0.08       MCC=0.781502  DR=100.0  FPR=19.0696  lat=95.2236
+   0.1        MCC=0.807555  DR=100.0  FPR=16.9366  lat=106.309
+   -> optimum 0.04 (was 0.05, CHANGED)
+
+== witness_window  (--witness_window, A7 60%, max_mcc, default 10.0)
+   5          MCC=0.565481  DR=58.4249  FPR=1.40362  lat=28.4567
+   7          MCC=0.564529  DR=59.0659  FPR=1.59077  lat=28.5952
+   9          MCC=0.581902  DR=58.0586  FPR=0.733001  lat=27.3953  <== best
+   11         MCC=0.562053  DR=59.2491  FPR=1.74672  lat=27.2661
+   13         MCC=0.560422  DR=59.2491  FPR=1.8247  lat=27.2769
+   15         MCC=0.560422  DR=59.2491  FPR=1.8247  lat=27.2769
+   -> optimum 9 (was 10.0, CHANGED)
+
+== tcam_util_thresh  (--tcam_util_thresh, A4 60%, max_mcc, default 0.216667)
+   0.2        MCC=0.421892  DR=33.1669  FPR=0.0  lat=29.0421  <== best
+   0.3        MCC=0.354135  DR=25.3983  FPR=0.0  lat=29.0421
+   0.4        MCC=0.304922  DR=20.371  FPR=0.0  lat=29.1351
+   0.5        MCC=0.265388  DR=16.8362  FPR=0.0  lat=29.1456
+   0.6        MCC=0.227782  DR=13.4872  FPR=0.0  lat=29.2564
+   0.7        MCC=0.193306  DR=10.5576  FPR=0.0  lat=29.2564
+   0.8        MCC=0.167526  DR=8.68506  FPR=0.0  lat=29.2564
+   -> optimum 0.2 (was 0.216667, CHANGED)
+
+== T_hold  (--T_hold, A2 60%, max_mcc, default 0.01)
+   0.01       MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   0.02       MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   0.03       MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   0.04       MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   0.05       MCC=0.755671  DR=100.0  FPR=22.1211  lat=104.239
+   -> INSENSITIVE at 30s (metric does not move); keep default 0.01
+
+== t_sync  (--t_sync, A1 60%, min_lat, default 1.0)
+   0.5        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   1.0        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   1.5        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   2.0        MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   -> INSENSITIVE at 30s (metric does not move); keep default 1.0
+
+== batch_size  (--batch_size, A1 60%, min_lat, default 15)
+   10         MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   12         MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   14         MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   16         MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   18         MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   20         MCC=0.636263  DR=82.1429  FPR=3.70771  lat=29.1319
+   -> INSENSITIVE at 30s (metric does not move); keep default 15
