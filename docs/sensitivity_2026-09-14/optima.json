@@ -1,79 +1,131 @@
 {
   "s1_k": {
     "flag": "s1_k",
-    "default": 3.0,
-    "best_value": 1,
+    "default": 1.0,
+    "best_value": 3,
     "sensitive": true,
-    "avg_MCC": 0.712604,
-    "avg_FPR": 4.38203,
-    "avg_lat_ms": 29.1319,
-    "changed": true
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.706136,
+      "avg_DR": 100.0,
+      "avg_FPR": 7.46344,
+      "avg_lat_ms": 28.2676,
+      "t_consensus_ms_avg": 7.12827,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 12.0
+    }
   },
   "s1_beta": {
     "flag": "s1_beta",
     "default": 0.95,
-    "best_value": 0.95,
-    "sensitive": false,
-    "changed": false,
-    "note": "flat sweep (metric spread below noise floor) -- keep default"
+    "best_value": 0.7,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.701278,
+      "avg_DR": 100.0,
+      "avg_FPR": 7.5393,
+      "avg_lat_ms": 28.2676,
+      "t_consensus_ms_avg": 6.97758,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 12.0
+    }
+  },
+  "s1_delta0": {
+    "flag": "s1_delta0",
+    "default": 0.00447305,
+    "best_value": 0.004920355,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.700418,
+      "avg_DR": 100.0,
+      "avg_FPR": 7.51097,
+      "avg_lat_ms": 28.2676,
+      "t_consensus_ms_avg": 7.25051,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 12.0
+    }
+  },
+  "s1_alpha_rho": {
+    "flag": "s1_alpha_rho",
+    "default": 0.00011315,
+    "best_value": 0.00013578,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.699829,
+      "avg_DR": 100.0,
+      "avg_FPR": 7.53889,
+      "avg_lat_ms": 28.2676,
+      "t_consensus_ms_avg": 7.03642,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 12.0
+    }
+  },
+  "s1_alpha_v": {
+    "flag": "s1_alpha_v",
+    "default": -0.00150238,
+    "best_value": -0.001051666,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.699829,
+      "avg_DR": 100.0,
+      "avg_FPR": 7.53889,
+      "avg_lat_ms": 28.2676,
+      "t_consensus_ms_avg": 7.1312,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 12.0
+    }
   },
   "trust_t_min": {
     "flag": "trust_t_min",
-    "default": 0.5,
-    "best_value": 0.7,
+    "default": 0.7,
+    "best_value": 0.6,
     "sensitive": true,
-    "avg_MCC": 0.867988,
-    "avg_FPR": 10.4052,
-    "avg_lat_ms": 70.0416,
-    "changed": true
-  },
-  "trust_t_min_ctrl": {
-    "flag": "trust_t_min_ctrl",
-    "default": 0.5,
-    "best_value": 0.5,
-    "sensitive": false,
-    "changed": false,
-    "note": "flat sweep (metric spread below noise floor) -- keep default"
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.918577,
+      "avg_DR": 100.0,
+      "avg_FPR": 5.34249,
+      "avg_lat_ms": 42.1653,
+      "t_consensus_ms_avg": 7.40951,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 0.0
+    }
   },
   "trust_delta_p": {
     "flag": "trust_delta_p",
-    "default": 0.1,
+    "default": 0.3,
     "best_value": 0.3,
     "sensitive": true,
-    "avg_MCC": 0.940436,
-    "avg_FPR": 3.73613,
-    "avg_lat_ms": 55.5604,
-    "changed": true
+    "changed": false,
+    "metrics": {
+      "avg_MCC": 0.918568,
+      "avg_DR": 100.0,
+      "avg_FPR": 5.34176,
+      "avg_lat_ms": 43.0069,
+      "t_consensus_ms_avg": 7.03104,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 0.0
+    }
   },
   "trust_delta_r": {
     "flag": "trust_delta_r",
-    "default": 0.05,
+    "default": 0.04,
     "best_value": 0.04,
     "sensitive": true,
-    "avg_MCC": 0.843817,
-    "avg_FPR": 12.9251,
-    "avg_lat_ms": 104.842,
-    "changed": true
-  },
-  "witness_window": {
-    "flag": "witness_window",
-    "default": 10.0,
-    "best_value": 9,
-    "sensitive": true,
-    "avg_MCC": 0.581902,
-    "avg_FPR": 0.733001,
-    "avg_lat_ms": 27.3953,
-    "changed": true
-  },
-  "tcam_util_thresh": {
-    "flag": "tcam_util_thresh",
-    "default": 0.216667,
-    "best_value": 0.2,
-    "sensitive": true,
-    "avg_MCC": 0.421892,
-    "avg_FPR": 0.0,
-    "avg_lat_ms": 29.0421,
-    "changed": true
+    "changed": false,
+    "metrics": {
+      "avg_MCC": 0.918568,
+      "avg_DR": 100.0,
+      "avg_FPR": 5.34176,
+      "avg_lat_ms": 43.0069,
+      "t_consensus_ms_avg": 7.05059,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 0.0
+    }
   },
   "T_hold": {
     "flag": "T_hold",
@@ -81,7 +133,79 @@
     "best_value": 0.01,
     "sensitive": false,
     "changed": false,
-    "note": "flat sweep (metric spread below noise floor) -- keep default"
+    "note": "flat -- keep default"
+  },
+  "trust_t_min_ctrl": {
+    "flag": "trust_t_min_ctrl",
+    "default": 0.5,
+    "best_value": 0.5,
+    "sensitive": false,
+    "changed": false,
+    "note": "flat -- keep default"
+  },
+  "trust_delta_p_ctrl": {
+    "flag": "trust_delta_p_ctrl",
+    "default": 0.1,
+    "best_value": 0.1,
+    "sensitive": false,
+    "changed": false,
+    "note": "flat -- keep default"
+  },
+  "trust_delta_r_ctrl": {
+    "flag": "trust_delta_r_ctrl",
+    "default": 0.05,
+    "best_value": 0.05,
+    "sensitive": false,
+    "changed": false,
+    "note": "flat -- keep default"
+  },
+  "tcam_util_thresh": {
+    "flag": "tcam_util_thresh",
+    "default": 0.2,
+    "best_value": 0.2,
+    "sensitive": true,
+    "changed": false,
+    "metrics": {
+      "avg_MCC": 0.638699,
+      "avg_DR": 54.4521,
+      "avg_FPR": 0.0,
+      "avg_lat_ms": 27.4665,
+      "t_consensus_ms_avg": 823.0,
+      "o_crypto_bytes_pkt": 61.0,
+      "ctrl_failover_max_ms": 0.0
+    }
+  },
+  "witness_window": {
+    "flag": "witness_window",
+    "default": 9.0,
+    "best_value": 11,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.765299,
+      "avg_DR": 78.0725,
+      "avg_FPR": 1.06912,
+      "avg_lat_ms": 27.4036,
+      "t_consensus_ms_avg": 7.12007,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 0.0
+    }
+  },
+  "witness_f": {
+    "flag": "witness_f",
+    "default": 1,
+    "best_value": 2,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.772777,
+      "avg_DR": 77.763,
+      "avg_FPR": 0.730312,
+      "avg_lat_ms": 28.1764,
+      "t_consensus_ms_avg": 6.99027,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 0.0
+    }
   },
   "t_sync": {
     "flag": "t_sync",
@@ -89,14 +213,22 @@
     "best_value": 1.0,
     "sensitive": false,
     "changed": false,
-    "note": "flat sweep (metric spread below noise floor) -- keep default"
+    "note": "flat -- keep default"
   },
   "batch_size": {
     "flag": "batch_size",
     "default": 15,
-    "best_value": 15,
-    "sensitive": false,
-    "changed": false,
-    "note": "flat sweep (metric spread below noise floor) -- keep default"
+    "best_value": 18,
+    "sensitive": true,
+    "changed": true,
+    "metrics": {
+      "avg_MCC": 0.694686,
+      "avg_DR": 100.0,
+      "avg_FPR": 7.56504,
+      "avg_lat_ms": 28.2676,
+      "t_consensus_ms_avg": 6.44814,
+      "o_crypto_bytes_pkt": 209427.0,
+      "ctrl_failover_max_ms": 12.0
+    }
   }
 }

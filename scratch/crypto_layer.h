@@ -113,8 +113,8 @@ double   STARK_DELTA_MAX    = 0.050;
 double   ML_DSA_SIGN_DELAY  = 0.0015;
 double   T_SYNC_INTERVAL    = 1.0;
 uint32_t BATCH_SIZE         = 15;
-double   WITNESS_WINDOW     = 9.0;   // sensitivity-optimum 2026-09-14 (was 10.0; A7 30s avg_MCC 0.560->0.582, marginal)
-uint32_t WITNESS_F          = 1;
+double   WITNESS_WINDOW     = 11.0;  // sensitivity-optimum 2026-09-14: 60s A7 avg_MCC 0.722->0.765 (was 10.0; 30s gave 9)
+uint32_t WITNESS_F          = 2;    // sensitivity-optimum 2026-09-14: 60s A7 avg_MCC 0.722->0.773, FPR 2.85%->0.73% (was 1)
 double   g_tcam_util_thresh = 0.20;  // sensitivity-optimum 2026-09-14 (was 0.216667; A4 30s avg_MCC best at 0.20) // S4 TCAM occupancy gate U_thresh; CLI --tcam_util_thresh (sensitivity-swept 2026-09-14)
 double   VOL_RATE_THRESH    = 5.0;
 

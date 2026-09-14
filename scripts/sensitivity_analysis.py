@@ -1,35 +1,37 @@
 #!/usr/bin/env python3
 """
-Full-system sensitivity analysis (Task 8.5), 2026-09-14.
+Full-system sensitivity analysis (Task 8.5), 2026-09-14 (v2: 60 s, multi-metric,
+full knob set).
 
-One-factor-at-a-time (OFAT) sweep of every tunable design parameter that is
-settable at run time. For each parameter the full range is swept in equal steps
-with EVERY OTHER parameter left at its compiled default; the value giving the
-best performance is selected. One 30 s run per data point, single seed (per the
-supervisor's instruction -- no multi-seed).
+Fills the paper's promised-but-unwritten parameter sensitivity analysis. The
+settings table (main.tex Simulation settings) specifies every tunable "swept
+independently, selected for best X on the validation split"; the Ablation Study
+defers to it ("parameter sensitivity is addressed separately"). This produces the
+data for that section.
 
-Full-system config = Q6 (all detectors + crypto + witness + LSTM + BTMM on).
+Method: one-factor-at-a-time (OFAT). Each knob is swept over its full range in
+equal steps with EVERY OTHER knob at its compiled default. 60 s per run, single
+seed (30 s EWMA/warm-up + 30 s scored), full-system (Q6).
 
-PERFORMANCE METRIC. Each point is scored from the final row of its MOBIGUARD CSV
-(the simulator's own per-cycle cumulative metrics, available at 30 s -- unlike
-the M1 detector-window pipeline, which excludes the first 30 s and would leave a
-30 s run with nothing to score). Detection parameters are selected on avg_MCC
-(tie-break: lower avg_FPR); the two crypto-overhead parameters (t_sync,
-batch_size), which do not change detection, are selected on lowest avg_lat_ms.
+Metrics per point (from the MOBIGUARD final row -- available at 60 s):
+  detection : avg_MCC, avg_DR, avg_FPR            (M1)
+  mitigation: avg_mit_ms, lmit_prevention_rate    (M4)
+  attack    : avg_TVR (M2), avg_UCR (M3)
+  latency   : avg_lat_ms (M6, L_e2e)
+  overhead  : o_crypto_bytes_pkt (M7 security bytes/pkt),
+              t_consensus_ms_avg, t_batch_ms_avg, t_stark_ms_avg (M7 timing)
+  control   : ctrl_failover_max_ms (M5)
+  crypto    : sig_valid_rate ; witness: WAP_recall
 
-ATTACK PER PARAMETER. A parameter can only show sensitivity under an attack its
-detector governs, so each is swept under the variant it controls (see PARAMS).
-This mapping is the one judgement call here; change the "attack" field to
-re-target. gamma (Krum) is NOT included: it is an offline federated-aggregation
-parameter, not a run-time sim flag, so its sensitivity needs retraining per
-point, not a 30 s in-sim run.
+Selection criterion is per knob (paper's stated objective), applied to the
+collected metrics -- NOT a uniform MCC ranking. Flat sweeps keep their default.
 
-Usage:
-  python3 scripts/sensitivity_analysis.py [--workers N] [--only p1,p2] [--dry-run]
-Outputs (under docs/sensitivity_2026-09-14/):
-  raw_points.csv     one row per (parameter, value) with all metrics
-  optima.json        best value per parameter + the proposed default changes
-  summary.txt        human-readable table
+Knobs NOT swept in-sim (flagged, not run): gamma (offline Krum -- needs
+retraining), block throughput (modelled cap, no tunable), T_fwd (fixed = Delta_max).
+"block interval" == T_SYNC_INTERVAL in the code (same anchor cadence), swept as t_sync.
+
+Usage: python3 scripts/sensitivity_analysis.py [--workers N] [--only a,b] [--dry-run]
+Outputs: docs/sensitivity_2026-09-14/{raw_points.csv, optima.json, summary.txt}
 """
 import argparse
 import csv
@@ -44,9 +46,8 @@ NS3_DIR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35"
 RESULTS = os.path.join(NS3_DIR, "results_routing")
 REPO    = "/home/sdvn_hidden_attacks/ns3_g13/g13_project_repo/Final-Year-project"
 OUTDIR  = os.path.join(REPO, "docs", "sensitivity_2026-09-14")
-SEED, SIMT = 1, 30
+SEED, SIMT = 1, 60
 
-# Full-system (Q6) flags, fixed for every run.
 Q6 = ("--g_disable_s1_s2=0 --g_disable_s3_s4=0 --g_disable_s5_s6=0 --g_disable_s7_s8=0 "
       "--g_disable_ranom=0 --enable_lstm_inference=1 --enable_witness_mechanism=1 "
       "--disable_crypto=0 --g_disable_btmm_trust=0 --enable_quarantine_enforcement=1")
@@ -55,35 +56,60 @@ BASE = (f"--N_RSUs=64 --N_Vehicles=200 --N_Controllers=4 --architecture=3 --maxs
         f"--simTime={SIMT} --sim_seed={SEED} --enable_detector_windows=1 --enable_lstm_cls=1 "
         f"--training=0")
 
-# MOBIGUARD final-row 0-indexed columns (write_security_metrics_csv layout).
-COL = {"cycle": 0, "avg_PDR": 2, "avg_lat_ms": 4, "avg_MCC": 6, "avg_DR": 8,
-       "avg_FPR": 10, "avg_mit_ms": 12, "TP": 13, "FP": 14, "FN": 16, "avg_UCR": 20}
+# MOBIGUARD final-row 0-indexed columns (verified against the current header).
+COL = {"avg_MCC": 6, "avg_DR": 8, "avg_FPR": 10, "avg_lat_ms": 4, "avg_mit_ms": 12,
+       "avg_TVR": 18, "avg_UCR": 20, "sig_valid_rate": 21, "ctrl_failover_max_ms": 33,
+       "o_crypto_bytes_pkt": 36, "t_batch_ms_avg": 37, "t_consensus_ms_avg": 39,
+       "t_stark_ms_avg": 40, "WAP_recall": 45, "lmit_prevention_rate": 54}
+# metrics printed in the per-knob table (the paper/Shageeth column family)
+SHOW = ["avg_MCC", "avg_DR", "avg_FPR", "avg_lat_ms", "t_consensus_ms_avg",
+        "o_crypto_bytes_pkt", "ctrl_failover_max_ms"]
 
 
 def frange(lo, hi, step):
-    """Inclusive equal-step range, FP-drift-safe."""
     n = round((hi - lo) / step)
-    return [round(lo + i * step, 6) for i in range(n + 1)]
+    return [round(lo + i * step, 8) for i in range(n + 1)]
 
 
 def irange(lo, hi, step):
     return list(range(lo, hi + 1, step))
 
 
-# name -> flag, values (full range, equal step), attack variant it governs, %,
-# objective ('max_mcc' | 'min_lat'), compiled default (for the report).
+def pct_range(default, pcts=(-30, -20, -10, 0, 10, 20, 30)):
+    """Robustness sweep: default scaled by +/-{10,20,30}% (paper's coefficient sweep)."""
+    return [round(default * (1 + p / 100.0), 10) for p in pcts]
+
+
+# Selection objective per knob (paper's stated criterion), applied to metrics:
+#   max_mcc            : highest avg_MCC (tie: lower avg_FPR)
+#   mcc_fpr1           : highest avg_MCC among points with avg_FPR <= 1% (k, U_thresh)
+#   min_fpr_hi_dr      : Delta_r/Delta_p -- min false-quarantine (avg_FPR) at full DR
+#   min_consensus      : overhead knobs -- lowest t_consensus_ms_avg
+#   min_overhead_bytes : lowest o_crypto_bytes_pkt
 PARAMS = [
-    {"name": "s1_k",             "flag": "s1_k",             "vals": irange(1, 3, 1),            "attack": 1, "pct": 60, "obj": "max_mcc", "default": 3.0},
-    {"name": "s1_beta",          "flag": "s1_beta",          "vals": frange(0.70, 0.95, 0.05),  "attack": 1, "pct": 60, "obj": "max_mcc", "default": 0.95},
-    {"name": "trust_t_min",      "flag": "trust_t_min",      "vals": frange(0.30, 0.70, 0.10),  "attack": 2, "pct": 60, "obj": "max_mcc", "default": 0.50},
-    {"name": "trust_t_min_ctrl", "flag": "trust_t_min_ctrl", "vals": frange(0.30, 0.70, 0.10),  "attack": 1, "pct": 60, "obj": "max_mcc", "default": 0.50},
-    {"name": "trust_delta_p",    "flag": "trust_delta_p",    "vals": frange(0.05, 0.30, 0.05),  "attack": 2, "pct": 60, "obj": "max_mcc", "default": 0.10},
-    {"name": "trust_delta_r",    "flag": "trust_delta_r",    "vals": frange(0.02, 0.10, 0.02),  "attack": 2, "pct": 60, "obj": "max_mcc", "default": 0.05},
-    {"name": "witness_window",   "flag": "witness_window",   "vals": frange(5, 15, 2),          "attack": 7, "pct": 60, "obj": "max_mcc", "default": 10.0},
-    {"name": "tcam_util_thresh", "flag": "tcam_util_thresh", "vals": frange(0.20, 0.80, 0.10),  "attack": 4, "pct": 60, "obj": "max_mcc", "default": 0.216667},  # A4: S4/occupancy-detected (A3 is S3/endorsement, ignores U_thresh)
-    {"name": "T_hold",           "flag": "T_hold",           "vals": frange(0.01, 0.05, 0.01),  "attack": 2, "pct": 60, "obj": "max_mcc", "default": 0.01},
-    {"name": "t_sync",           "flag": "t_sync",           "vals": frange(0.5, 2.0, 0.5),     "attack": 1, "pct": 60, "obj": "min_lat", "default": 1.0},
-    {"name": "batch_size",       "flag": "batch_size",       "vals": irange(10, 20, 2),         "attack": 1, "pct": 60, "obj": "min_lat", "default": 15},
+    # S1 timing (A1)
+    {"name": "s1_k",             "flag": "s1_k",             "vals": irange(1, 3, 1),          "attack": 1, "pct": 60, "obj": "mcc_fpr1",    "default": 1.0,      "int": True},
+    {"name": "s1_beta",          "flag": "s1_beta",          "vals": frange(0.70, 0.95, 0.05), "attack": 1, "pct": 60, "obj": "max_mcc",     "default": 0.95},
+    {"name": "s1_delta0",        "flag": "s1_delta0",        "vals": pct_range(0.00447305),    "attack": 1, "pct": 60, "obj": "max_mcc",     "default": 0.00447305, "robust": True},
+    {"name": "s1_alpha_rho",     "flag": "s1_alpha_rho",     "vals": pct_range(0.00011315),    "attack": 1, "pct": 60, "obj": "max_mcc",     "default": 0.00011315, "robust": True},
+    {"name": "s1_alpha_v",       "flag": "s1_alpha_v",       "vals": pct_range(-0.00150238),   "attack": 1, "pct": 60, "obj": "max_mcc",     "default": -0.00150238, "robust": True},
+    # trust / enforcement (A2)
+    {"name": "trust_t_min",      "flag": "trust_t_min",      "vals": frange(0.30, 0.70, 0.10), "attack": 2, "pct": 60, "obj": "max_mcc",     "default": 0.70},
+    {"name": "trust_delta_p",    "flag": "trust_delta_p",    "vals": frange(0.05, 0.30, 0.05), "attack": 2, "pct": 60, "obj": "min_fpr_hi_dr", "default": 0.30},
+    {"name": "trust_delta_r",    "flag": "trust_delta_r",    "vals": frange(0.02, 0.10, 0.02), "attack": 2, "pct": 60, "obj": "min_fpr_hi_dr", "default": 0.04},
+    {"name": "T_hold",           "flag": "T_hold",           "vals": frange(0.01, 0.05, 0.01), "attack": 2, "pct": 60, "obj": "max_mcc",     "default": 0.01},
+    # controller trust (A1)
+    {"name": "trust_t_min_ctrl", "flag": "trust_t_min_ctrl", "vals": frange(0.30, 0.70, 0.10), "attack": 1, "pct": 60, "obj": "max_mcc",     "default": 0.50},
+    {"name": "trust_delta_p_ctrl","flag": "trust_delta_p_ctrl","vals": frange(0.05, 0.30, 0.05),"attack": 1, "pct": 60, "obj": "max_mcc",    "default": 0.10},
+    {"name": "trust_delta_r_ctrl","flag": "trust_delta_r_ctrl","vals": frange(0.02, 0.10, 0.02),"attack": 1, "pct": 60, "obj": "max_mcc",    "default": 0.05},
+    # TCAM (A4, S4-detected)
+    {"name": "tcam_util_thresh", "flag": "tcam_util_thresh", "vals": frange(0.20, 0.80, 0.10), "attack": 4, "pct": 60, "obj": "mcc_fpr1",    "default": 0.20},
+    # witness (A7)
+    {"name": "witness_window",   "flag": "witness_window",   "vals": frange(5, 15, 2),         "attack": 7, "pct": 60, "obj": "max_mcc",     "default": 9.0},
+    {"name": "witness_f",        "flag": "witness_f",        "vals": irange(1, 3, 1),          "attack": 7, "pct": 60, "obj": "max_mcc",     "default": 1, "int": True},
+    # crypto / consensus overhead (A1)
+    {"name": "t_sync",           "flag": "t_sync",           "vals": frange(0.5, 2.0, 0.5),    "attack": 1, "pct": 60, "obj": "min_consensus", "default": 1.0},
+    {"name": "batch_size",       "flag": "batch_size",       "vals": irange(10, 20, 2),        "attack": 1, "pct": 60, "obj": "min_consensus", "default": 15, "int": True},
 ]
 
 
@@ -96,8 +122,7 @@ def build_cmd(p, val, tag):
     parts = [BASE, Q6, f"--attack_number={p['attack']}", f"--attack_percentage={p['pct']}"]
     if p["attack"] in (1, 2):
         parts.append("--attack_delay_ms=80 --attack_delay_pseudo_random=0")
-    # integer-valued flags must not be passed as 1.0
-    v = int(val) if float(val).is_integer() and p["name"] in ("s1_k", "batch_size") else val
+    v = int(val) if p.get("int") else val
     parts.append(f"--{p['flag']}={v}")
     parts.append(f"--run_tag={tag}")
     return ["./waf", "--run-no-build", "scratch/routing/routing " + " ".join(parts)]
@@ -131,118 +156,103 @@ def run_point(p, idx, val, dry):
         return rec
     t0 = datetime.now()
     proc = subprocess.run(cmd, cwd=NS3_DIR, stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL, text=True, timeout=600)
+                          stderr=subprocess.DEVNULL, text=True, timeout=900)
     rec["rc"] = proc.returncode
     rec["wall_s"] = round((datetime.now() - t0).total_seconds(), 1)
-    m = parse_metrics(mobiguard_path(p["attack"], p["pct"], tag))
-    rec["metrics"] = m
+    rec["metrics"] = parse_metrics(mobiguard_path(p["attack"], p["pct"], tag))
     return rec
 
 
-def score(rec):
-    m = rec.get("metrics")
-    if not m:
-        return None
-    return m["avg_MCC"] if rec["obj"] == "max_mcc" else m["avg_lat_ms"]
+def m(r, k):
+    return (r.get("metrics") or {}).get(k)
 
-
-# A parameter is only "sensitive" if its metric actually moves across the sweep.
-# Below these floors the sweep is flat (single-seed 30s noise), so we do NOT
-# change the default off an arbitrary tie -- we keep it and mark it insensitive.
-FLAT_EPS_MCC = 0.005    # avg_MCC spread
-FLAT_EPS_LAT = 0.5      # avg_lat_ms spread (ms)
-
-def spread(recs, key):
-    vals = [r["metrics"][key] for r in recs if r.get("metrics") and r["metrics"].get(key) is not None]
-    return (max(vals) - min(vals)) if vals else 0.0
 
 def pick_best(recs):
-    scored = [r for r in recs if score(r) is not None]
-    if not scored:
+    """Return (best_rec, sensitive) using the knob's paper criterion."""
+    ok = [r for r in recs if m(r, "avg_MCC") is not None]
+    if not ok:
         return None, False
-    obj = scored[0]["obj"]
-    if obj == "max_mcc":
-        sensitive = spread(scored, "avg_MCC") >= FLAT_EPS_MCC
-        best = max(scored, key=lambda r: (r["metrics"]["avg_MCC"], -(r["metrics"]["avg_FPR"] or 0)))
-    else:
-        sensitive = spread(scored, "avg_lat_ms") >= FLAT_EPS_LAT
-        best = min(scored, key=lambda r: r["metrics"]["avg_lat_ms"])
+    obj = ok[0]["obj"]
+    prim = {"min_consensus": "t_consensus_ms_avg", "min_overhead_bytes": "o_crypto_bytes_pkt"}.get(obj, "avg_MCC")
+    vals = [m(r, prim) for r in ok if m(r, prim) is not None]
+    sensitive = (max(vals) - min(vals)) >= (0.5 if prim != "avg_MCC" else 0.005) if vals else False
+    if obj == "mcc_fpr1":
+        elig = [r for r in ok if (m(r, "avg_FPR") or 1e9) <= 1.0] or ok
+        best = max(elig, key=lambda r: m(r, "avg_MCC"))
+    elif obj == "min_fpr_hi_dr":
+        dr = max(m(r, "avg_DR") or 0 for r in ok)
+        elig = [r for r in ok if (m(r, "avg_DR") or 0) >= dr - 1e-6] or ok
+        best = min(elig, key=lambda r: (m(r, "avg_FPR") if m(r, "avg_FPR") is not None else 1e9))
+    elif obj == "min_consensus":
+        best = min(ok, key=lambda r: (m(r, "t_consensus_ms_avg") if m(r, "t_consensus_ms_avg") is not None else 1e9))
+    elif obj == "min_overhead_bytes":
+        best = min(ok, key=lambda r: (m(r, "o_crypto_bytes_pkt") if m(r, "o_crypto_bytes_pkt") is not None else 1e9))
+    else:  # max_mcc
+        best = max(ok, key=lambda r: (m(r, "avg_MCC"), -(m(r, "avg_FPR") or 0)))
     return best, sensitive
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--only", default="", help="comma-separated parameter names to run")
+    ap.add_argument("--only", default="")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     os.makedirs(OUTDIR, exist_ok=True)
     params = PARAMS if not a.only else [p for p in PARAMS if p["name"] in a.only.split(",")]
     jobs = [(p, i, v) for p in params for i, v in enumerate(p["vals"])]
-    print(f"{len(params)} parameters, {len(jobs)} points, {SIMT}s each, seed {SEED}, "
-          f"{a.workers} workers, full-system(Q6). start {datetime.now():%H:%M:%S}")
-    for p in params:
-        print(f"  {p['name']:<18} flag=--{p['flag']:<16} attack A{p['attack']} obj={p['obj']} "
-              f"vals={p['vals']}")
+    print(f"{len(params)} knobs, {len(jobs)} points, {SIMT}s, seed {SEED}, {a.workers} workers, "
+          f"Q6. start {datetime.now():%H:%M:%S}")
     if a.dry_run:
-        for p, i, v in jobs:
+        for p, i, v in jobs[:3] + jobs[-3:]:
             print(run_point(p, i, v, True)["cmd"])
         return 0
 
     recs = []
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
-        futs = {ex.submit(run_point, p, i, v, False): (p["name"], v) for p, i, v in jobs}
+        futs = [ex.submit(run_point, p, i, v, False) for p, i, v in jobs]
         for f in as_completed(futs):
             r = f.result(); recs.append(r)
-            m = r.get("metrics") or {}
-            print(f"  done {r['param']:<18}={r['value']:<9} rc={r.get('rc')} "
-                  f"MCC={m.get('avg_MCC')} FPR={m.get('avg_FPR')} lat={m.get('avg_lat_ms')} "
+            print(f"  {r['param']:<20}={r['value']:<12} rc={r.get('rc')} MCC={m(r,'avg_MCC')} "
+                  f"FPR={m(r,'avg_FPR')} cons_ms={m(r,'t_consensus_ms_avg')} bytes={m(r,'o_crypto_bytes_pkt')} "
                   f"({r.get('wall_s')}s)")
 
-    # raw points
     with open(os.path.join(OUTDIR, "raw_points.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["param", "flag", "value", "attack", "pct", "obj", "rc",
-                    "avg_MCC", "avg_DR", "avg_FPR", "avg_lat_ms", "avg_UCR", "rows", "tag"])
+        cols = ["param", "flag", "value", "attack", "obj", "rc", "wall_s"] + list(COL.keys())
+        w.writerow(cols)
         for r in sorted(recs, key=lambda x: (x["param"], x["value"])):
-            m = r.get("metrics") or {}
-            w.writerow([r["param"], r["flag"], r["value"], r["attack"], r["pct"], r["obj"],
-                        r.get("rc"), m.get("avg_MCC"), m.get("avg_DR"), m.get("avg_FPR"),
-                        m.get("avg_lat_ms"), m.get("avg_UCR"), m.get("_rows"), r["tag"]])
+            w.writerow([r["param"], r["flag"], r["value"], r["attack"], r["obj"], r.get("rc"),
+                        r.get("wall_s")] + [m(r, k) for k in COL])
 
-    # optima + summary
     optima, lines = {}, []
     lines.append(f"Full-system sensitivity analysis (Task 8.5) -- {datetime.now():%Y-%m-%d %H:%M}")
-    lines.append(f"OFAT, {SIMT}s/point, seed {SEED}, Q6. Metric: MOBIGUARD final-row avg_MCC "
-                 "(detection) or avg_lat_ms (overhead).\n")
+    lines.append(f"OFAT, {SIMT}s/point (30s warm-up + 30s scored), seed {SEED}, Q6. Multi-metric.\n")
+    lines.append("cols: MCC | DR | FPR | L_e2e(ms) | consensus(ms) | crypto(B/pkt) | failover(ms)\n")
     for p in params:
         rs = [r for r in recs if r["param"] == p["name"]]
         best, sensitive = pick_best(rs)
-        lines.append(f"== {p['name']}  (--{p['flag']}, A{p['attack']} {p['pct']}%, {p['obj']}, "
-                     f"default {p['default']})")
+        lines.append(f"== {p['name']}  (--{p['flag']}, A{p['attack']} {p['pct']}%, obj={p['obj']}, default {p['default']})")
         for r in sorted(rs, key=lambda x: x["value"]):
-            m = r.get("metrics") or {}
-            star = "  <== best" if (best and sensitive and r["tag"] == best["tag"]) else ""
-            lines.append(f"   {r['value']:<9}  MCC={m.get('avg_MCC')}  DR={m.get('avg_DR')}  "
-                         f"FPR={m.get('avg_FPR')}  lat={m.get('avg_lat_ms')}{star}")
+            star = "  <==" if (best and sensitive and r["tag"] == best["tag"]) else ""
+            lines.append("   {:<12} {} {} {} {} {} {} {}{}".format(
+                r["value"], *[m(r, k) for k in SHOW], star))
         if not best:
             lines.append("   -> no scoreable point\n"); continue
-        bm = best["metrics"]
         if not sensitive:
             optima[p["name"]] = {"flag": p["flag"], "default": p["default"], "best_value": p["default"],
-                                 "sensitive": False, "changed": False,
-                                 "note": "flat sweep (metric spread below noise floor) -- keep default"}
-            lines.append(f"   -> INSENSITIVE at 30s (metric does not move); keep default {p['default']}\n")
+                                 "sensitive": False, "changed": False, "note": "flat -- keep default"}
+            lines.append(f"   -> INSENSITIVE (metric flat); keep default {p['default']}\n")
         else:
             optima[p["name"]] = {"flag": p["flag"], "default": p["default"], "best_value": best["value"],
-                                 "sensitive": True, "avg_MCC": bm["avg_MCC"], "avg_FPR": bm["avg_FPR"],
-                                 "avg_lat_ms": bm["avg_lat_ms"], "changed": best["value"] != p["default"]}
+                                 "sensitive": True, "changed": best["value"] != p["default"],
+                                 "metrics": {k: m(best, k) for k in SHOW}}
             lines.append(f"   -> optimum {best['value']} (was {p['default']}"
                          f"{', CHANGED' if best['value'] != p['default'] else ', unchanged'})\n")
     json.dump(optima, open(os.path.join(OUTDIR, "optima.json"), "w"), indent=2)
     open(os.path.join(OUTDIR, "summary.txt"), "w").write("\n".join(lines))
-    print("\n".join(lines))
-    print(f"\nwrote {OUTDIR}/ (raw_points.csv, optima.json, summary.txt)")
+    print("\n".join(lines[:4]))
+    print(f"wrote {OUTDIR}/")
     return 0
 
 
