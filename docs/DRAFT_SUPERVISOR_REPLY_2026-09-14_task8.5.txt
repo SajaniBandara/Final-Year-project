@@ -1,6 +1,8 @@
 DRAFT - Task 8.5 (full-system sensitivity analysis) completion. Plain text.
-Send everything below the dashed line. Illustrative figure: sensitivity_trust.png
-(or the combined sensitivity_grid.png).
+Send everything below the dashed line, and attach the six per-group figures
+(sensitivity_s1_timing / _trust / _controller / _witness / _tcam / _crypto .png)
+-- together they cover all 17 knobs and are legible. The combined
+sensitivity_grid.png is an optional one-file overview but its panels are small.
 ------------------------------------------------------------------------------
 
 Hi,
