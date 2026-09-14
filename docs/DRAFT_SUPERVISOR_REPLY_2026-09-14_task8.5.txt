@@ -1,0 +1,66 @@
+DRAFT - Task 8.5 (full-system sensitivity analysis) completion. Plain text.
+Send everything below the dashed line. Illustrative figure: sensitivity_trust.png
+(or the combined sensitivity_grid.png).
+------------------------------------------------------------------------------
+
+Hi,
+
+Task 8.5 -- the full-system parameter sensitivity analysis -- is done, automated
+in one script.
+
+Method. One-factor-at-a-time: every run-time tunable knob is swept over its full
+range in equal steps with all others at their default. 60 s per point (30 s
+warm-up + 30 s scored, so the metrics are real), single seed, full-system (Q6),
+each knob under the attack its detector governs. 17 knobs, 93 points, all rc=0.
+
+Selection follows the paper's stated per-knob criterion, not a uniform MCC rank:
+k and U_thresh -> best MCC at FPR <= 1%; trust deltas -> minimum false-quarantine
+at full detection; overhead knobs -> minimum consensus latency. Each point records
+the full metric family (MCC / DR / FPR, L_e2e, consensus ms, security bytes/pkt,
+failover ms), matching the multi-metric template.
+
+Selected values, now set as the simulation defaults:
+  S1 timing (A1):
+    k = 3            (avg_MCC monotone, k=3 best)
+    beta, delta_0, alpha_rho, alpha_v -> kept at fitted values. These are the
+    OLS-fitted mobility coefficients; the +/-{10,20,30}% sweep is a ROBUSTNESS
+    check (MCC holds ~0.65-0.70 across the range), not a re-fit, so they are not
+    re-tuned.
+  Trust / enforcement (A2):
+    T_min = 0.70, Delta_p = 0.30, Delta_r = 0.04   (avg_MCC 0.76 -> 0.92)
+  Witness (A7):
+    W = 11 s, f = 2                                 (avg_MCC 0.72 -> 0.77, FPR 2.85% -> 0.73%)
+  TCAM (A4):
+    U_thresh = 0.20                                 (clear monotone; DR falls as U_thresh rises)
+  Held at default (flat, or within single-seed noise):
+    T_hold, controller-trust params (T_min_ctrl, Delta_p/r_ctrl), t_sync, batch_size
+
+Two things stated plainly:
+  1. Single seed. A few picks (beta, the delta_0/alpha coefficients, batch_size,
+     and 0.6-vs-0.7 on T_min) sit within run-to-run noise. We held those at
+     default rather than change a calibrated value on noise. A multi-seed
+     confirmation of the applied changes (k, W, f, and the trust thresholds) is
+     the sound check before the paper quotes them -- happy to run it.
+  2. The FPR <= 1% target is not met at this config (S1 ~ 7.5%), because the S1
+     handoff-jitter suppression is off in the reported build. So k falls back to
+     best MCC. Enabling that suppression is the route to the <= 1% target.
+
+Not swept, with reason:
+  - gamma (Krum outlier threshold): an offline federated-aggregation parameter --
+    its sensitivity needs a retraining sweep, not an in-sim run. Can be done
+    separately.
+  - block throughput (<= 50 tx/block): a modelled cap, no run-time tunable.
+  - T_fwd: fixed at Delta_max (50 ms), not a swept knob.
+  - "block interval" is T_sync in the code (same anchor cadence), swept as t_sync.
+
+Deliverables (committed on A30): docs/sensitivity_2026-09-14/ --
+  raw_points.csv   93 points x the full metric set
+  summary.txt      per-knob multi-metric tables with the selected value
+  optima.json      selected values + which were changed vs held
+  sensitivity_<group>.png  one figure per knob group (S1 timing, trust,
+                   controller, witness, TCAM, crypto/consensus), knob x metric,
+                   optimum marked
+  sensitivity_grid.png     combined overview
+
+Next: we will write the paper's Sensitivity Analysis subsection from this data and
+fill the settings-table [tbd] entries with the selected values.
