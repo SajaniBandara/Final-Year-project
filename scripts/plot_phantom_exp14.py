@@ -9,6 +9,22 @@ import matplotlib.pyplot as plt
 D = Path(__file__).resolve().parent.parent / "docs/phantom_exp23"
 
 
+def sfto_line(exp):
+    """SFTO-Guard S3/S4 mean MCC per swept point, from sfto_sweep.csv."""
+    p = D / "sfto_sweep.csv"
+    if not p.is_file():
+        return [], []
+    rows = [r for r in csv.DictReader(open(p)) if int(r["exp"]) == exp]
+    pts = sorted({float(r["point"]) for r in rows})
+    xs, ys = [], []
+    for pt in pts:
+        vals = [float(r["SFTO_MCC"]) for r in rows
+                if float(r["point"]) == pt and r["SFTO_MCC"] not in ("", "None")]
+        if vals:
+            xs.append(pt); ys.append(sum(vals) / len(vals))
+    return xs, ys
+
+
 def load(path):
     rows = list(csv.DictReader(open(path)))
     def num(v):
@@ -36,7 +52,10 @@ def plot_exp1():
     if tap:
         ax[0].plot([float(r["pen"]) for r in tap], [r["MCC"] for r in tap], "s--",
                    color="grey", lw=1.2, label="TAP (S1, 100ms)")
-    ax[0].set_xlabel("attack penetration (%)"); ax[0].set_ylabel("macro MCC (M1)")
+    sx, sy = sfto_line(1)
+    if sx:
+        ax[0].plot(sx, sy, "^--", color="#d35400", lw=1.3, label="SFTO-Guard (S3/S4)")
+    ax[0].set_xlabel("attack penetration (%)"); ax[0].set_ylabel("MCC (M1)")
     ax[0].set_title("(a) Detection vs penetration & intensity"); ax[0].grid(alpha=.3); ax[0].legend(fontsize=8)
     # (b) macro FPR vs penetration per intensity
     for I in (55, 100, 200):
@@ -69,6 +88,11 @@ def plot_exp4():
     if tap:
         ax.plot([aoei[float(r["ratio"])] for r in tap], [r["MCC"] for r in tap],
                 "s--", color="grey", lw=1.2, label="TAP S2")
+    # SFTO-Guard operates on S3/S4 (TCAM), invariant to timing selectivity -> flat reference
+    sx, sy = sfto_line(3)
+    if sy:
+        lvl = sy[-1]  # default N=200 S3/S4 mean
+        ax.axhline(lvl, color="#d35400", ls="--", lw=1.2, label="SFTO-Guard (S3/S4, invariant)")
     ax.set_xlabel("attack observable evidence index (AOEI)"); ax.set_ylabel("MCC (M1)")
     ax.set_title("PHANTOM Exp 4 — Detection vs observable evidence\n[N=200, 40%, seed 1, 60s]")
     ax.grid(alpha=.3); ax.legend(fontsize=8)

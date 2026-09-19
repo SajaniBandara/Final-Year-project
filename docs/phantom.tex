@@ -1335,8 +1335,9 @@ $4\Delta_{max}$, for Signatures S1 through S4 only.
 	\caption{Detection Quality Under Varying Penetration and Intensity.
 	(a) macro MCC and (b) macro false positive rate versus attack penetration,
 	one line per timing intensity ($1.1/2/4\,\Delta_{max}$), PHANTOM against the
-	TAP baseline. Detection degrades gracefully with penetration and stays well
-	above TAP throughout.}
+	TAP baseline (timing, S1/S2) and SFTO-Guard (flow-table, S3/S4); FADE is not
+	applicable. Detection degrades gracefully with penetration and stays well
+	above TAP, while SFTO-Guard covers only the S3/S4 variants.}
 	\label{fig:exp1_mcc}
 \end{figure}
 At the lowest intensity, $1.1\Delta_{max}$, the injected delay sits close to
@@ -1362,7 +1363,11 @@ every penetration), so the low intensity ``hardest'' effect is not resolvable
 at one seed and is not claimed. At $p{=}40\%$ and intensity $2\Delta_{max}$,
 PHANTOM's macro MCC is $0.71$ against $0.37$ for the strongest baseline (TAP on
 S2); the gap widens on the flow table variants, which TAP cannot observe at
-all. Results are single seed, $N_v{=}200$, $60$s per point.
+all. SFTO-Guard, conversely, is strong precisely there --- its S3/S4 MCC holds
+$0.93$--$1.00$ across penetration (falling only at the sparsest point,
+$p{=}20\%$ S3, for want of attack samples) --- but is inapplicable to the S1/S2
+timing variants, so neither baseline covers both attack families the way PHANTOM
+does. Results are single seed, $N_v{=}200$, $60$s per point.
 
 \subsection{Experiment 2: Detection Across Vehicular Speed}
 \label{sec:exp2}
@@ -1381,8 +1386,10 @@ answer it cannot yet support.
 	\includegraphics[width=0.95\linewidth]{exp2_speed.png}
 	\caption{Detection Quality Across Vehicular Speed. (a) macro MCC and (b)
 	false positive rate versus mean vehicle speed cap, PHANTOM (S1--S4) against
-	the TAP baseline. The false positive rate is flat across speed, confirming
-	the mobility adjusted threshold tightens correctly with speed.}
+	the TAP baseline (S1/S2) and SFTO-Guard (S3/S4, shown as a flat reference as
+	its flow-table detection is speed-invariant). The false positive rate is flat
+	across speed, confirming the mobility adjusted threshold tightens correctly
+	with speed.}
 	\label{fig:exp2_speed}
 \end{figure}
 If the baseline genuinely falls with speed as originally intended, false
@@ -1427,8 +1434,9 @@ unit locality argument tested here.
 	\includegraphics[width=0.95\linewidth]{exp3_scale.png}
 	\caption{Scalability of Detection Quality and Latency. (a) macro MCC and
 	(b) end-to-end latency versus vehicle count, PHANTOM (S1--S4) against the
-	TAP baseline, with the $100$\,ms safety bound marked. Detection quality
-	holds as scale grows; per-Signature overhead latency stays within bound
+	TAP baseline (S1/S2) and SFTO-Guard (S3/S4), with the $100$\,ms safety bound
+	marked. Detection quality holds as scale grows for both PHANTOM and
+	SFTO-Guard's own variants; per-Signature overhead latency stays within bound
 	(the S2 curve carries the attacker's injected delay, not framework overhead).}
 	\label{fig:exp3_scale}
 \end{figure}
@@ -1461,7 +1469,9 @@ $\{10\%, 25\%, 75\%, 100\%\}$ of high priority packets.
 	\includegraphics[width=0.72\linewidth]{exp4_aoei.png}
 	\caption{Detection Quality Under Decreasing Observable Evidence. Macro and
 	per-timing-Signature MCC versus AOEI (targeting ratio), PHANTOM against the
-	TAP baseline. Detection degrades only modestly as targeting thins.}
+	TAP baseline (S2) and SFTO-Guard (S3/S4, flat reference --- selectivity is a
+	timing property that does not affect its flow-table detection). Detection
+	degrades only modestly as targeting thins.}
 	\label{fig:exp4_aoei}
 \end{figure}
 As the targeting ratio falls, fewer packets at a given roadside unit carry

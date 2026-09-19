@@ -16,6 +16,22 @@ import matplotlib.pyplot as plt
 D = Path(__file__).resolve().parent.parent / "docs/phantom_exp23"
 
 
+def sfto_line(exp):
+    """SFTO-Guard S3/S4 mean MCC per swept point, from sfto_sweep.csv."""
+    p = D / "sfto_sweep.csv"
+    if not p.is_file():
+        return [], []
+    rows = [r for r in csv.DictReader(open(p)) if int(r["exp"]) == exp]
+    pts = sorted({float(r["point"]) for r in rows})
+    xs, ys = [], []
+    for pt in pts:
+        vals = [float(r["SFTO_MCC"]) for r in rows
+                if float(r["point"]) == pt and r["SFTO_MCC"] not in ("", "None")]
+        if vals:
+            xs.append(pt); ys.append(sum(vals) / len(vals))
+    return xs, ys
+
+
 def load(path, key):
     rows = list(csv.DictReader(open(path)))
     def num(v):
@@ -43,6 +59,9 @@ def plot_exp2():
     for a, c in ((1, "#c0392b"), (2, "#e67e22")):
         xt, yt = series(rows, "speed", "TAP", a, "MCC")
         if xt: ax[0].plot(xt, yt, "s--", color=c, lw=1.4, label=f"TAP (S{a})")
+    sx, sy = sfto_line(3)  # SFTO S3/S4 is speed-invariant -> flat reference at default level
+    if sy:
+        ax[0].axhline(sy[-1], color="#d35400", ls="--", lw=1.2, label="SFTO-Guard (S3/S4, invariant)")
     ax[0].set_xlabel("mean vehicle speed cap (km/h)"); ax[0].set_ylabel("MCC (M1)")
     ax[0].set_title("(a) Detection quality vs speed"); ax[0].grid(alpha=.3); ax[0].legend(fontsize=8)
     # (b) FPR vs speed — the alpha_v-sign question
@@ -69,6 +88,8 @@ def plot_exp3():
     for a, c in ((1, "#c0392b"), (2, "#e67e22")):
         xt, yt = series(rows, "nveh", "TAP", a, "MCC")
         if xt: ax[0].plot(xt, yt, "s--", color=c, lw=1.4, label=f"TAP (S{a})")
+    sx, sy = sfto_line(3)
+    if sx: ax[0].plot(sx, sy, "^--", color="#d35400", lw=1.3, label="SFTO-Guard (S3/S4)")
     ax[0].set_xlabel("vehicles (N)"); ax[0].set_ylabel("MCC (M1)")
     ax[0].set_title("(a) Detection quality vs scale"); ax[0].grid(alpha=.3); ax[0].legend(fontsize=8)
     # (b) e2e latency vs N (PHANTOM, per-attack avg_lat_ms; use S1 as representative + macro mean)
