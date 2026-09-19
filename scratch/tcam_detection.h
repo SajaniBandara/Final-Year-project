@@ -9,10 +9,10 @@
 
 // Definitions live in tcam_attack_helper.h (g_tcam_rule_count, g_tcam_table)
 // and routing.cc (g_slowpath_hit_count — added in Task 2).
-extern int                    g_tcam_rule_count[300];
+extern int                    g_tcam_rule_count[total_size];
 extern std::vector<TcamEntry> g_tcam_table;
-extern int                    g_slowpath_hit_count[300];
-extern int                    g_packetin_count[300];   // PACKET_IN (table-miss) rate source for S4 λ_PI
+extern int                    g_slowpath_hit_count[total_size];
+extern int                    g_packetin_count[total_size];   // PACKET_IN (table-miss) rate source for S4 λ_PI
 // Issue 6 fix (2026-08-02): per-(RSU, source vehicle) companion to
 // g_packetin_count -- see its declaration in routing.cc. Consumed below by
 // s4_attribute_attacker() to compute v_atk = argmax_v λ_PI(v,r,t)
@@ -51,8 +51,8 @@ inline uint32_t s4_attribute_attacker(uint32_t rsu_node_id)
 // reset). S3 windows over (new + reinstall) — a slow-TCAM attacker refreshes
 // rules to keep them alive, which registers as reinstalls, so new-only is blind
 // to the attack's persistence mechanic.
-extern uint64_t g_lambda_new_cum[300];
-extern uint64_t g_lambda_reinstall_cum[300];
+extern uint64_t g_lambda_new_cum[total_size];
+extern uint64_t g_lambda_reinstall_cum[total_size];
 
 // ── Empirical E[λ_l | ρ] (installs/s) ──────────────────────────────────────────
 // eq:density_normalized_rate — E[λ_l|ρ] estimated from RSU vehicle density.
@@ -88,7 +88,7 @@ inline double EmpiricalExpectedLambdaL(double rho)
 // S3_LAMBDA_WINDOW_S is a tunable parameter left for later calibration.
 static const uint32_t S3_LAMBDA_WINDOW_S = 10;   // sliding-window length (s)
 static const uint32_t S3_HIST_MAX        = 128;  // ring capacity (>= window)
-static uint64_t g_s3_cum_hist[300][S3_HIST_MAX] = {{0}}; // per-node cum(new+reinstall) history
+static uint64_t g_s3_cum_hist[total_size][S3_HIST_MAX] = {{0}}; // per-node cum(new+reinstall) history
 static uint32_t g_s3_hist_count = 0;             // cycles recorded so far (shared clock)
 static bool     g_tcam_dbg_trace = true;         // print per-RSU (ρ,E,λ) validation tuples
 
@@ -99,8 +99,8 @@ static bool     g_tcam_dbg_trace = true;         // print per-RSU (ρ,E,λ) vali
 // already the definitive detector there, so the LSTM's contribution to D_RSU
 // is suppressed for that RSU this cycle to avoid stacking a structurally
 // noisy signal (residual TCAM occupancy) on top of an already-covered event.
-static bool g_tcam_flag_s3_last[300] = {false};
-static bool g_tcam_flag_s4_last[300] = {false};
+static bool g_tcam_flag_s3_last[total_size] = {false};
+static bool g_tcam_flag_s4_last[total_size] = {false};
 
 // ── Structs ───────────────────────────────────────────────────────────────────
 
@@ -129,9 +129,9 @@ struct TcamCycleMetrics {
 
 // ── Persistent per-cycle state ────────────────────────────────────────────────
 
-static int g_prev_rule_count[300]    = {0};
-static int g_prev_slowpath_hits[300] = {0};
-static int g_prev_packetin[300]      = {0};   // baseline for the per-cycle λ_PI delta
+static int g_prev_rule_count[total_size]    = {0};
+static int g_prev_slowpath_hits[total_size] = {0};
+static int g_prev_packetin[total_size]      = {0};   // baseline for the per-cycle λ_PI delta
 
 // ── Detection logic ───────────────────────────────────────────────────────────
 

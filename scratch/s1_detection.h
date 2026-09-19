@@ -466,7 +466,7 @@ inline double s1_sample_handoff_jitter()
 // S1 fires at RSU r_k; read once per cycle by ufcr_attempt_unauthorized_flowmod()
 // (routing.cc) to build E_delay(c_i,t) for each controller, then cleared.
 // Sized like rsu_controller_assignment[] (attack_variables.h:118).
-bool g_s1_rsu_fired[300] = {};
+bool g_s1_rsu_fired[total_size] = {};
 
 inline bool s1_detect_packet(uint32_t rsu_idx,
                               uint32_t vehicle_id,

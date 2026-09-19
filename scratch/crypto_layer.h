@@ -325,8 +325,8 @@ bool   enable_local_quarantine     = false;
 // with nothing in the logs saying so), which is the exact failure the
 // mechanism exists to prevent.
 double T_HOLD                      = 0.01;
-double g_fwd_hold_until[268]       = {};          // 0.0 = not held
-uint32_t g_fwd_hold_flow[268]      = {};          // flagged flow id
+double g_fwd_hold_until[total_size]       = {};          // 0.0 = not held
+uint32_t g_fwd_hold_flow[total_size]      = {};          // flagged flow id
 uint32_t g_fwd_hold_events         = 0;           // HOLD_FORWARD invocations
 uint32_t g_fwd_suspended_pkts      = 0;           // packets actually deferred
 double   g_fwd_suspended_time_sum  = 0.0;         // total deferral applied (s)
@@ -492,7 +492,7 @@ struct NodeKeyMaterial {
     bool     keys_generated = false;
     uint32_t node_id        = UINT32_MAX;
 };
-NodeKeyMaterial g_node_keys[268]; // sized to total_size
+NodeKeyMaterial g_node_keys[total_size]; // sized to total_size
 
 struct PacketCryptoMeta {
     uint8_t  sig[OQS_SIG_ml_dsa_87_length_signature];
@@ -625,9 +625,9 @@ struct WitnessAlert {
 };
 
 
-double g_trust_score[268]       = {};
-double g_trust_last_update[268] = {};
-bool   g_quarantined[268]       = {};
+double g_trust_score[total_size]       = {};
+double g_trust_last_update[total_size] = {};
+bool   g_quarantined[total_size]       = {};
 
 // True when `node` must be denied a data-path action because it is under
 // SC.Quarantine. Returns false unconditionally while enforcement is disabled,
@@ -650,7 +650,7 @@ inline bool quarantine_blocks(uint32_t node) {
 // whenever some quarantined node never attempted an action after containment,
 // which is exactly the "not identical to it by construction" signal N3 needs.
 uint32_t g_quarantine_block_events = 0;
-bool     g_node_action_blocked[268] = {};
+bool     g_node_action_blocked[total_size] = {};
 inline bool quarantine_blocks_action(uint32_t node) {
     if (!quarantine_blocks(node)) return false;
     ++g_quarantine_block_events;
@@ -662,8 +662,8 @@ inline uint32_t quarantine_blocked_node_count() {
     for (int i = 0; i < 268; ++i) if (g_node_action_blocked[i]) ++n;
     return n;
 }
-double g_ctrl_trust_score[268]  = {};
-bool   g_ctrl_revoked[268]      = {};
+double g_ctrl_trust_score[total_size]  = {};
+bool   g_ctrl_revoked[total_size]      = {};
 
 // M5 — eq:l_failover instrumentation state
 double   g_failover_max_ms     = 0.0; // max_k(t_reassign^(k) − t_revoke), most recent revocation event

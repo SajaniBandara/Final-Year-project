@@ -104,15 +104,20 @@ bool single_cycle = false;
 // Each RSU is dynamically assigned to its nearest controller (proposal eq. c*(k,t)).
 uint32_t N_Controllers = 4;
 
-// RSU-to-controller assignment table: rsu_controller_assignment[i] = index of
-// the controller node in controller_Node that RSU i is assigned to.
-// Populated in main() once RSU positions are known.
-uint32_t rsu_controller_assignment[300]; // sized >= N_RSUs (max 300)
-
-const int total_size = 268; // must be >= N_Vehicles + N_RSUs + N_Controllers.
+const int total_size = 468; // must be >= N_Vehicles + N_RSUs + N_Controllers.
                              // 100 was sufficient for the original defaults (N_Vehicles=80,
                              // N_RSUs=20 -> 100), but the 200-vehicle/64-RSU SUMO scenario
-                             // needs 200+64+4=268; 300 gives headroom.
+                             // needs 200+64+4=268. Raised to 468 (2026-09-19) for the PHANTOM
+                             // Exp 3 scalability sweep N_Vehicles in {100,200,300,400}:
+                             // 400+64+4=468. All per-node arrays that previously hardcoded
+                             // 300/268 were switched to total_size the same day (they index by
+                             // node id, which reaches N_Vehicles+N_RSUs+N_Controllers-1).
+
+// RSU-to-controller assignment table: rsu_controller_assignment[i] = index of
+// the controller node in controller_Node that RSU i is assigned to. Indexed by
+// node id (reaches N_Vehicles at line ~119057), so it is sized to total_size.
+// Populated in main() once RSU positions are known.
+uint32_t rsu_controller_assignment[total_size];
 uint32_t N_RSUs = 64;
 uint32_t N_Vehicles = 200;
 
@@ -121422,9 +121427,9 @@ void tcam_hit(uint32_t node_id, uint32_t fid, uint32_t pkt_bytes);
 // g_tcam_rule_count is defined in tcam_attack_helper.h (included after this
 // function). The extern declaration lets check_delivery_and_retransmit read
 // it without moving the include.
-extern int g_tcam_rule_count[300];
-int g_slowpath_hit_count[300] = {0}; // satisfies the extern in lstm_logger.h
-int g_packetin_count[300] = {0}; // satisfies the extern in tcam_detection.h (PACKET_IN/table-miss rate source for S4 λ_PI)
+extern int g_tcam_rule_count[total_size];
+int g_slowpath_hit_count[total_size] = {0}; // satisfies the extern in lstm_logger.h
+int g_packetin_count[total_size] = {0}; // satisfies the extern in tcam_detection.h (PACKET_IN/table-miss rate source for S4 λ_PI)
 // Issue 6 fix (2026-08-02): per-(RSU, source vehicle) PACKET_IN counts,
 // cumulative -- [rsu_node_id][src_vehicle_node_id] -> count. g_packetin_count
 // above only tracks the RSU-level total, which cannot support the paper's
@@ -142685,6 +142690,14 @@ int main(int argc, char *argv[])
                  "Attack delay anchor in ms for both CP and DP attacks (default 100ms "
                  "= 2x Delta_max; see attack_delay_pseudo_random for band vs. exact use)",
                  attack_delay_ms);
+    // Experiment 4 (attack observable evidence): fraction of eligible
+    // HIGH-priority packets the selective-delay attacker targets. Default 1.0
+    // (every safety-critical packet, AOEI=1.0). AOEI {0.25,0.5,0.75,1.0} maps to
+    // {0.10,0.25,0.75,1.00}. See selective_time_delay.h selective_packet_targeted().
+    cmd.AddValue("selective_target_ratio",
+                 "Fraction (0..1) of HIGH-priority packets the selective-delay attack "
+                 "targets; 1.0=all (default), <1.0 subsamples deterministically per packet",
+                 g_selective_target_ratio);
     cmd.AddValue("attack_delay_pseudo_random",
                  "Draw each packet's attack delay from a +/-10% band around "
                  "attack_delay_ms (default true). Set false for standalone/"
@@ -143248,6 +143261,16 @@ int main(int argc, char *argv[])
 	  		break;
 	  	case (60):
 	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_60.tcl";
+	  		break;
+	  	case (100):
+	  		// PHANTOM Exp 2 (speed sweep), generated 2026-09-19 from
+	  		// sumo_sim/2026-06-17-06-41-46 (same net/config/trips as the
+	  		// {10,60,150} traces, maxSpeed=27.778 m/s).
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_100.tcl";
+	  		break;
+	  	case (140):
+	  		// PHANTOM Exp 2 (speed sweep), generated 2026-09-19 (maxSpeed=38.888 m/s).
+	  		trace_file = "/home/sdvn_hidden_attacks/ns3_g13/mobility/mobility_urban_140.tcl";
 	  		break;
 	  	case (150):
 	  		// Issue 4 fix (2026-08-02): previously a single fixed trace file

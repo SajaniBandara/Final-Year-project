@@ -111,12 +111,12 @@ std::set<std::pair<uint32_t,uint32_t>> g_tcam_installed; // (flow_id, node_id) d
 // Per-node installed rule count — updated by tcam_install() and
 // tcam_install_malicious().  Declared here so routing.cc can forward-declare
 // it with `extern` before check_delivery_and_retransmit is defined.
-int g_tcam_rule_count[300] = {0}; // indexed by node_id, sized >= total_size
+int g_tcam_rule_count[total_size] = {0}; // indexed by node_id, sized >= total_size
 
 // Per-node cumulative TABLE_FULL rejection count -- an install attempt that
 // found g_tcam_rule_count[node_id] >= TCAM_CAPACITY and was refused. Mirrors
 // g_tcam_rule_count's indexing/lifetime.
-int g_tcam_reject_count[300] = {0};
+int g_tcam_reject_count[total_size] = {0};
 
 // Per-node cumulative PACKET_IN (table-miss) count -- the S4 λ_PI signal
 // (eq:sig_s4). A PACKET_IN fires on every table MISS: (a) each new rule install
@@ -129,7 +129,7 @@ int g_tcam_reject_count[300] = {0};
 // therefore zero until exhaustion. S4's lambda_pi is derived from THIS counter.
 // DEFINED in routing.cc (alongside g_slowpath_hit_count); externed here so the
 // install/malicious-install paths below can increment it.
-extern int g_packetin_count[300];
+extern int g_packetin_count[total_size];
 // Issue 6 fix (2026-08-02): per-(RSU, source vehicle) companion to
 // g_packetin_count above -- see its declaration in routing.cc.
 extern std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
@@ -144,17 +144,17 @@ extern std::map<uint32_t, std::map<uint32_t, uint32_t>> g_packetin_by_source;
 //   g_lambda_reinstall = re-installs after a prior eviction of the SAME key (churn)
 // A key is classed as "reinstall" iff it has been evicted at least once before
 // (tracked in g_tcam_ever_evicted). Nothing here alters install/evict behaviour.
-uint32_t g_lambda_new[300]       = {0};
-uint32_t g_lambda_evict[300]     = {0};
-uint32_t g_lambda_reinstall[300] = {0};
+uint32_t g_lambda_new[total_size]       = {0};
+uint32_t g_lambda_evict[total_size]     = {0};
+uint32_t g_lambda_reinstall[total_size] = {0};
 std::set<std::pair<uint32_t,uint32_t>> g_tcam_ever_evicted; // (flow_id,node_id) evicted >=1x
 
 // Monotone cumulative install counters (NEVER reset — the per-cycle arrays above
 // are zeroed each snapshot). The S3 windowed rate estimator reads these to form a
 // sliding-window install count (new + reinstall) without depending on snapshot
 // phase. lambda_obs for S3 = (new_cum + reinstall_cum) delta over the window.
-uint64_t g_lambda_new_cum[300]       = {0};
-uint64_t g_lambda_reinstall_cum[300] = {0};
+uint64_t g_lambda_new_cum[total_size]       = {0};
+uint64_t g_lambda_reinstall_cum[total_size] = {0};
 
 // Returns the first non-loopback IPv4 address of a node given its sim index (0-based).
 // NodeList IDs in this simulation are offset by 2 (management + controller nodes occupy 0,1).

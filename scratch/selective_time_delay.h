@@ -11,6 +11,26 @@ using namespace std;
 extern std::string attack_tag();
 extern bool GetBooleanWithProbability(double probabilityPercent, int nodeID);
 
+// P4 / Experiment 4 (attack observable evidence): the fraction of eligible
+// HIGH-priority (safety-critical) packets the selective-delay attacker actually
+// targets. Default 1.0 = every safety-critical packet (original behaviour,
+// AOEI=1.0). Set < 1.0 to subsample; the paper's AOEI {0.25,0.5,0.75,1.0} maps
+// to targeting ratios {0.10,0.25,0.75,1.00}. Targeting is a deterministic
+// function of (flow_id, packet_id) so the SAME packets are hit across arms and
+// seeds -- a clean A/B knob with no coupling to the ns-3 RNG stream.
+// CLI: --selective_target_ratio  (see routing.cc cmd.AddValue).
+inline double g_selective_target_ratio = 1.0;
+
+inline bool selective_packet_targeted(uint32_t flow_id, uint32_t packet_id)
+{
+    if (g_selective_target_ratio >= 1.0) return true;
+    if (g_selective_target_ratio <= 0.0) return false;
+    uint64_t h = (uint64_t)flow_id * 2654435761ull + (uint64_t)packet_id * 40503ull + 0x9E3779B9ull;
+    h ^= h >> 13; h *= 0x9E3779B97F4A7C15ull; h ^= h >> 16;
+    double u = (double)(h & 0xFFFFFFull) / (double)0x1000000ull;   // uniform in [0,1)
+    return u < g_selective_target_ratio;
+}
+
 // sample_attack_injection_delay() (mobility amplification fix §4.3):
 // Returns the per-packet attack delay in seconds. In the default banded
 // mode (attack_delay_pseudo_random=true, attack_variables.h), draws from a
@@ -110,7 +130,7 @@ inline double calculate_unified_selective_delay(
     // Guard: is_safety_critical enforces Signature S2 / Equation 3.5 conjunction
     // "Priority(p) = HIGH" — best-effort packets are passed through immediately.
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
-        && is_safety_critical)
+        && is_safety_critical && selective_packet_targeted(flow_id, packet_id))
     {
         // eq:quarantine -- see std_delay_quarantine_blocks() above. Tested here
         // rather than at function entry so the covering-RSU lookup is paid only
@@ -138,7 +158,7 @@ inline double calculate_unified_selective_delay(
     // Guard: is_safety_critical enforces Signature S1 / Equation 3.4 conjunction
     // "Priority(p) = HIGH" — best-effort packets receive no injected delay.
     if (present_selective_delay_cp && injected_delay_cp > 0.0
-        && is_safety_critical)
+        && is_safety_critical && selective_packet_targeted(flow_id, packet_id))
     {
         // eq:quarantine -- the A1 injector is always the RSU holding the
         // poisoned FlowMod, so this is the RSU-attacker case A3 already proves
@@ -176,7 +196,7 @@ inline bool schedule_unified_selective_delay_attack(
     // Attack 2: Data Plane Delay
     // Guard: is_safety_critical enforces Signature S2 / Equation 3.5.
     if (present_selective_delay_dp && is_malicious_dp && is_first_attempt
-        && is_safety_critical)
+        && is_safety_critical && selective_packet_targeted(fid, packet_ID))
     {
         // eq:quarantine -- see std_delay_quarantine_blocks(). Returning false
         // (not scheduling a delayed forward) drops the caller through to its
@@ -206,7 +226,7 @@ inline bool schedule_unified_selective_delay_attack(
     // Mutually exclusive: only runs if DP attack did not trigger.
     // Guard: is_safety_critical enforces Signature S1 / Equation 3.4.
     if (present_selective_delay_cp && injected_delay_cp > 0.0
-        && is_safety_critical)
+        && is_safety_critical && selective_packet_targeted(fid, packet_ID))
     {
         // eq:quarantine -- A1 injector is always the poisoned-FlowMod RSU.
         if (std_delay_quarantine_blocks(source)) return false;
