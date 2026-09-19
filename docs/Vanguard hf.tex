@@ -111,9 +111,9 @@
 	across independently observing vehicles before any trust penalty
 	applies. Evaluated across attack penetration, forwarding intensity,
 	vehicular speed, network scale, and decreasing observable evidence,
-	VANGUARD HF sustains macro Matthews correlation coefficient \TBD\
-	against \TBD\ for the one baseline addressing this attack class at
-	all. These results show that covering hidden forwarding in full
+	VANGUARD HF sustains a macro Matthews correlation coefficient of $0.69$
+	at the default operating point against $0.15$ for the one baseline
+	addressing this attack class at all. These results show that covering hidden forwarding in full
 	requires abandoning the assumption that cryptographic authenticity
 	implies legitimate intent, which every reviewed defense still makes.
 \end{abstract}
@@ -1625,13 +1625,15 @@ over attackers that acted before containment, since a single mean over both
 populations moves in the wrong direction as containment improves.
 
 \subsection{Statistical Significance}
-Every experiment in Section~\ref{sec:results} is run across five seeds. The
-comparison between VANGUARD HF and FADE, the one baseline that addresses
-this paper's own attack class at all, is tested with a paired test across
-seeds in Experiment 1 rather than a comparison of seed averages, since both
-methods share the same mobility realisations. At $p{=}\TBD\%$ and intensity
-$\TBD\%$, the macro MCC difference is $\TBD$ with $\TBD$ ($n{=}5$ paired
-seeds); this is reported once the experiments are complete.
+The results in Section~\ref{sec:results} are reported at a single mobility
+seed. The intended significance test compares VANGUARD HF against FADE, the
+one baseline that addresses this paper's own attack class at all, with a
+paired test across five seeds rather than a comparison of seed averages, since
+both methods share the same mobility realisations. At the default operating
+point the single-seed gap is large (macro MCC $0.69$ versus $0.15$), but a
+single seed cannot establish significance; the five-seed paired test is carried
+forward as the confirmation step, as already done for the companion PHANTOM
+paper, before this difference is quoted as significant.
 
 \subsection{Strengths and Weaknesses}
 The central strength this paper demonstrates is coverage of passive hidden
@@ -1719,8 +1721,8 @@ the passive case independently of any cryptographic observable, and a
 witness quorum mechanism that covers what neither the classifier nor
 cryptography alone can. Across the five experiments of
 Section~\ref{sec:results}, VANGUARD HF is shown to sustain macro MCC of
-$\TBD$ against $\TBD$ for FADE, the one baseline addressing this attack
-class, at default settings. The main limitation is Experiment 4, withheld
+$0.69$ against $0.15$ for FADE, the one baseline addressing this attack
+class, at default settings, holding detection quality across speed and scale. The main limitation is Experiment 4, withheld
 pending confirmation of a data provenance question this paper states
 plainly rather than resolves by assumption.
 
