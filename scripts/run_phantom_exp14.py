@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""
+run_phantom_exp14.py — PHANTOM paper Experiments 1 (penetration x intensity) and
+4 (attack observable evidence / selectivity). Same engine as run_phantom_exp23.py
+(direct binary, parallel, resumable, mem/load-throttled), but jobs carry their own
+penetration, delay (intensity) and target-ratio.
+
+Exp 1 — Detection under penetration x intensity:
+    penetration p in {0,20,40,60,80,100}%, intensity in {55,100,200} ms
+    (1.1/2/4 x Delta_max). Intensity only affects the timing variants (S1,S2);
+    the flow-table variants (S3,S4) are run once per penetration at the default
+    delay. macro MCC vs penetration, one line per intensity.
+Exp 4 — Detection under decreasing observable evidence:
+    selective target ratio in {0.10,0.25,0.75,1.00} (AOEI {0.25,0.5,0.75,1.0}),
+    at default penetration 40%, delay 100ms. The ratio gates HIGH-priority
+    targeting (selective_time_delay.h), so it bites on S1/S2; S3/S4 are run at
+    ratio 1.0 for the macro.
+
+Usage:
+    python3 scripts/run_phantom_exp14.py --exp 1
+    python3 scripts/run_phantom_exp14.py --exp 4
+    python3 scripts/run_phantom_exp14.py --exp 1 4 --workers 8 [--dry-run]
+"""
+import argparse, os, subprocess, sys, time
+from pathlib import Path
+
+NS3_DIR  = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35"
+BINARY   = NS3_DIR / "build/scratch/routing/routing"
+LIB_PATH = str(NS3_DIR / "build/lib")
+RESULTS  = NS3_DIR / "results_routing"
+LOGS_DIR = Path(__file__).resolve().parent.parent / "logs" / "phantom_exp14"
+
+SEED, SIM_TIME, N_RSUS, N_CTRL = 1, 60, 64, 4
+PENS       = [0, 20, 40, 60, 80, 100]      # Exp 1 penetration
+INTENSITIES = [55, 100, 200]               # Exp 1 delay (ms) = 1.1/2/4 x Delta_max
+RATIOS     = [0.10, 0.25, 0.75, 1.00]      # Exp 4 target ratio
+DEF_PCT, DEF_DELAY = 40, 100
+
+MAX_WORKERS, MEM_FLOOR_MB, LOAD_CEILING_FRAC, POLL, NICE = 8, 6000, 0.85, 5, 10
+
+
+def build_env():
+    env = os.environ.copy(); ex = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = f"{LIB_PATH}:{ex}" if ex else LIB_PATH
+    return env
+
+def mem_mb():
+    try:
+        for l in open("/proc/meminfo"):
+            if l.startswith("MemAvailable:"): return int(l.split()[1]) // 1024
+    except OSError: pass
+    return 1 << 30
+
+def load1():
+    try: return os.getloadavg()[0]
+    except OSError: return 0.0
+
+def out_csv(kind, attack, pct, delay, tag):
+    d = f"_d{delay}ms" if attack in (1, 2) else ""
+    return RESULTS / f"{kind}_Attack{attack}_{pct}{d}_seed{SEED}_{tag}.csv"
+
+def done(kind, attack, pct, delay, tag):
+    f = out_csv(kind, attack, pct, delay, tag)
+    try: return f.is_file() and sum(1 for _ in open(f)) >= 2
+    except OSError: return False
+
+
+def make_jobs(exps):
+    jobs = []
+    if 1 in exps:
+        for p in PENS:
+            # timing variants: full intensity sweep
+            for delay in INTENSITIES:
+                tag = f"exp1_p{p}_d{delay}"
+                for a in (1, 2):
+                    jobs.append(dict(exp=1, kind="MOBIGUARD", attack=a, pct=p, delay=delay,
+                                     ratio=1.0, tap=False, tag=tag))
+                    jobs.append(dict(exp=1, kind="TAP", attack=a, pct=p, delay=delay,
+                                     ratio=1.0, tap=True, tag=tag + "tap"))
+            # flow-table variants: intensity-independent, run once per penetration
+            tagf = f"exp1_p{p}"
+            for a in (3, 4):
+                jobs.append(dict(exp=1, kind="MOBIGUARD", attack=a, pct=p, delay=DEF_DELAY,
+                                 ratio=1.0, tap=False, tag=tagf))
+    if 4 in exps:
+        for r in RATIOS:
+            rt = str(r).replace(".", "p")
+            tag = f"exp4_r{rt}"
+            for a in (1, 2, 3, 4):
+                jobs.append(dict(exp=4, kind="MOBIGUARD", attack=a, pct=DEF_PCT, delay=DEF_DELAY,
+                                 ratio=(r if a in (1, 2) else 1.0), tap=False, tag=tag))
+            for a in (1, 2):
+                jobs.append(dict(exp=4, kind="TAP", attack=a, pct=DEF_PCT, delay=DEF_DELAY,
+                                 ratio=r, tap=True, tag=tag + "tap"))
+    return jobs
+
+
+def build_cmd(j):
+    cmd = ["nice", f"-n{NICE}", str(BINARY),
+           "--N_Vehicles=200", f"--N_RSUs={N_RSUS}", f"--N_Controllers={N_CTRL}",
+           "--mobility_scenario=0", "--maxspeed=150", "--use_sumo_mobility=1",
+           "--architecture=3", f"--simTime={SIM_TIME}",
+           f"--attack_percentage={j['pct']}", f"--attack_delay_ms={j['delay']}",
+           f"--selective_target_ratio={j['ratio']}", f"--sim_seed={SEED}",
+           f"--run_tag={j['tag']}"]
+    # p=0 is benign: omit --attack_number so active_attack_variant stays -1
+    if j["pct"] != 0 or j["exp"] == 4:
+        cmd.append(f"--attack_number={j['attack']}")
+    if j["tap"]:
+        cmd += ["--enable_tap=1", "--enable_lrad_obu=0", "--enable_lrad_rsu=0"]
+    else:
+        cmd += ["--enable_detector_windows=1"]
+    return cmd
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--exp", type=int, nargs="+", choices=[1, 4], required=True)
+    ap.add_argument("--workers", type=int, default=MAX_WORKERS)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true")
+    a = ap.parse_args()
+    if not BINARY.is_file(): sys.exit(f"ABORT: binary missing {BINARY}")
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    jobs = make_jobs(sorted(set(a.exp)))
+    todo = [j for j in jobs if a.force or not done(j["kind"], j["attack"], j["pct"], j["delay"], j["tag"])]
+    print(f"exp={a.exp} jobs={len(jobs)} todo={len(todo)} skipped={len(jobs)-len(todo)} workers={a.workers}")
+    if a.dry_run:
+        for j in todo: print("  " + " ".join(build_cmd(j)))
+        return
+
+    env = build_env(); running = {}; queue = list(todo); n = 0; tot = len(todo)
+    def launch(j):
+        lp = LOGS_DIR / f"exp{j['exp']}_{j['kind']}_A{j['attack']}_{j['tag']}.log"
+        lf = open(lp, "w")
+        p = subprocess.Popen(build_cmd(j), cwd=str(NS3_DIR), env=env, stdout=lf, stderr=subprocess.STDOUT)
+        running[p] = (j, lf, time.time())
+        print(f"  launch e{j['exp']} {j['kind']} A{j['attack']} {j['tag']} (pid {p.pid})", flush=True)
+    while queue or running:
+        for p in list(running):
+            if p.poll() is not None:
+                j, lf, t0 = running.pop(p); lf.close(); n += 1
+                ok = done(j["kind"], j["attack"], j["pct"], j["delay"], j["tag"])
+                print(f"  done  e{j['exp']} {j['kind']} A{j['attack']} {j['tag']} rc={p.returncode} "
+                      f"{'OK' if ok else 'NO-CSV'} ({time.time()-t0:.0f}s) [{n}/{tot}]", flush=True)
+        while queue and len(running) < a.workers:
+            if mem_mb() < MEM_FLOOR_MB or load1() > os.cpu_count() * LOAD_CEILING_FRAC:
+                print(f"  throttle mem={mem_mb()} load={load1():.1f}", flush=True); break
+            launch(queue.pop(0))
+        time.sleep(POLL)
+    print(f"ALL DONE ({n}/{tot})", flush=True)
+
+
+if __name__ == "__main__":
+    main()

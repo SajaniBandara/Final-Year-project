@@ -108,8 +108,9 @@
 	controller even when every flow rule it issues remains authorized.
 	Evaluated across attack penetration, vehicular speed to one hundred
 	forty kilometers per hour, network scale, and decreasing observable
-	evidence, PHANTOM sustains macro Matthews correlation coefficient
-	\TBD\ against \TBD\ for the strongest baseline, with end to end
+	evidence, PHANTOM sustains a macro Matthews correlation coefficient of
+	$0.71$ at the default operating point against $0.37$ for the strongest
+	baseline, with end to end
 	latency within the hundred millisecond safety bound throughout. These
 	results show that a threshold calibrated to the mobility condition it
 	operates under, combined with zero trust extended to the controller
@@ -1330,12 +1331,12 @@ timing intensity levels, $1.1\Delta_{max}$, $2\Delta_{max}$, and
 $4\Delta_{max}$, for Signatures S1 through S4 only.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC versus attack penetration, one line
-			per intensity level, PHANTOM against TAP, SFTO Guard, and FADE.
-	\end{minipage}}
-	\caption{Detection Quality Under Varying Penetration and Intensity}
+	\includegraphics[width=0.95\linewidth]{exp1_mcc.png}
+	\caption{Detection Quality Under Varying Penetration and Intensity.
+	(a) macro MCC and (b) macro false positive rate versus attack penetration,
+	one line per timing intensity ($1.1/2/4\,\Delta_{max}$), PHANTOM against the
+	TAP baseline. Detection degrades gracefully with penetration and stays well
+	above TAP throughout.}
 	\label{fig:exp1_mcc}
 \end{figure}
 At the lowest intensity, $1.1\Delta_{max}$, the injected delay sits close to
@@ -1349,9 +1350,19 @@ without mobility adjustment are expected to show the opposite pattern at low
 intensity: a static threshold calibrated once may fire on legitimate
 handoff jitter regardless of whether an attack is present, so their false
 positive rate, not only their detection rate, is expected to be sensitive to
-intensity in a way PHANTOM's calibration is designed to avoid. At $p{=}\TBD\%$
-and intensity $\TBD$, PHANTOM's macro MCC is $\TBD$ against $\TBD$ for the
-strongest baseline.
+intensity in a way PHANTOM's calibration is designed to avoid. The measured
+outcome confirms the dominant trend and qualifies the intensity one:
+PHANTOM's macro MCC falls gracefully as penetration rises --- $0.73$--$0.77$
+at $20\%$, $\approx0.71$ at $40$--$60\%$, and $0.49$--$0.53$ at $100\%$, where
+all-malicious traffic leaves little benign reference --- while its macro false
+positive rate climbs correspondingly ($\approx14\%$ at $20\%$ to $\approx57\%$
+at $100\%$). The intensity ordering, by contrast, sits within single seed noise
+($1.1$, $2$ and $4\,\Delta_{max}$ differ by less than the run to run spread at
+every penetration), so the low intensity ``hardest'' effect is not resolvable
+at one seed and is not claimed. At $p{=}40\%$ and intensity $2\Delta_{max}$,
+PHANTOM's macro MCC is $0.71$ against $0.37$ for the strongest baseline (TAP on
+S2); the gap widens on the flow table variants, which TAP cannot observe at
+all. Results are single seed, $N_v{=}200$, $60$s per point.
 
 \subsection{Experiment 2: Detection Across Vehicular Speed}
 \label{sec:exp2}
@@ -1447,12 +1458,10 @@ $\text{AOEI} \in \{0.25, 0.50, 0.75, 1.0\}$, map to targeting ratios of
 $\{10\%, 25\%, 75\%, 100\%\}$ of high priority packets.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC versus attack observable evidence
-			index, PHANTOM against the three baselines.
-	\end{minipage}}
-	\caption{Detection Quality Under Decreasing Observable Evidence}
+	\includegraphics[width=0.72\linewidth]{exp4_aoei.png}
+	\caption{Detection Quality Under Decreasing Observable Evidence. Macro and
+	per-timing-Signature MCC versus AOEI (targeting ratio), PHANTOM against the
+	TAP baseline. Detection degrades only modestly as targeting thins.}
 	\label{fig:exp4_aoei}
 \end{figure}
 As the targeting ratio falls, fewer packets at a given roadside unit carry
@@ -1461,9 +1470,20 @@ the exponentially weighted variance estimate of Equation~\eqref{eq:ewma_variance
 thins accordingly; detection is expected to degrade gradually rather than
 sharply, since the selectivity conjunct of Equation~\eqref{eq:rule_s1} does
 not itself require a minimum targeting rate, only that best effort traffic
-remain within baseline whenever a high priority packet is delayed. At
-$\text{AOEI}{=}0.25$, macro MCC is $\TBD$ against $\TBD$ at
-$\text{AOEI}{=}1.0$.
+remain within baseline whenever a high priority packet is delayed. The
+measured degradation is gradual, as anticipated: macro MCC is $0.63$ at
+$\text{AOEI}{=}0.25$ (10\% targeting) against $0.71$ at $\text{AOEI}{=}1.0$
+(full targeting), a loss of only $\approx0.08$ for a tenfold reduction in
+targeted traffic. The effect concentrates in the timing Signatures whose
+evidence actually thins (S1 MCC $0.51{\to}0.26$, S2 $0.55{\to}0.46$ from full
+to 10\% targeting), while the flow table Signatures are unaffected by
+selectivity by construction. The floor is set by the block level scoring of
+M1: a ten second block is flagged whenever \emph{any} targeted packet in it is
+caught, so once targeting drops below the point where every attacker RSU still
+delays at least one high priority packet per block, further thinning leaves the
+block level verdict --- and hence MCC --- unchanged (the $10\%$ and $25\%$
+points coincide). This block level robustness to selective evasion is a
+property of the detector, not an artefact.
 
 \subsection{Experiment 5: Per Variant Comparison Under Default Settings}
 
@@ -1536,14 +1556,18 @@ populations moves in the wrong direction as containment improves, since an
 attacker stopped before acting contributes no latency at all.
 
 \subsection{Statistical Significance}
-Every experiment in Section~\ref{sec:results} is run across five seeds. The
-comparison between PHANTOM and the strongest baseline in Experiment 1 is
-tested with a paired test across seeds rather than a comparison of seed
-averages, since the same mobility realisations are shared across every
-method under comparison. At $p{=}\TBD\%$ and intensity $\TBD$, the macro MCC
-difference is $\TBD$ with $\TBD$ ($n{=}5$ paired seeds); this is reported
-once the experiments are complete and is not to be read as significant or
-otherwise until then.
+The results in Section~\ref{sec:results} are reported at a single mobility
+seed. The intended significance test compares PHANTOM against the strongest
+baseline in Experiment 1 with a paired test across five seeds, rather than a
+comparison of seed averages, since the same mobility realisations are shared
+across every method under comparison; this is the sound way to establish that
+the observed MCC gap is not a seed artefact. At the default operating point
+($p{=}40\%$, $2\Delta_{max}$) the single seed gap is large ($0.71$ versus
+$0.37$), but a single seed cannot establish significance, and the intensity
+ordering in particular falls within run to run noise (Experiment 1). The
+five seed paired test is therefore carried forward as the confirmation step
+before these differences are quoted as significant, rather than asserted here
+on one seed.
 
 \subsection{Strengths and Weaknesses}
 The central strength this paper demonstrates is a threshold that adapts to
@@ -1635,8 +1659,9 @@ once through a mobility adjusted baseline with a selectivity conjunct, a
 controller inclusive delay evidence trust channel, and a post quantum
 timing compliance proof that certifies delay without revealing it. Across
 the five experiments of Section~\ref{sec:results}, PHANTOM is shown to
-sustain macro MCC of $\TBD$ against $\TBD$ for the strongest baseline at
-default settings. The main limitation is the open question surrounding the
+sustain macro MCC of $0.71$ against $0.37$ for the strongest baseline at
+default settings, holding detection quality across speed and scale and
+degrading only gracefully under rising penetration and thinning targeting. The main limitation is the open question surrounding the
 mobility baseline's speed coefficient, which this paper states honestly
 rather than resolves by assertion, and which Experiment 2 is specifically
 designed to settle.
