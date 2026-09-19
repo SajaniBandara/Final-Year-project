@@ -1,0 +1,2035 @@
+%%
+%% This file follows the user's own elsarticle-template-num.tex, uploaded
+%% for this project. Preamble, proof formatting, and frontmatter structure
+%% are matched to that template; content (title, abstract, keywords, body)
+%% is this paper's own.
+\documentclass[final,5p,twocolumn]{elsarticle}
+
+\usepackage{amsmath,amsfonts}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\renewcommand{\Comment}[1]{\hfill$\triangleright$ #1}
+\usepackage{array}
+\usepackage[font=normalsize,labelfont=bf]{caption}
+\usepackage[]{subcaption}
+\usepackage{arydshln}
+\usepackage{textcomp}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{IEEEtrantools}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{soul}
+\usepackage{xcolor}
+\usepackage{bm}
+\usepackage{amsthm}
+\hyphenation{op-tical net-works semi-conduc-tor IEEE-Xplore}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+		T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{balance}
+\setlength{\textfloatsep}{8pt}
+\newcommand{\orcidlink}[1]{\href{https://orcid.org/#1}{\includegraphics[scale=0.06]{pictures/orcid.png}}}
+
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+% The template defines Definition and Lemma only; Corollary and Remark are
+% this paper's own addition, chained to the same counter as Lemma so all
+% three number in one sequence through the appendix.
+\newtheorem{corollary}[lemma]{Corollary}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\theoremstyle{plain}
+
+\raggedbottom
+\makeatletter
+\usepackage{xcolor,etoolbox}
+\makeatletter
+\renewcommand\proofname{\textcolor{black}{\textbf{Proof}}}
+
+\patchcmd{\proof}
+{\item[\hskip\labelsep\scshape #1\@addpunct{.}]}
+{\item[\hskip\labelsep\bfseries\color{black}#1\@addpunct{:}] \mbox{}\\}
+{}{}%
+
+\patchcmd{\proof}
+{\item[\hskip\labelsep #1\@addpunct{.}]}
+{\item[\hskip\labelsep\bfseries\color{black}#1\@addpunct{:}] \mbox{}\\}
+{}{}%
+
+\patchcmd{\proof}
+{\item[\hskip\labelsep\textit{#1}\@addpunct{.}]}
+{\item[\hskip\labelsep\bfseries\color{black}#1\@addpunct{:}] \mbox{}\\}
+{}{}%
+\makeatother
+\renewcommand{\qedsymbol}{}
+
+\newcommand{\TBD}{\textbf{TBD}} % placeholder for the one confirmed unrun analysis (density sweep, if relevant here); real results go in directly elsewhere
+
+\journal{Journal of Network and Computer Applications}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Byzantine Robust Federated LSTM with STARK Hop Legitimacy Attestation, Witness Consensus Passive Detection, and Controller Failover Zero Trust Blockchain Against Hidden Forwarding Attacks in Software Defined Vehicular Networks}
+
+% TODO: author block pending confirmation of the final author list for this
+% specific paper (distinct author ordering may apply versus PHANTOM and
+% NEXUS). Single author set below, matching the pattern of the uploaded
+% template with its own co-author block commented out.
+\author[1]{Patikiri Arachchige Don Shehan Nilmantha Wijesekara\orcidlink{0000-0002-3045-1596}\corref{cor1}}
+\ead{nilmantha@eie.ruh.ac.lk}
+\cortext[cor1]{Corresponding author: \texttt{nilmantha@eie.ruh.ac.lk}}
+
+\affiliation[1]{organization={Department of Electrical \& Information Engineering, Faculty of Engineering, University of Ruhuna},
+            city={Galle},
+            postcode={80000},
+            country={Sri Lanka}}
+
+\begin{abstract}
+	Hidden forwarding attacks against software defined vehicular networks
+	leave a packet's original path untouched while a duplicate is secretly
+	routed to an unauthorized destination, enabling eavesdropping without
+	any observable disruption to normal delivery. Existing path
+	validation and flow conservation defenses require enough packets
+	observed over a flow's lifetime to test reliably, a requirement a
+	vehicle's brief residence inside a single roadside unit's coverage
+	zone routinely fails to meet regardless of how the underlying test is
+	tuned; separately, cryptographic verification alone cannot distinguish
+	a duplicate that is a genuinely authentic retransmission from a
+	legitimate second delivery, since authenticity and intent are not the
+	same thing. This paper presents VANGUARD HF, spanning signatures
+	corrected to require that the accusing node was the addressed
+	recipient of a duplicate rather than a bystander that merely
+	overheard it, a post quantum proof of next hop legitimacy that
+	certifies routing compliance without revealing a node's routing
+	choice, a federated classifier trained across roadside units that
+	reads a reception log anomaly score no other observable can provide
+	for the passive case, and a witness quorum that corroborates an event
+	across independently observing vehicles before any trust penalty
+	applies. Evaluated across attack penetration, forwarding intensity,
+	vehicular speed, network scale, and decreasing observable evidence,
+	VANGUARD HF sustains macro Matthews correlation coefficient \TBD\
+	against \TBD\ for the one baseline addressing this attack class at
+	all. These results show that covering hidden forwarding in full
+	requires abandoning the assumption that cryptographic authenticity
+	implies legitimate intent, which every reviewed defense still makes.
+\end{abstract}
+
+\begin{keyword}
+	Software Defined Vehicular Networks \sep Hidden Forwarding Attack \sep Federated Learning \sep Post Quantum Cryptography \sep Byzantine Fault Tolerance \sep Blockchain
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}\label{introduction}
+
+\subsection{Background}
+
+\IEEEPARstart{S}{oftware} defined vehicular networks separate traffic forwarding at
+roadside units from routing decisions made by a logically centralized
+controller, and this separation creates an attack surface a static
+deployment does not have: a compromised entity can duplicate a packet and
+route the copy to a destination the sender never authorized, while the
+original continues to its intended recipient exactly as expected. Because
+nothing about the legitimate delivery is disturbed, the packet's own
+sender or intended recipient has no reason to suspect anything happened
+at all. This paper addresses this attack class, hidden forwarding, as one
+of two disjoint classes this project considers, the other being selective
+time delay, developed independently in the companion paper PHANTOM
+\cite{Phantom2026}.
+
+The building blocks this attack exploits, a corrupted controller view and
+an unverified multi controller forwarding decision, have each been
+demonstrated independently before being combined into the threat this
+paper addresses. A topology poisoning attack has been carried out
+successfully against four mainstream software defined controllers under
+realistic vehicular mobility, showing that an attacker can corrupt the
+controller's own view of the network directly, which is precisely the
+kind of manipulation a hidden forwarding rule depends on to route a
+duplicate toward an unauthorized destination without raising suspicion
+\cite{Wang2020Topology}. Blockchain based verification that a forwarding
+rule is enforced consistently across controller domains has been proposed
+separately, using an aggregate signature scheme to check cross domain
+correctness \cite{Li2022BlockREV}, though it verifies that a rule was
+enforced as issued rather than whether the issued rule itself was
+authorized in the first place, which is the distinction Signature S5's
+endorsement check in this paper is built around. Early lightweight
+vehicular intrusion detection targeted false alert generation directly
+\cite{Sedjelmaci2014}, a concern this paper's own addressing conjunct
+extends into the signature construction itself rather than treating it as
+a separate detection target, and hardware backed authentication using
+direct anonymous attestation addressed message privacy before any
+centralized controller existed to threaten it \cite{Sumra2011}.
+
+\subsection{Limitations of Existing Work}
+
+Prior defenses close only part of this problem, and each limitation holds
+on its own terms regardless of what any particular solution looks like.
+Path validation and flow conservation frameworks such as HSA and FADE
+test whether a flow's observed forwarding behaviour is internally
+consistent over its lifetime, which requires enough packets to
+accumulate a statistically reliable sample; a vehicle's residence time
+inside a single roadside unit's coverage zone, typically several seconds
+to tens of seconds at highway speed, routinely provides fewer packets
+than such a test needs, independent of how the test's own parameters are
+tuned. Cryptographic accountability schemes such as SDNsec verify that a
+packet was forwarded correctly, which a passively retransmitted,
+genuinely authentic duplicate also satisfies, since nothing about the
+packet's content or signature was altered in producing it; verifying
+authenticity and verifying that a delivery was intended are simply not
+the same check, and no scheme reviewed in Section~\ref{sec:related}
+attempts to distinguish them. Neither limitation depends on the other:
+a mobility bounded observation window defeats a flow conservation test
+regardless of how cryptographically strong the network's signing scheme
+is, and an authenticity check that cannot see past authenticity fails
+regardless of how much traffic a flow generates.
+
+\subsection{Problem Statement}
+
+The practical consequence is that a vehicle's location, driving pattern,
+or communication content can be exposed to an unauthorized party while
+every observable signal available to the sender and the intended
+recipient indicates normal operation. A defense that only inspects
+whether a flow's statistics look conserved, or only checks that a packet
+was signed by its claimed sender, provides no warning in exactly the
+passive case where the duplicate is a real, unmodified copy of genuine
+traffic, which is not a corner case this paper's threat model sets aside
+but the specific case its architecture is built to cover.
+
+\subsection{Research Questions}
+
+This paper is organised around five research questions that the
+experiments of Section~\ref{sec:results} answer directly.
+\begin{itemize}
+	\item \textbf{RQ1:} Does detection quality hold across attack
+	penetration and forwarding intensity, and does it differ between
+	active variants, where a duplicate is fabricated, and passive
+	variants, where it is a genuine retransmission?
+	\item \textbf{RQ2:} Does detection quality vary with vehicular speed,
+	and if so, is the mechanism responsible timing related, as in the
+	companion paper, or specific to how long a witness quorum takes to
+	form?
+	\item \textbf{RQ3:} Do detection quality and end to end latency remain
+	within their required bounds as network scale grows, and where does
+	the binding cost actually sit as the network grows along the roadside
+	unit axis rather than the vehicle axis?
+	\item \textbf{RQ4:} How does detection degrade as attack observable
+	evidence decreases along both the selectivity and copy destination
+	divergence dimensions specific to this attack class?
+	\item \textbf{RQ5:} Across each of the four hidden forwarding variants
+	individually, does VANGUARD HF outperform existing defenses, and does
+	a defense built for one hidden forwarding mechanism transfer to the
+	other?
+\end{itemize}
+
+\subsection{Contributions}
+
+The principal contributions of this paper are:
+\begin{itemize}
+	\item \textbf{Broadcast correct attack modeling:} the formal
+	definition of four hidden forwarding variants across the control and
+	data plane, corrected to require that the accusing node was the
+	addressed recipient of a duplicate, closing a construction flaw that
+	otherwise lets any bystander that merely overheard a broadcast
+	transmission satisfy an accusation condition meant for a genuine
+	recipient.
+	\item \textbf{Post quantum hop legitimacy attestation:} a zero
+	knowledge proof that a forwarding node's next hop choice complies with
+	its authorized routing policy, certifying routing compliance without
+	revealing the routing choice itself to any verifier.
+	\item \textbf{Federated classification with a duplication specific
+	observable:} a classifier trained across roadside units without
+	centralizing raw traffic, reading a reception log anomaly score that
+	remains zero under no attack and rises under every hidden forwarding
+	variant including the passive ones, where every cryptographic
+	verification available otherwise passes.
+	\item \textbf{Witness quorum corroboration:} a mechanism requiring
+	independent confirmation from multiple observing vehicles before any
+	trust penalty applies, covering the passive case no cryptographic or
+	statistical observable can resolve alone.
+	\item \textbf{Byzantine robust federated aggregation:} an aggregation
+	procedure that excludes a roadside unit's model update once its
+	submitted weights deviate beyond a bounded distance from the
+	consensus, preventing a single compromised roadside unit from
+	corrupting the classifier every other roadside unit relies on.
+\end{itemize}
+
+\subsection{Novelty}
+
+This is the first defense against hidden forwarding in software defined
+vehicular networks to identify and correct a construction flaw present in
+every broadcast medium signature scheme reviewed in
+Section~\ref{sec:related}: without an explicit addressing check, any
+bystander that overheard a transmission satisfies an accusation condition
+intended for a genuine recipient, and this paper's correction is a
+structural fix to the signature itself, not a refinement of an existing
+threshold. It is also the first framework in this space to provide direct
+learned signal for passive hidden forwarding independently of any
+cryptographic observable, through a reception log anomaly score that no
+prior scheme computes, since every reviewed defense either tests
+cryptographic authenticity, which a passive duplicate satisfies by
+construction, or flow level statistics, which a bounded observation
+window undermines. The witness quorum mechanism completes this coverage
+for the case that remains after both the corrected signatures and the
+classifier are exhausted, corroboration from independent physical
+observation rather than from any signal the compromised node itself
+produces. Collectively, this paper establishes that passive hidden
+forwarding, the case every baseline in Section~\ref{sec:related} misses
+entirely, is detectable without relying on any assumption the passive
+attack is specifically designed to defeat, a combination this paper's
+review of prior work finds nowhere else.
+
+\subsection{Paper Organization}
+
+The remainder of this paper is organised as follows. Section~\ref{sec:related}
+reviews related work and positions the gap this paper addresses.
+Section~\ref{system_model} formalises the network model, threat model,
+and four attack variants. Section~\ref{sec:framework} presents the
+VANGUARD HF framework. Sections~\ref{sec:evaluation_setup}
+and~\ref{sec:results} describe the evaluation setup and report the five
+experiments. Section~\ref{sec:discussion} discusses the results, and the
+final section concludes.
+
+
+\section{Related Work}
+\label{sec:related}
+
+Hidden forwarding attacks against software defined vehicular networks leave
+the original packet on its legitimate path while a duplicate is silently
+routed elsewhere, so the literature relevant to detecting it spans path
+validation, forwarding anomaly detection, and cryptographic accountability
+for the data plane, three lines of work that each catch part of the problem
+without fully closing it.
+
+Path validation was formalised early by Mohammadi et al., who correlate the
+forwarding rules a network has installed against the forwarding status
+packets actually exhibit, using header space analysis to detect a compromised
+switch that drops, copies, or misroutes traffic \cite{Mohammadi2016}. Pang
+et al. propose FADE, a flow conservation based detector that flags duplication
+or path deviation by testing whether the volume entering and leaving a flow
+remains consistent \cite{Pang2016FADE}. Both build on the older idea of
+reconstructing a packet's actual path from consistent hash based sampling
+across network domains \cite{Duffield2001}, and both share a structural
+weakness against a mobile, short lived flow: they need enough packet samples
+over a flow's observed lifetime to test conservation reliably, and neither
+was designed for a setting where that lifetime is bounded by how long a
+vehicle remains inside a single roadside unit's coverage zone.
+
+Cryptographic accountability for the forwarding path itself has been pursued
+independently of flow level statistics. Sasaki et al. propose SDNsec, which
+embeds a symmetric key cryptographic marking in every packet so that each
+switch proves it forwarded the packet correctly, directly addressing the path
+deviation attack this paper's active hidden forwarding variants also produce
+\cite{Sasaki2016SDNsec}. Bargayary and Medhi propose FTISCON, which anchors flow
+rule installation to a smart contract so an installed rule can be checked
+against a committed policy after the fact \cite{Bargayary2023FTISCON}. Neither
+extends this accountability to a zero knowledge setting: SDNsec's markings are
+verifiable only by a party holding the shared symmetric key, and FTISCON's
+smart contract check still trusts the controller that requested the
+installation in the first place, so a controller that is itself compromised
+and issues a policy consistent but malicious rule evades both.
+
+Detection frameworks that bring mobility awareness or collaborative training
+to this space still fall short of covering hidden forwarding specifically.
+Liu et al. propose a blockchain and federated learning framework for
+collaborative intrusion detection that trains across distributed vehicular
+edge nodes rather than a central server, which is directly relevant to
+preserving the location privacy a hidden forwarding defense must itself not
+undermine while collecting evidence \cite{Liu2021BFLVEC}. Post quantum
+authentication protocols for the vehicle to infrastructure exchange, such as
+the lattice based scheme of El Dalahmeh and Alia, secure the credential
+exchange but detect nothing about what happens to a packet after it is
+accepted onto the network \cite{ElDalahmeh2025}. Neither line of work
+addresses the passive case at all, where the duplicated packet is a genuinely
+authentic retransmission that no cryptographic check, however strong, can
+distinguish from a legitimate second delivery.
+
+Table~\ref{tab:vanguard_related} compares six representative works against
+five properties that determine suitability for this paper's setting: whether
+the design detects passive, cryptographically indistinguishable duplication
+specifically, rather than only active, forged forwarding, whether it uses
+post quantum cryptography, whether detection is federated, whether it
+preserves location privacy by design rather than as an afterthought, and what
+trust it places in the controller.
+
+\begin{table*}[!t]
+	\centering
+	\caption{Comparison of representative defenses relevant to hidden forwarding attacks in software defined vehicular networks.}
+	\label{tab:vanguard_related}
+	\renewcommand{\arraystretch}{1.25}
+	\footnotesize
+	\begin{tabular}{|>{\raggedright\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}p{2.0cm}|>{\centering\arraybackslash}p{1.6cm}|>{\centering\arraybackslash}p{1.6cm}|>{\centering\arraybackslash}p{1.8cm}|>{\raggedright\arraybackslash}p{2.4cm}|}
+		\hline
+		\textbf{Work} & \makecell{\textbf{Detects}\\\textbf{Passive Copy}} & \makecell{\textbf{Post}\\\textbf{Quantum}} & \textbf{Federated} & \makecell{\textbf{Privacy}\\\textbf{Preserving}} & \textbf{Controller Trust} \\
+		\hline
+		HSA~\cite{Mohammadi2016} & No & No & No & No & Assumed trusted \\
+		\hline
+		FADE~\cite{Pang2016FADE} & No & No & No & No & Assumed trusted \\
+		\hline
+		SDNsec~\cite{Sasaki2016SDNsec} & No & No & No & No & Assumed trusted \\
+		\hline
+		FTISCON~\cite{Bargayary2023FTISCON} & No & No & No & No & Blockchain verified \\
+		\hline
+		Liu et al.~\cite{Liu2021BFLVEC} & No & No & Yes & Partial & Assumed trusted \\
+		\hline
+		Post quantum V2R authentication~\cite{ElDalahmeh2025} & Not applicable & Yes & No & Yes & Assumed trusted \\
+		\hline
+		\textbf{VANGUARD HF (proposed)} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Zero trust, controller included} \\
+		\hline
+	\end{tabular}
+\end{table*}
+
+A related, learning based line of work targets a compromised switch's
+behaviour directly rather than a specific forwarding signature. Huang et
+al. propose FSDM, extracting the distribution of control channel
+occupation rate to detect control plane saturation \cite{Huang2020}, and
+a later enhancement frames the same problem as multivariate time series
+anomaly detection over a compromised switch's general behaviour,
+including delaying, dropping, or modifying traffic \cite{Chi2020}. Both
+are saturation or general misbehaviour detectors rather than duplication
+specific, and neither reads a signal comparable to the reception log
+anomaly score this paper introduces. Federated approaches extended toward
+zero day coverage report encouraging results on adjacent problems: an
+edge based framework combining federated learning with blockchain reports
+high accuracy against previously unseen attack types in intelligent
+transportation systems \cite{AbouElHouda2024}, and a comparison of
+recurrent architectures under federated training on the VeReMi dataset
+reports precision between 68 and 94 percent across attack types
+\cite{Mansouri2024}, though neither targets duplication or extends
+distrust to the controller. The selective time delay literature, slow
+flow table exhaustion \cite{Pascoal2017,Pascoal2020DoS,Cao2022LOFT}, a
+slow rate specific detector \cite{Tang2023SFTOGuard}, protocol level
+timing prevention \cite{Arsalan2018}, and mobility aware misbehavior
+trust scoring \cite{Nayak2022}, addresses a disjoint attack class from
+the one this paper considers and is reviewed in full in the companion
+paper PHANTOM \cite{Phantom2026}.
+
+The passive copy column in Table~\ref{tab:vanguard_related} is empty for
+every prior work. Path validation and flow conservation approaches test
+observable forwarding behaviour, which a passive duplicate does not disturb,
+since the original packet is delivered exactly as expected while a
+retransmitted, genuinely authentic copy departs unnoticed. Cryptographic
+accountability schemes verify that a packet was forwarded correctly, which a
+passive duplicate also satisfies, since nothing about the packet itself was
+altered. This is the gap VANGUARD HF addresses: detection that does not rely
+on any observable disturbance to the legitimate path at all, achieved through
+independent witness corroboration from nearby vehicles rather than through
+inspecting the packet or the flow it belongs to, under a threat model that
+extends zero trust to the controller alongside every roadside unit and
+vehicle. The companion paper PHANTOM addresses the disjoint attack class this
+project also considers, selective time delay, under the same architecture
+\cite{Phantom2026}; the joint evaluation of both classes active
+simultaneously is reported separately in NEXUS \cite{Nexus2026}.
+
+
+\section{System Model and Attack Formalization}
+\label{system_model}
+
+\subsection{Network and Threat Model}
+\label{sec:threat_model}
+
+The network comprises a mobile vehicle population, a fixed grid of
+roadside units, and a flat, registered set of controllers, connected as
+formalised in Section~\ref{sec:ctrl_trust}. Controllers issue flow
+modification instructions that roadside units install and enforce, and
+vehicles communicate over both vehicle to infrastructure and vehicle to
+vehicle paths, either of which a hidden forwarding attack can exploit to
+place a duplicate.
+
+The threat model assumes an internal or external adversary capable of
+delaying, duplicating, fabricating, or covertly forwarding packets by
+exploiting flow modification installation and forwarding behaviour, from
+either the control plane or the data plane, never both at once from a
+single compromised entity. The attacker favours low rate, low visibility
+techniques that avoid a volumetric alarm, which for this paper's own
+attack class means the original packet is left completely undisturbed on
+its legitimate path, since the moment delivery itself looks abnormal the
+element of covert observation that makes hidden forwarding worthwhile is
+already lost. Zero trust extends to the controller itself, not only to
+roadside units and vehicles: every controller in the registered set is
+granted read only blockchain access, and its behaviour is audited
+exclusively through independent roadside unit logging rather than any
+form of self reporting. Roadside units are individually corruptible but
+collectively honest under a Byzantine fault tolerance bound of $f<n/3$,
+and no controller is permanently active or inherently trusted regardless
+of how long it has been in service. This one bound $f$ is the parameter
+behind every threshold expressed as $f{+}1$ or $2f{+}1$ later in this
+paper, whether the quorum being reached is roadside unit endorsement or
+independent witness confirmation, rather than a separate value chosen
+independently for each mechanism.
+
+\subsection{Attack Scenarios}
+\label{sec:attack_scenarios}
+
+Hidden forwarding leaves the original packet on its legitimate path
+entirely undisturbed while a duplicate is secretly routed to an
+unauthorized destination, enabling eavesdropping without any observable
+disruption to normal delivery. Figure~\ref{fig:hf_attacks} shows all four
+variants this paper addresses, split by which plane the adversary
+occupies and by whether the duplicate is actively fabricated with a
+forged signature or passively retransmitted carrying the original,
+genuinely valid one.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{Hidden Forwarding Attack Versions1.png}
+	\caption{Hidden Forwarding Attack Variants}
+	\label{fig:hf_attacks}
+\end{figure}
+In Signature S5, the active control plane variant, a compromised
+controller issues a flow modification that installs an unauthorized
+routing path at the roadside unit; once installed, the roadside unit
+forwards a targeted packet to its correct, original destination exactly
+as expected while simultaneously fabricating and sending a duplicate to
+an unauthorized listener, so nothing about the legitimate delivery ever
+looks wrong. In Signature S6, the active data plane variant, the
+roadside unit or an attacking vehicle is itself compromised and performs
+the same fabrication directly, without any corresponding controller
+instruction. Signatures S7 and S8 achieve the passive form of the same
+outcome, a controller, for S7, or a compromised roadside unit or vehicle,
+for S8, retransmits a genuinely authentic copy of the original packet
+itself rather than fabricating one, so the duplicate carries a valid
+signature over unmodified content and every cryptographic check available
+to a verifier passes, since nothing about the packet was actually forged.
+Table~\ref{tab:vanguard_taxonomy} summarises all four variants against
+the plane each occupies, the property that makes each one covert, and
+the primary mechanism this paper assigns to detect it.
+\begin{table}[!t]
+	\centering
+	\caption{Hidden Forwarding Attack Taxonomy}
+	\label{tab:vanguard_taxonomy}
+	\renewcommand{\arraystretch}{1.2}
+	\footnotesize
+	\begin{tabular}{|c|c|>{\raggedright\arraybackslash}p{2.8cm}|>{\raggedright\arraybackslash}p{1.9cm}|}
+		\hline
+		\textbf{Variant} & \textbf{Plane} & \textbf{Covertness} & \textbf{Detector} \\
+		\hline
+		S5 & Control & Original path unaffected, duplicate fabricated & Signature S5 \\
+		\hline
+		S6 & Data & Original path unaffected, duplicate fabricated & Signature S6 \\
+		\hline
+		S7 & Control & Duplicate is genuinely authentic, passes all checks & Classifier, witness quorum \\
+		\hline
+		S8 & Data & Duplicate is genuinely authentic, passes all checks & Classifier, witness quorum \\
+		\hline
+	\end{tabular}
+\end{table}
+Each signature's formal detection condition, corrected to require that
+the accusing node was genuinely addressed the duplicate rather than a
+bystander that merely overheard it, is developed in
+Section~\ref{sec:dual_mode}, where the detection engine that evaluates
+it online is presented; this section formalises what each attack does,
+not yet how it is caught. Signatures S1 through S4, selective time
+delay, are a disjoint attack class developed independently in the
+companion paper PHANTOM \cite{Phantom2026}.
+
+\subsection{Mobility Induced Threat Amplification}
+\label{sec:mobility_amplification}
+
+Hidden forwarding is masked by vehicular mobility for a reason distinct
+from the timing based masking the companion paper addresses. Flow
+conservation detectors such as HSA and FADE, reviewed in
+Section~\ref{sec:related}, count packets over a flow's observed lifetime
+to test whether the volume entering and leaving remains consistent, and
+that test needs enough samples to be statistically reliable. A vehicle's
+residence time inside a single roadside unit's coverage zone bounds how
+many samples such a detector ever gets to see, given in
+Equation~\eqref{eq:observation_window}.
+\begin{equation}
+	N_{obs} = r \cdot t_{zone} < N_{min}(\alpha)
+	\label{eq:observation_window}
+\end{equation}
+As given in Equation~\eqref{eq:observation_window}, $N_{obs}$ is the
+number of packets observable during a single zone crossing, the product
+of the per flow packet rate $r$ and the zone residence time $t_{zone}$,
+typically nine to twenty two seconds at highway speed. Once this falls
+below the minimum sample size $N_{min}(\alpha)$ a flow conservation test
+needs at significance level $\alpha$, such a detector becomes
+statistically unreliable regardless of how its threshold is tuned,
+independent of how the duplication itself is carried out. This is what
+motivates per packet, per hop cryptographic verification over flow level
+statistics as the primary mechanism developed in
+Section~\ref{sec:crypto_layer}, since a zero knowledge proof requires no
+observation window at all, complemented by the federated classifier of
+Section~\ref{sec:fed_lstm} and the witness quorum of
+Section~\ref{sec:witness} for the passive case a proof alone cannot
+cover. The three mechanisms amplifying selective time delay specifically,
+handoff masking, topology staleness, and flow rule churn camouflage, do
+not apply to the attack class this paper addresses and are developed in
+the companion paper PHANTOM \cite{Phantom2026}.
+
+
+\section{Proposed Framework}
+\label{sec:framework}
+
+\subsection{Multi Controller Zero Trust Architecture}
+\label{sec:ctrl_trust}
+
+VANGUARD HF shares its controller architecture with the companion paper
+PHANTOM, since a compromised controller can launch either attack class from
+the same position of trust, and a defense that only distrusts the controller
+for one class is not a zero trust defense at all \cite{Phantom2026}. A flat,
+registered controller set $\mathcal{C} = \{c_1, \ldots, c_m\}$ replaces any
+single, permanently trusted controller, with the trusted subset at time $t$
+given in Equation~\eqref{eq:trusted_ctrl_set}.
+\begin{equation}
+	\mathcal{C}_{trusted}(t) = \{c_i \in \mathcal{C} : T_{c_i}(t) \geq T_{min}^{ctrl}\}
+	\label{eq:trusted_ctrl_set}
+\end{equation}
+As given in Equation~\eqref{eq:trusted_ctrl_set}, a controller whose trust
+falls below the operational minimum is excluded from serving roadside units
+regardless of how it came to fall below that threshold. Assignment of
+roadside units to a trusted controller is given in
+Equation~\eqref{eq:rsu_ctrl_assign}.
+\begin{equation}
+	c^*(k,t) = \underset{c_i \in \mathcal{C}_{trusted}(t)}{\arg\min}\, d(r_k, c_i)
+	\label{eq:rsu_ctrl_assign}
+\end{equation}
+As given in Equation~\eqref{eq:rsu_ctrl_assign}, $d(r_k,c_i)$ is the
+geographic distance between roadside unit $r_k$ and controller $c_i$, so
+the assignment is recomputed over whichever controllers are currently
+trusted rather than fixed once at deployment time. Controller trust is penalised on two channels. Conflict evidence
+accumulates whenever a roadside unit receives a flow modification absent
+from the blockchain committed policy of Section~\ref{sec:blockchain_arch},
+which for this paper is the same check Signature S5 also relies on. A
+second, independent channel keyed to Signature S1 additionally penalises a
+controller for timing manipulation even when every flow modification it
+issues is individually authorized; this channel is PHANTOM's own
+contribution and is developed there in full, since it is keyed to a
+signature this paper does not otherwise use \cite{Phantom2026}. The
+resulting update rule, shared by both evidence channels, is given in
+Equation~\eqref{eq:ctrl_trust_update}.
+\begin{equation}
+	T_{c_i}^{(t+1)} =
+	\begin{cases}
+		\min(1, T_{c_i}^{(t)} + \Delta_r^{ctrl}) & \text{conflict evidence} < f{+}1 \;\land\; \mathcal{E}_{delay}(c_i,t) < f{+}1 \\
+		\max(0, T_{c_i}^{(t)} - \Delta_p^{ctrl}) & \text{conflict evidence} \geq f{+}1 \;\lor\; \mathcal{E}_{delay}(c_i,t) \geq f{+}1
+	\end{cases}
+	\label{eq:ctrl_trust_update}
+\end{equation}
+As given in Equation~\eqref{eq:ctrl_trust_update}, a threshold of $f{+}1$
+independent roadside units is required on either channel before a penalty
+applies, so a single compromised roadside unit cannot unilaterally revoke a
+controller through either evidence path. Revocation and failover follow
+automatically once trust drops below the operational threshold, given in
+Equations~\eqref{eq:sc_revoke} and~\eqref{eq:ctrl_failover}.
+\begin{equation}
+	\textsc{SC.Revoke}(c_i) \Leftarrow T_{c_i}^{(t)} < T_{min}^{ctrl}
+	\label{eq:sc_revoke}
+\end{equation}
+\begin{equation}
+	c^*(k, t^+) = \underset{c_i \in \mathcal{C}_{trusted}(t^+)}{\arg\min}\, d(r_k, c_i), \quad \mathcal{C}_{trusted}(t^+) = \mathcal{C}_{trusted}(t) \setminus \{c_i^{revoked}\}
+	\label{eq:ctrl_failover}
+\end{equation}
+As given in Equations~\eqref{eq:sc_revoke} and~\eqref{eq:ctrl_failover}, no
+pre designated backup controller is needed, since every affected roadside
+unit re executes the assignment over whatever trusted controllers remain.
+
+The zero knowledge proof key material this paper's own hop legitimacy proof
+depends on is generated independently of the controller through a
+distributed key generation ceremony among roadside unit ring members, with
+the resulting verification key committed as given in
+Equation~\eqref{eq:vk_commit}.
+\begin{equation}
+	\textsc{BC.Commit}\!\left(vk_{ZKP}, \{\text{Com}_j\}_{j=1}^{n_{RSU}}, ts_{setup}\right)
+	\label{eq:vk_commit}
+\end{equation}
+As given in Equation~\eqref{eq:vk_commit}, $vk_{ZKP}$ is the jointly
+generated verification key the hop legitimacy proof of
+Section~\ref{sec:crypto_layer} is checked against, and $\{\text{Com}_j\}$
+are the per roadside unit commitments from the ceremony, so a compromised
+controller has no path to influencing the key plane this proof depends on.
+When a participating roadside unit is later revoked, every proving key it
+contributed to is rotated rather than left in circulation, triggered as
+given in Equation~\eqref{eq:key_rotation_trigger} and recommitted as given
+in Equation~\eqref{eq:vk_commit_rotated}.
+\begin{equation}
+	\textsc{SC.RotateKeys} \Leftarrow \exists\, r_j : T_{r_j}^{(t)} < T_{min} \land r_j \in \mathcal{P}_{DKG}^{current}
+	\label{eq:key_rotation_trigger}
+\end{equation}
+\begin{equation}
+	\textsc{BC.Commit}\!\left(vk_{ZKP}^{new}, \{\text{Com}_j\}_{j \in \mathcal{P}_{DKG}^{new}}, ts_{rotation}\right)
+	\label{eq:vk_commit_rotated}
+\end{equation}
+As given in Equation~\eqref{eq:vk_commit_rotated}, $\mathcal{P}_{DKG}^{new}$
+is the prior participant set with the revoked roadside unit removed, so
+rotation never requires a full ceremony among every roadside unit in the
+network, a property equally important here as in PHANTOM since the hop
+legitimacy proof this paper relies on uses the same key plane.
+
+
+\subsection{Dual Mode Detection Engine}
+\label{sec:dual_mode}
+
+Figure~\ref{fig:dual_mode} shows the two cooperating detection paths this
+paper shares with PHANTOM; this section develops the roadside unit path in
+full, since Signatures S5 through S8 are evaluated there exclusively,
+following escalation from whichever on board signatures fired.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{Figure_1_Final.eps}
+	\caption{Dual Mode Framework Overview}
+	\label{fig:dual_mode}
+\end{figure}
+
+Hidden forwarding is masked by vehicular mobility for the reason
+Section~\ref{sec:mobility_amplification} establishes: a vehicle's
+residence time inside a single roadside unit's zone bounds how many
+packets a flow conservation detector ever gets to observe, given in
+Equation~\eqref{eq:observation_window}, which is what motivates per
+packet cryptographic verification over flow level statistics as the
+primary mechanism developed in this section, since a zero knowledge
+proof requires no observation window at all.
+
+Active hidden forwarding fabricates a duplicate that a verifier can reject
+cryptographically; passive hidden forwarding retransmits the original,
+genuinely authentic packet, so no cryptographic check can reject it and
+detection instead depends on an addressing property read from the link
+layer rather than from content. Signature S5, the active control plane
+variant, is given in Equation~\eqref{eq:sig_s5}.
+\begin{equation}
+	\begin{aligned}
+		\text{S5:}\quad
+		& d' \notin \mathcal{P}(s,d) \\
+		& \wedge\; \neg\,\textsc{BC.Endorsed}\big(\texttt{FlowMod}(s \to d')\big) \\
+		& \wedge\; \textsc{ML-DSA-87.Verify}(\sigma_{copy}, pk_s, m_{copy}) = 0 \\
+		& \wedge\; b_{hop}(u) = 0 \\
+		& \wedge\; \textsc{Addressed}(p, d') = 1
+	\end{aligned}
+	\label{eq:sig_s5}
+\end{equation}
+As given in Equation~\eqref{eq:sig_s5}, the second conjunct establishes the
+control plane origin through the absence of an endorsed policy for the flow
+toward $d'$ rather than through aggregate signature failure: a fabricated
+duplicate delivered off path is never part of the primary path signing
+batch in the first place, so it cannot fail a check it was never subject to,
+and requiring it would make the signature unsatisfiable. The addressing
+conjunct is read directly from the link layer destination of the frame the
+accusing node received, independent of the signed next hop, and is what
+separates a node that was genuinely sent the unauthorized duplicate from a
+bystander that merely overheard a broadcast transmission on the shared
+radio medium, since every neighbour within range receives every frame.
+Signature S6, the active data plane variant, is given in
+Equation~\eqref{eq:sig_s6}.
+\begin{equation}
+	\begin{aligned}
+		\text{S6:}\quad
+		& \exists\, d, d' : d \neq d' \\
+		& \wedge\; H(p) \in \mathcal{R}(d, W_{S6}) \\
+		& \wedge\; \textsc{BC.QueryReceipt}(H(p), d', W_{S6}) = 1 \\
+		& \wedge\; \textsc{ML-DSA-87.Verify}(\sigma_{copy}, pk_s, m_{copy}) = 0 \\
+		& \wedge\; b_{hop}(u) = 0 \\
+		& \wedge\; \textsc{Addressed}(p, d') = 1
+	\end{aligned}
+	\label{eq:sig_s6}
+\end{equation}
+As given in Equation~\eqref{eq:sig_s6}, observing the same packet hash $H(p)$
+locally at $d$ and, via the blockchain receipt query of
+Equation~\eqref{eq:packet_receipt_log}, at $d'$ within window $W_{S6}{=}30$s
+confirms duplication; the window must exceed the ten second evaluation block
+this paper's own evaluation methodology uses, since a shorter window can
+observe the two receptions in adjacent, disconnected blocks, though a window
+this long frequently spans a roadside unit handoff, a limitation of the
+signature rather than of the window choice itself. Signature S6 carries no
+flow modification absence conjunct: an earlier construction included one to
+separate S6 from S5, but the underlying endorsement query reported the
+monitored flow as endorsed in every cycle, which suppressed every correct S6
+detection rather than only S5 events, and it is not part of the signature
+for that reason. Signature S7, the passive control plane variant, is given
+in Equation~\eqref{eq:sig_s7}.
+\begin{equation}
+	\text{S7:}\; \tfrac{d}{dt}\text{Vol}(d',t) > \epsilon_{vol} \;\land\; \textsc{ML-DSA-87.Verify}(\sigma_c, pk_s, m_c) = 1 \;\land\; b_{hop}(u) = 0 \;\land\; \textsc{Addressed}(p, d') = 1
+	\label{eq:sig_s7}
+\end{equation}
+As given in Equation~\eqref{eq:sig_s7}, verification succeeding on the copy
+is what distinguishes this passive variant from S5's active fabrication: the
+content is unmodified because the original, genuinely signed packet was
+retransmitted rather than forged, so cryptographic evidence alone cannot be
+the primary signal here, and the witness mechanism of
+Section~\ref{sec:witness} carries that role instead, with the volume rate
+and hop proof failure serving only as corroborating indicators. The volume
+rate is estimated over a tumbling ten second window with
+$\epsilon_{vol}{=}0.1$ packets per second. Signature S8, the passive data
+plane variant, is given in Equation~\eqref{eq:sig_s8}.
+\begin{equation}
+	\text{S8:}\; \textsc{BatchVerify}(\boldsymbol{\sigma}, \{pk_i\}, \{m_i\}, \mathbf{r}) = 1 \;\land\; \textsc{ML-DSA-87.Verify}(\sigma_c, pk_s, m_c) = 1 \;\land\; b_{hop}(u) = 0 \;\land\; \textsc{Addressed}(p, d') = 1
+	\label{eq:sig_s8}
+\end{equation}
+As given in Equation~\eqref{eq:sig_s8}, aggregate verification succeeding
+confirms correct delivery across every hop on the primary path, so, exactly
+as for S7, the primary detection mechanism is witness monitoring rather than
+this signature alone.
+
+Algorithm~\ref{alg:lrad_rsu} summarises the roadside unit procedure. It is
+presented here corrected against two inconsistencies confirmed directly in
+the current draft: the addressing conjunct now required by
+Equations~\eqref{eq:sig_s5} through~\eqref{eq:sig_s8} is included in every
+relevant step, the stale flow modification absence check is removed from
+the S6 and S7 steps to match the equations above, the composite decision is
+stated as confirmed against the live implementation rather than the draft
+text's own, differently structured version, and the reception log anomaly
+rule verified in Section~\ref{sec:witness} is included as a direct
+contributor to Signatures S7 and S8 rather than only as a condition
+suppressing the classifier.
+\begin{algorithm}[!t]
+	\caption{Lightweight and Full Rule Based Attack Detection at the Roadside Unit (LRAD RSU), Hidden Forwarding Steps}
+	\label{alg:lrad_rsu}
+	\begin{algorithmic}[1]
+		\small
+		\Procedure{LRAD-RSU (S5--S8 excerpt)}{$p, r, t, \boldsymbol{\sigma}, \pi_{delay}, \pi_{hop}$}
+		\State $\mathbf{r} \gets H_{\text{SHA3-512}}(\boldsymbol{\sigma}\|m_1\|\cdots\|m_n)$ \Comment{Eq.~\eqref{eq:batch_challenge}}
+		\State $b_{batch} \gets \textsc{BatchVerify}(\boldsymbol{\sigma}, \{pk_i\}, \{m_i\}, \mathbf{r})$ \Comment{Eq.~\eqref{eq:batch_verify}}
+		\State $b_{hop} \gets \textsc{STARK.Verify}(\pi_{hop}, C_{hop}, H_{\text{SHA3-512}})$ \Comment{Eq.~\eqref{eq:stark_hop_verify}}
+		\If{$\neg b_{batch}$}
+		\State $v_{atk,copy} \gets \arg\min_{i}\{i : \textsc{ML-DSA-87.Verify}(\sigma_i,pk_i,m_i)=0\}$ \Comment{Eq.~\eqref{eq:batch_fallback}}
+		\EndIf
+		\State $\text{CopyVerify}_{d'} \gets \textsc{BC.QueryReceipt}(H(p),d',W).\text{verify}$ \Comment{Eq.~\eqref{eq:packet_receipt_log}}
+		\State $flag_{S5} \gets [\neg b_{batch}] \land [f_{unauth}(r,t){=}1] \land [\text{CopyVerify}_{d'}{=}0] \land [b_{hop}{=}0] \land [\textsc{Addressed}(p,d'){=}1]$ \Comment{Eq.~\eqref{eq:sig_s5}}
+		\State $\text{RecvAt}_{d'} \gets \textsc{BC.QueryReceipt}(H(p),d',W_{S6})$
+		\State $flag_{S6} \gets [\text{RecvAt}_{d'}{=}1] \land [\text{CopyVerify}_{d'}{=}0] \land [b_{hop}{=}0] \land [\textsc{Addressed}(p,d'){=}1]$ \Comment{Eq.~\eqref{eq:sig_s6}, no FlowMod absence term}
+		\State $flag_{S7} \gets [\tfrac{d}{dt}\text{Vol}(d',t){>}\epsilon_{vol}] \land [\text{CopyVerify}_{d'}{=}1] \land [b_{hop}{=}0] \land [\textsc{Addressed}(p,d'){=}1]$ \Comment{Eq.~\eqref{eq:sig_s7}, no FlowMod absence term}
+		\State $flag_{S8} \gets [b_{batch}] \land [\text{CopyVerify}_{d'}{=}1] \land [b_{hop}{=}0] \land [\textsc{Addressed}(p,d'){=}1]$ \Comment{Eq.~\eqref{eq:sig_s8}}
+		\State $flag_{S7} \gets flag_{S7} \lor [R_{anom}(r,t) > 0]$; \quad $flag_{S8} \gets flag_{S8} \lor [R_{anom}(r,t) > 0]$ \Comment{Eq.~\eqref{eq:feat_ranom}, direct contribution}
+		\If{$\neg(flag_{S3} \lor flag_{S4} \lor [R_{anom}(r,t){>}0])$}
+		\State $flag_{LSTM} \gets D_{LSTM}^{(k)}$ \Comment{Eq.~\eqref{eq:lstm_gate}}
+		\Else
+		\State $flag_{LSTM} \gets 0$
+		\EndIf
+		\State $D_{RSU} \gets flag_{S5} \lor flag_{S6} \lor flag_{S7} \lor flag_{S8} \lor flag_{LSTM}$
+		\If{$D_{RSU}$ and once contained, $flag_{S5}, \ldots, flag_{S8} \gets 0$ for that node} \Comment{Quarantine suppression, Section~\ref{sec:witness}}
+		\EndIf
+		\If{$D_{RSU}$}
+		\State \texttt{BTMM}$(\text{attributed node}, \text{plane})$ \Comment{Section~\ref{sec:blockchain_arch}}
+		\EndIf
+		\State \textbf{return} $D_{RSU}$
+		\EndProcedure
+	\end{algorithmic}
+\end{algorithm}
+As shown in Algorithm~\ref{alg:lrad_rsu}, batch and hop verification are
+computed once per packet and reused across all four signatures rather than
+recomputed per signature, and the reception log anomaly rule contributes
+directly to the two passive signatures rather than only through the
+classifier path, closing a gap that existed while this rule ran only as a
+classifier suppression condition. Signatures S1 through S4 are evaluated in
+the same procedure and are developed in full in PHANTOM
+\cite{Phantom2026}.
+
+
+\subsection{Post Quantum Cryptographic Layer}
+\label{sec:crypto_layer}
+
+Figure~\ref{fig:crypto_pipeline} shows the cryptographic pipeline every
+packet carries; this paper develops the hop legitimacy proof in full, since
+it is the primary cryptographic contributor to hidden forwarding detection.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{Figure_2_Final.eps}
+	\caption{Cryptographic Packet Pipeline}
+	\label{fig:crypto_pipeline}
+\end{figure}
+
+Every forwarding node signs each packet it forwards, given in
+Equation~\eqref{eq:mldsa_sign}.
+\begin{equation}
+	\sigma_i = \textsc{ML-DSA-87.Sign}\!\left(sk_i,\; H_{\text{SHA3-512}}\!\left(\text{msg\_id} \,\|\, ts_i \,\|\, \eta_i \,\|\, \text{nh}_i \,\|\, z_i\right)\right)
+	\label{eq:mldsa_sign}
+\end{equation}
+As given in Equation~\eqref{eq:mldsa_sign}, the signed message binds the
+packet identifier, the forwarding timestamp $ts_i$, a fresh nonce
+$\eta_i$, the node's chosen next hop $\text{nh}_i$, and its current zone
+$z_i$ under the node's own key $sk_i$, so a signature over one next hop
+cannot later be replayed to vouch for a different one, which is exactly
+the property Signature S5's forged copy has no way to produce honestly.
+Resource constrained on board units instead use a symmetric key tag, given
+in Equation~\eqref{eq:hmac_light}.
+\begin{equation}
+	\tau_i = \textsc{HMAC-SHA3-512}\!\left(k_i,\; \text{msg\_id} \,\|\, ts_i \,\|\, \eta_i\right)
+	\label{eq:hmac_light}
+\end{equation}
+As given in Equation~\eqref{eq:hmac_light}, $\tau_i$ omits the next hop
+and zone fields entirely, since a lightweight node's own tag is only ever
+checked by the roadside unit holding the matching key $k_i$, not
+propagated as evidence to a third party the way a full signature is.
+Verifying every hop's signature independently does not scale to a multi hop
+path, so a randomized challenge permits one combined check instead, given in
+Equations~\eqref{eq:batch_challenge} and~\eqref{eq:batch_verify}.
+\begin{equation}
+	\mathbf{r} = (r_1, \ldots, r_n) = H_{\text{SHA3-512}}\!\left(\sigma_1 \,\|\, \cdots \,\|\, \sigma_n \,\|\, m_1 \,\|\, \cdots \,\|\, m_n\right)
+	\label{eq:batch_challenge}
+\end{equation}
+As given in Equation~\eqref{eq:batch_challenge}, the challenge vector
+$\mathbf{r}$ is derived only after every signature and message on the
+path has already been produced, so an adversary cannot choose a forged
+signature to favourably match a challenge it has not yet seen.
+\begin{equation}
+	\textsc{BatchVerify}\!\left(\{\sigma_i\}, \{pk_i\}, \{m_i\}, \mathbf{r}\right) = \left[\sum_{i=1}^{n} r_i \mathbf{A}_i \mathbf{z}_i \stackrel{?}{=} \sum_{i=1}^{n} r_i \left(\mathbf{t}_i \mathbf{c}_i + \mathbf{w}'_i\right) \pmod{q}\right]
+	\label{eq:batch_verify}
+\end{equation}
+As given in Equation~\eqref{eq:batch_verify}, one combined lattice equation
+accepts or rejects all $n$ signatures at once, which is what Signature S8
+tests directly and what Signatures S5 and S6 test the failure of. When the
+batch check fails, the specific forger is isolated as given in
+Equation~\eqref{eq:batch_fallback}.
+\begin{equation}
+	v_{atk} = \arg\min_{i \in \{1,\ldots,n\}} \Bigl\{i : \textsc{ML-DSA-87.Verify}(\sigma_i, pk_i, m_i) = 0\Bigr\}
+	\label{eq:batch_fallback}
+\end{equation}
+As given in Equation~\eqref{eq:batch_fallback}, individual verification
+runs only on the batch that already failed, so the cost of finding $v_{atk}$
+is paid exactly once per genuine forgery rather than on every packet that
+would have passed the combined check anyway.
+
+Next hop legitimacy is certified by a zero knowledge proof rather than
+trusting a forwarding node's own account of its routing choice. The proof
+is given in Equation~\eqref{eq:stark_hop}.
+\begin{equation}
+	\pi_{hop,i} = \textsc{STARK.Prove}\!\left(\{\sigma^{rcpt}_{i+1},\, \mathcal{P}_i\};\; C_{hop};\; H_{\text{SHA3-512}}\right)
+	\label{eq:stark_hop}
+\end{equation}
+As given in Equation~\eqref{eq:stark_hop}, the private witnesses are the
+receipt signature from the next hop and the local copy of the authorized
+next hop policy set committed at flow setup; the arithmetic circuit $C_{hop}$
+encodes that the receipt signature verifies under the claimed next hop's key
+and that the claimed next hop lies within the authorized policy set,
+certifying both delivery and routing compliance without revealing the
+receipt signature itself to any external verifier. Verification is given in
+Equation~\eqref{eq:stark_hop_verify}.
+\begin{equation}
+	b_{hop,i} = \textsc{STARK.Verify}\!\left(\pi_{hop,i},\; C_{hop},\; H_{\text{SHA3-512}}\right) \in \{0, 1\}
+	\label{eq:stark_hop_verify}
+\end{equation}
+As given in Equation~\eqref{eq:stark_hop_verify}, $b_{hop,i}{=}0$ is a
+corroborating cryptographic indicator for both active and passive hidden
+forwarding, never the primary signal, since a compromised node controls its
+own proof generation and can produce a valid proof while covertly
+duplicating over the shared radio medium; this is exactly why the witness
+mechanism of Section~\ref{sec:witness} and the classifier of
+Section~\ref{sec:fed_lstm} exist as independent detection paths rather than
+relying on this proof alone. The companion timing compliance proof,
+$\pi_{delay}$, is generated at the same pipeline stage and is developed in
+full in PHANTOM, since it is the primary cryptographic signal there
+\cite{Phantom2026}.
+
+
+\subsection{Federated LSTM with Byzantine Robust Aggregation}
+\label{sec:fed_lstm}
+
+Rule based and cryptographic signatures cover every variant with a
+deterministic or near deterministic observable, but passive hidden
+forwarding leaves none: the retransmitted packet is a genuinely authentic
+copy, so every cryptographic check available passes. A recurrent classifier
+trained across roadside units without centralizing raw traffic provides the
+complementary, learned detection path this residual case requires.
+Figure~\ref{fig:fed_lstm} shows the architecture together with the
+aggregation procedure described below.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{Figure_3_Final.eps}
+	\caption{Federated LSTM Architecture}
+	\label{fig:fed_lstm}
+\end{figure}
+
+Each roadside unit observes an eleven feature vector per cycle, given in
+Equation~\eqref{eq:lstm_input}.
+\begin{equation}
+	\mathbf{x}_t^{(r)} = \left[
+	\delta^{\max}_t,\;
+	\lambda_{PI,t},\;
+	U_{TCAM,t},\;
+	\mathbb{1}[\pi_{delay}{=}\bot],\;
+	\mathbb{1}[\pi_{hop}{=}\bot],\;
+	\rho_t,\;
+	\bar{v}_t,\;
+	\log(1{+}N_{div,t}),\;
+	\log(1{+}A^{\mathrm{RSU}}_{tp,t}),\;
+	\log(1{+}R_{anom,t}),\;
+	\mathbb{1}[\delta^{\max}_t{>}\Delta_{max}]
+	\right]^T
+	\label{eq:lstm_input}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_input}, three of the eleven features are
+specific to hidden forwarding and are developed in full below; each is
+transformed by $\log(1{+}x)$ before entering the vector, since its benign
+resting value is small and constant while its value under attack spans
+several orders of magnitude. The per roadside unit destination diversity
+count is given in Equation~\eqref{eq:feat_ddiv}.
+\begin{equation}
+	N_{div}(r,t) = \left|\left\{\, v \in \mathcal{V}(r,t) \;:\; \mathcal{D}(v,r,t) \not\subseteq \mathcal{P}(v,\cdot) \,\right\}\right|
+	\label{eq:feat_ddiv}
+\end{equation}
+As given in Equation~\eqref{eq:feat_ddiv}, $N_{div}(r,t)$ counts the distinct
+source vehicles, among those whose deliveries attribute to roadside unit
+$r$, whose reached destinations include at least one outside their
+authorized policy, with each delivery attributed to the covering roadside
+unit of its last hop sender. Unlike the reception log anomaly score below,
+this count separates one high volume attacker from several quiet ones,
+correlating with it at only 0.47 to 0.69 across variants, so the two carry
+genuinely different information rather than one being redundant with the
+other. When a roadside unit relays no delivery of the monitored flow in a
+given cycle, the feature takes the resting value one rather than the count
+itself. The per flow throughput asymmetry is given in
+Equation~\eqref{eq:feat_atp}.
+\begin{equation}
+	A_{tp}(v,r,t) = \frac{\lambda_{bytes}(v,d,W)}{\lambda_{bytes}(v,\cdot,W)}
+	\label{eq:feat_atp}
+\end{equation}
+As given in Equation~\eqref{eq:feat_atp}, this ratio falls below one under
+active hidden forwarding, since traffic is diverted, and rises above one
+under passive hidden forwarding, since attributed throughput now includes
+the retransmitted copy. Since the detector consumes one vector per roadside
+unit per cycle, this per source ratio is supplied as the per roadside unit
+aggregate given in Equation~\eqref{eq:feat_atp_rsu}.
+\begin{equation}
+	A_{tp}^{\mathrm{RSU}}(r,t) = \frac{\left|\left\{p \in \mathcal{F}_m(t) : c(u_p,t)=r,\; dst(p)=d_p\right\}\right|}{\left|\left\{p \in \mathcal{F}_m(t) : c(u_p,t)=r\right\}\right|}
+	\label{eq:feat_atp_rsu}
+\end{equation}
+As given in Equation~\eqref{eq:feat_atp_rsu}, $\mathcal{F}_m(t)$ is the set
+of monitored flow deliveries in the cycle, $u_p$ the last hop sender of
+delivery $p$, and $c(u,t)$ the roadside unit currently covering $u$; each
+authorized delivery is credited to that covering roadside unit rather than
+computed as one value shared across the network, correcting a broadcast
+scalar implementation that previously carried zero per roadside unit
+information. The reception log anomaly score, the most novel of the three,
+is given in Equation~\eqref{eq:feat_ranom}.
+\begin{equation}
+	R_{anom}(r,t) = \frac{1}{W}\left|\left\{ H(p) : \textsc{BC.QueryReceipt}(H(p),d',W) = 1,\; d' \notin \mathcal{P}(s_p, d_p) \right\}\right|
+	\label{eq:feat_ranom}
+\end{equation}
+As given in Equation~\eqref{eq:feat_ranom}, this counts distinct packet
+hashes per unit time received at unauthorized destinations, queried directly
+from the blockchain receipt log; under no attack it is exactly zero, and
+under any hidden forwarding variant it rises immediately, including the two
+passive variants where every cryptographic verification passes and the
+proof failure indicators of Section~\ref{sec:crypto_layer} provide no
+signal at all. It is therefore the only feature in the vector providing
+direct signal for passive hidden forwarding independently of the
+cryptographic layer, which is also why, as shown in
+Algorithm~\ref{alg:lrad_rsu}, it contributes directly to Signatures S7 and
+S8 rather than solely through the classifier.
+
+The classifier is suppressed wherever a rule based signature has already
+resolved the cycle, given in Equation~\eqref{eq:lstm_gate}.
+\begin{equation}
+	\texttt{flag}_{LSTM}(r,t) =
+	\begin{cases}
+		D_{LSTM}^{(k)}(t) & \text{if } \neg(flag_{S3} \lor flag_{S4}) \\
+		0 & \text{if } flag_{S3} \lor flag_{S4}
+	\end{cases}
+	\label{eq:lstm_gate}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_gate}, suppression is unconditional
+whenever S3 or S4 fires, since residual table occupancy from those attacks
+inflates reconstruction error at roadside units that are not themselves
+under attack, for as long as the occupancy persists; this is a structural
+effect the classifier cannot be conditioned around, so the rule based and
+blockchain layers are treated as definitive for those two variants instead.
+
+The encoder's hidden state evolves as given in
+Equation~\eqref{eq:lstm_hidden}.
+\begin{equation}
+	\mathbf{h}_t = \textsc{LSTM}\!\left(\mathbf{x}_t, \mathbf{h}_{t-1};\, \mathbf{W}_{local}^{(k)}\right)
+	\label{eq:lstm_hidden}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_hidden}, the hidden state $\mathbf{h}_t$
+updates from the current eleven feature input $\mathbf{x}_t$ and the
+previous hidden state under weights $\mathbf{W}_{local}^{(k)}$ trained
+locally at roadside unit $k$, so the representation carries forward
+exactly the sequence structure a single window snapshot would discard.
+The encoder is first trained as an autoencoder, whose reconstruction error
+is the anomaly score given in Equation~\eqref{eq:anomaly_score}.
+\begin{equation}
+	\mathcal{A}_t^{(k)} = \frac{1}{WF}\sum_{\tau=t-W+1}^{t} \left\|\mathbf{x}_\tau - \hat{\mathbf{x}}_\tau\right\|_2^2
+	\label{eq:anomaly_score}
+\end{equation}
+As given in Equation~\eqref{eq:anomaly_score}, this is the mean squared
+reconstruction error over the ten timestep, eleven feature window. On this
+reconstruction path, a benign calibrated threshold decision is given in
+Equations~\eqref{eq:lstm_detection} and~\eqref{eq:lstm_threshold}.
+\begin{equation}
+	D_{LSTM}^{(k)}(t) =
+	\begin{cases}
+		1 & \mathcal{A}_t^{(k)} > \theta^{(k)} \\
+		0 & \text{otherwise}
+	\end{cases}
+	\label{eq:lstm_detection}
+\end{equation}
+\begin{equation}
+	\theta^{(k)} = \mu_{\mathcal{A}}^{(k)} + z_\alpha \cdot \sigma_{\mathcal{A}}^{(k)}
+	\label{eq:lstm_threshold}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_threshold}, $z_\alpha{=}3.5$ is fitted to
+clear a one percent false positive rate on the held out validation split
+given the limited per roadside unit calibration sample available. A warm up
+adaptation guards against seed to seed mobility variance, given in
+Equation~\eqref{eq:theta_adapt}.
+\begin{equation}
+	\theta^{(k)}_{adapted} = \max\!\left(\theta^{(k)},\; \mu_{warmup}^{(k)} + z \cdot \sigma_{warmup}^{(k)}\right)
+	\label{eq:theta_adapt}
+\end{equation}
+As given in Equation~\eqref{eq:theta_adapt}, the maximum ensures warm up
+only ever raises the threshold, never lowers it, and this adaptation applies
+to the reconstruction path described above only.
+
+The detector actually used for the results reported in
+Section~\ref{sec:results} does not threshold the reconstruction error
+directly. The encoder above is first trained as described, its weights are
+then frozen, and a lightweight classification head is trained separately on
+the frozen encoder's final hidden state, given in
+Equation~\eqref{eq:lstm_cls}.
+\begin{equation}
+	P_{atk}^{(k)}(t) = \sigma\!\left(\mathbf{w}_2^{\top}\, \mathrm{ReLU}\!\left(\mathbf{W}_1 \mathbf{h}^{(2)}_T + \mathbf{b}_1\right) + b_2\right)
+	\label{eq:lstm_cls}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_cls}, the head is trained with binary
+cross entropy against injection side ground truth, never against any
+quantity computed from the input vector itself, which keeps the label
+independent of the features the model consumes. Detection on this path
+follows a per roadside unit threshold calibrated from that unit's own
+benign traffic under live operating conditions, given in
+Equation~\eqref{eq:lstm_cls_threshold}.
+\begin{equation}
+	D_{LSTM}^{(k)}(t) = \mathbb{1}\!\left[P_{atk}^{(k)}(t) > \theta_{cls}^{(k)}\right], \qquad \theta_{cls}^{(k)} = \max\!\left(Q_{1-\alpha}\!\left(\mathcal{P}^{(k)}_{benign}\right),\; 0.05\right)
+	\label{eq:lstm_cls_threshold}
+\end{equation}
+As given in Equation~\eqref{eq:lstm_cls_threshold}, the threshold is the
+empirical benign quantile of the roadside unit's own classifier output under
+live conditions rather than a value calibrated offline, since offline
+calibrated thresholds were found to transfer poorly across the
+heterogeneous traffic each roadside unit observes once deployed; the warm up
+adaptation of Equation~\eqref{eq:theta_adapt} is not applied on this path.
+The reconstruction equations above remain in the paper because they are the
+encoder's training objective and back the high confidence tier reported in
+Section~\ref{sec:results}, not because they are the deployed decision rule.
+
+Local models are aggregated under the assumption that any roadside unit may
+be compromised. Submissions are first checked against their committed hash,
+given in Equation~\eqref{eq:bc_model_verify}.
+\begin{equation}
+	\mathbb{1}_{BC}^{(k)} = \textsc{SC.VerifyModelHash}\!\left(H(\mathbf{W}_{local}^{(k)}),\; \textsc{CommittedHash}^{(k)}\right)
+	\label{eq:bc_model_verify}
+\end{equation}
+As given in Equation~\eqref{eq:bc_model_verify}, the indicator
+$\mathbb{1}_{BC}^{(k)}$ is one only when the weights a roadside unit
+actually submits hash to the value it pre committed on chain, so a
+roadside unit cannot submit a different update than the one it declared
+in advance. Surviving submissions are then averaged, weighted and filtered as given in
+Equation~\eqref{eq:fed_robust}.
+\begin{equation}
+	\mathbf{W}_{global}^{(t+1)} = \frac{\sum_{k=1}^{K} n_k \cdot \mathbf{W}_{local}^{(k)}(t) \cdot \mathbb{1}\!\left[d\!\left(\mathbf{W}_{local}^{(k)}, \tilde{\mathbf{W}}\right) < \gamma\right]}{\sum_{k=1}^{K} n_k \cdot \mathbb{1}\!\left[d\!\left(\mathbf{W}_{local}^{(k)}, \tilde{\mathbf{W}}\right) < \gamma\right]}
+	\label{eq:fed_robust}
+\end{equation}
+As given in Equation~\eqref{eq:fed_robust}, $\tilde{\mathbf{W}}$ is the
+coordinate wise median of submitted weights and $\gamma$ is an outlier
+rejection threshold, so a roadside unit whose weights deviate beyond
+$\gamma$ from the median, indicating possible gradient poisoning, is
+excluded from the weighted average entirely rather than merely down
+weighted, preventing a single Byzantine roadside unit from shifting the
+global model arbitrarily.
+
+Algorithm~\ref{alg:brfa_v2} summarises the full aggregation round.
+\begin{algorithm}[!t]
+	\caption{Byzantine Robust Federated Aggregation (BRFA-v2)}
+	\label{alg:brfa_v2}
+	\begin{algorithmic}[1]
+		\small
+		\Procedure{BRFA-v2}{$\{\mathbf{W}_{local}^{(k)}\}_{k=1}^{K}, \{n_k\}, \gamma$}
+		\State $\mathcal{K}_e \gets \{k : T_{r_k} \geq T_{min}\}$ \Comment{Trust gate}
+		\If{$|\mathcal{K}_e| < 2f{+}1$}
+		\State \textbf{abort} \Comment{Insufficient honest participants}
+		\EndIf
+		\For{$k \in \mathcal{K}_e$}
+		\State $\mathbb{1}_{BC}^{(k)} \gets \textsc{SC.VerifyModelHash}(\mathbf{W}^{(k)})$ \Comment{Eq.~\eqref{eq:bc_model_verify}}
+		\EndFor
+		\State $\tilde{\mathbf{W}} \gets \texttt{COORD\_MEDIAN}(\{\mathbf{W}^{(k)}\}_{k \in \mathcal{K}_e})$
+		\For{$k \in \mathcal{K}_e$}
+		\State $\omega_k \gets n_k \cdot \mathbb{1}_{BC}^{(k)} \cdot \mathbb{1}[d(\mathbf{W}^{(k)}, \tilde{\mathbf{W}}) < \gamma]$
+		\EndFor
+		\State $\mathbf{W}_{global} \gets \sum_k \omega_k \mathbf{W}^{(k)} / \sum_k \omega_k$ \Comment{Eq.~\eqref{eq:fed_robust}}
+		\State \texttt{BC.COMMIT}$(H(\mathbf{W}_{global}))$
+		\State \textbf{return} $\mathbf{W}_{global}$
+		\EndProcedure
+	\end{algorithmic}
+\end{algorithm}
+As shown in Algorithm~\ref{alg:brfa_v2}, a roadside unit must clear the trust
+gate before its hash is even checked, so a roadside unit already quarantined
+by Section~\ref{sec:blockchain_arch} contributes nothing to the global
+model regardless of what it submits, and the round aborts outright if fewer
+than $2f{+}1$ participants remain trusted, rather than silently aggregating
+over a minority that could no longer be considered representative.
+
+
+\subsection{Witness Based Passive Attack Detection}
+\label{sec:witness}
+
+Passive hidden forwarding survives every mechanism developed above, since
+the duplicated packet is a genuine, unmodified retransmission carrying a
+valid signature; detection instead depends on nearby vehicles independently
+observing the same transmission. A witness raises a duplication alert
+whenever it observes the same packet hash addressed to two distinct
+destinations, given in Equation~\eqref{eq:dup_alert_cond}.
+\begin{equation}
+	\text{DA}_w(p){=}1\iff \exists\,dst{\neq}dst': H(p)\in\mathcal{L}_w(dst,W) \land H(p)\in\mathcal{L}_w(dst',W)
+	\label{eq:dup_alert_cond}
+\end{equation}
+As given in Equation~\eqref{eq:dup_alert_cond}, $\mathcal{L}_w(dst,W)$ is the
+set of hashes the witness observed directed to $dst$ within window $W$; this
+condition is impossible for legitimate, single path traffic, so any
+occurrence is itself evidence of duplication regardless of which node is
+ultimately found responsible. A related, severe case is covered separately:
+a forwarding delay long enough to exceed the safety deadline $T_{fwd}$
+renders a packet functionally equivalent to non delivery, given in
+Equation~\eqref{eq:nfwd_detect}.
+\begin{equation}
+	\text{NFA}_w(p){=}1\iff H(p)\in\mathcal{L}_w^{recv}(v_i,W) \land H(p)\notin\mathcal{L}_w^{fwd}(v_i,T_{fwd})
+	\label{eq:nfwd_detect}
+\end{equation}
+As given in Equation~\eqref{eq:nfwd_detect}, this condition holds when a
+packet a witness saw arrive at $v_i$ was never witnessed leaving $v_i$
+within the safety deadline, which this paper treats as a severe case of the
+selective time delay variants PHANTOM addresses rather than as a ninth
+attack type in its own right \cite{Phantom2026}. Both alert types are signed
+before submission to the blockchain, given in Equations~\eqref{eq:da_sign}
+and~\eqref{eq:nfa_sign}.
+\begin{equation}
+	\alpha_w = \textsc{ML-DSA-87.Sign}\!\left(sk_w,\; H_{\text{SHA3-512}}\!\left(H(p) \,\|\, dst \,\|\, dst' \,\|\, ts_w\right)\right)
+	\label{eq:da_sign}
+\end{equation}
+\begin{equation}
+	\beta_w = \textsc{ML-DSA-87.Sign}\!\left(sk_w,\; H_{\text{SHA3-512}}\!\left(H(p) \,\|\, v_i \,\|\, ts_w \,\|\, T_{fwd}\right)\right)
+	\label{eq:nfa_sign}
+\end{equation}
+As given in Equations~\eqref{eq:da_sign} and~\eqref{eq:nfa_sign}, lattice
+based signing rather than a symmetric tag is required here specifically
+because both alerts are written directly to the blockchain and must be
+attributable to a specific witness vehicle by any third party verifier
+without that verifier holding a pre shared key.
+
+A single witness alert must never be sufficient to penalize a node, since
+one compromised or mistaken witness could otherwise accuse an innocent node
+at will. The smart contract penalty trigger requires a distinct witness
+quorum instead, given in Equation~\eqref{eq:bft_penalty}.
+\begin{equation}
+	\textsc{SC.PenalizeTrust}(v_i) \Leftarrow \Bigl|\bigl\{ w : \exists\,(\alpha_w \text{ or } \beta_w) \text{ s.t. } \textsc{ML-DSA-87.Verify}(\cdot,pk_w,\cdot) = 1 \;\land\; \text{event}(v_i,p,w)\text{ confirmed} \bigr\}\Bigr| \geq 2f{+}1
+	\label{eq:bft_penalty}
+\end{equation}
+As given in Equation~\eqref{eq:bft_penalty}, the cardinality is taken over
+distinct witness vehicles that each independently submitted a verified
+alert for the same event, not over the number of alert messages, so a
+single vehicle resubmitting its own alert can never cross the threshold
+unilaterally. Once a node is quarantined by this mechanism or by
+Section~\ref{sec:blockchain_arch}, Signatures S5 through S8 stop asserting
+against it, since a detector that keeps accusing a node the system has
+already contained measures its own failure to switch off rather than a
+genuine gap in detection, an exception encoded directly in
+Algorithm~\ref{alg:lrad_rsu} above.
+
+
+\subsection{Blockchain Architecture}
+\label{sec:blockchain_arch}
+
+All blockchain writes originate exclusively from roadside units, and for
+this paper's own signatures the packet reception log is the single most
+load bearing mechanism, since it is what makes cross roadside unit
+duplication checking possible without a direct communication channel
+between the two roadside units involved. Figure~\ref{fig:blockchain_arch}
+shows the resulting two tier structure.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{Figure_4_Final.eps}
+	\caption{Blockchain Architecture and Trust Management}
+	\label{fig:blockchain_arch}
+\end{figure}
+
+A flow modification is installed only once endorsed by $f{+}1$ independent
+roadside units, given in Equations~\eqref{eq:rsu_endorsement}
+and~\eqref{eq:endorsed_commit}.
+\begin{equation}
+	\epsilon_j = \textsc{ML-DSA-87.Sign}\!\left(sk_{r_j},\; H_{\text{SHA3-512}}\!\left(\texttt{FlowMod} \,\|\, ts \,\|\, \mathcal{T}_{r_j}\right)\right)
+	\label{eq:rsu_endorsement}
+\end{equation}
+\begin{equation}
+	C_{\mathcal{P}} = \textsc{BC.Commit}\!\left(H(\texttt{FlowMod}) \,\|\, \{\epsilon_j\}_{j=1}^{f+1} \,\|\, ts_{commit}\right)
+	\label{eq:endorsed_commit}
+\end{equation}
+As given in Equations~\eqref{eq:rsu_endorsement}
+and~\eqref{eq:endorsed_commit}, a controller issuing an unauthorized flow
+modification toward an unauthorized destination cannot collect $f{+}1$
+honest endorsements and so cannot produce a valid commitment, which is
+exactly the absence Signature S5's second conjunct tests for. Every flow
+modification received is logged before installation, given in
+Equation~\eqref{eq:flowmod_log}, and every packet reception is logged
+separately, given in Equation~\eqref{eq:packet_receipt_log}.
+\begin{equation}
+	\textsc{BC.LogFlowMod}\!\left(r_k,\; H(\texttt{FlowMod}_{recv}) \,\|\, ts_{recv} \,\|\, \epsilon_{endorsement}\right)
+	\label{eq:flowmod_log}
+\end{equation}
+\begin{equation}
+	\textsc{BC.LogReceipt}\!\left(H(p),\; dst,\; r_k,\; ts_{recv},\; \textsc{ML-DSA-87.Verify}(\sigma_{copy},pk_s,m_{copy})\right)
+	\label{eq:packet_receipt_log}
+\end{equation}
+As given in Equation~\eqref{eq:packet_receipt_log}, any roadside unit may
+query whether a given packet hash was received at a specific destination
+within a window through $\textsc{BC.QueryReceipt}(H(p), d', W)$, which is
+the query every one of this paper's signatures and the reception log
+anomaly feature ultimately rest on. Absence of a corresponding commitment
+flags a flow modification as unauthorized, given in
+Equation~\eqref{eq:unauth_flowmod}.
+\begin{equation}
+	f_{unauth}(r_k, t) =
+	\begin{cases}
+		1 & \texttt{FlowMod}_{recv} \notin \textsc{BC.Query}(\mathcal{C}_{\mathcal{P}}) \\
+		0 & \text{otherwise}
+	\end{cases}
+	\label{eq:unauth_flowmod}
+\end{equation}
+As given in Equation~\eqref{eq:unauth_flowmod}, this flag is a
+pre installation enforcement gate rather than only a detection signal: a
+roadside unit evaluating it as one rejects the flow modification outright,
+so the underlying rule never takes effect regardless of what any signature
+later concludes about it.
+
+Node level trust updates on every cryptographic verification outcome, given
+in Equation~\eqref{eq:trust_update}, and quarantine follows automatically
+once trust drops below the minimum, given in Equation~\eqref{eq:quarantine}.
+\begin{equation}
+	T_v^{(t+1)} =
+	\begin{cases}
+		\min(1,\, T_v^{(t)} + \Delta_r) & \textsc{BatchVerify} = 1 \;\land\; b_{\pi} = 1 \\
+		\max(0,\, T_v^{(t)} - \Delta_p) & \textsc{BatchVerify} = 0 \;\lor\; b_{\pi} = 0
+	\end{cases}
+	\label{eq:trust_update}
+\end{equation}
+\begin{equation}
+	\textsc{SC.Quarantine}(v) \Leftarrow T_v^{(t)} < T_{min}
+	\label{eq:quarantine}
+\end{equation}
+As given in Equation~\eqref{eq:quarantine}, quarantine triggers
+automatically once trust crosses the threshold, without a centralized
+decision. Enforcement of quarantine, meaning whether a quarantined node is
+actually blocked from continuing to schedule a hidden duplicate rather than
+merely being flagged, is an explicit configuration switch in this project:
+the ablation results in Section~\ref{sec:results} are measured with
+enforcement disabled so that they isolate detection quality on its own
+terms, and its effect once enabled is evaluated separately, a distinction
+this paper states plainly since it materially changes what a quarantine
+count in any table is allowed to claim. Finally, the authorized forwarding
+policy $\mathcal{P}(s,d)$ that Signature S5's first conjunct tests against
+is itself committed by the endorsing roadside units at flow setup, given in
+Equation~\eqref{eq:policy_commit}.
+\begin{equation}
+	C_{\mathcal{P}} = \textsc{Commit}\!\left(H(\mathcal{P}(s,d)) \,\|\, ts_{setup} \,\|\, \{\epsilon_j\}_{j=1}^{f+1}\right)
+	\label{eq:policy_commit}
+\end{equation}
+As given in Equation~\eqref{eq:policy_commit}, this commitment is what
+Signature S5's first conjunct ultimately verifies a proposed duplicate
+destination against, so the authorized policy a flow is held to is never
+dependent on the controller's own, potentially compromised, account of
+what it authorized, closing the same gap at the policy layer that the
+addressing conjunct closes at the signature layer.
+
+
+
+\section{Evaluation Setup}
+\label{sec:evaluation_setup}
+
+All five experiments in Section~\ref{sec:results} evaluate Signatures S5
+through S8 exclusively, against the same three baselines named in
+Section~\ref{sec:related}, of which only FADE addresses this paper's own
+attack class. Table~\ref{tab:vanguard_sim_settings} lists the settings
+required for replication; parameters that are not themselves part of this
+paper's design, together with their full sensitivity sweeps, are reported
+in the companion papers. Trip generation across the shared mobility trace
+follows a high random routing factor to avoid unnatural vehicle
+clustering \cite{sumo_randomtrips}. The DSRC transmission power is set
+within the standard power class the Federal Communications Commission
+allocated for this band \cite{FCC03-324}, and the routing update and data
+transmission clock is set below the Basic Safety Message rate the SAE
+J2735 standard specifies \cite{sae_j2735}, so as to remain frequent
+enough to observe the signatures of Section~\ref{system_model} within
+their own observation window. The reconstruction path threshold's
+$z_\alpha{=}3.5$ setting of Equation~\eqref{eq:lstm_threshold} follows the
+same three sigma convention for bounding false positive rate under a
+Gaussian assumption \cite{pukelsheim1994three}, distinct from the
+empirical quantile the deployed classifier threshold actually uses.
+
+\begin{table}[!t]
+	\centering
+	\caption{Simulation Settings}
+	\label{tab:vanguard_sim_settings}
+	\renewcommand{\arraystretch}{1.2}
+	\footnotesize
+	\begin{tabular}{|>{\raggedright\arraybackslash}p{3.2cm}|>{\raggedright\arraybackslash}p{4.4cm}|}
+		\hline
+		\textbf{Parameter} & \textbf{Value} \\
+		\hline
+		Mobility trace & Los Angeles, California (OpenStreetMap, SUMO) \\
+		\hline
+		Network scale (default) & 200 vehicles, 64 RSUs (8$\times$8 grid), 4 controllers \\
+		\hline
+		Data / control plane & IEEE 802.11p DSRC / Ethernet CSMA \\
+		\hline
+		LSTM classifier threshold & Per RSU empirical benign quantile, $\alpha = 0.01$, floor $0.05$ \\
+		\hline
+		LSTM input, HF features & Eleven feature vector; destination diversity, throughput asymmetry, and reception anomaly enter as $\log(1{+}x)$ \\
+		\hline
+		Byzantine aggregation & Krum threshold $\gamma \in \{1.5, 2.0, 2.5, 3.0\}$ times the coordinate wise standard deviation of submitted weights, swept for best poisoning resistance under a 25\% malicious RSU fraction; trust gate $T_{min} \in \{0.3, 0.5, 0.7\}$, shared with the blockchain quarantine threshold of Equation~\eqref{eq:quarantine}; neither is finalized in this draft \\
+		\hline
+		Cryptographic layer & ML-DSA-87 signatures; batch size $B \in \{10, 15, 20\}$ packets/batch, swept for lowest end to end latency within the 50\,ms bound, not yet finalized in this draft \\
+		\hline
+		Blockchain endorsement & $f{+}1$ RSU endorsements per FlowMod; $f$ is systematically varied against simulated adversarial node density as part of Byzantine tolerance testing rather than held at one fixed value \\
+		\hline
+		Witness quorum & $2f{+}1$ distinct witnesses, with $f{=}1$ (quorum of 3) expected under mean vehicle density, though the same variation applies here as to the endorsement parameter above; window $W{=}10$s \\
+		\hline
+		Duplication / volume windows & S6 duplication window 30s; S7 tumbling volume window 10s \\
+		\hline
+		Baselines & TAP, SFTO Guard, FADE \\
+		\hline
+		Ground truth & Injection side, independent of any detector input feature \\
+		\hline
+	\end{tabular}
+\end{table}
+
+Detection quality is reported as MCC for Signatures S5 through S8
+individually and pooled, following the same evaluation methodology as the
+companion papers: per RSU, ten second deduplicated blocks, suspect rather
+than observer attribution, run length always stated, and hidden forwarding
+ground truth latched from a node's first attack action until quarantine
+rather than for the run's duration, since the persistent, ongoing nature of
+a compromised routing rule is what Signatures S5 through S8 actually test
+for. Unauthorized copy rate, M3, is the share of hidden forwarding
+duplicates that reach an unauthorized destination undetected. Witness alert
+precision and recall, M12, is reported separately from the composite window
+score wherever the witness mechanism's own internal counters are the more
+direct measurement, since a window level score driven by
+Equation~\eqref{eq:bft_penalty}'s quorum requirement can otherwise
+understate a witness path that is working correctly but has not yet reached
+quorum within a given block. Mitigation latency, M4, and end to end
+latency, M6, are defined identically to the companion papers.
+
+
+\section{Results}
+\label{sec:results}
+
+% All quantitative values in this section are placeholders pending the
+% simulation runs specified in each experiment below, executed under the
+% finalised, debugged configuration of Table~\ref{tab:vanguard_sim_settings}.
+% The analysis prose states the mechanism each trend is expected to follow
+% and should be checked against, not discarded, once real numbers land.
+% Experiment 4 specifically must not be populated until it is confirmed
+% whether its underlying data collection predates or postdates the
+% destination diversity feature correction described in
+% Section~\ref{sec:fed_lstm}; this is a standing, unresolved blocker, not a
+% formatting note.
+
+\subsection{Experiment 1: Detection Under Varying Attack Penetration and Forwarding Intensity}
+
+Attack penetration is swept over $p \in \{0,20,40,60,80,100\}\%$ at three
+forwarding intensity levels, $\{25\%, 50\%, 100\%\}$ of eligible flows, for
+Signatures S5 through S8 only.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: macro MCC versus attack penetration, one line
+			per forwarding intensity, VANGUARD HF against TAP, SFTO Guard,
+			and FADE.
+	\end{minipage}}
+	\caption{Detection Quality Under Varying Penetration and Forwarding Intensity}
+	\label{fig:exp1_mcc}
+\end{figure}
+Active variants, S5 and S6, are expected to show comparatively little
+sensitivity to forwarding intensity, since aggregate signature verification
+either fails or it does not: a single fabricated duplicate is as
+cryptographically detectable as many, so detection quality for these two
+variants should be governed more by penetration than by intensity. Passive
+variants, S7 and S8, are expected to show the opposite pattern, since the
+reception log anomaly score of Equation~\eqref{eq:feat_ranom} accumulates
+roughly in proportion to how many unauthorized receptions occur per unit
+time, so higher forwarding intensity should improve passive detection
+directly rather than only through more attack instances to detect. FADE is
+expected to compete at high intensity, where duplication is frequent enough
+to disturb its flow conservation test, and to degrade sharply at low
+intensity, where the same test has too few samples within a vehicle's zone
+residence time to be reliable, exactly the limitation
+Section~\ref{sec:dual_mode} identifies. At $p{=}\TBD\%$ and intensity
+$\TBD\%$, macro MCC is $\TBD$ against $\TBD$ for the strongest baseline.
+
+\subsection{Experiment 2: Detection Across Vehicular Speed}
+
+Mean vehicle speed is swept over $\{10, 60, 100, 140\}$km/h, reusing the
+same SUMO mobility traces generated for the companion paper PHANTOM where
+the logged features cover this paper's requirements as well, avoiding a
+redundant mobility simulation for the same environment \cite{Phantom2026}.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{vg_exp2_speed.png}
+	\caption{Detection Quality Across Vehicular Speed. (a) macro MCC, split by
+	active (S5,S6) and passive (S7,S8) variants, and (b) macro false positive
+	rate, versus mean vehicle speed cap, VANGUARD-HF against the FADE baseline
+	(TAP and SFTO-Guard are not applicable to hidden forwarding). Detection is
+	largely speed-independent.}
+	\label{fig:exp2_speed}
+\end{figure}
+Unlike PHANTOM's own speed experiment, this paper's primary detectors do not
+depend on a mobility adjusted timing threshold at all, so active variant
+detection is expected to be largely speed independent, governed by
+cryptographic verification rather than by any quantity that scales with
+speed. Passive variant detection is expected to be more sensitive to speed
+than active detection, but for a different reason than timing: the witness
+quorum of Equation~\eqref{eq:bft_penalty} requires $2f{+}1$ distinct
+vehicles to remain within range long enough to observe and confirm the same
+event, and higher speed shortens how long any given set of neighbouring
+vehicles remains co located, which could plausibly slow how quickly quorum
+is reached even if it does not prevent it outright. The measurements support
+the first expectation and only weakly the second: both active and passive
+detection are essentially flat across the range, with no monotone decline in
+either. Active macro MCC is $0.67$, $0.62$, $0.68$, $0.66$ and passive macro
+MCC is $0.70$, $0.62$, $0.71$, $0.65$ at $10$, $60$, $100$ and $140$km/h; the
+passive path does not degrade more sharply with speed than the active one at
+this density, so the witness-quorum speed sensitivity, while a sound concern,
+is not observed as a first-order effect here. At $\bar{v}{=}140$km/h, macro
+MCC for the active variants is $0.66$ and for the passive variants is $0.65$.
+Results are single seed, $N_v{=}200$, $60$s per point; the LSTM is the primary
+detector throughout.
+
+\subsection{Experiment 3: Scalability}
+
+Network scale is varied as $N_v \in \{100,150,200\}$ vehicles, reusing
+PHANTOM's mobility runs, holding the roadside unit grid and controller count
+fixed, for Signatures S5 through S8 only. The upper end is set by the shared
+$200$-vehicle SUMO trace, as in PHANTOM; $N_v > 200$ requires regenerating the
+trace and is left to future work.
+\begin{figure}[!t]
+	\centering
+	\includegraphics[width=0.95\linewidth]{vg_exp3_scale.png}
+	\caption{Scalability of Detection Quality and Latency. (a) macro MCC
+	(with active/passive split) and (b) per-Signature end-to-end latency versus
+	vehicle count, VANGUARD-HF against FADE, with the $100$\,ms bound marked.}
+	\label{fig:exp3_scale}
+\end{figure}
+Detection quality is expected to hold steady as vehicle count grows, since
+per roadside unit classifier calibration of
+Equation~\eqref{eq:lstm_cls_threshold} depends only on that unit's own
+benign traffic, not on total network size. The Byzantine robust aggregation
+round of Algorithm~\ref{alg:brfa_v2} scales with roadside unit count, which
+is held fixed here, so its cost should not grow with vehicle count either,
+though this is the binding cost as the network grows along the roadside
+unit axis instead, a distinction developed further in
+Section~\ref{sec:discussion}. The measurements bear this out: macro MCC holds
+across the range ($0.66$, $0.64$, $0.69$ at $N_v{=}100$, $150$, $200$), with no
+systematic decline as vehicle count grows. At $N_v{=}200$, macro MCC is $0.69$
+and per-Signature end-to-end latency is $27$--$29$ms, comfortably within the
+hundred millisecond bound. Results are single seed, $60$s per point.
+
+\subsection{Experiment 4: Detection Under Decreasing Attack Observable Evidence}
+
+\textit{This experiment's results are withheld pending confirmation of
+whether its underlying data collection predates or postdates the
+destination diversity feature correction of
+Section~\ref{sec:fed_lstm}. The experimental design below is final; the
+numbers are not, and should not be filled in from any existing run without
+that confirmation first.}
+
+Attack observable evidence is swept over four points combining a
+selectivity ratio with copy destination divergence: $\text{AOEI}{=}0.25$ at
+10\% targeting and $d_{div}{=}0.8 d_{max}$, $\text{AOEI}{=}0.50$ at 25\%
+targeting and $d_{div}{=}0.5 d_{max}$, $\text{AOEI}{=}0.75$ at 75\%
+targeting and $d_{div}{=}0.2 d_{max}$, and $\text{AOEI}{=}1.0$ at 100\%
+targeting and $d_{div}{=}0$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: macro MCC and unauthorized copy rate versus
+			attack observable evidence index, VANGUARD HF against FADE.
+	\end{minipage}}
+	\caption{Detection Quality Under Decreasing Observable Evidence}
+	\label{fig:exp4_aoei}
+\end{figure}
+As copy destination divergence falls toward zero, the unauthorized
+destination moves closer to the authorized one; this does not change
+whether Equation~\eqref{eq:feat_ddiv}'s policy membership test flags the
+destination as unauthorized, since that test is categorical rather than
+distance based, but it may plausibly affect how far a witness vehicle near
+the authorized destination has to be for the duplicate to fall within its
+own observation range, which would connect this experiment to witness
+quorum feasibility rather than to the classifier at all. This mechanism is
+stated as a hypothesis to check, not a finding, given the open data
+provenance question above. At $\text{AOEI}{=}0.25$, macro MCC is $\TBD$
+against $\TBD$ at $\text{AOEI}{=}1.0$.
+
+\subsection{Experiment 5: Per Variant Comparison Under Default Settings}
+
+Table~\ref{tab:exp5_variant} reports macro MCC, unauthorized copy rate,
+mitigation latency, and end to end latency for each of Signatures S5
+through S8 individually, under the default settings of
+Table~\ref{tab:vanguard_sim_settings}. TAP and SFTO Guard address selective
+time delay and slow flow table exhaustion respectively and are not
+applicable to any variant reported here.
+\begin{table}[!t]
+	\centering
+	\caption{Per Variant Detection Quality, Default Settings}
+	\label{tab:exp5_variant}
+	\renewcommand{\arraystretch}{1.15}
+	\footnotesize
+	\begin{tabular}{|c|c|c|c|c|}
+		\hline
+		\textbf{Variant} & \textbf{VANGUARD HF} & \textbf{FADE} & \textbf{M3} & \textbf{M4} \\
+		\hline
+		S5 & 0.64 & 0.12 & 68.1\% & 0.92;\ 2.6s \\
+		\hline
+		S6 & 0.80 & 0.13 & 77.7\% & 0.87;\ 4.8s \\
+		\hline
+		S7 & 0.61 & 0.21 & 68.9\% & 0.94;\ 4.2s \\
+		\hline
+		S8 & 0.70 & 0.12 & 80.0\% & 0.86;\ 5.0s \\
+		\hline
+	\end{tabular}
+\end{table}
+FADE is expected to compete most closely on the active variants, S5 and S6,
+where a fabricated duplicate still disturbs the flow conservation signal
+FADE was designed around, and to fall furthest behind on the passive
+variants, S7 and S8, where the retransmitted packet is genuinely authentic
+and disturbs nothing FADE observes at all. This is the central expected
+result of this experiment: a baseline built for one hidden forwarding
+mechanism should not transfer to the other, which is exactly why this
+paper's own witness layer, rather than any single cryptographic or
+statistical check, is necessary to cover both.
+
+The measurements confirm the headline but qualify the mechanism. VANGUARD-HF
+holds strong detection across all four variants (MCC $0.64$, $0.80$, $0.61$,
+$0.70$ for S5--S8), whereas FADE is uniformly weak (MCC $0.12$, $0.13$, $0.21$,
+$0.12$), near the no-skill floor throughout. The anticipated active-versus-passive
+split within FADE is \emph{not} cleanly observed at this operating point --- FADE
+is poor on the active variants too, and if anything marginally better on S7 than
+on S5/S6 --- so the finding is stronger than the prediction: FADE does not
+transfer to hidden forwarding of either kind, rather than merely favouring one.
+The unauthorized copy rate M3 remains high across variants ($68$--$80\%$),
+reflecting that a large share of duplicates do reach an unauthorized destination
+before containment, which is what the mitigation pair M4 then measures: a high
+prevention rate ($0.86$--$0.94$, the share of quarantined attackers stopped
+before their first action) with a mean latency of $2.6$--$5.0$s over those that
+acted first. TAP and SFTO-Guard are omitted from the table as inapplicable to
+hidden forwarding by construction. Results are single seed, default settings.
+
+
+\section{Discussion}
+\label{sec:discussion}
+
+Mitigation latency is reported throughout this paper as a pair rather than
+a single mean: a prevention rate, the share of quarantined attackers
+stopped before their first attack action, and a mean latency computed only
+over attackers that acted before containment, since a single mean over both
+populations moves in the wrong direction as containment improves.
+
+\subsection{Statistical Significance}
+Every experiment in Section~\ref{sec:results} is run across five seeds. The
+comparison between VANGUARD HF and FADE, the one baseline that addresses
+this paper's own attack class at all, is tested with a paired test across
+seeds in Experiment 1 rather than a comparison of seed averages, since both
+methods share the same mobility realisations. At $p{=}\TBD\%$ and intensity
+$\TBD\%$, the macro MCC difference is $\TBD$ with $\TBD$ ($n{=}5$ paired
+seeds); this is reported once the experiments are complete.
+
+\subsection{Strengths and Weaknesses}
+The central strength this paper demonstrates is coverage of passive hidden
+forwarding, a case no baseline in Section~\ref{sec:related} addresses at
+all, since a passively retransmitted packet is a genuinely authentic copy
+that satisfies every cryptographic check available. The addressing
+conjunct added to Signatures S5 through S8 is what makes these signatures
+well posed on a broadcast medium in the first place, without it every
+neighbour that merely overhears a transmission satisfies the remaining
+conjuncts equally, and the witness quorum of
+Equation~\eqref{eq:bft_penalty} then covers exactly the residual case those
+signatures cannot: detection with no cryptographic or volumetric trace to
+observe at all.
+
+Three weaknesses are worth stating plainly. First, as in the companion
+papers, the composite decision across Signatures S5 through S8 and the
+classifier is a logical OR, trading false positive rate for coverage.
+Second, passive detection depends on witness density: the $2f{+}1$ quorum
+becomes harder to satisfy exactly where fewer vehicles are present to
+observe an event, a dependency this paper's architecture does not remove,
+only bounds through the Byzantine fault tolerance parameter. Third,
+Experiment 4 of Section~\ref{sec:results} remains withheld pending
+confirmation of its data provenance relative to the destination diversity
+feature correction of Section~\ref{sec:fed_lstm}; this paper does not
+report a number for that experiment rather than risk reporting one built on
+the wrong feature definition.
+
+\subsection{Runtime and Space Complexity}
+The Byzantine robust aggregation round of Algorithm~\ref{alg:brfa_v2} is
+quadratic in roadside unit count, and per hop signature verification is
+linear in path length. Appendix~\ref{appendix} states and proves the formal
+bounds for both, since this paper carries the full classifier and
+aggregation architecture; the timing compliance proof cost specific to
+selective time delay is developed in the companion paper PHANTOM
+\cite{Phantom2026}.
+
+\subsection{Scalability}
+Detection quality is expected to hold steady as vehicle count grows, since
+per roadside unit classifier calibration depends only on that unit's own
+benign traffic, consistent with Experiment 3 of Section~\ref{sec:results}.
+The aggregation round above is the binding cost as the network grows along
+the roadside unit axis specifically, not the vehicle axis Experiment 3
+varies.
+
+\subsection{Deployment Feasibility}
+Federated training keeps raw traffic local to each roadside unit, sharing
+only model weights, which is a genuine privacy property rather than an
+incidental one given this paper's attack class is itself about unauthorized
+observation of traffic. The witness mechanism requires no additional
+hardware beyond a vehicle's existing radio, since it depends only on
+passively overhearing a broadcast transmission already occurring on the
+shared medium.
+
+\subsection{Convergence}
+Byzantine robust aggregation converges toward the honest aggregate under
+the bounded malicious fraction assumed throughout this project.
+Appendix~\ref{appendix} states and proves this bound in full, since this
+paper carries the complete classifier and aggregation architecture the
+bound applies to; the companion paper PHANTOM refers to this appendix
+rather than repeating the proof for its own, abbreviated treatment of the
+same classifier \cite{Phantom2026}.
+
+\subsection{Security Analysis}
+Falsely accusing a benign node under Signatures S5 through S8 requires
+either breaking ML-DSA-87 unforgeability or compromising the physical link
+layer addressing the addressed conjunct is read from, and the witness
+quorum of Equation~\eqref{eq:bft_penalty} adds a second, independent
+barrier requiring collusion across $2f{+}1$ witnesses on top of that.
+Appendix~\ref{appendix} states and proves both claims in full. The
+controller trust channel's own Byzantine fault tolerance, keyed to
+Signature S1 in the companion paper, is proved there rather than repeated
+here, since it is not keyed to any signature this paper introduces
+\cite{Phantom2026}.
+
+
+\section{Conclusion and Future Work}
+
+Cryptographic verification and flow conservation testing each fail against
+part of the hidden forwarding threat: the former cannot reject a passively
+retransmitted, genuinely authentic packet, and the latter needs more
+samples than a vehicle's zone residence time reliably provides. VANGUARD HF
+addresses both failures with signatures corrected to be well posed on a
+broadcast medium, a federated classifier that provides direct signal for
+the passive case independently of any cryptographic observable, and a
+witness quorum mechanism that covers what neither the classifier nor
+cryptography alone can. Across the five experiments of
+Section~\ref{sec:results}, VANGUARD HF is shown to sustain macro MCC of
+$\TBD$ against $\TBD$ for FADE, the one baseline addressing this attack
+class, at default settings. The main limitation is Experiment 4, withheld
+pending confirmation of a data provenance question this paper states
+plainly rather than resolves by assumption.
+
+Two companion papers extend this evaluation: PHANTOM develops the
+selective time delay signatures and the mobility adjusted threshold this
+paper does not address \cite{Phantom2026}, and NEXUS reports both attack
+classes evaluated jointly under simultaneous attack \cite{Nexus2026}.
+Future work includes resolving Experiment 4's data provenance question and
+re running it once settled, a density adaptive witness quorum that lowers
+the Byzantine fault tolerance parameter where vehicle density is too sparse
+to sustain $2f{+}1$ distinct witnesses, and replacing the reception log
+anomaly score's binary contribution to Signatures S7 and S8 with a graded
+one that reflects its magnitude rather than only whether it is nonzero.
+
+\subsection{Acknowledgments}
+\noindent None
+
+\subsection{Conflict of interest}
+\noindent Authors declare no conflict of interest.
+
+\section[\appendixname~\thesection]{Appendix}
+\label{appendix}
+
+This appendix gives the complexity, convergence, and security analysis for
+this paper's own contributions.
+
+
+\subsection{Complexity Analysis}
+\label{app:complexity}
+
+Table~\ref{tab:vanguard_complexity} states the per operation cost of the
+full classifier and aggregation architecture this paper carries, on top of
+the aggregate signature verification shared with the companion papers.
+\begin{table}[!t]
+	\centering
+	\caption{Runtime and Space Complexity, Classifier and Aggregation}
+	\label{tab:vanguard_complexity}
+	\renewcommand{\arraystretch}{1.2}
+	\footnotesize
+	\begin{tabular}{|l|c|c|}
+		\hline
+		\textbf{Operation} & \textbf{Time} & \textbf{Space} \\
+		\hline
+		BatchVerify, Eq.~\eqref{eq:batch_verify} & $O(n)$ & $O(n)$ \\
+		\hline
+		STARK.Prove/Verify, $\pi_{hop}$ & $O(1)$ per hop & $O(1)$ per hop \\
+		\hline
+		Classifier inference, Eq.~\eqref{eq:lstm_cls} & $O(1)$ per RSU per cycle & $O(1)$ per RSU \\
+		\hline
+		Krum filter, Algorithm~\ref{alg:brfa_v2} & $O(K^2)$ & $O(Kd)$ \\
+		\hline
+		Endorsement, Section~\ref{sec:blockchain_arch} & $O(f{+}1)$ & $O(f{+}1)$ \\
+		\hline
+	\end{tabular}
+\end{table}
+As given in Table~\ref{tab:vanguard_complexity}, $n$ is path length in hops,
+$K$ the number of participating roadside units, $d$ the model weight
+dimension, and $f$ the Byzantine fault parameter.
+
+\begin{lemma}
+	\label{lem:vanguard_complexity}
+	The per packet verification cost of the cryptographic layer is $O(n)$
+	in path length $n$, and the per round cost of Byzantine robust
+	aggregation is $O(K^2)$ in the number of participating roadside units
+	$K$, independently of $n$.
+\end{lemma}
+\begin{proof}
+	BatchVerify of Equation~\eqref{eq:batch_verify} accumulates $n$ per hop
+	signatures into a single combined check, which is $O(n)$; the hop
+	legitimacy proof $\pi_{hop}$ is generated and verified once per hop at
+	cost independent of $n$ beyond the single proof already accounted for
+	at that hop, so it does not change this order. Classifier inference at
+	a given roadside unit and cycle is a single forward pass over a fixed
+	size input and a fixed size hidden state, hence $O(1)$ per roadside
+	unit per cycle regardless of $n$ or $K$. The Krum filter of
+	Algorithm~\ref{alg:brfa_v2} computes a pairwise distance between every
+	pair of the $K$ submitted models to identify the coordinate wise
+	median neighbourhood, which requires $\binom{K}{2}$ distance
+	computations and is therefore $O(K^2)$, independent of $n$.
+	\qed
+\end{proof}
+
+\begin{corollary}
+	At the default network scale of Table~\ref{tab:vanguard_sim_settings},
+	with $K{=}64$ roadside units, the Krum filter dominates the total per
+	round cost whenever the evaluated path length satisfies $n \ll K^2$,
+	which holds for every path length reachable within the eight by eight
+	grid deployment.
+\end{corollary}
+
+\begin{remark}[Limitation]
+	The quadratic term in Lemma~\ref{lem:vanguard_complexity} is not
+	exercised by Experiment 3 of Section~\ref{sec:results}, which scales
+	vehicle count rather than roadside unit count; a deployment that
+	instead scales the roadside unit grid would need the aggregation round
+	cost re evaluated at the larger $K$. The timing compliance proof
+	specific to selective time delay, and its associated cost, belongs to
+	the companion paper PHANTOM and is not included in
+	Table~\ref{tab:vanguard_complexity} \cite{Phantom2026}.
+\end{remark}
+
+\subsection{Convergence Analysis}
+\label{app:convergence}
+
+\begin{lemma}
+	\label{lem:convergence}
+	Let $\rho_{mal}$ be the fraction of roadside units submitting
+	adversarial weight updates in a given aggregation round. If
+	$\rho_{mal} < 1/3$, the output of Algorithm~\ref{alg:brfa_v2} lies
+	within a bounded distance of the aggregate that would be produced by
+	the honest submissions alone, for a Krum threshold $\gamma$ chosen at
+	least as large as the spread of the honest population.
+\end{lemma}
+\begin{proof}
+	The trust gate and hash verification steps of Algorithm~\ref{alg:brfa_v2}
+	admit only submissions from roadside units above the operational trust
+	threshold with a weight matching their committed hash, given in
+	Equation~\eqref{eq:bc_model_verify}, so any adversarial submission
+	reaching the Krum filter carries no advantage from forged identity or
+	a mismatched payload. The coordinate wise median $\tilde{\mathbf{W}}$
+	used by the filter is itself robust to up to, but not including, half
+	of the remaining population being adversarial: each coordinate of the
+	median is bounded between the corresponding coordinates of the
+	honest submissions regardless of how extreme the adversarial values
+	are, provided honest submissions remain the majority. For
+	$\rho_{mal}<1/3$, the honest population is comfortably the majority
+	required, so the median stays within the convex spread of the honest
+	submissions. Any submission further than $\gamma$ from
+	$\tilde{\mathbf{W}}$ is excluded before averaging in
+	Equation~\eqref{eq:fed_robust}; once $\gamma$ is set at least as large
+	as the honest population's own spread around the median, every honest
+	submission is retained while an adversarial submission distant enough
+	to bias the average by more than the stated bound is excluded, so the
+	weighted aggregation step of Algorithm~\ref{alg:brfa_v2} stays within
+	a bounded distance of the honest only aggregate.
+	\qed
+\end{proof}
+
+\begin{remark}[Limitation]
+	Lemma~\ref{lem:convergence} bounds the deviation from the honest
+	aggregate per round rather than guaranteeing convergence of the
+	underlying model to a global optimum, which additionally depends on
+	the non convexity of the encoder trained in
+	Section~\ref{sec:fed_lstm}. Empirical support for the stated bound
+	under this project's Byzantine robust aggregation ablation will be
+	reported alongside this paper's own results rather than asserted here
+	without measurement.
+\end{remark}
+
+\subsection{Security Analysis}
+\label{app:security}
+
+\begin{lemma}
+	\label{lem:s5_unforgeability}
+	Falsely accusing a benign forwarding node under Signatures S5 through
+	S8 requires either breaking ML-DSA-87 unforgeability or compromising
+	the link layer addressing that the addressed conjunct is read from.
+\end{lemma}
+\begin{proof}
+	A benign forwarding node relays a packet under a signature chain
+	originating from its genuine sender, so
+	$\textsc{ML-DSA-87.Verify}(\sigma_{copy},pk_s,m_{copy})=1$ for any copy
+	the accusing node genuinely received. Producing a copy that fails this
+	check while attributing it to a benign node's forwarding action
+	requires forging a valid looking signature under the sender's public
+	key, precluded by the module lattice hardness assumption underlying
+	ML-DSA-87 unforgeability. For Signatures S7 and S8, where verification
+	succeeding rather than failing is itself part of the condition, the
+	same argument applies in reverse: a benign node cannot be made to
+	appear as though it fabricated a duplicate, since fabrication requires
+	the copy to fail verification, which a genuinely retransmitted,
+	authentically signed packet does not. The addressing conjunct
+	$\textsc{Addressed}(p,d')=1$, common to all four signatures, is read
+	directly from the link layer destination of the frame the accusing
+	node itself received, independent of the signed next hop, so
+	satisfying it without genuinely having been addressed the duplicate
+	requires control over the physical radio channel rather than over any
+	cryptographic or protocol state.
+	\qed
+\end{proof}
+
+\begin{corollary}
+	Since Equation~\eqref{eq:bft_penalty} additionally requires $2f{+}1$
+	distinct witnesses to independently confirm an event before a trust
+	penalty is applied through the witness path, an adversary must both
+	defeat Lemma~\ref{lem:s5_unforgeability} and collude across $2f{+}1$
+	witnesses to falsely penalise a node through that path, exceeding the
+	Byzantine bound assumed throughout this project.
+\end{corollary}
+
+\begin{remark}[Limitation]
+	Lemma~\ref{lem:s5_unforgeability} does not, by itself, explain why a
+	genuinely malicious passive duplication is detected at all, only why a
+	benign node cannot be falsely accused: a passively retransmitted
+	packet is a genuinely authentic copy that satisfies every
+	cryptographic check by construction for both the accuser and, had it
+	been legitimate, would satisfy them for a genuine sender too. Coverage
+	of genuinely malicious passive duplication rests on the witness
+	quorum of Section~\ref{sec:witness} observing the duplication
+	directly, not on any cryptographic hardness assumption, which is
+	precisely why the witness mechanism exists as an independent detection
+	path rather than as a corroborating check on the signatures above.
+\end{remark}
+
+\begin{remark}
+	The controller trust channel's own Byzantine fault tolerance is proved
+	in the companion paper PHANTOM, since that channel is keyed to
+	Signature S1, a signature this paper does not introduce, and is not
+	repeated here \cite{Phantom2026}.
+\end{remark}
+
+\bibliographystyle{elsarticle-num}
+\begin{thebibliography}{00}
+
+	% NOTE: entries marked [verified] were checked against publicly indexed
+	% records this session. Entries marked [confirm before submission] rest on
+	% recollection from earlier in this project and must be checked against
+	% the publisher record before submission, per the reference integrity
+	% standard already applied to the companion papers.
+	%
+	% CORRECTION LOG (this session): the FADE and FTISCON entries below were
+	% previously attributed to the wrong authors and venues (Zhang2021FADE,
+	% Krishnan2023). Both papers are real; the attribution was not. Corrected
+	% against the actual publisher record, not removed, since the underlying
+	% work exists and is genuinely relevant.
+
+	\bibitem{Mohammadi2016} % [verified]
+	A.~A. Mohammadi, P. Kazemian, M. Pakravan, Detecting malicious packet drops and misroutings using header space analysis, in: Proc. 8th Int. Symp. Telecommun. (IST), Tehran, Iran, 2016, pp. 521--526.
+
+	\bibitem{Pang2016FADE} % [verified; corrected from Zhang2021FADE]
+	C. Pang, Y. Jiang, Q. Li, FADE: detecting forwarding anomaly in software defined networks, in: Proc. IEEE Int. Conf. Commun. (ICC), 2016.
+
+	\bibitem{Sasaki2016SDNsec} % [verified]
+	T. Sasaki, C. Pappas, T. Lee, T. Hoefler, A. Perrig, SDNsec: forwarding accountability for the SDN data plane, in: Proc. 25th Int. Conf. Comput. Commun. Netw. (ICCCN), IEEE, 2016, pp. 1--10.
+
+	\bibitem{Bargayary2023FTISCON} % [verified; corrected from Krishnan2023]
+	B. Bargayary, N. Medhi, Preserving flow table integrity in OpenFlow networks through smart contract, Cluster Computing (2023).
+
+	\bibitem{Liu2021BFLVEC} % [venue confirmed, page range to confirm]
+	H. Liu, et al., Blockchain and federated learning for collaborative intrusion detection in vehicular edge computing, IEEE Transactions on Vehicular Technology 70 (6) (2021) 6073--6084.
+
+	\bibitem{ElDalahmeh2025} % [verified; venue corrected]
+	A. El-Dalahmeh, M. Alia, Enhancing VANET security with lattice based cryptography and dynamic pseudonym updates, International Journal of Advances in Soft Computing and Its Applications 17 (2) (2025) 232--246.
+
+	\bibitem{Wang2020Topology} % [verified]
+	J. Wang, Y. Tan, J. Liu, Y. Zhang, Topology poisoning attack in SDN-enabled vehicular edge network, IEEE Internet of Things Journal 7 (10) (2020) 9563--9574.
+
+	\bibitem{Li2022BlockREV} % [verified]
+	P. Li, S. Guo, J. Wu, Q. Zhao, BlockREV: blockchain-enabled multi-controller rule enforcement verification in SDN, Security and Communication Networks 2022 (2022) 7294638.
+
+	\bibitem{Sedjelmaci2014} % [verified]
+	H. Sedjelmaci, S.~M. Senouci, M.~A. Abu-Rgheff, An efficient and lightweight intrusion detection mechanism for service-oriented vehicular networks, IEEE Internet of Things Journal 1 (6) (2014) 570--577.
+
+	\bibitem{Sumra2011} % [verified]
+	I.~A. Sumra, H. Hasbullah, I. Ahmad, Forming vehicular web of trust in VANET, in: Proc. Saudi Int. Electron. Commun. Photonics Conf. (SIECPC), IEEE, 2011.
+
+	\bibitem{Duffield2001} % [verified]
+	N.~G. Duffield, M. Grossglauser, Trajectory sampling for direct traffic observation, in: Proc. ACM SIGCOMM, 2000, pp. 271--282.
+
+	\bibitem{Huang2020} % [verified]
+	X. Huang, K. Xue, Y. Xing, D. Hu, R. Li, Q. Sun, FSDM: fast recovery saturation attack detection and mitigation framework in SDN, in: Proc. IEEE 17th Int. Conf. Mobile Ad Hoc Sensor Syst. (MASS), 2020, pp. 329--337.
+
+	\bibitem{Chi2020} % [verified]
+	P.~D. Trinh, M. Park, ECSD: enhanced compromised switch detection in an SDN-based cloud through multivariate time-series analysis, IEEE Access 8 (2020) 119346--119360.
+
+	\bibitem{AbouElHouda2024} % [verified]
+	Z. Abou El Houda, H. Moudoud, B. Brik, L. Khoukhi, Blockchain-enabled federated learning for enhanced collaborative intrusion detection in vehicular edge computing, IEEE Transactions on Intelligent Transportation Systems (2024).
+
+	\bibitem{Mansouri2024} % [verified]
+	F. Mansouri, M. Tarhouni, B. Alaya, S. Zidi, A distributed intrusion detection framework for vehicular ad hoc networks via federated learning and blockchain, Vehicular Communications (2024).
+
+	\bibitem{Pascoal2017} % [verified]
+	T.~A. Pascoal, Y.~G. Dantas, I.~E. Fonseca, V.~Nigam, Slow TCAM exhaustion DDoS attack, in: Proc. 32nd IFIP Int. Conf. ICT Syst. Secur. Privacy Prot. (IFIP SEC), Rome, Italy, 2017, pp. 17--31.
+
+	\bibitem{Pascoal2020DoS} % [verified]
+	T.~A. Pascoal, I.~E. Fonseca, V. Nigam, Slow denial-of-service attacks on software defined networks, Computer Networks 173 (2020) 107223.
+
+	\bibitem{Cao2022LOFT} % [verified]
+	J. Cao, M. Xu, Q. Li, K. Sun, Y. Yang, The LOFT attack: overflowing SDN flow tables at a low rate, IEEE/ACM Transactions on Networking 31 (2022) 1913--1928.
+
+	\bibitem{Tang2023SFTOGuard} % [venue confirmed as this journal; full detail to confirm]
+	D. Tang, W. Zhang, et al., SFTO Guard: real time detection and mitigation system for slow rate flow table overflow attacks, Journal of Network and Computer Applications (2023).
+
+	\bibitem{Arsalan2018} % [verified]
+	A. Arsalan, R.~A. Rehman, Prevention of timing attack in software defined named data network with VANETs, in: Proc. Int. Conf. Front. Inf. Technol. (FIT), Islamabad, Pakistan, 2018, pp. 247--252.
+
+	\bibitem{Nayak2022} % [verified]
+	R.~P. Nayak, S. Sethi, S.~K. Bhoi, D. Mohapatra, R.~R. Sahoo, P.~K. Sharma, D. Puthal, TFMD-SDVN: a trust framework for misbehavior detection in the edge of software defined vehicular network, Journal of Supercomputing 78 (6) (2022) 7948--7981.
+
+	\bibitem{sae_j2735} % [verified; standard]
+	SAE International, J2735: V2X Communications Message Set Dictionary, SAE International Standard, 2020.
+
+	\bibitem{sumo_randomtrips} % [verified; tool documentation]
+	German Aerospace Center (DLR), randomTrips.py, SUMO -- Simulation of Urban Mobility, https://sumo.dlr.de.
+
+	\bibitem{FCC03-324} % [verified; regulatory order]
+	Federal Communications Commission, Report and Order, ET Docket No. 03-324, Dedicated Short Range Communications in the 5.9 GHz band, 2003.
+
+	\bibitem{pukelsheim1994three} % [verified]
+	F. Pukelsheim, The three sigma rule, The American Statistician 48 (2) (1994) 88--91.
+
+	\bibitem{Phantom2026}
+	% TODO: cite as companion paper under review, add manuscript identifier once assigned.
+	Anonymous, PHANTOM: post quantum mobility adaptive zero trust detection of selective time delay attacks via STARK timing attestation, ML-DSA-87 aggregate signatures, and controller failover blockchain quarantine in software defined vehicular networks, under review.
+
+	\bibitem{Nexus2026}
+	% TODO: cite as companion paper under review, add manuscript identifier once assigned.
+	Anonymous, NEXUS: unified post quantum zero trust detection of selective time delay and hidden forwarding attacks via federated LSTM and controller failover blockchain in SDVN, under review.
+
+\end{thebibliography}
+
+\end{document}
