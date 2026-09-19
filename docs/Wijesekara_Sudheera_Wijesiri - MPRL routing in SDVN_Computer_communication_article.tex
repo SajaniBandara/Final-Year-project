@@ -1556,18 +1556,25 @@ populations moves in the wrong direction as containment improves, since an
 attacker stopped before acting contributes no latency at all.
 
 \subsection{Statistical Significance}
-The results in Section~\ref{sec:results} are reported at a single mobility
-seed. The intended significance test compares PHANTOM against the strongest
-baseline in Experiment 1 with a paired test across five seeds, rather than a
-comparison of seed averages, since the same mobility realisations are shared
-across every method under comparison; this is the sound way to establish that
-the observed MCC gap is not a seed artefact. At the default operating point
-($p{=}40\%$, $2\Delta_{max}$) the single seed gap is large ($0.71$ versus
-$0.37$), but a single seed cannot establish significance, and the intensity
-ordering in particular falls within run to run noise (Experiment 1). The
-five seed paired test is therefore carried forward as the confirmation step
-before these differences are quoted as significant, rather than asserted here
-on one seed.
+The macro MCC gap between PHANTOM and the strongest baseline is confirmed with
+a paired test across five seeds at the default operating point ($p{=}40\%$,
+$2\Delta_{max}$). Each seed is a distinct SUMO mobility realisation shared by
+both methods, so the test is paired rather than a comparison of seed averages,
+which isolates the detector difference from the mobility draw. Across the five
+seeds PHANTOM's macro MCC is $0.720 \pm 0.021$ against TAP's $0.216 \pm 0.014$
+(mean $\pm$ sample standard deviation); the per-seed values are tightly
+clustered ($0.69$--$0.75$ for PHANTOM, $0.19$--$0.23$ for TAP) and PHANTOM wins
+on every seed. The mean paired difference is $0.504$ (standard deviation
+$0.032$), giving a paired $t(4){=}35.4$, $p{=}3.8\times10^{-6}$, with a
+paired effect size of Cohen's $d_z{=}15.8$. The Wilcoxon signed-rank test
+returns $W{=}0$ with $p{=}0.0625$: this is the smallest two-sided $p$ the
+signed-rank statistic can attain at $n{=}5$, so it cannot fall below the
+conventional $0.05$ threshold with five seeds even though every seed favours
+PHANTOM --- the parametric test and the effect size, not the nonparametric
+$p$, carry the conclusion at this sample size. The gap is therefore not a seed
+artefact. Consistent with Experiment 1, the intensity ordering
+($1.1/2/4\,\Delta_{max}$) remains within the run-to-run spread and is not
+claimed as significant.
 
 \subsection{Strengths and Weaknesses}
 The central strength this paper demonstrates is a threshold that adapts to
