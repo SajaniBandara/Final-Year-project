@@ -150,6 +150,12 @@ std::string g_sim_tag;
 // tag the names are unique at the source, so configurations can run in parallel
 // and no rename is needed. Empty by default: existing filenames are unchanged.
 std::string g_run_tag = "";
+// Exp 3 (scale sweep, 2026-09-21): explicit vehicle-mobility trace override. When
+// non-empty it replaces the maxspeed-selected trace_file, so all scale points
+// (N_Vehicles = 100/200/300/400) can be driven from ONE 400-vehicle base trace —
+// vehicle count is the only variable, not trace-to-trace randomness. Empty = use
+// the maxspeed switch as before.
+std::string g_mobility_trace_file = "";
 // Suffix appended to every result CSV filename to encode the delay used,
 // e.g. "_d80ms". Set in main() after cmd.Parse() from attack_delay_ms.
 std::string g_delay_suffix;
@@ -122026,14 +122032,14 @@ void handoff_tracker_cycle_update()
     }
 }
 
-int simulated_tcam_counter[200] = {0};
+int simulated_tcam_counter[total_size] = {0};  // node-indexed; total_size for N>200 (Exp 3). Dead path (see below), resized for safety.
 // TCAM_CAPACITY consolidated to the single definition at line ~117445
 // (was `int TCAM_CAPACITY = 1000;` here — dead-code Attack16/17 flood
 // helpers below never shared g_tcam_rule_count with the real S3/S4 path,
 // but they read the same global name, so removing the duplicate definition
 // also switches their local cap from 1000 to 256; those functions are
 // unused/uncalled from anywhere in this file, so this has no live effect).
-bool tcam_exhaust_malicious_nodes[200] = {false};
+bool tcam_exhaust_malicious_nodes[total_size] = {false};  // node-indexed; total_size for N>200 (Exp 3). Dead path, resized for safety.
 uint32_t spy_node_id = 0;
 
 
@@ -142653,6 +142659,7 @@ int main(int argc, char *argv[])
     // Phase 1 / D1: Reproducibility.
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
     cmd.AddValue("run_tag", "suffix appended to every output filename (e.g. Q6); lets ablation configs run concurrently without colliding", g_run_tag);
+    cmd.AddValue("mobility_trace_file", "Exp 3: absolute path to an explicit vehicle-mobility .tcl, overriding the maxspeed-selected trace. Drive N_Vehicles=100/200/300/400 from one 400-vehicle base trace.", g_mobility_trace_file);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
@@ -143414,6 +143421,14 @@ int main(int argc, char *argv[])
 
 
   
+  // Exp 3 override: point every scale point at one 400-vehicle base trace.
+  if (!g_mobility_trace_file.empty())
+  {
+      trace_file = g_mobility_trace_file;
+      std::cout << "[MOBILITY] trace_file overridden by --mobility_trace_file: "
+                << trace_file << " (N_Vehicles=" << N_Vehicles << ")" << std::endl;
+  }
+
   //Ns2MobilityHelper vehicle_mobility  = Ns2MobilityHelper (trace_file);
   Ns2MobilityHelper sumo_mobility = Ns2MobilityHelper (trace_file);
   
