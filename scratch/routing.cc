@@ -115224,6 +115224,9 @@ void send_hidden_duplicate(uint32_t malicious_rsu_index,
 void send_hidden_duplicate_trampoline();
 // TAP function prototypes are now inside tap_detection.h
 void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id, uint32_t fake_fid); // Change 5
+// SFTO-Guard in-sim baseline (sfto_detection.h, included later): forward-declared
+// so tcam_install_malicious() can mark victim RSUs before the header is included.
+void sfto_mark_attacked_rsu(uint32_t target_rsu_node);
 void dp_attack_tick_for(uint32_t attacker_node);                   // Change 5 (per-node)
 void dp_attack_tick();                                             // Change 5 (legacy single-attacker wrapper)
 void cp_attack_tick();                                             // Change 6
@@ -117651,7 +117654,17 @@ void calculate_mitigation_latency_metric()
         // 2026-08-31: 13-34 such RSUs per variant with enforcement on, vs 3-6
         // without, i.e. this IS the mitigation benefit and it does not appear
         // in L_mit at all.)
-        if (enable_corrected_lmit && onset == 0.0 && t_quarantine[n] > 0.0)
+        // D5 (supervisor, 2026-09-19): restrict the prevention counter to
+        // DECLARED attackers. A benign node that was FALSELY quarantined also has
+        // onset==0.0 and t_quarantine>0, and was being counted as a "prevention
+        // success", inflating the rate. is_malicious_node[variant][n] is the same
+        // injection-side ground truth the detection MCC uses, so this aligns the
+        // M4 population with it. (Benign runs: active_attack_variant<0 -> excluded.)
+        const bool _declared_attacker =
+            (active_attack_variant >= 0 && n < total_size
+             && is_malicious_node[active_attack_variant][n]);
+        if (enable_corrected_lmit && _declared_attacker
+            && onset == 0.0 && t_quarantine[n] > 0.0)
         {
             ++g_lmit_blocked_before_acting;
             continue;
@@ -118038,6 +118051,8 @@ int TCAM_CAPACITY = 1500;  // 2026-07-17: production capacity. Floor of the cite
                            // attack only reached capacity in the final ~2s; 1500
                            // captures the full stealthy-climb -> exhaustion lifecycle.
 #include "tcam_detection.h"
+#include "sfto_detection.h"          // SFTO-Guard (Tang 2023) in-sim baseline — needs
+                                     // TCAM_CAPACITY / g_tcam_rule_count / is_malicious_node
 #include "lstm_logger.h"             // LSTM training data logger — eq:lstm_input
 #include "detector_windows.h"        // M1 per-window grid (detector_windows.csv).
                                      // AFTER lstm_logger.h: reuses lstm_rsu_ground_truth_label().
@@ -118163,6 +118178,10 @@ void write_security_metrics_csv()
 			rho_per_rsu
 		);
 	}
+
+	// SFTO-Guard in-sim baseline is sampled from tcam_snapshot_dump() (per-second,
+	// post-install occupancy) — NOT here: write_security_metrics_csv runs at cycle
+	// start, before the flood reinstall tick, so the table looks transiently empty.
 
 	// Phase 5 — crypto metric aggregates
 	double sig_valid_rate = (g_verify_attempts > 0)
@@ -142616,6 +142635,13 @@ int main(int argc, char *argv[])
                   "instead of MOBIGUARD S1-S8 (default 0=off). Pass alongside --enable_lrad_obu=0 "
                   "--enable_lrad_rsu=0 to disable MOBIGUARD's own signature detectors for a clean "
                   "TAP-only baseline run.", enable_tap);
+    cmd.AddValue ("s7_epsilon_vol", "S7 volume-window rate threshold ε_vol (pkt/s) for passive-HF "
+                  "detection; default 0.1. Set to a benign reception-rate percentile to calibrate "
+                  "(A7 fix, same method as U_thresh/S1).", S7_EPSILON_VOL);
+    cmd.AddValue ("enable_sfto", "1 = run the in-sim SFTO-Guard (Tang 2023) baseline detector for "
+                  "TCAM exhaustion (Attacks 3/4): per-RSU rule-count prediction + static occupancy "
+                  "threshold, written to SFTO_metrics<tag>.csv (default 0=off). Pair with "
+                  "--enable_lrad_obu=0 --enable_lrad_rsu=0 for a clean SFTO-only baseline.", enable_sfto);
     cmd.AddValue ("enable_netanim", "1 = write a NetAnim trace (routing<tag>.xml) for this run "
                   "(default 0=off). Every run builds the full trace unconditionally when on -- "
                   "hundreds of MB for a real simTime -- so leave off for sweeps and only enable "
@@ -145213,6 +145239,12 @@ if (fade_detection_active)
     // ── FADE: write final metrics row for this run ───────────────────────────────
     fade_save_metrics();
 }
+
+// ── SFTO-Guard in-sim baseline: write final per-RSU metrics row ──────────────
+// OUTSIDE the fade_detection_active block: SFTO targets the TCAM variants
+// (Attacks 3/4) for which FADE is inactive, so it must run for every attack.
+// Its own enable_sfto gate handles the no-op case.
+sfto_save_metrics();
 
 // write_security_metrics_csv() now runs inside calculate_performance_evaluation_metrics
 // and is called once per data-gathering cycle — no post-simulation call needed.

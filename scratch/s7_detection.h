@@ -78,7 +78,10 @@ using namespace std;
 // arrival rate above this threshold signals hidden forwarding. Value chosen
 // conservatively: even a single duplicate per ~10 s window triggers detection.
 // Pending calibration from SUMO traces once baseline PDR profiles are available.
-static const double S7_EPSILON_VOL = 0.1; // pkt/s
+// CLI --s7_epsilon_vol (2026-09-19): was a hardcoded 0.1 pkt/s; now settable so
+// it can be calibrated as a benign reception-rate percentile (same method as
+// U_thresh / S1), per the supervisor A7 fix. Default kept at 0.1 for back-compat.
+double S7_EPSILON_VOL = 0.1; // pkt/s
 
 // W — observation window width (seconds) for the volume-rate estimator.
 // Matches the minimum RSU zone residence time (proposal §688) to ensure at

@@ -186,6 +186,12 @@ inline static uint16_t derive_port(uint32_t fid, uint32_t src, uint32_t dst, uin
 inline void tcam_install(uint32_t node_id, uint32_t fid);
 // Forward-declare the per-second dump so tcam_install can schedule it.
 inline void tcam_snapshot_dump();
+// Forward-declare the SFTO-Guard per-cycle sampler (defined in sfto_detection.h,
+// included later). It MUST sample occupancy here, at the same per-second point as
+// tcam_snapshot_dump()/bc_check_s4() — sampling from write_security_metrics_csv()
+// (cycle start, before the flood reinstall tick at t+0.101) reads a transient
+// near-empty table and never sees the fill (measured 2026-09-20).
+inline void sfto_run_cycle();
 
 // Helper to generate a unique flow ID because the simulator reuses fid=0/1.
 // ── k-NN flow generator gen-fid registry (2026-07-14) ──────────────────────
@@ -712,6 +718,10 @@ inline void tcam_snapshot_dump()
     // Writes penalty rows to bc_trust_updates.csv when rule count > 80% capacity.
     bc_check_s4();
 
+    // SFTO-Guard baseline samples occupancy here (same per-second point that sees
+    // the true, post-install rule counts). No-op unless --enable_sfto.
+    sfto_run_cycle();
+
     if (now + 1.0 <= simTime)
         Simulator::Schedule(Seconds(1.0), &tcam_snapshot_dump);
 }
@@ -775,6 +785,10 @@ inline void export_tcam_snapshot_baseline()
 // malicious purely from the flow_id magnitude.
 inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id, uint32_t fake_fid)
 {
+    // SFTO-Guard baseline ground truth: the targeted RSU's flow table is what
+    // SFTO monitors, so record it as an attacked RSU (independent of whether
+    // quarantine blocks this specific install below). No-op unless --enable_sfto.
+    sfto_mark_attacked_rsu(target_rsu_node_id);
     // eq:quarantine enforcement (2026-08-30): a quarantined attacker is denied
     // the FlowMod install. Placed ABOVE the ground-truth counter deliberately --
     // the counter exists to record attack ATTEMPTS, and a node that quarantine
