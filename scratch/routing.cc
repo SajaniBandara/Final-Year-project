@@ -115106,6 +115106,7 @@ bool enable_netanim = false;   // master enable for NetAnim trace output (routin
                                 // (hundreds of MB for a real simTime); opt in only for the runs
                                 // that actually need a NetAnim video/screenshot.
 bool fade_detection_active = false;   // master enable for FADE — read by efade_detection.h
+bool g_fade_force = false;            // --fade_force: run eFADE cross-attack on A1-A4 (SOTA line), scored externally
 // === PASSIVE Hidden Forwarding (Attacks 7 CP & 8 DP) — shared path ===
 bool passive_hf_malicious_nodes[total_size] = {false};
 bool present_passive_hf_attack = false;
@@ -115175,7 +115176,12 @@ static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed i
 // a 1 μs epsilon — tight enough to catch any real attack-injected delay
 // (minimum 50 ms) while tolerating floating-point imprecision only.
 // This is strictly faithful to the paper's "exact equality" intent.
-static const double TAP_MARGIN = 1e-6; // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
+// TAP detection threshold (|v-PPAT| > TAP_MARGIN flags an attacker). Default 1e-6
+// (1 μs) is the TAP paper's exact-equality intent. Made CLI-settable (--tap_margin)
+// for the SOTA "recalibrated" baseline line: refit to a benign |v-PPAT| percentile
+// on this network, same percentile method as U_thresh/S1/ε_vol. Default unchanged,
+// so the "TAP (default)" line is identical to before.
+double TAP_MARGIN = 1e-6; // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
 
 bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
@@ -142660,6 +142666,9 @@ int main(int argc, char *argv[])
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
     cmd.AddValue("run_tag", "suffix appended to every output filename (e.g. Q6); lets ablation configs run concurrently without colliding", g_run_tag);
     cmd.AddValue("mobility_trace_file", "Exp 3: absolute path to an explicit vehicle-mobility .tcl, overriding the maxspeed-selected trace. Drive N_Vehicles=100/200/300/400 from one 400-vehicle base trace.", g_mobility_trace_file);
+    cmd.AddValue("tap_margin", "TAP baseline detection threshold |v-PPAT| (s); default 1e-6. Set to a benign timing percentile for the SOTA 'TAP (recalibrated)' line.", TAP_MARGIN);
+    cmd.AddValue("sfto_theta", "SFTO-Guard occupancy threshold (fraction of capacity); default 0.90. Set to a benign occupancy percentile for the 'SFTO (recalibrated)' line.", SFTO_THETA);
+    cmd.AddValue("fade_force", "1 = run eFADE cross-attack on A1-A4 for the SOTA 'eFADE (cross-attack)' line (scored externally vs is_malicious_node; per-packet HF baseline untouched).", g_fade_force);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
@@ -145181,7 +145190,15 @@ if (architecture == 3 && N_Vehicles > 0)
 // MOBIGUARD_Attack<N>_<pct>.csv. AB1's own ablation (enable_lrad_obu/rsu)
 // never sets both flags to 0 simultaneously (AB1-A/B each disable only one
 // side), so this doesn't collide with that ablation's data collection.
-fade_detection_active = (active_attack_variant >= 4 && active_attack_variant <= 7)
+// Normally eFADE runs only for its in-scope HF variants (4-7). --fade_force lets
+// it run cross-attack on A1-A4 (variants 0-3) for the SOTA "eFADE (cross-attack)"
+// line: it emits its per-flow/per-node detections to fade_results, which are
+// scored EXTERNALLY against is_malicious_node[variant] (the per-packet HF-truth
+// counters are left untouched, so the real A5-A8 eFADE baseline is unaffected).
+// Expected result on A1-A4: near-zero (eFADE detects forwarding-conservation
+// anomalies, which timing/TCAM attacks do not create).
+fade_detection_active = ((active_attack_variant >= 4 && active_attack_variant <= 7)
+                       || (g_fade_force && active_attack_variant >= 0))
                        && !enable_lrad_obu && !enable_lrad_rsu;
 std::system("mkdir -p results_routing");
 fade_csv.open("results_routing/fade_results" + g_sim_tag + ".csv");

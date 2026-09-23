@@ -36,7 +36,8 @@ LOGS_DIR    = Path(__file__).resolve().parent.parent / "logs" / "phantom_exp23"
 
 # fixed settings (PHANTOM Table settings + sensitivity method)
 SEED         = 1
-SIM_TIME     = 60          # 30s warm-up + 30s scored
+SIM_TIME     = 300         # 30s warm-up + 270s scored (27 MCC blocks); standardised
+                           # 2026-09-23 to match Exp 3/5 (was 60 -> only 3 blocks).
 PCT          = 40          # default penetration for Exp 2/3 (Exp 1 sweeps it)
 DELAY_MS     = 100         # 2 * Delta_max
 N_RSUS       = 64

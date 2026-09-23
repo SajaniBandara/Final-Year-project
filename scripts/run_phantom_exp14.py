@@ -30,7 +30,11 @@ LIB_PATH = str(NS3_DIR / "build/lib")
 RESULTS  = NS3_DIR / "results_routing"
 LOGS_DIR = Path(__file__).resolve().parent.parent / "logs" / "phantom_exp14"
 
-SEED, SIM_TIME, N_RSUS, N_CTRL = 1, 60, 64, 4
+# SIM_TIME=300 (30 s warm-up + 270 s scored -> 27 non-overlapping 10 s MCC blocks),
+# standardised 2026-09-23 to match Exp 3/5 and the finalised config. The old 60 s
+# (3 scored blocks) was not comparable to the 300 s headline results and violated
+# the paper's own "state run length; detection quality is not stable across it" rule.
+SEED, SIM_TIME, N_RSUS, N_CTRL = 1, 300, 64, 4
 PENS       = [0, 20, 40, 60, 80, 100]      # Exp 1 penetration
 INTENSITIES = [55, 100, 200]               # Exp 1 delay (ms) = 1.1/2/4 x Delta_max
 RATIOS     = [0.10, 0.25, 0.75, 1.00]      # Exp 4 target ratio

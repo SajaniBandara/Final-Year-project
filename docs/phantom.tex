@@ -1279,6 +1279,10 @@ Gaussian distributed statistic \cite{pukelsheim1994three}.
 		\hline
 		Network scale (default) & 200 vehicles, 64 RSUs (8$\times$8 grid), 4 controllers \\
 		\hline
+		Simulation time & 300\,s per run; the first 30\,s are discarded as warm-up (EWMA baseline convergence), the remaining 270\,s scored as 27 non-overlapping 10\,s deduplicated blocks per RSU (the evaluation protocol of Section~\ref{sec:results}). Every figure reports its run length, as detection quality is not stable across it \\
+		\hline
+		Seeds & RngRun $\in\{1,\dots,5\}$ at fixed RngSeed${=}1$; each run is a distinct SUMO mobility realisation shared by all methods. Point estimates are the mean over the five runs, with the paired significance test of Section~\ref{sec:significance} ($n{=}5$) \\
+		\hline
 		Data / control plane & IEEE 802.11p DSRC / Ethernet CSMA \\
 		\hline
 		Mobility baseline, EWMA & $\beta = 0.95$ ($N_{eff}{=}20$ cycles); $k = 3$. Measured zero attack false positive rate at the on board unit stage (S1 or S2 partial) is 19.17\%, against a 1\% target that $k$ alone does not meet. A handoff jitter suppression mechanism is implemented but disabled in this configuration, and its effect has not been measured on this build \\
@@ -1566,6 +1570,7 @@ populations moves in the wrong direction as containment improves, since an
 attacker stopped before acting contributes no latency at all.
 
 \subsection{Statistical Significance}
+\label{sec:significance}
 The macro MCC gap between PHANTOM and the strongest baseline is confirmed with
 a paired test across five seeds at the default operating point ($p{=}40\%$,
 $2\Delta_{max}$). Each seed is a distinct SUMO mobility realisation shared by

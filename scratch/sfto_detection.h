@@ -51,7 +51,10 @@ extern std::string  g_sim_tag;
 bool   enable_sfto = false;
 
 // ── SFTO-Guard parameters (paper mechanism) ─────────────────────────────────
-static const double SFTO_THETA      = 0.90;  // static occupancy threshold (fraction of capacity)
+double SFTO_THETA      = 0.90;  // static occupancy threshold (fraction of capacity).
+// CLI-settable (--sfto_theta) for the SOTA "recalibrated" baseline line: refit to a
+// benign occupancy percentile, same method as U_thresh/S1/ε_vol. Default 0.90 (the
+// paper value, confirmed correct on this network) — "SFTO (default)" line unchanged.
 static const double SFTO_GROWTH_BETA = 0.70; // EWMA smoothing of per-cycle install rate
 static const int    SFTO_HORIZON    = 10;    // cycles ahead to predict occupancy
 // TCAM_CAPACITY is defined in routing.cc (~line 117445); declared extern there.
