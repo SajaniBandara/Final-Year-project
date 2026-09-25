@@ -87,3 +87,19 @@ Degrades gracefully as fewer packets carry the injected delay (less evidence).
 - Recalibrated SFTO (θ=0.121) + TAP (fix flag) runs — need the machine.
 - Figure PNG rendering; TAP/SFTO/eFADE lines for speed/AOEI subplots.
 - N=400 (Exp 3 4th point); 5-seed significance; VANGUARD-HF — all deferred.
+
+## How to render the figure PNGs (for whoever picks this up)
+
+The numbers above are final; only the plots need generating. Steps:
+1. `pip install matplotlib` — it is NOT installed on the handover machine, which is
+   why the PNGs are not in this commit.
+2. Regenerate the score CSVs the plotters read (`exp1_scores.csv`, `exp4_scores.csv`,
+   `exp2_scores.csv`, `sfto_sweep.csv`) from the fresh detector_windows / TAP / SFTO /
+   fade_results in `results_routing`. Columns expected by `scripts/plot_phantom_exp14.py`:
+   `exp,pen,intensity,arm,attack,MCC,FPR` (arm ∈ {PHANTOM, Lightweight, TAP, SFTO, eFADE}).
+   The per-cell values are the ones tabulated above; run tags are `exp1_p*` (Full),
+   `lw_p*_Q1` (Lightweight), `*tap` (TAP), `lw_p*_bl` (SFTO/eFADE).
+3. `scripts/plot_phantom_exp14.py` / `plot_phantom_exp23.py` currently plot PHANTOM +
+   TAP + offline SFTO; add the **Lightweight** and **eFADE (cross-attack)** lines and
+   point SFTO at the in-sim `SFTO_metrics` values (offline `sfto_sweep.csv` is retired).
+4. Run the plotters → `exp1_mcc.png`, `exp2_speed.png`, `exp3_scale.png`, `exp4_aoei.png`.
