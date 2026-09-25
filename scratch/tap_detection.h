@@ -96,6 +96,15 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 		 << ": D=" << D << "m PAT=" << PAT << "s ∂=" << (delta*1000.0) << "ms v=" << v
 		 << " PPAT=" << PPAT << "s" << endl;
 
+	// Recalibration data: dump |v-PPAT| for every packet so a benign run yields
+	// the deviation distribution -> tap_margin recalibrated to its p99 (same
+	// benign-percentile method as U_thresh/S1/eps_vol). Gated by --tap_calib_dump.
+	if (g_tap_calib_dump)
+	{
+		static std::ofstream _tapdump("results_routing/tap_vppat_dump.csv", std::ios::app);
+		_tapdump << std::abs(v - PPAT) << "\n";
+	}
+
 	if (std::abs(v - PPAT) > TAP_MARGIN)
 	{
 		cout << "[TAP] TIMING VIOLATION: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0

@@ -115101,6 +115101,7 @@ inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_
 // explicitly requires "all eight attack variants operate simultaneously" —
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
+bool g_tap_calib_dump = false; // --tap_calib_dump: dump |v-PPAT| per packet for benign-percentile margin recalibration
 bool enable_netanim = false;   // master enable for NetAnim trace output (routing.xml) — off by
                                 // default since every run builds a full per-run trace file
                                 // (hundreds of MB for a real simTime); opt in only for the runs
@@ -142669,6 +142670,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("tap_margin", "TAP baseline detection threshold |v-PPAT| (s); default 1e-6. Set to a benign timing percentile for the SOTA 'TAP (recalibrated)' line.", TAP_MARGIN);
     cmd.AddValue("sfto_theta", "SFTO-Guard occupancy threshold (fraction of capacity); default 0.90. Set to a benign occupancy percentile for the 'SFTO (recalibrated)' line.", SFTO_THETA);
     cmd.AddValue("fade_force", "1 = run eFADE cross-attack on A1-A4 for the SOTA 'eFADE (cross-attack)' line (scored externally vs is_malicious_node; per-packet HF baseline untouched).", g_fade_force);
+    cmd.AddValue("tap_calib_dump", "1 = dump |v-PPAT| per packet to tap_vppat_dump.csv (benign run) to recalibrate --tap_margin to its p99.", g_tap_calib_dump);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
