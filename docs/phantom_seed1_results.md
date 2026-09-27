@@ -94,12 +94,36 @@ occupancy signal); timing detection holds.
 
 Degrades gracefully as fewer packets carry the injected delay (less evidence).
 
-## Recalibrated baseline line (in progress)
+## Recalibrated baseline line — DONE (and it changes the SOTA conclusion)
 
-- **SFTO θ_recal = 0.121** (benign RSU occupancy p99; default 0.90). NOT ≈ default —
-  the benign-percentile method gives a much lower threshold. Recalibrated *run* pending.
-- **TAP margin_recal:** pending — `--tap_calib_dump` logging did not write; needs a fix
-  + benign run.
+Thresholds refit to benign p99 (same method as U_thresh/S1/ε_vol):
+- **SFTO θ_recal = 0.121** (benign occupancy p99; default 0.90). NOT ≈ default.
+- **TAP margin_recal = 6.06 ms** (benign |v-PPAT| p99; default 1 µs).
+
+**Recalibrated vs default, @ pct 60 (MCC):**
+
+| Variant | Proposed (Full) | TAP default | TAP recal | SFTO default | SFTO recal |
+|---|---|---|---|---|---|
+| A1 (STD/CP)  | **0.57** | 0.20 | 0.32 | — | — |
+| A2 (STD/DP)  | 0.59 | 0.58 | **0.81** (DR100/FPR14) | — | — |
+| A3 (TCAM/CP) | 0.56 | — | — | 0.47 | 0.63 (DR100/**FPR44**) |
+| A4 (TCAM/DP) | 0.68 | — | — | 0.66 | **0.96** (DR98/FPR0) |
+
+**KEY FINDING — after fair recalibration, PHANTOM wins outright only on A1.**
+Recalibrated TAP beats PHANTOM on A2 (0.81 vs 0.59), recalibrated SFTO beats it on A4
+(0.96 vs 0.68, FPR 0%) and edges A3 (0.63 vs 0.56, at 44% FPR). Recalibration cut the
+baselines' FPR (TAP 50→14–26%, keeping DR) so these are genuine gains, not FP inflation
+(except A3). SFTO's *predictive* occupancy catches A4 earlier than our S4.
+
+**Caveat:** PHANTOM = per-window M1; TAP/SFTO = their own per-node/per-cycle MCC — not
+the identical metric. So this is detector-vs-detector, not strict like-for-like; but the
+direction (recalibration makes specialists competitive-to-superior on their niches) is
+unambiguous.
+
+**Implication for the contribution claim:** "beats SOTA on every variant" does NOT survive
+fair recalibration. The defensible claim is **breadth + control-plane coverage** — one
+detector decent on all four, and the only one handling A1 — not per-variant superiority.
+(Narrative framing is a supervisor decision; this doc only reports the numbers.)
 
 ## Methodology updates (in phantom.tex)
 
