@@ -1,25 +1,51 @@
 # PHANTOM — seed-1 results (finalised config)
 
-Generated 2026-09-25. Config: **seed 1, simTime 300 s** (30 s warm-up + 270 s scored,
-27 non-overlapping 10 s blocks), **crypto-off** (validated byte-identical MCC to
-crypto-on), enforcement-off (detection scoring). Metric: **per-window M1** for the
-proposed method; baselines report their own per-node/per-RSU MCC. In-sim SFTO-Guard
-(θ=0.90); eFADE run cross-attack via `--fade_force`, scored externally.
+Generated 2026-09-25 (updated 2026-09-27). Config: **seed 1, simTime 300 s** (30 s
+warm-up + 270 s scored, 27 non-overlapping 10 s blocks), **crypto-off**, enforcement-off
+(detection scoring). Metric: **per-window M1** for the proposed method; baselines report
+their own per-node/per-RSU MCC. In-sim SFTO-Guard (θ=0.90); FADE/eFADE run cross-attack
+via `--fade_force`, scored externally.
+
+**Crypto-off justification (exact test):** on the *identical* full configuration
+(S1–S8, LSTM, witness, BTMM all on), toggling `disable_crypto` 0→1 alone leaves the
+per-window MCC **byte-identical** (A1 = 0.5143 both ways). This is a *crypto-only* toggle
+and is **not** the Full-vs-Lightweight comparison (Table Exp 5), which changes several
+components at once (S5–S8, LSTM, witness, BTMM, crypto) — so Full ≠ Lightweight there is
+expected and does not contradict crypto-neutrality.
+
+**Exp 3 traces:** the N = 100/200/300 points are **subsets of the single 400-vehicle
+base trace** (`mobility_urban_scale400.tcl`, `--N_Vehicles` set down), not separately
+generated — vehicle count is the only variable across the scale points.
 
 ## Experiment 5 — per-variant SOTA comparison (default, pct 60), MCC
 
-| Variant | Proposed (Full) | Proposed (Lightweight) | TAP | SFTO-Guard | eFADE (cross-attack) |
-|---|---|---|---|---|---|
-| A1 (STD/CP)  | 0.571 | 0.544 | 0.195 | 0.00 | 0.00 |
-| A2 (STD/DP)  | 0.594 | 0.575 | 0.584 | 0.00 | 0.00 |
-| A3 (TCAM/CP) | 0.555 | 0.555 | ~0.19 | 0.472 | 0.00 |
-| A4 (TCAM/DP) | 0.684 | 0.655 | ~0.27 | 0.661 | 0.00 |
+| Variant | Proposed (Full) | Proposed (Lightweight) | TAP | SFTO-Guard | FADE (cross-attack) | eFADE (cross-attack) |
+|---|---|---|---|---|---|---|
+| A1 (STD/CP)  | 0.571 | 0.544 | 0.195 | 0.00 | 0.00 | 0.00 |
+| A2 (STD/DP)  | 0.594 | 0.575 | 0.584 | 0.00 | 0.00 | 0.00 |
+| A3 (TCAM/CP) | 0.555 | 0.555 | ~0.19 | 0.472 | 0.00 | 0.00 |
+| A4 (TCAM/DP) | 0.684 | 0.655 | ~0.27 | 0.661 | 0.00 | 0.00 |
 
 - Proposed wins on breadth: TAP competitive only on A2 (timing niche), SFTO only on
-  A4/A3 (flow-table niche); each collapses off-niche. eFADE cross-attack = 0 on all
-  (specialised HF detector does not generalise).
+  A4/A3 (flow-table niche); each collapses off-niche.
 - **Full ≈ Lightweight on every variant** — the S1–S4 rule signatures carry PHANTOM's
   detection; crypto/LSTM/witness add negligibly on A1–A4.
+- **FADE / eFADE cross-attack = 0.00 across A1–A4 — a deliberate finding, not a bug.**
+  Both are duplication-tracking detectors (flow packet-conservation): they flag a node
+  only when packets_out > packets_in (traffic duplication). Delay injection (A1/A2) and
+  TCAM exhaustion (A3/A4) involve **no packet duplication**, so neither detector has any
+  signal to fire on. FADE is the published conservation test (Li et al. 2021); **eFADE is
+  our own duplication-aware extension of FADE — an ad-hoc baseline built for this
+  comparison, not an independently published method (no external citation).** Report it
+  as "we also tested our own more advanced duplication-aware extension," never as a
+  third-party method; do not cite eFADE, and do not cite the Hidden-Forwarding paper.
+
+### Wording for the caption / text (per supervisor, 2026-09-27)
+> Two duplication-tracking baselines are included as cross-attack references: FADE, the
+> published packet-conservation detector, and eFADE, our own more advanced
+> duplication-aware extension of it. Both score ≈0 on every PHANTOM variant, as expected:
+> a duplication detector cannot observe delay injection or flow-table exhaustion, since
+> neither attack duplicates packets.
 
 ## Experiment 1 — detection vs attack penetration (macro MCC)
 
@@ -84,6 +110,11 @@ Degrades gracefully as fewer packets carry the injected delay (less evidence).
 
 ## Pending
 
+- **Vanilla-FADE line:** eFADE cross-attack = 0.00 is *measured* (`--fade_force`). Vanilla
+  FADE (conservation-only, no duplication-node localisation) is not yet a separate mode in
+  `efade_detection.h`; its A1–A4 score is 0.00 by mechanism (identical conservation test,
+  no duplication in delay/TCAM attacks). A distinct vanilla-FADE run to show the explicit
+  second line needs a small code mode + one run.
 - Recalibrated SFTO (θ=0.121) + TAP (fix flag) runs — need the machine.
 - Figure PNG rendering; TAP/SFTO/eFADE lines for speed/AOEI subplots.
 - N=400 (Exp 3 4th point); 5-seed significance; VANGUARD-HF — all deferred.
