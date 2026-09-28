@@ -145,15 +145,23 @@ baselines' FPR (TAP 50→14–26%, keeping DR) so these are genuine gains, not F
   | thresh 0.20 (default) | 0.684 | 99% | 42% |
   | thresh 0.121 (benign-p99 recal) | 0.655 | 87% | 19% |
 
-  **Recalibration did NOT close the A4 gap** — Proposed A4 stays ≈0.66 regardless of
-  threshold, nowhere near SFTO-recal's 0.96. (Correcting my earlier expectation that it
-  would restore parity — it does not.) **Why SFTO-recal reaches 0.96 but Proposed-S4 at the
-  same 0.121 doesn't:** SFTO uses *predictive* occupancy (fires before saturation) scored
-  *per-RSU*; Proposed S4 uses instantaneous occupancy scored *per-window M1* (stricter,
-  different denominator). So the A4 gap is driven by the **metric mismatch + SFTO's
-  predictive method, not the threshold** — recalibrating Proposed's threshold is the fair
-  test and Proposed still trails on A4. (A clean matched before/after, same config with only
-  the threshold changed, is running to confirm 0.20→0.121 is a pure threshold effect.)
+  **Recalibration did NOT close the A4 gap** — Proposed A4 stays ≈0.66–0.72 regardless of
+  threshold, nowhere near SFTO-recal's 0.96.
+
+  **The gap is REAL, not a metric artifact (verified 2026-09-28).** Re-scoring Proposed A4
+  on the SAME per-RSU basis as SFTO (latched per-RSU flag, not per-window):
+
+  | A4 per-RSU | MCC | DR | FPR |
+  |---|---|---|---|
+  | Proposed default (0.20) | 0.676 | 100% | 45% |
+  | Proposed recal (0.121)  | 0.716 | 100% | 41% |
+  | SFTO recal (0.121)      | **0.961** | 98% | **0%** |
+
+  Even same-metric, Proposed trails SFTO. Cause: Proposed's S4 catches all victims (DR 100%)
+  but **falsely flags 40–45% of benign RSUs**; SFTO's *predictive* occupancy has **0% FPR**.
+  So SFTO's predictive method is genuinely more precise on A4 — this is a real detector gap,
+  **NOT** the earlier (incorrect) "metric mismatch" explanation, which the per-RSU re-score
+  disproved. PHANTOM's claim on TCAM-DP is breadth/coverage, not detection superiority.
 
 **Caveat:** PHANTOM = per-window M1; TAP/SFTO = their own per-node/per-cycle MCC — not
 the identical metric. So this is detector-vs-detector, not strict like-for-like; but the
