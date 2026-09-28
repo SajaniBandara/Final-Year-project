@@ -194,6 +194,30 @@ detector decent on all four, and the only one handling A1 — not per-variant su
   sampling bug fixed.
 - eFADE cross-attack via `--fade_force`, scored externally (per-packet HF path untouched).
 
+## Recalibrated-baseline advantage across the penetration sweep (supervisor 2026-09-28)
+
+Does the recalibrated baselines' advantage hold across the sweep, or is it specific to
+the aggressive p60 point? (MCC/FPR%, from existing penetration-sweep data — no new runs.)
+
+| pct | Proposed A2 | TAP-recal A2 | Proposed A4 | SFTO-recal A4 | Proposed A3 | SFTO-recal A3 |
+|---|---|---|---|---|---|---|
+| 20  | 0.51/20 | 0.56/19 | 0.72/13 | 0.97/0 | 0.31/5  | 0.51/42 |
+| 40  | 0.60/27 | 0.71/17 | 0.67/17 | 0.96/0 | 0.55/10 | 0.63/44 |
+| 60  | 0.59/34 | 0.81/14 | 0.68/42 | 0.96/0 | 0.55/10 | 0.63/44 |
+| 80  | 0.62/35 | 0.87/11 | 0.68/16 | 0.96/0 | 0.60/9  | 0.75/38 |
+| 100 | 0.62/39 | 0.96/3  | 0.69/17 | 0.96/0 | 0.00/0  | 0.00/0  |
+
+- **A4 — SFTO advantage HOLDS at every penetration (0.96–0.97, FPR 0%).** Does not degrade
+  at low intensity → a **real matched loss**; leave as-is pending 5-seed.
+- **A2 — TAP advantage is penetration-dependent.** Near-tie at p20 (0.56 vs 0.51), grows to
+  0.96 at p100. Concentrated at the aggressive point; at low intensity Proposed nearly matches.
+- **A3 — SFTO's higher MCC costs 38–44% FPR** vs Proposed's 5–10% (outside the ≤1% budget) —
+  not a matched comparison; at matched FPR Proposed wins A3.
+
+**Gap:** recalibrated baselines were run across **penetration only** (default delay/selectivity).
+Recal points across Exp1 delay-intensity {55,200 ms} and Exp4 selectivity {0.10–0.75} were
+**not** run — those need new runs to complete the two other sweep axes.
+
 ## Pending
 
 - **Vanilla-FADE line:** eFADE cross-attack = 0.00 is *measured* (`--fade_force`). Vanilla
