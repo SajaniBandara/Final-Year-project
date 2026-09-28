@@ -121493,6 +121493,12 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 		     << " or current_hop=" << current_hop << " -- dropping" << endl;
 		return;
 	}
+	// Guard: pd_all_inst is sized [2*flows] (routing flows only). A data-plane or
+	// generator fid (>= 2*flows — e.g. TCAM traffic, common at high N_Vehicles)
+	// would index it out-of-bounds -> SIGSEGV. This is the N=400 late-sim crash
+	// (t~230-280, ~11k live flows): a large fid reaches the routing-retransmit
+	// path. Retransmission bookkeeping applies only to the routing flows, so skip.
+	if (flow_id >= (uint32_t)(2 * flows)) return;
 	double diff = Now().GetSeconds() - flow_initiation_time;
 	arguments.CW = pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] + 2;
 	if(diff > (0.90*data_transmission_period))
