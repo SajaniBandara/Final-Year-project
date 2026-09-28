@@ -100,20 +100,52 @@ Thresholds refit to benign p99 (same method as U_thresh/S1/ε_vol):
 - **SFTO θ_recal = 0.121** (benign occupancy p99; default 0.90). NOT ≈ default.
 - **TAP margin_recal = 6.06 ms** (benign |v-PPAT| p99; default 1 µs).
 
-**Recalibrated vs default, @ pct 60 (MCC):**
+**Recalibrated vs default, @ pct 60 — MCC (FPR% shown, since it matters for the comparison):**
 
 | Variant | Proposed (Full) | TAP default | TAP recal | SFTO default | SFTO recal |
 |---|---|---|---|---|---|
-| A1 (STD/CP)  | **0.57** | 0.20 | 0.32 | — | — |
-| A2 (STD/DP)  | 0.59 | 0.58 | **0.81** (DR100/FPR14) | — | — |
-| A3 (TCAM/CP) | 0.56 | — | — | 0.47 | 0.63 (DR100/**FPR44**) |
-| A4 (TCAM/DP) | 0.68 | — | — | 0.66 | **0.96** (DR98/FPR0) |
+| A1 (STD/CP)  | **0.57** (FPR 27) | 0.20 (FPR 52) | 0.32 (FPR 24) | — | — |
+| A2 (STD/DP)  | 0.59 (FPR 34) | 0.58 (FPR 36) | **0.81** (FPR 14) | — | — |
+| A3 (TCAM/CP) | 0.56 (FPR 10) | — | — | 0.47 (FPR 9) | 0.63 (**FPR 44**) |
+| A4 (TCAM/DP) | 0.68 (FPR 42) | — | — | 0.66 (FPR 0) | **0.96** (FPR 0) |
+
+**A3 caveat (supervisor 2026-09-27):** SFTO-recal's 0.63 on A3 comes with **44% FPR** — far
+outside the ≤1% FPR budget used for every other threshold in the paper (U_thresh/S1/ε_vol).
+So it is **not a matched comparison** to Proposed's 0.56 (FPR 10%); reported as-is, not
+tuned further. (No search for a better A3 θ — per instruction.)
+
+**Sanity-check vs the baselines' own papers (supervisor 2026-09-27):** TAP's 0.81 (A2) and
+SFTO's 0.96 (A4) look high for baseline reproductions. What I can confirm: they are **not
+scoring artifacts** — each threshold was fit on benign (pct=0) data and tested on the
+attack (no calibration-on-test leakage), and the scores are backed by real detections
+(TAP A2: DR 100%, FPR 14%; SFTO A4: DR 98%, FPR 0%). The **likely reason they're high is
+our attack aggressiveness** — A2 injects an 80 ms hop delay (≫ TAP's 6 ms recal margin)
+and A4 floods the flow table to capacity — so both detectors see an obvious signal, more
+detectable than a subtle slow-rate attack. **Cannot confirm the exact gap without the
+original papers' reported numbers** (Arsalan 2018 / Tang 2023 figures are NOT in the repo —
+the 0.37/0.216 in phantom.tex are OUR reproductions, not their claims). If ours exceed
+theirs, the explanation is almost certainly the attack parameters, not the detectors
+outperforming their published capability — but the papers' numbers are needed to state it.
 
 **KEY FINDING — after fair recalibration, PHANTOM wins outright only on A1.**
 Recalibrated TAP beats PHANTOM on A2 (0.81 vs 0.59), recalibrated SFTO beats it on A4
 (0.96 vs 0.68, FPR 0%) and edges A3 (0.63 vs 0.56, at 44% FPR). Recalibration cut the
 baselines' FPR (TAP 50→14–26%, keeping DR) so these are genuine gains, not FP inflation
 (except A3). SFTO's *predictive* occupancy catches A4 earlier than our S4.
+
+**Proposed's own A2/A4 thresholds — provenance + recalibration (supervisor 2026-09-27):**
+- **A2 (S2): `S2_DELTA_MAX = 50 ms`** — a fixed constant from the proposal/simulation table,
+  **never benign-percentile calibrated.** Recalibrating needs S2's threshold made CLI-settable
+  + a benign hop-delay p99 (benign hop-delay not currently dumped) — small code + one benign run.
+- **A4 (S4): `tcam_util_thresh = 0.20`** — a *sensitivity-optimum* (2026-09-14, best A4 MCC),
+  **not** the benign-p99 (which was 0.2167 on 2026-08-08). Recalibrating S4 to the current
+  benign-occupancy p99 (0.121, same value SFTO used to reach 0.96) is a CLI run **now in
+  progress** — expected to lift Proposed A4 well above 0.68 (toward parity with SFTO-recal),
+  since the earlier 0.68 used the looser 0.20 gate. **MCC before/after will be filled here.**
+
+This matters: the earlier "SFTO-recal (0.96) beats Proposed A4 (0.68)" compared a
+benign-p99-calibrated SFTO against a *sensitivity-tuned* Proposed — not a matched test.
+Recalibrating Proposed's S4 to the same benign p99 is the fair comparison.
 
 **Caveat:** PHANTOM = per-window M1; TAP/SFTO = their own per-node/per-cycle MCC — not
 the identical metric. So this is detector-vs-detector, not strict like-for-like; but the
