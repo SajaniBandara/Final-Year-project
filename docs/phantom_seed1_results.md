@@ -134,9 +134,23 @@ baselines' FPR (TAP 50→14–26%, keeping DR) so these are genuine gains, not F
 (except A3). SFTO's *predictive* occupancy catches A4 earlier than our S4.
 
 **Proposed's own A2/A4 thresholds — provenance + recalibration (supervisor 2026-09-27):**
-- **A2 (S2): `S2_DELTA_MAX = 50 ms`** — a fixed constant from the proposal/simulation table,
-  **never benign-percentile calibrated.** Recalibrating needs S2's threshold made CLI-settable
-  + a benign hop-delay p99 (benign hop-delay not currently dumped) — small code + one benign run.
+
+**Both A2 and A4: recalibrating Proposed's own signature threshold has NO effect on its MCC**
+— because the per-window detection score is a *composite* (S1–S8 + LSTM + witness + trust),
+not gated by the single signature threshold. So the baseline comparison is unaffected:
+recalibrated TAP (0.81) still beats Proposed A2, recalibrated SFTO (0.96) still beats A4.
+
+- **A2 (S2): `S2_DELTA_MAX = 50 ms`** — fixed proposal constant, never benign-calibrated.
+  Made CLI-settable + dumped benign hop-delay (p99 = 5.83 ms, n=1503). **Recalibrated:**
+
+  | Proposed A2 (per-window) | MCC | DR | FPR |
+  |---|---|---|---|
+  | 50 ms (default) | 0.575 | 89% | 32% |
+  | 5.83 ms (benign-p99 recal) | 0.575 | 89% | 32% |
+
+  Identical — S2's gate isn't the binding constraint. (5.83 ms is calibrated on uncongested
+  pct=0 benign; under A2's 60% load benign hops are slower, so a tighter S2 wouldn't help FP
+  anyway.)
 - **A4 (S4): `tcam_util_thresh = 0.20`** — a *sensitivity-optimum* (2026-09-14), not the
   benign-p99. **Recalibrated S4 to benign-p99 (0.121, same value SFTO used):**
 

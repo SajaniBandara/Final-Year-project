@@ -39,7 +39,10 @@ using namespace std;
 
 // S2 threshold Δ_max (seconds).
 // Proposal §3463 + simulation table: "Hop-delay detection threshold = 50 ms".
-static const double S2_DELTA_MAX = 0.050; // 50 ms
+// CLI-settable (--s2_delta_max) so S2's threshold gets the same benign-percentile
+// recalibration as TAP/SFTO (SOTA fairness). Default 0.050 (proposal value) unchanged.
+double S2_DELTA_MAX = 0.050; // 50 ms
+bool   g_s2_calib_dump = false; // --s2_calib_dump: dump benign hop_delay for p99 recal
 
 // =========================================================================
 // s2_detect_packet():
@@ -125,6 +128,13 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // this correction was originally missed here, fixed on re-audit).
     double t_fwd_anchored = t_fwd_by_sender - node_clock_offset(sender_sim_index);
     double hop_delay = t_recv_now - t_fwd_anchored;
+
+    // Recalibration: dump hop_delay on a benign run -> S2 threshold = its p99.
+    if (g_s2_calib_dump && hop_delay > 0.0)
+    {
+        static std::ofstream _s2dump("results_routing/s2_hopdelay_dump.csv", std::ios::app);
+        _s2dump << hop_delay << "\n";
+    }
 
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max
     bool delay_exceeds = (hop_delay > S2_DELTA_MAX);

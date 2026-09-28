@@ -142671,6 +142671,8 @@ int main(int argc, char *argv[])
     cmd.AddValue("sfto_theta", "SFTO-Guard occupancy threshold (fraction of capacity); default 0.90. Set to a benign occupancy percentile for the 'SFTO (recalibrated)' line.", SFTO_THETA);
     cmd.AddValue("fade_force", "1 = run eFADE cross-attack on A1-A4 for the SOTA 'eFADE (cross-attack)' line (scored externally vs is_malicious_node; per-packet HF baseline untouched).", g_fade_force);
     cmd.AddValue("tap_calib_dump", "1 = dump |v-PPAT| per packet to tap_vppat_dump.csv (benign run) to recalibrate --tap_margin to its p99.", g_tap_calib_dump);
+    cmd.AddValue("s2_delta_max", "S2 hop-delay threshold Δ_max (s); default 0.050. Set to a benign hop-delay percentile for the Proposed-A2 recalibration.", S2_DELTA_MAX);
+    cmd.AddValue("s2_calib_dump", "1 = dump hop_delay per packet to s2_hopdelay_dump.csv (benign run) to recalibrate --s2_delta_max to its p99.", g_s2_calib_dump);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
