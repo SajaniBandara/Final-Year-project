@@ -137,15 +137,23 @@ baselines' FPR (TAP 50→14–26%, keeping DR) so these are genuine gains, not F
 - **A2 (S2): `S2_DELTA_MAX = 50 ms`** — a fixed constant from the proposal/simulation table,
   **never benign-percentile calibrated.** Recalibrating needs S2's threshold made CLI-settable
   + a benign hop-delay p99 (benign hop-delay not currently dumped) — small code + one benign run.
-- **A4 (S4): `tcam_util_thresh = 0.20`** — a *sensitivity-optimum* (2026-09-14, best A4 MCC),
-  **not** the benign-p99 (which was 0.2167 on 2026-08-08). Recalibrating S4 to the current
-  benign-occupancy p99 (0.121, same value SFTO used to reach 0.96) is a CLI run **now in
-  progress** — expected to lift Proposed A4 well above 0.68 (toward parity with SFTO-recal),
-  since the earlier 0.68 used the looser 0.20 gate. **MCC before/after will be filled here.**
+- **A4 (S4): `tcam_util_thresh = 0.20`** — a *sensitivity-optimum* (2026-09-14), not the
+  benign-p99. **Recalibrated S4 to benign-p99 (0.121, same value SFTO used):**
 
-This matters: the earlier "SFTO-recal (0.96) beats Proposed A4 (0.68)" compared a
-benign-p99-calibrated SFTO against a *sensitivity-tuned* Proposed — not a matched test.
-Recalibrating Proposed's S4 to the same benign p99 is the fair comparison.
+  | Proposed A4 | MCC | DR | FPR |
+  |---|---|---|---|
+  | thresh 0.20 (default) | 0.684 | 99% | 42% |
+  | thresh 0.121 (benign-p99 recal) | 0.655 | 87% | 19% |
+
+  **Recalibration did NOT close the A4 gap** — Proposed A4 stays ≈0.66 regardless of
+  threshold, nowhere near SFTO-recal's 0.96. (Correcting my earlier expectation that it
+  would restore parity — it does not.) **Why SFTO-recal reaches 0.96 but Proposed-S4 at the
+  same 0.121 doesn't:** SFTO uses *predictive* occupancy (fires before saturation) scored
+  *per-RSU*; Proposed S4 uses instantaneous occupancy scored *per-window M1* (stricter,
+  different denominator). So the A4 gap is driven by the **metric mismatch + SFTO's
+  predictive method, not the threshold** — recalibrating Proposed's threshold is the fair
+  test and Proposed still trails on A4. (A clean matched before/after, same config with only
+  the threshold changed, is running to confirm 0.20→0.121 is a pure threshold effect.)
 
 **Caveat:** PHANTOM = per-window M1; TAP/SFTO = their own per-node/per-cycle MCC — not
 the identical metric. So this is detector-vs-detector, not strict like-for-like; but the
