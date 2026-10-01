@@ -105,6 +105,20 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 		_tapdump << std::abs(v - PPAT) << "\n";
 	}
 
+	// Fair-rescore instrument (--tap_perpkt_dump): the RAW, UN-LATCHED per-packet
+	// margin decision for every packet, so TAP can be scored through m1_local
+	// per-window exactly like Proposed's S1/S2 (no whole-run latching credit).
+	// Emitted here (not gated on the defaulter list) — tap_process_packet keeps
+	// calling detection for every packet when this flag is on. Columns: t,sender,fired.
+	if (g_tap_perpkt_dump)
+	{
+		static std::ofstream _tappp("results_routing/tap_perpkt_dump" + g_sim_tag + ".csv",
+		                            std::ios::app);
+		_tappp << Simulator::Now().GetSeconds() << "," << sender_current_hop << ","
+		       << receiver_current_hop << "," << std::abs(v - PPAT) << ","
+		       << ((std::abs(v - PPAT) > TAP_MARGIN) ? 1 : 0) << "\n";
+	}
+
 	if (std::abs(v - PPAT) > TAP_MARGIN)
 	{
 		cout << "[TAP] TIMING VIOLATION: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0
@@ -277,8 +291,11 @@ inline void tap_process_packet(uint32_t receiver_current_hop,
 		}
 	}
 
-	// Algorithm 1 Line 10: check Controller-Defaulter-List first
-	if (tap_check_defaulter_list(sender_current_hop))
+	// Algorithm 1 Line 10: check Controller-Defaulter-List first.
+	// When --tap_perpkt_dump is on we bypass this suppression so detection runs
+	// for EVERY packet (the un-latched signal the fair re-score needs); TAP is a
+	// passive observer in the baseline runs, so not "dropping" here is inert.
+	if (!g_tap_perpkt_dump && tap_check_defaulter_list(sender_current_hop))
 	{
 		// Lines 19-20: discard packet from blacklisted node
 		cout << "[TAP] Retransmission packet dropped for flow id "

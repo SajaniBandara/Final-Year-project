@@ -95,6 +95,10 @@ FIXED_PARAMS = {
     "maxspeed":          150,
     "use_sumo_mobility": 1,
     "architecture":      3,
+    # 2026-09-30 (supervisor): emit per-window detector grid so A5-A8 are scored
+    # on the SAME per-window M1 convention as A1-A4 (the old sweep used per-cycle
+    # avg_MCC, which is not comparable). See detector_windows.h / m1_local.py.
+    "enable_detector_windows": 1,
 }
 
 # FADE baseline isolation overrides — disables MOBIGUARD's entire S1-S8

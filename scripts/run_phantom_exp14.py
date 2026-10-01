@@ -101,6 +101,10 @@ def make_jobs(exps):
 
 def build_cmd(j):
     cmd = ["nice", f"-n{NICE}", str(BINARY),
+           # Crypto-off: detection MCC is crypto-neutral (validated byte-identical
+           # crypto-on vs off, 2026-09-23), and Exp 1/4 report only MCC/FPR (no
+           # latency panel — that's Exp 2, run crypto-on). ~3x faster.
+           "--disable_crypto=1",
            "--N_Vehicles=200", f"--N_RSUs={N_RSUS}", f"--N_Controllers={N_CTRL}",
            "--mobility_scenario=0", "--maxspeed=150", "--use_sumo_mobility=1",
            "--architecture=3", f"--simTime={SIM_TIME}",

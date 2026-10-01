@@ -115102,6 +115102,13 @@ inline double claimed_forward_timestamp(uint32_t node, uint32_t flow_id, uint32_
 // i.e. all signature checks active continuously); removed 2026-07-09.
 bool enable_tap = false;   // master enable for TAP — read by tap_detection.h
 bool g_tap_calib_dump = false; // --tap_calib_dump: dump |v-PPAT| per packet for benign-percentile margin recalibration
+bool g_tap_perpkt_dump = false; // --tap_perpkt_dump: dump t,sender,fired per packet (UN-LATCHED) for fair per-window m1_local re-score vs Proposed
+// Per-RSU S4 threshold (SFTO-style local calibration). Loaded from a "node,thresh"
+// CSV via --tcam_util_thresh_file; each RSU gets its own benign-occupancy p99 instead
+// of the pooled global g_tcam_util_thresh. Unset entries = -1 -> fall back to global.
+double g_tcam_util_thresh_rsu[total_size];
+bool   g_tcam_util_thresh_rsu_loaded = false;
+std::string g_tcam_util_thresh_file = "";
 bool enable_netanim = false;   // master enable for NetAnim trace output (routing.xml) — off by
                                 // default since every run builds a full per-run trace file
                                 // (hundreds of MB for a real simTime); opt in only for the runs
@@ -142677,8 +142684,10 @@ int main(int argc, char *argv[])
     cmd.AddValue("sfto_theta", "SFTO-Guard occupancy threshold (fraction of capacity); default 0.90. Set to a benign occupancy percentile for the 'SFTO (recalibrated)' line.", SFTO_THETA);
     cmd.AddValue("fade_force", "1 = run eFADE cross-attack on A1-A4 for the SOTA 'eFADE (cross-attack)' line (scored externally vs is_malicious_node; per-packet HF baseline untouched).", g_fade_force);
     cmd.AddValue("tap_calib_dump", "1 = dump |v-PPAT| per packet to tap_vppat_dump.csv (benign run) to recalibrate --tap_margin to its p99.", g_tap_calib_dump);
+    cmd.AddValue("tap_perpkt_dump", "1 = dump t,sender,fired per packet (un-latched) to tap_perpkt_dump<tag>.csv for fair per-window m1_local re-score vs Proposed.", g_tap_perpkt_dump);
     cmd.AddValue("s2_delta_max", "S2 hop-delay threshold Δ_max (s); default 0.050. Set to a benign hop-delay percentile for the Proposed-A2 recalibration.", S2_DELTA_MAX);
     cmd.AddValue("s2_calib_dump", "1 = dump hop_delay per packet to s2_hopdelay_dump.csv (benign run) to recalibrate --s2_delta_max to its p99.", g_s2_calib_dump);
+    cmd.AddValue("tcam_util_thresh_file", "Per-RSU S4 calibration: CSV 'node,thresh' of per-RSU benign occupancy p99; overrides global --tcam_util_thresh per RSU.", g_tcam_util_thresh_file);
     cmd.AddValue("sim_run",  "ns-3 RNG run index (distinct per seed)",             sim_run);
     cmd.AddValue("training", "1 = write LSTM training CSVs (eq:lstm_input) to lstm_training/RSU_*/", training);
 
@@ -142758,6 +142767,26 @@ int main(int argc, char *argv[])
                  attack_delay_pseudo_random);
 
     cmd.Parse (argc, argv);
+
+    // Per-RSU S4 threshold load (SFTO-style local calibration). CSV "node,thresh".
+    if (!g_tcam_util_thresh_file.empty())
+    {
+        for (int _i = 0; _i < total_size; ++_i) g_tcam_util_thresh_rsu[_i] = -1.0;
+        std::ifstream _tf(g_tcam_util_thresh_file);
+        std::string _ln; int _loaded = 0;
+        while (std::getline(_tf, _ln))
+        {
+            if (_ln.empty() || _ln[0] == '#') continue;
+            auto _c = _ln.find(',');
+            if (_c == std::string::npos) continue;
+            int _nd = std::atoi(_ln.substr(0, _c).c_str());
+            double _th = std::atof(_ln.substr(_c + 1).c_str());
+            if (_nd >= 0 && _nd < total_size) { g_tcam_util_thresh_rsu[_nd] = _th; ++_loaded; }
+        }
+        g_tcam_util_thresh_rsu_loaded = (_loaded > 0);
+        std::cout << "[S4 PER-RSU] loaded " << _loaded << " per-RSU thresholds from "
+                  << g_tcam_util_thresh_file << std::endl;
+    }
 
     // Fix 2 (N3, 2026-09-13): apply the No-ZeroTrust arm once, here, so every
     // downstream consumer (topology, DKG, blockchain commit path) sees the same

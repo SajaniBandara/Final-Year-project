@@ -132,8 +132,13 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // Recalibration: dump hop_delay on a benign run -> S2 threshold = its p99.
     if (g_s2_calib_dump && hop_delay > 0.0)
     {
+        // Columns: hop_delay(s), sender(link source), receiver(link dest), flow_id
+        // — lets us assess whether benign hop-delay baselines vary by link/hop
+        // (supervisor S2 conditional), i.e. whether per-link calibration is
+        // warranted the way per-RSU S4 calibration is.
         static std::ofstream _s2dump("results_routing/s2_hopdelay_dump.csv", std::ios::app);
-        _s2dump << hop_delay << "\n";
+        _s2dump << hop_delay << "," << sender_sim_index << "," << current_hop
+                << "," << flow_id << "\n";
     }
 
     // Eq. 3.5 — Conjunction 1: t_recv_{u+1} − t_fwd_u > Δ_max

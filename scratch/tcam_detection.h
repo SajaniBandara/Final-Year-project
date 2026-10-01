@@ -10,6 +10,8 @@
 // Definitions live in tcam_attack_helper.h (g_tcam_rule_count, g_tcam_table)
 // and routing.cc (g_slowpath_hit_count — added in Task 2).
 extern int                    g_tcam_rule_count[total_size];
+extern double                 g_tcam_util_thresh_rsu[total_size]; // per-RSU S4 threshold (benign p99)
+extern bool                   g_tcam_util_thresh_rsu_loaded;      // true once --tcam_util_thresh_file loaded
 extern std::vector<TcamEntry> g_tcam_table;
 extern int                    g_slowpath_hit_count[total_size];
 extern int                    g_packetin_count[total_size];   // PACKET_IN (table-miss) rate source for S4 λ_PI
@@ -307,7 +309,14 @@ inline TcamCycleMetrics ComputeTcamDetection(
         (void)lambda_pi_thresh;   // retained in the signature; corroborating/attribution only, not an S4 conjunct
         // g_disable_s3_s4 deliberately NOT applied to flag_s4 — see the flag_s3
         // note above (eq:lstm_gate keys on the raw condition, not the ablation).
-        const bool flag_s4 = (tcam_util > tcam_util_thresh);
+        // Per-RSU S4 threshold (SFTO-style local calibration): if a per-RSU benign
+        // percentile was loaded, use this RSU's own threshold instead of the pooled
+        // global one — benign occupancy varies widely by RSU (p99 0.00-0.50), so one
+        // global gate over-flags high-baseline RSUs and under-detects low-baseline ones.
+        const double _s4_thr = (g_tcam_util_thresh_rsu_loaded && node_id < (uint32_t)total_size
+                                && g_tcam_util_thresh_rsu[node_id] >= 0.0)
+                               ? g_tcam_util_thresh_rsu[node_id] : tcam_util_thresh;
+        const bool flag_s4 = (tcam_util > _s4_thr);
 
         // 8. Advance per-RSU baseline counters for the next cycle
         g_prev_rule_count[node_id]    = g_tcam_rule_count[node_id];

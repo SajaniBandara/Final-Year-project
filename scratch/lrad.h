@@ -494,7 +494,20 @@ inline LRADRSUFlags lrad_rsu(
     // dw_end_cycle() fold-in instead of dw_mark_rsu_primary(); see the no-op
     // `case 2: case 3:` below.
     const bool _tcam_family = (active_attack_variant == 2 || active_attack_variant == 3);
-    const uint32_t _dw_node = (dw_mark_suspect && !_tcam_family) ? prev_sender : rsu;
+    // 2026-09-29: attribute the composite mark to the accused's COVERING RSU
+    // (dw_attribute_accused), NOT the raw prev_sender. This aligns the composite
+    // `score` column with BOTH the window TRUTH and score_primary, which already
+    // use this covering-RSU proxy (lrad.h:589, hf_gt_attribution_node). Marking
+    // raw prev_sender left composite `score` attributed to a node the truth does
+    // not key on (and dw_mark_rsu discards vehicle prev_senders outright), which
+    // is why the A1/A2 composite (0.571/0.594) trailed their own S1/S2 primaries
+    // (0.646/0.920) despite S1/S2 being the only detectors firing on those runs.
+    // MEASUREMENT-ONLY: this changes solely the node handed to dw_mark_rsu()
+    // (the g_dw_rsu_fired latch). flags.D_RSU and everything it gates — BTMM
+    // trust penalty, BC.Write, quarantine (below) — are untouched. Still scoped
+    // to !_tcam_family (A3/A4 use the victim-RSU dw_end_cycle fold-in instead).
+    const uint32_t _dw_node = (dw_mark_suspect && !_tcam_family)
+                              ? dw_attribute_accused(prev_sender) : rsu;
     if (flags.D_RSU) dw_mark_rsu(_dw_node);
     // Primary-detector grid: ONLY the detector this variant is scored by, per
     // the supervisor's 2026-08-21 assignment. Excludes the OR-composite so
@@ -878,8 +891,28 @@ inline LRADOBUFlags lrad_obu(
         // other variant it is not, so folding it in would reintroduce exactly
         // the cross-detector pollution score_primary exists to prevent.
         if (flags.flag_S1 &&
-            (active_attack_variant == 0 || active_attack_variant == 1))
-            dw_mark_rsu_primary(N_Vehicles + assoc_rsu_local_idx, true);
+            (active_attack_variant == 0 || active_attack_variant == 1)) {
+            // S1 attribution node: the receiving RSU, per thesis alg:lrad_obu.
+            // NOTE (2026-09-30): an A1 attribution fix was TRIED here — attribute
+            // to the delaying forwarder's covering RSU (dw_attribute_accused(
+            // prev_sender)) instead of the receiver, to recover S1's downstream
+            // detections (A1 S1 fires on the real ~100ms attack delay, 0% benign,
+            // but the CP delay propagates multi-hop so it lands on honest
+            // downstream RSUs). It FAILED: prev_sender is NOT the injector for the
+            // multi-hop CP case, so marking its covering RSU made A1 WORSE
+            // (MCC 0.6469 -> 0.4985, FP 295 -> 335). Reverted. The correct fix
+            // would path-walk per-hop witness timestamps to localize the injecting
+            // hop (future work); A1 documented at 0.647 for now.
+            const uint32_t _s1_mark = (uint32_t)(N_Vehicles + assoc_rsu_local_idx);
+            dw_mark_rsu_primary(_s1_mark, true);
+            // Fold S1 into the OR-composite `score` column too (D_RSU in lrad_rsu
+            // never includes flag_S1). Same receiving-RSU node, gated by
+            // dw_mark_suspect. MEASUREMENT-ONLY (detector_windows latch; no
+            // enforcement path touched). This is what makes the A2 composite
+            // recover its S1+S2 primary exactly (0.920).
+            if (dw_mark_suspect)
+                dw_mark_rsu(_s1_mark);
+        }
     }
 
     // ── S2-partial: HMAC.Verify(τ_i) ∧ (t_now − ts_recv) > Δ_max  ─────────
