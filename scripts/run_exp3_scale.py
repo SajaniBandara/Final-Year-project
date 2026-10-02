@@ -69,6 +69,9 @@ def build_cmd(a, N, crypto_off):
     p.update(Q6); p.update(BUNDLE)
     if a in (1, 2):
         p["attack_delay_ms"] = 80; p["attack_delay_pseudo_random"] = 0
+        # A1/A2 composite attribution fix (2026-10-02): covering-RSU + S1 fold-in,
+        # matching the corrected SOTA table. Measurement-only; A3/A4 (TCAM) omit it.
+        p["dw_mark_suspect"] = 1
     args = " ".join(f"--{k}={v}" for k, v in p.items())
     return [str(BIN)] + args.split()
 

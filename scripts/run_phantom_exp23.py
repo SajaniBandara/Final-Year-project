@@ -129,6 +129,11 @@ def build_cmd(j):
            f"--simTime={SIM_TIME}", f"--attack_number={j['attack']}",
            f"--attack_percentage={PCT}", f"--attack_delay_ms={DELAY_MS}",
            f"--sim_seed={SEED}", f"--run_tag={j['tag']}"]
+    # Exp2 (speed) plots MCC + FPR only (no latency panel), so crypto-off is
+    # MCC/FPR-equivalent and ~13x faster (2026-10-02). Exp3 keeps crypto-on
+    # (its latency panel needs the real crypto overhead).
+    if j["exp"] == 2:
+        cmd.append("--disable_crypto=1")
     if j["tap"]:
         # clean TAP baseline: MOBIGUARD's own detectors off, TAP has its own
         # avg_MCC column in TAP_*.csv, so no detector_windows needed here.
@@ -137,6 +142,10 @@ def build_cmd(j):
         # PHANTOM arm: emit the detector_windows grid so m1_local.py can score
         # M1 (per-RSU, deduped 10s blocks) — the reporting-standard MCC.
         cmd += ["--enable_detector_windows=1"]
+        # A1/A2 composite attribution fix (2026-10-02): covering-RSU + S1 fold-in,
+        # matching the corrected SOTA table. Measurement-only; A3/A4 (TCAM) omit it.
+        if j["attack"] in (1, 2):
+            cmd.append("--dw_mark_suspect=1")
     return cmd
 
 
