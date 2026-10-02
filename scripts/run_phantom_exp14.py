@@ -118,6 +118,12 @@ def build_cmd(j):
         cmd += ["--enable_tap=1", "--enable_lrad_obu=0", "--enable_lrad_rsu=0"]
     else:
         cmd += ["--enable_detector_windows=1"]
+        # A1/A2 composite attribution fix (2026-10-01): attribute the composite
+        # to the accused's covering RSU + fold S1 into the OR-composite, matching
+        # the SOTA-table numbers (A2 0.594->0.920). Measurement-only, scoped to
+        # the timing variants; A3/A4 (TCAM) are unaffected and omit the flag.
+        if j["attack"] in (1, 2):
+            cmd.append("--dw_mark_suspect=1")
     return cmd
 
 
