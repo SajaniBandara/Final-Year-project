@@ -87,3 +87,8 @@ lstm_pipeline/*_backup_*.bin
 /*.docx.bak
 /*.doc
 /.~lock.*#
+
+# Trained model binaries — regenerable from the pipelines, keep out of git (2026-10-03)
+*.pkl
+# Superseded one-off figure bundle (current deliverable is phantom_results_figures.zip)
+/docs/phantom_exp23.zip
