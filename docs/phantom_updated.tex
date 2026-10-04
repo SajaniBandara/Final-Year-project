@@ -1579,22 +1579,32 @@ past that point is $\TBD$.
 	\label{fig:ab12}
 \end{figure}
 
-Figure~\ref{fig:ab13} sweeps mean speed $\bar{v} \in \{10, 40, 70, 100,
-130, 150\}$km/h, reporting macro MCC for the mobility adjusted baseline
-against AB13's static threshold, calibrated once at 60km/h. The static
-threshold is expected to match the mobility adjusted baseline near its
-calibration speed and diverge increasingly at both lower and higher
-speeds, since it cannot track the density and speed dependence of
-Equation~\eqref{eq:mobility_baseline}; the gap at the extremes of the
-swept range is $\TBD$.
+Figure~\ref{fig:ab13} sweeps mean speed $\bar{v} \in \{10, 40, 60, 100,
+140, 150\}$km/h, reporting macro MCC and the Signature~S1 false positive
+rate for the mobility adjusted baseline against AB13's static threshold,
+calibrated once at 60km/h. (The sweep uses the independently generated SUMO
+traces available for these six speeds; 70 and 130km/h, named in an earlier
+draft, have no trace and are replaced by the adjacent 60 and 140km/h
+realisations.) We expected the static threshold to match the mobility
+adjusted baseline near 60km/h and diverge at the extremes, where
+Equation~\eqref{eq:mobility_baseline}'s density and speed dependence is
+largest. The data do not bear this out: across the full $10$--$150$km/h
+range the two arms are indistinguishable---macro MCC agrees to within
+$0.0002$ at every speed, and the Signature~S1 false positive rate differs
+by at most one false positive out of $\sim\!300$ even at $150$km/h ($23.2\%$
+both arms). The static value ($0.0199$s, the median of the mobility adjusted
+threshold sampled over $65{,}000$ benign S1 evaluations at 60km/h) is thus
+an excellent approximation at every swept speed, which indicates that the
+mobility adjustment term, while principled, is not load bearing for
+detection quality at the $100$ms attack delay studied here. We report this
+honestly as a negative ablation result rather than a confirmation.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC versus mean vehicle speed, full
-			PHANTOM against AB13.
-	\end{minipage}}
-	\caption{Ablation AB13: Mobility Adjusted Threshold}
+	\includegraphics[width=0.98\linewidth]{phantom_exp23/ab13_threshold.png}
+	\caption{Ablation AB13: Mobility Adjusted Threshold. The static 60km/h
+	threshold tracks the mobility adjusted baseline across the full speed
+	range in both macro MCC (a) and S1 false positive rate (b); the curves
+	overlap.}
 	\label{fig:ab13}
 \end{figure}
 
