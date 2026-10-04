@@ -142698,6 +142698,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("s1_alpha_v",    "S1: speed sensitivity α_v (s²/m, default 0.05)",             s1_alpha_v);
     cmd.AddValue("s1_k",          "S1: std-dev multiplier k (default 3.0, sweep {1,2,3})",      s1_k);
     cmd.AddValue("s1_static_threshold", "AB13 ablation: >0 replaces S1's mobility-adjusted threshold with this fixed cutoff (s), calibrated at 60km/h. -1=off (full S1).", s1_static_threshold);
+    cmd.AddValue("s1_thresh_dump", "AB13 calibration: 1 = dump S1's computed threshold to s1_thresh_dump.csv (median of a benign 60km/h run = the AB13 static value).", s1_thresh_dump);
     cmd.AddValue("s1_robust_sigma", "S1: exclude threshold-breaching packets from the sigma2 update (default 1)", s1_robust_sigma);
     // Item 7 (supervisor, 2026-08-27): non-parametric percentile threshold.
     // Default ON -- this is the approved replacement for the Gaussian k*sigma

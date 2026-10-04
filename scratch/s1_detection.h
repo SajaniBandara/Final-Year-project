@@ -125,6 +125,7 @@ bool   s1_robust_sigma = true;      // exclude violating packets from sigma2
 double s1_sigma_floor  = 0.001;     // s — 1 ms floor on sigma (sigma2 >= 1e-6)
 double s1_beta      = 0.95;         // EWMA factor — analytic N_eff=1/(1-β)=20, band 9<=N_eff<=22 (main.tex:6049; supervisor 2026-08-13)
 double s1_static_threshold = -1.0;  // AB13 ablation: >0 replaces the mobility-adjusted threshold with this fixed value (calibrated at 60km/h). -1 = off (full S1).
+bool   s1_thresh_dump = false;      // AB13 calibration: dump computed threshold to s1_thresh_dump.csv (take median of a benign 60km/h run as the static value).
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
 // Sized dynamically at runtime by s1_init_state(N_RSUs) — no hardcoded ceiling.
@@ -589,6 +590,14 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // mobility-adjusted baseline mechanism AB13 targets. Baseline/variance
     // bookkeeping below is untouched, so disabling the flag restores full S1.
     if (s1_static_threshold > 0.0) threshold = s1_static_threshold;
+
+    // AB13 calibration helper: dump the computed (mobility-adjusted) threshold so
+    // a benign 60 km/h run yields the fixed cutoff value the AB13 substitute uses.
+    if (s1_thresh_dump && threshold > 0.0)
+    {
+        static std::ofstream _s1td("results_routing/s1_thresh_dump.csv", std::ios::app);
+        _s1td << threshold << "\n";
+    }
 
     // Accumulate observed hop-delay for the LSTM per-cycle delta_t log column
     // (cycle-averaged; see s1_update_baseline()'s call site in routing.cc).
