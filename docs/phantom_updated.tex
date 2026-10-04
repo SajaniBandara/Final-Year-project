@@ -1375,19 +1375,22 @@ than several ablations sharing one set of axes, since each isolates a
 different mechanism on a different metric and overlaying them obscures
 more than it shows.
 
-Figure~\ref{fig:ab1} sweeps attack penetration $p \in \{0,20,40,60,80,100\}\%$,
-reporting end to end latency and macro MCC for full PHANTOM against AB1,
-which removes on board unit pre filtering. Latency is expected to rise
-without the pre filter, since every packet now reaches the full roadside
-unit pipeline directly; at $p{=}\TBD\%$, the latency gap is $\TBD$.
+Figure~\ref{fig:ab1} sweeps attack penetration $p \in \{20,40,60,80,100\}\%$
+(with a $p{=}0$ benign anchor), reporting macro MCC for full PHANTOM against
+AB1, which removes on board unit pre filtering so that every packet reaches
+the full roadside unit pipeline directly. The pre filter proves essential to
+the timing signatures: macro MCC collapses from the $0.588$--$0.798$ band of
+full PHANTOM to a flat $0.42$--$0.48$ and, unlike full PHANTOM, fails to
+improve as penetration rises. The gap widens to $0.38$ at $p{=}100\%$
+($0.798$ versus $0.415$). The degradation concentrates in the control and
+data plane timing signatures S1 and S2, whose per attacker MCC falls to
+$\approx 0.26$--$0.34$ once the on board pre screening that suppresses benign
+mobility jitter upstream is removed.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: end to end latency and macro MCC versus attack
-			penetration, full PHANTOM against AB1.
-	\end{minipage}}
-	\caption{Ablation AB1: On Board Unit Pre Filter}
+	\includegraphics[width=0.92\linewidth]{phantom_exp23/ab1_obu.png}
+	\caption{Ablation AB1: On Board Unit Pre Filter. Removing the pre filter
+	flattens macro MCC near $0.45$ regardless of penetration.}
 	\label{fig:ab1}
 \end{figure}
 
@@ -1479,20 +1482,26 @@ latency gap at $p{=}\TBD\%$ is $\TBD$.
 	\label{fig:ab7}
 \end{figure}
 
-Figure~\ref{fig:ab8} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
-macro MCC and unauthorized flow modification commit rate for the
-endorsement quorum against AB8's single roadside unit substitute. Without
-the quorum, Signature S3 is expected to lose its detection signal
-entirely, since every flow modification is now committed on arrival; the
-commit rate gap is $\TBD$.
+Figure~\ref{fig:ab8} sweeps $p \in \{20,40,60,80,100\}\%$, reporting macro
+MCC and the unauthorized flow modification blocking rate for the $f{+}1$
+endorsement quorum against AB8's single roadside unit, immediate commit
+substitute. Contrary to the expectation that detection would collapse, macro
+MCC is essentially unchanged: AB8 tracks full PHANTOM to within $\pm 0.05$ at
+every penetration (panel a), because the rule based occupancy and timing
+signatures fire independently of whether a commit was endorsed. The quorum's
+value is instead a \emph{prevention} property, orthogonal to detection. Of
+the $298$ unauthorized flow modifications injected, full PHANTOM blocks all
+$298$ ($100\%$) at the endorsement gate, whereas AB8 blocks none---every
+unauthorized commit succeeds (panel b). The blocking rate gap is therefore
+$100$ percentage points and is independent of attack penetration. This
+distinction---detection unaffected, prevention lost---is the correct reading
+of the endorsement quorum's role.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC and unauthorized flow modification
-			commit rate versus attack penetration, full PHANTOM against AB8.
-	\end{minipage}}
-	\caption{Ablation AB8: Multi RSU Endorsement}
+	\includegraphics[width=0.98\linewidth]{phantom_exp23/ab8_endorse.png}
+	\caption{Ablation AB8: Multi RSU Endorsement. Detection quality is
+	insensitive to the quorum (a); its effect is prevention---$100\%$ versus
+	$0\%$ of unauthorized commits blocked (b).}
 	\label{fig:ab8}
 \end{figure}
 
