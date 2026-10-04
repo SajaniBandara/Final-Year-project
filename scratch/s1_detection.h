@@ -124,6 +124,7 @@ double s1_k         = 3.0;          // sensitivity 2026-09-14: 60s A1 avg_MCC mo
 bool   s1_robust_sigma = true;      // exclude violating packets from sigma2
 double s1_sigma_floor  = 0.001;     // s — 1 ms floor on sigma (sigma2 >= 1e-6)
 double s1_beta      = 0.95;         // EWMA factor — analytic N_eff=1/(1-β)=20, band 9<=N_eff<=22 (main.tex:6049; supervisor 2026-08-13)
+double s1_static_threshold = -1.0;  // AB13 ablation: >0 replaces the mobility-adjusted threshold with this fixed value (calibrated at 60km/h). -1 = off (full S1).
 
 // Per-RSU EWMA baseline and variance, indexed by RSU index (0..N_RSUs-1).
 // Sized dynamically at runtime by s1_init_state(N_RSUs) — no hardcoded ceiling.
@@ -581,6 +582,13 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     {
         threshold = s1_pctl_threshold[rsu_idx];
     }
+
+    // AB13 ablation (2026-10-04): static-threshold substitute. When set (>0),
+    // overrides the mobility-adjusted delta_bar+k*sigma (and any percentile
+    // cutoff) with one fixed cutoff, calibrated once at 60 km/h -- isolating the
+    // mobility-adjusted baseline mechanism AB13 targets. Baseline/variance
+    // bookkeeping below is untouched, so disabling the flag restores full S1.
+    if (s1_static_threshold > 0.0) threshold = s1_static_threshold;
 
     // Accumulate observed hop-delay for the LSTM per-cycle delta_t log column
     // (cycle-averaged; see s1_update_baseline()'s call site in routing.cc).
