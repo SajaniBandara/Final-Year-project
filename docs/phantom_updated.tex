@@ -1428,21 +1428,35 @@ lies in the cases they miss; the gap is $\TBD$.
 	\label{fig:ab3}
 \end{figure}
 
-Figure~\ref{fig:ab4} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
-macro MCC, verification overhead, and privacy cost for the STARK proof
-against AB4's direct wall clock comparison. Detection quality is expected
-to hold close to full PHANTOM, since both signals feed the same rule,
-while privacy cost is expected to rise sharply, since the wall clock
-comparison exposes the raw timestamp a proof would have hidden; the
-overhead difference is $\TBD$.
+Figure~\ref{fig:ab4} reports the three quantities the proof trades off---
+macro MCC, verification overhead, and privacy cost---for full PHANTOM
+against AB4, which removes the STARK timing proof $\pi_{delay}$ so that the
+Signature~S2 conjunction falls back to the raw wall-clock comparison. We
+confirmed the ablation acts as intended: with $\pi_{delay}$ removed the
+proof verifies vacuously, so S2's $\pi_{delay}(u){=}\bot$ conjunct never
+holds and S2 fires zero times. Yet detection quality does \emph{not} fall:
+on a flag-matched full arm the ablated macro MCC is marginally
+\emph{higher} ($0.604$, $0.706$, $0.719$ at $p{=}20,40,60\%$ versus
+$0.601$, $0.690$, $0.699$). The reason is that S2's proof conjunct is a
+restrictive AND, and in the fused per-window score Signature~S1 already
+covers the delayed-forwarding cases on its own; the proof therefore adds no
+detection value over S1 and, by gating S2 more tightly, very slightly
+suppresses it. Its value lies in the other two axes. The verification
+overhead is negligible---a measured $0.061\,\mu$s per proof operation (the
+modelled STARK step; the design budget is $\le 10$ms)---while the privacy
+cost of removing it is large: each of the $\approx\!90{,}800$ per-packet
+timing-proof operations in a $90$s run would expose a raw forwarding
+timestamp that $\pi_{delay}$ otherwise proves in zero knowledge, versus
+zero exposed under full PHANTOM. The proof is thus a privacy mechanism at
+near-zero cost, not a detection mechanism. ($p{=}80,100\%$ are omitted: the
+full arm's S3/S4 windows degenerate at saturation, as elsewhere.)
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC, verification overhead, and privacy
-			cost versus attack penetration, full PHANTOM against AB4.
-	\end{minipage}}
-	\caption{Ablation AB4: STARK Timing Compliance Proof}
+	\includegraphics[width=0.98\linewidth]{phantom_exp23/ab4_stark.png}
+	\caption{Ablation AB4: STARK Timing Compliance Proof. Removing
+	$\pi_{delay}$ leaves detection unchanged (a)---S1 covers S2 in the fused
+	score---so the proof's role is the privacy guarantee it provides (b) at a
+	negligible $0.061\,\mu$s/op verification overhead.}
 	\label{fig:ab4}
 \end{figure}
 

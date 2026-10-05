@@ -1,0 +1,8 @@
+pen,arm,A1,A2,A3,A4,macro
+20,full,0.5544,0.7961,0.3114,0.7414,0.6008
+40,full,0.6365,0.8806,0.5567,0.6879,0.6904
+60,full,0.6365,0.9287,0.5567,0.6737,0.6989
+20,ablated,0.5647,0.8118,0.3133,0.7249,0.6037
+40,ablated,0.7118,0.9116,0.5570,0.6431,0.7059
+60,ablated,0.7118,0.9731,0.5570,0.6355,0.7193
+# overhead: t_stark_ms_avg=0.000061ms (0.061us/op); privacy: N~90755 timestamps exposed (full=0); S2 triggers=0 with pi_delay removed
