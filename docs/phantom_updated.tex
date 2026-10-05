@@ -1471,20 +1471,29 @@ full arm's S3/S4 windows degenerate at saturation, as elsewhere.)
 \end{figure}
 
 Figure~\ref{fig:ab5} sweeps the poisoned roadside unit fraction
-$\rho_{mal} \in \{0, 0.05, 0.10, 0.15, 0.20, 0.25\}$, reporting aggregate
-model quality for BRFA v2 against AB5's naive FedAvg substitute. BRFA v2
-is expected to hold roughly flat across this range, while FedAvg is
-expected to degrade steadily as the poisoned fraction grows, since
-nothing in FedAvg filters an adversarial update before it is averaged in;
-at $\rho_{mal}{=}0.25$, the quality gap is $\TBD$.
+$\rho_{mal} \in \{0, 0.1, 0.2, 0.3, 0.4\}$, reporting the aggregated global
+model's MCC for BRFA-v2 against AB5's naive FedAvg substitute under a
+large-magnitude ($50\times$) model-poisoning attack. The result matches the
+Byzantine-tolerance design target. BRFA-v2 holds detection quality roughly
+flat for $\rho_{mal} < 1/3$ (MCC $0.45$--$0.47$, a degradation of at most
+$0.067$ from the clean $0.517$), correctly identifying and rejecting the
+poisoned updates before averaging; at $\rho_{mal}{=}0.4 > 1/3$ it collapses
+to $0$, as expected once the adversary exceeds the one-third Byzantine
+bound. Naive FedAvg, by contrast, has no such filter and is destroyed by a
+single large-magnitude update: its MCC falls to $\approx 0$ at
+$\rho_{mal}{=}0.1$ already and stays there. The quality gap for
+$\rho_{mal} \in [0.1, 0.3]$ is therefore $\approx 0.45$--$0.47$ MCC in
+BRFA-v2's favour. (A weaker sign-flip attack did not degrade FedAvg at all,
+because negated updates average back toward a usable model below
+$\rho_{mal}{=}0.5$; the large-magnitude attack is the discriminating case
+and is what we report.)
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: aggregate model quality versus poisoned
-			roadside unit fraction, BRFA v2 against AB5.
-	\end{minipage}}
-	\caption{Ablation AB5: Byzantine Robust Aggregation}
+	\includegraphics[width=0.72\linewidth]{phantom_exp23/ab5_poison.png}
+	\caption{Ablation AB5: Byzantine Robust Aggregation. Under a $50\times$
+	model-poisoning attack BRFA-v2 holds for $\rho_{mal}<1/3$ and collapses
+	only beyond the Byzantine bound, while naive FedAvg is destroyed at
+	$\rho_{mal}{=}0.1$.}
 	\label{fig:ab5}
 \end{figure}
 

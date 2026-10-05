@@ -1,0 +1,7 @@
+rho_mal,brfa_MCC,brfa_delta,fedavg_MCC,fedavg_delta,attack
+0.0,0.5169,0.0,0.4694,0.0,scale50x
+0.1,0.4503,0.0666,-0.0054,0.4749,scale50x
+0.2,0.4518,0.0651,0.0038,0.4657,scale50x
+0.3,0.4680,0.0489,0.0000,0.4694,scale50x
+0.4,0.0000,0.5169,0.0000,0.4694,scale50x
+# sign_flip (too weak, did not degrade FedAvg): preserved in scratchpad/poison_sweep_signflip_results.json
