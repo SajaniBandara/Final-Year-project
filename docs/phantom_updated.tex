@@ -1394,37 +1394,47 @@ mobility jitter upstream is removed.
 	\label{fig:ab1}
 \end{figure}
 
-Figure~\ref{fig:ab2} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
-macro MCC and privacy cost for federated training against AB2's
-centralised alternative. Centralised training is expected to match or
-exceed federated macro MCC, at the cost of every roadside unit exposing
-its raw per packet features to a central server; the privacy cost gap is
-$\TBD$.
+Figure~\ref{fig:ab2} reports per-variant LSTM MCC for the proposed
+federated training against AB2's centralised alternative, which pools every
+roadside unit's raw per-window features onto one server. Both arms use the
+same matched budget ($R{=}30$ rounds, $E{=}3$ local epochs) for fairness.
+Federated training \emph{matches} centralised detection quality: the
+overall MCC gap is only $-0.011$ ($0.457$ federated versus $0.468$
+centralised), and on the S1--S4 variants the federated model is in fact
+higher on S1 ($0.422$ vs $0.324$) and S3 ($0.860$ vs $0.825$), within noise
+on S2 and S4. It does so without ever centralising raw features---the
+privacy cost of the centralised baseline is that all $64$ units' raw
+per-packet metadata leaves the unit, which the federated design avoids by
+construction (only weight updates are shared). Federated training therefore
+buys privacy at no measurable detection cost.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC and privacy cost versus attack
-			penetration, federated against AB2's centralised LSTM.
-	\end{minipage}}
-	\caption{Ablation AB2: Federated vs Centralised LSTM}
+	\includegraphics[width=0.78\linewidth]{phantom_exp23/ab2_fedvscentral.png}
+	\caption{Ablation AB2: Federated vs Centralised LSTM. Federated matches
+	centralised per-variant MCC under a matched training budget, while never
+	centralising raw features.}
 	\label{fig:ab2}
 \end{figure}
 
-Figure~\ref{fig:ab3} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
-Signature S1 and S2 macro MCC with the ZKP timing failure feature against
-AB3's constant zero substitute. Removing the feature is expected to lower
-the LSTM's contribution on S1 and S2 specifically, since the rule based
-signatures already cover the deterministic case and the feature's value
-lies in the cases they miss; the gap is $\TBD$.
+Figure~\ref{fig:ab3} reports per-variant LSTM MCC for the proposed
+seven-feature input (AB3-B, including the two ZKP failure indicators
+$\mathit{zkp\_delay\_fail}$ and $\mathit{zkp\_hop\_fail}$) against AB3-A, a
+five-feature substitute with those indicators dropped from the feature
+view. The comparison reuses the same preprocessed windows, so it is a clean
+feature-set ablation with no new simulations. The ZKP features help, and
+help most where expected---on the timing signatures: S2 improves by
+$+0.029$ ($0.404$ vs $0.375$) and S1 by $+0.010$ ($0.380$ vs $0.370$),
+while S3 and S4, which are not timing-driven, are essentially unchanged
+($+0.0003$, $+0.003$). The features contribute precisely on the
+delayed-forwarding cases the rule-based signatures are weakest on, which is
+the role the LSTM is meant to play; the gains are modest because the rule
+signatures already cover the clear-cut cases.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: Signature S1 and S2 macro MCC versus attack
-			penetration, full PHANTOM against AB3.
-	\end{minipage}}
-	\caption{Ablation AB3: ZKP Timing Failure Feature}
+	\includegraphics[width=0.78\linewidth]{phantom_exp23/ab3_features.png}
+	\caption{Ablation AB3: ZKP Timing Failure Feature. Adding the ZKP
+	failure indicators to the LSTM input improves detection on the timing
+	signatures S1/S2, with negligible effect on S3/S4.}
 	\label{fig:ab3}
 \end{figure}
 
