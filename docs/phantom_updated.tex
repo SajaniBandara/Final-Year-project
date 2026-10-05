@@ -1541,21 +1541,28 @@ collapsing detection; the macro MCC gap past that point is $\TBD$.
 \end{figure}
 
 Figure~\ref{fig:ab11} sweeps time since revocation $t \in \{0,1,2,3,4,5\}$
-cycles at $p{=}40\%$, reporting Signature S1 and S2 detection quality with
-key rotation against AB11's no rotation substitute. A revoked roadside
-unit retaining its key material is expected to keep forging valid timing
-proofs after revocation, so detection quality without rotation is
-expected to fall toward the undetected baseline as $t$ grows, while
-rotation is expected to hold quality flat from $t{=}0$ onward; the point
-at which the two curves diverge is $\TBD$.
+detector windows at $p{=}40\%$, reporting Signature S1 and S2 detection
+quality with key rotation against AB11's no rotation substitute. At
+$p{=}40\%$ the attacks drive $17$ roadside units below the trust threshold
+($0.70$) during the run; in the full arm each revocation triggers a DKG key
+rotation ($37$ rotations observed), while the substitute leaves the revoked
+unit's key material live. We expected detection without rotation to fall
+toward the undetected baseline as the revoked unit keeps forging valid
+timing proofs. The data do not show this: detection on the revoked units
+holds at $100\%$ for both arms at every window from $t{=}0$ to $t{=}5$, and
+the whole run S1/S2 MCC is identical to three decimals (S1 $0.620$, S2
+$0.888$ in both). The reason is structural---a revoked unit is, by
+definition, already below the trust threshold and therefore already
+quarantined, so whether its stale key still verifies does not change
+whether the system treats it as an attacker. The forged proof evasion path
+the rotation defends against does not arise in the implemented pipeline at
+this operating point. We report this as a negative ablation result.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: Signature S1 and S2 detection quality versus
-			time since revocation, full PHANTOM against AB11.
-	\end{minipage}}
-	\caption{Ablation AB11: ZKP Key Rotation}
+	\includegraphics[width=0.72\linewidth]{phantom_exp23/ab11_rotation.png}
+	\caption{Ablation AB11: ZKP Key Rotation. Detection on revoked roadside
+	units holds at $100\%$ with and without rotation across all windows since
+	revocation; the curves overlap.}
 	\label{fig:ab11}
 \end{figure}
 
