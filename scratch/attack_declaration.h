@@ -278,6 +278,20 @@ inline void declare_attackers()
         }
     }
 
+    else if (ab_compromise_model && attack_percentage >= 33 && active_attack_variant != 2
+             && N_Controllers > 1)
+    {
+        // Same step ladder as Attack 1 (p>=33 -> 2, p>=66 -> 3, p==100 -> all), always leaving
+        // one controller honest below 100%. Variant 2 (Attack 3) builds its own ladder in routing.cc.
+        uint32_t step = (attack_percentage < 66) ? 2u : 3u;
+        uint32_t max_compromisable = (attack_percentage == 100) ? N_Controllers : N_Controllers - 1;
+        uint32_t n_comp = (step * max_compromisable) / 3;
+        if (n_comp > max_compromisable) n_comp = max_compromisable;
+        for (uint32_t c = 0; c < n_comp; c++) controller_compromised[c] = true;
+        cout << attack_tag() << " [AB-COMPROMISE] p=" << attack_percentage << "% -> " << n_comp
+             << " of " << N_Controllers << " controllers compromised (model only; no attack change)." << endl;
+    }
+
     // Ground truth: mark all RSUs whose owning controller is compromised as
     // Attack 1 (variant index 0) malicious actors, and record onset at
     // attack_start_time. This is the SINGLE authoritative write for variant 0 —

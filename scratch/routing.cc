@@ -117793,6 +117793,13 @@ void ufcr_attempt_unauthorized_flowmod()
             g_rsu_commit_hashes.pop_back();
         g_ufcr_unauth_total++;
         if (!committed) g_ufcr_blocked++;
+        // AB12 (ab12_legitimize, p>=33): a compromised controller's read/write access lets it
+        // retroactively legitimise a FlowMod the endorsement quorum rejected. Counted separately
+        // so M11 = (unauth - blocked + legitimised) / unauth; g_ufcr_blocked stays the quorum count.
+        if (!committed && ab12_legitimize && ab_cap_active()) {
+            for (uint32_t _c = 0; _c < (uint32_t)N_Controllers; _c++)
+                if (controller_compromised[_c]) { g_ufcr_legitimized++; break; }
+        }
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[UFCR] unauthorized FlowMod attempt variant="
                       << active_attack_variant
@@ -117872,7 +117879,10 @@ void ufcr_attempt_unauthorized_flowmod()
 
                 // eq:ctrl_trust_update: penalise on conflict evidence >= f+1
                 // OR delay evidence >= f+1; reward only when BOTH are below.
-                if ((controller_compromised[c] && !committed) || delay_evidence)
+                // AB12: penalties against a compromised controller are cancelled once it can
+                // retroactively legitimise (its own FlowMods are never "conflicting evidence").
+                const bool ab12_cancel = ab12_legitimize && ab_cap_active() && controller_compromised[c];
+                if (((controller_compromised[c] && !committed) || delay_evidence) && !ab12_cancel)
                     ctrl_trust_update_negative(c);
                 else if (!controller_compromised[c])
                     ctrl_trust_update_positive(c);
@@ -118156,7 +118166,9 @@ void write_security_metrics_csv()
 			 << " eps_ref_s, avg_eps_ref_s, time_ref_f_bad,"
 			 << " ufcr_unauth_total, ufcr_blocked, UFCR,"
 			 << " lmit_scored_n, lmit_blocked_before_acting,"
-			 << " lmit_prevention_rate\n";
+			 << " lmit_prevention_rate,"
+			 << " ufcr_legitimized, ab10_invalid_proofs, ab10_forged_accepted,"
+			 << " quarantined_nodes, quarantine_block_events\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118281,6 +118293,11 @@ void write_security_metrics_csv()
 		 << ", " << g_lmit_scored_n
 		 << ", " << g_lmit_blocked_before_acting
 		 << ", " << g_lmit_prevention_rate
+		 << ", " << g_ufcr_legitimized
+		 << ", " << g_ab10_invalid_proofs
+		 << ", " << g_ab10_forged_accepted
+		 << ", " << ([]{ uint32_t q = 0; for (int i = 0; i < 268; ++i) if (g_quarantined[i]) ++q; return q; })()
+		 << ", " << g_quarantine_block_events
 		 << "\n";
 
 	fout.close();

@@ -114,6 +114,21 @@ bool attack_number_explicitly_set = false;
 // pattern as the supervisor reference, generalized to N_Controllers
 // instead of a hardcoded 4. controller_compromised[c] == true means
 // controller c is the malicious controller for this run.
+// PHANTOM AB9/AB10/AB12 compromise model (supervisor-approved 2026-10-05). All default OFF,
+// so every existing run is unchanged. Exactly three capabilities, each active ONLY at
+// attack_percentage >= 33 and ONLY on a controller marked compromised below:
+//   ab9_no_isolation : a compromised controller cannot be revoked / failed over (AB9 substitute)
+//   ab10_false_keys  : controller-issued proving/verification keys -> proofs verified at RSUs
+//                      owned by a compromised controller are accepted (AB10 substitute)
+//   ab12_legitimize  : rejected unauthorized FlowMods are retroactively legitimised and the
+//                      compromised controller's trust penalties are cancelled (AB12 substitute)
+// ab_compromise_model only extends the existing controller-compromise ladder to attacks
+// that lack one (A2/A4) so the three capabilities have a compromised controller to act on;
+// it changes no attack behaviour.
+bool ab_compromise_model = false;
+bool ab9_no_isolation    = false;
+bool ab10_false_keys     = false;
+bool ab12_legitimize     = false;
 bool controller_compromised[total_size]; // sized to total_size, matches
                                     // rsu_controller_assignment[300]'s sizing
                                     // convention already used in routing.cc

@@ -158,7 +158,7 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
     // hop_delay correctly flags a violation), silently suppressing S2.
     StarkTimingProof proof = stark_prove_timing(t_fwd_anchored, t_recv_now,
                                                 (uint32_t)packet_id);
-    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_anchored, t_recv_now);
+    bool zkp_proof_fails   = !stark_verify_timing(proof, t_fwd_anchored, t_recv_now, current_hop);
 
     if (DETECTION_DEBUG_LOG_S2)
         cout << "[S2] sender=" << sender_sim_index

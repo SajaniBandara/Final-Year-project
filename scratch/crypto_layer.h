@@ -394,6 +394,22 @@ bool enable_endorsement_requirement = true; // AB8: f+1 RSU FlowMod endorsement
 bool no_zero_trust_arm = false;
 bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
 bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
+// AB9/AB10/AB12 compromise-model counters (flags live in attack_variables.h).
+uint32_t g_ab10_invalid_proofs   = 0; // proofs that fail honest verification (anywhere)
+uint32_t g_ab10_forged_accepted  = 0; // of those, accepted because of controller-issued false keys
+uint32_t g_ufcr_legitimized      = 0; // unauthorized FlowMods retroactively legitimised (AB12)
+inline bool ab_cap_active() { return attack_percentage >= 33; }
+inline bool ab9_isolation_blocked() { return ab9_no_isolation && ab_cap_active(); }
+inline uint32_t hf_gt_attribution_node(uint32_t node);
+// True when proofs verified at `verifier` (RSU, or the RSU covering a vehicle) are verified
+// under keys issued by a compromised controller (AB10).
+inline bool ab10_forged_at(uint32_t verifier) {
+    if (!ab10_false_keys || !ab_cap_active()) return false;
+    uint32_t n = hf_gt_attribution_node(verifier);
+    if (n == UINT32_MAX || n < (uint32_t)N_Vehicles || n >= (uint32_t)(N_Vehicles + N_RSUs)) return false;
+    uint32_t c = (uint32_t)rsu_controller_assignment[n - N_Vehicles];
+    return c < (uint32_t)N_Controllers && controller_compromised[c];
+}
 bool enable_lstm_inference         = false; // main.tex sec:fed_lstm: live in-sim LSTM
                                              // (lstm_inference.h). Default OFF — needs
                                              // lstm_pipeline/lstm_weights_cpp.bin to already
@@ -1606,10 +1622,14 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
 }
 
 inline bool stark_verify_timing(const StarkTimingProof& proof,
-                                 double t_recv, double t_fwd) {
+                                 double t_recv, double t_fwd, uint32_t verifier = UINT32_MAX) {
     if (!enable_stark_delay) return true; // AB4: π_delay removed — vacuously passes
     auto _st0 = std::chrono::high_resolution_clock::now();
     bool ok = proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
+    if (!ok && verifier != UINT32_MAX) {
+        ++g_ab10_invalid_proofs;
+        if (ab10_forged_at(verifier)) { ++g_ab10_forged_accepted; ok = true; } // AB10: false keys
+    }
     auto _st1 = std::chrono::high_resolution_clock::now();
     g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
     ++g_m7_stark_calls;
@@ -1630,6 +1650,10 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
         return true;  // no signing record — can't verify, assume valid
     auto _st0 = std::chrono::high_resolution_clock::now();
     bool hop_ok = (current_hop == it->second.signed_next_hop);
+    if (!hop_ok) {
+        ++g_ab10_invalid_proofs;
+        if (ab10_forged_at(current_hop)) { ++g_ab10_forged_accepted; hop_ok = true; } // AB10: false keys
+    }
     auto _st1 = std::chrono::high_resolution_clock::now();
     g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
     ++g_m7_stark_calls;
@@ -1966,14 +1990,14 @@ inline void trust_update_negative(uint32_t node) {
 }
 
 inline void ctrl_trust_update_positive(uint32_t ctrl) {
-    if (!enable_controller_failover) return; // AB9-A: controller trust scoring inert
+    if (!enable_controller_failover || ab9_isolation_blocked()) return; // AB9-A: controller trust scoring inert
     if (ctrl >= N_Controllers || g_ctrl_revoked[ctrl]) return;
     double v = g_ctrl_trust_score[ctrl] + TRUST_DELTA_R_CTRL;
     g_ctrl_trust_score[ctrl] = (v < 1.0 ? v : 1.0);
 }
 
 inline void ctrl_trust_update_negative(uint32_t ctrl) {
-    if (!enable_controller_failover) return; // AB9-A: no trust scoring, no revoke/failover
+    if (!enable_controller_failover || ab9_isolation_blocked()) return; // AB9-A: no trust scoring, no revoke/failover
     if (ctrl >= N_Controllers) return;
     double old_v = g_ctrl_trust_score[ctrl];
     double v = old_v - TRUST_DELTA_P_CTRL;
@@ -2662,6 +2686,10 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("no_zero_trust_arm",             "N3 No-ZeroTrust arm: N_Controllers=1, skip DKG (signing stays on), controller writes unilaterally", no_zero_trust_arm);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
+    cmd.AddValue("ab_compromise_model",           "AB9/10/12: extend controller-compromise ladder to A2/A4 (no attack change)", ab_compromise_model);
+    cmd.AddValue("ab9_no_isolation",              "AB9 substitute: compromised controller cannot be revoked/failed over (p>=33)", ab9_no_isolation);
+    cmd.AddValue("ab10_false_keys",               "AB10 substitute: compromised controller issues false proving keys (p>=33)",    ab10_false_keys);
+    cmd.AddValue("ab12_legitimize",               "AB12 substitute: retroactive FlowMod legitimisation + cancelled ctrl penalties (p>=33)", ab12_legitimize);
     cmd.AddValue("enable_lstm_inference",         "sec:fed_lstm: live in-sim LSTM inference "
                                                    "(needs lstm_weights_cpp.bin already exported)", enable_lstm_inference);
     cmd.AddValue("enable_lstm_cls",               "Fix 2 (2026-08-20): detect on the classification head's P(attack) "
