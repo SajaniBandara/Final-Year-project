@@ -2522,6 +2522,16 @@ inline bool check_msg_duplication(const uint8_t* pkt_hash, uint32_t dst_now) {
 inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
                              const uint8_t* flowmod_params, size_t params_len) {
     if (rsu_idx >= (uint32_t)total_size) return false;
+    // Quorum soundness (2026-10-07): eq:endorsed_commit requires f+1 DISTINCT endorsers, so an
+    // RSU that already endorsed this FlowMod must not be counted (or hashed into the rolling
+    // endorsement hash) a second time.
+    {
+        auto it_prior = g_flowmod_endorsements.find(flow_id);
+        if (it_prior != g_flowmod_endorsements.end()) {
+            const std::vector<uint32_t>& prior = it_prior->second.endorsing_rsus;
+            if (std::find(prior.begin(), prior.end(), rsu_idx) != prior.end()) return false;
+        }
+    }
     if (!g_node_keys[rsu_idx].keys_generated && !mldsa87_keygen(rsu_idx)) return false;
     OQS_SIG* oqs = get_oqs_ctx();
     if (!oqs) return false;

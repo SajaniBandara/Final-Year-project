@@ -119042,6 +119042,10 @@ void transmit_delta_values()
 		// honest measurable quantity is its wall-clock processing time (same
 		// rationale as the batch-verify timing; report Tier-2 item 5).
 		auto _ct0 = crypto_log_start();
+		// Each cycle is a fresh FlowMod endorsement round: start the endorser set (and with it
+		// the rolling endorsement hash) empty, otherwise the quorum count accumulates across
+		// cycles (64 per cycle) and is trivially satisfied after cycle 1.
+		g_flowmod_endorsements[fid].endorsing_rsus.clear();
 		for (uint32_t rsu = N_Vehicles; rsu < (uint32_t)(N_Vehicles + N_RSUs); rsu++) {
 			uint8_t params[4]; memcpy(params, &rsu, 4);
 			flowmod_endorse(rsu, fid, params, 4);
