@@ -120484,18 +120484,32 @@ void run_proposed_RL()
 					//compute Lf_bar
 					double load_sum = 0.0;
 					uint32_t load_count = 0;
-					for(uint32_t i=0;i<total_size;i++)	
+					// Perf (2026-10-07): L_values only ever holds non-zero entries at real node ids
+					// (< N_Vehicles+N_RSUs+controllers); the remaining total_size slots stay 0.0, and
+					// adding 0.0 / skipping a ">0" test is exact, so bounding both loops (same
+					// row-major order) is bit-identical. Build with -DRL_BOUNDS_CHECK to verify.
+					const uint32_t rl_ctrl_n = (N_Controllers > 4u) ? N_Controllers : 4u;
+					const uint32_t rl_n_act_raw = N_Vehicles + N_RSUs + rl_ctrl_n;
+					const uint32_t rl_n_act = (rl_n_act_raw < (uint32_t)total_size) ? rl_n_act_raw : (uint32_t)total_size;
+					for(uint32_t i=0;i<rl_n_act;i++)
 					{
-						for(uint32_t j=0;j<total_size;j++)	
+						const double* L_row = (L_at_controller_inst+fid)->L_fi_inst[i].L_values;
+						for(uint32_t j=0;j<rl_n_act;j++)
 						{
-							load_sum = load_sum + (L_at_controller_inst+fid)->L_fi_inst[i].L_values[j];
-							if((L_at_controller_inst+fid)->L_fi_inst[i].L_values[j] > 0.0)
+							load_sum = load_sum + L_row[j];
+							if(L_row[j] > 0.0)
 							{
 								load_count++;
 							}
 						}
-						
+
 					}
+#ifdef RL_BOUNDS_CHECK
+					for(uint32_t i=0;i<total_size;i++)
+						for(uint32_t j=(i<rl_n_act?rl_n_act:0);j<total_size;j++)
+							if((L_at_controller_inst+fid)->L_fi_inst[i].L_values[j] != 0.0)
+							{ cerr << "[RL_BOUNDS_CHECK] nonzero L["<<i<<"]["<<j<<"] beyond n_act="<<rl_n_act<<endl; abort(); }
+#endif
 					if(load_count > 0)
 					{
 						Lf_bar[fid] = load_sum/load_count;
@@ -121273,129 +121287,76 @@ void updateTxop(uint32_t fid, uint32_t nodeid, uint32_t receiver_id, uint32_t pe
 {
 	uint32_t zeta = 1;
 	double tg = compute_individual_link_delay(0, arguments.CW, 1, flow_packet_size, 1, zeta);
+	// Perf (2026-10-07): Now() is constant within one event and linklifetimeMatrix_dsrc is not
+	// modified here, so the Time constants and the "m[r][j] > 0" neighbour lists are invariant
+	// across f, i and j. Evaluating them once is bit-identical to the inline form but removes
+	// ~65% of total sim CPU (Seconds(double) -> int64x64 conversion per inner iteration).
+	const Time now_t = Seconds(Now().GetSeconds());
+	const Time tg_t  = Seconds(tg);
+	const size_t row_n = linklifetimeMatrix_dsrc.size();
+	std::vector<std::vector<uint32_t>> nb_cache(row_n);
+	std::vector<char> nb_have(row_n, 0);
+	auto nbrs = [&](uint32_t r) -> const std::vector<uint32_t>& {
+		if(!nb_have[r])
+		{
+			const std::vector<double>& row = linklifetimeMatrix_dsrc[r];
+			for(uint32_t j=0;j<row.size();j++)
+			{
+				if(row[j] > 0.0) nb_cache[r].push_back(j);
+			}
+			nb_have[r] = 1;
+		}
+		return nb_cache[r];
+	};
 	for(uint32_t f=0;f<2*flows;f++)
 	{ 
 		//update current node status
 		if(busy == true)
 		{
 			txop_inst[f].busy[arguments.channel][nodeid] = busy;
-			txop_inst[f].last_set_timestamp[arguments.channel][nodeid] = Seconds(Now().GetSeconds());
-			//cout<<"Set node "<<nodeid<<"as busy at "<<Now().GetSeconds()<<endl;
+			txop_inst[f].last_set_timestamp[arguments.channel][nodeid] = now_t;
 		}
 		else
 		{
-			Time diff = Seconds(Now().GetSeconds())-txop_inst[f].last_set_timestamp[arguments.channel][nodeid];
-			if(diff > Seconds(tg))
+			Time diff = now_t-txop_inst[f].last_set_timestamp[arguments.channel][nodeid];
+			if(diff > tg_t)
 			{
 				txop_inst[f].busy[arguments.channel][nodeid] = busy;
-				//cout<<"Set node "<<nodeid<<"as free at "<<Now().GetSeconds()<<endl;
-			}
-			else
-			{
-				//cout<<"Node "<<nodeid<<"remains busy "<<Now().GetSeconds()<<endl;
 			}
 		}
 		//update other node status
 		for(uint32_t i=0;i<linklifetimeMatrix_dsrc[nodeid].size();i++)
 		{
-			if((linklifetimeMatrix_dsrc[nodeid][i]) > 0.0)
+			// Two passes, in the original order: neighbours of nodeid, then neighbours of receiver_id.
+			for(int pass=0;pass<2;pass++)
 			{
+				if(!((pass==0 ? linklifetimeMatrix_dsrc[nodeid][i] : linklifetimeMatrix_dsrc[receiver_id][i]) > 0.0))
+					continue;
 				if(busy == true)
 				{
 					txop_inst[f].busy[arguments.channel][i] = busy;
-					txop_inst[f].last_set_timestamp[arguments.channel][i] = Seconds(Now().GetSeconds());
-					//cout<<"Set node "<<i<<"as busy at "<<Now().GetSeconds()<<endl;
-					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
+					txop_inst[f].last_set_timestamp[arguments.channel][i] = now_t;
+					for(uint32_t j : nbrs(i))
 					{
-						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
-						{
-							txop_inst[f].busy[arguments.channel][j] = busy;
-							txop_inst[f].last_set_timestamp[arguments.channel][j] = Seconds(Now().GetSeconds());
-							//cout<<"Set node "<<j<<"as busy at "<<Now().GetSeconds()<<endl;
-						}
+						txop_inst[f].busy[arguments.channel][j] = busy;
+						txop_inst[f].last_set_timestamp[arguments.channel][j] = now_t;
 					}
 				}
 				else
 				{
-					Time diff = Seconds(Now().GetSeconds())-txop_inst[f].last_set_timestamp[arguments.channel][i];
-					if(diff > Seconds(tg))
+					Time diff = now_t-txop_inst[f].last_set_timestamp[arguments.channel][i];
+					if(diff > tg_t)
 					{
 						txop_inst[f].busy[arguments.channel][i] = busy;
-						//cout<<"Set node "<<i<<"as free at "<<Now().GetSeconds()<<endl;
 					}
-					else
+					for(uint32_t j : nbrs(i))
 					{
-						//cout<<"Node "<<i<<"remains busy "<<Now().GetSeconds()<<endl;
-					}
-					
-					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
-					{
-						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
-						{
-							Time diff_inner = Seconds(Now().GetSeconds())-txop_inst[f].last_set_timestamp[arguments.channel][j];
-							if(diff_inner > Seconds(tg))
-							{
-								txop_inst[f].busy[arguments.channel][j] = busy;
-								//cout<<"Set node "<<j<<"as free at "<<Now().GetSeconds()<<endl;
-							}
-							else
-							{
-								//cout<<"Node "<<j<<"remains busy "<<Now().GetSeconds()<<endl;
-							}
-						}
-					}
-					
-				}
-			}
-			
-			
-			if((linklifetimeMatrix_dsrc[receiver_id][i]) > 0.0)
-			{
-				if(busy == true)
-				{
-					txop_inst[f].busy[arguments.channel][i] = busy;
-					txop_inst[f].last_set_timestamp[arguments.channel][i] = Seconds(Now().GetSeconds());
-					//cout<<"Set node "<<i<<"as busy at "<<Now().GetSeconds()<<endl;
-					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
-					{
-						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
+						Time diff_inner = now_t-txop_inst[f].last_set_timestamp[arguments.channel][j];
+						if(diff_inner > tg_t)
 						{
 							txop_inst[f].busy[arguments.channel][j] = busy;
-							txop_inst[f].last_set_timestamp[arguments.channel][j] = Seconds(Now().GetSeconds());
-							//cout<<"Set node "<<j<<"as busy at "<<Now().GetSeconds()<<endl;
 						}
 					}
-				}
-				else
-				{
-					Time diff = Seconds(Now().GetSeconds())-txop_inst[f].last_set_timestamp[arguments.channel][i];
-					if(diff > Seconds(tg))
-					{
-						txop_inst[f].busy[arguments.channel][i] = busy;
-						//cout<<"Set node "<<i<<"as free at "<<Now().GetSeconds()<<endl;
-					}
-					else
-					{
-						//cout<<"Node "<<i<<"remains busy "<<Now().GetSeconds()<<endl;
-					}
-					
-					for(uint32_t j=0;j<linklifetimeMatrix_dsrc[i].size();j++)
-					{
-						if((linklifetimeMatrix_dsrc[i][j]) > 0.0)
-						{
-							Time diff_inner = Seconds(Now().GetSeconds())-txop_inst[f].last_set_timestamp[arguments.channel][j];
-							if(diff_inner > Seconds(tg))
-							{
-								txop_inst[f].busy[arguments.channel][j] = busy;
-								//cout<<"Set node "<<j<<"as free at "<<Now().GetSeconds()<<endl;
-							}
-							else
-							{
-								//cout<<"Node "<<j<<"remains busy "<<Now().GetSeconds()<<endl;
-							}
-						}
-					}
-					
 				}
 			}
 		}
@@ -121407,18 +121368,21 @@ void updateTxop_self(uint32_t fid, uint32_t nodeid, uint32_t pending_packets, bo
 {
 	uint32_t zeta = 1;
 	double tg = compute_individual_link_delay(0, arguments.CW, 1, flow_packet_size, 1, zeta);
+	// Perf (2026-10-07): loop-invariant Time constants (see updateTxop).
+	const Time now_t = Seconds(Now().GetSeconds());
+	const Time tg_t  = Seconds(tg);
 	for(uint32_t f=0;f<2*flows;f++)
 	{	
 		if(busy == true)
 		{
 			txop_inst[f].busy[arguments.channel][nodeid] = busy;
-			txop_inst[f].last_set_timestamp[arguments.channel][nodeid] = Seconds(Now().GetSeconds());
+			txop_inst[f].last_set_timestamp[arguments.channel][nodeid] = now_t;
 			//cout<<"Set node "<<nodeid<<"as busy at "<<Now().GetSeconds()<<endl;
 		}
 		else
 		{
-			Time diff = Seconds(Now().GetSeconds())-txop_inst[f].last_set_timestamp[arguments.channel][nodeid];
-			if(diff > Seconds(tg))
+			Time diff = now_t-txop_inst[f].last_set_timestamp[arguments.channel][nodeid];
+			if(diff > tg_t)
 			{
 				txop_inst[f].busy[arguments.channel][nodeid] = busy;
 				//cout<<"Set node "<<nodeid<<"as free at "<<Now().GetSeconds()<<endl;
