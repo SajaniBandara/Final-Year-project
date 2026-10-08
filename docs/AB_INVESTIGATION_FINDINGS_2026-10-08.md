@@ -36,7 +36,7 @@ match the plan. Each batch was preceded by a 10 s debug run of the exact configu
 - Static threshold = 22.9 ms (median adaptive threshold of a benign 60 km/h run). Benign adaptive-threshold distribution
   (median / p5 / p95): 10 km/h 16.7 / 11.2 / 24.8 ms; 60 km/h 22.9 / 12.3 / 36.2; 140 km/h 23.9 / 12.3 / 36.9. It does move with speed.
 - 12 conditions (speed 10/60/100/140 x delay 55/100/200 ms, A1, p=40), enforcement off and on: M1 equal to within 0.007 in
-  all 24 pairs (e.g. 10 km/h, 55 ms: 0.695 vs 0.695); TVR identical to 3 decimals; static FPR 0.2–0.4 points lower.
+  all 24 pairs (e.g. 10 km/h, 55 ms: 0.695 vs 0.695); TVR identical to 3 decimals; static FPR 0.1–0.4 points lower.
 - **Why.** Every planned attack delay (>= 55 ms = 1.1 x Delta_max) is 1.5–3x above even the 95th-percentile adaptive threshold,
   and benign jitter rarely crosses either threshold, so the decisions do not change. TVR (share of critical packets above
   Delta_max) is detector-independent unless mitigation changes the delay, which it does not here.
