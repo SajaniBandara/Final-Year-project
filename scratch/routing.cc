@@ -115329,6 +115329,7 @@ void initialise_stub_attack_state()
 	Simulator::Schedule(Seconds(0.0),             &dkg_run_ceremony);
 	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &update_T_ref_recurring);
 	Simulator::Schedule(Seconds(T_SYNC_INTERVAL), &bc_anchor_recurring);
+	if (ab11_reuse_probe) Simulator::Schedule(Seconds(1.0), &ab11_probe_tick);
 	Simulator::Schedule(Seconds(0.050),           &crypto_batch_verify_tick);
 	Simulator::Schedule(Seconds(5.0),             &crypto_evict_old_entries_recurring);
 	// M11 (UFCR) — defined further below (needs FlowModEndorsement/bc_commit_flowmod,
@@ -118174,7 +118175,9 @@ void write_security_metrics_csv()
 			 << " lmit_prevention_rate,"
 			 << " ufcr_legitimized, ab10_invalid_proofs, ab10_forged_accepted,"
 			 << " quarantined_nodes, quarantine_block_events,"
-			 << " solver_used, solver_calls\n";
+			 << " solver_used, solver_calls, m10_raw_ts_exposed,"
+			 << " ab11_att0, ab11_att1, ab11_att2, ab11_att3, ab11_att4, ab11_att5plus,"
+			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118306,6 +118309,11 @@ void write_security_metrics_csv()
 		 << ", " << g_quarantine_block_events
 		 << ", " << g_solver_label
 		 << ", " << g_solver_calls_ok
+		 << ", " << g_m10_raw_ts_exposed
+		 << ", " << g_ab11_attempts[0] << ", " << g_ab11_attempts[1] << ", " << g_ab11_attempts[2]
+		 << ", " << g_ab11_attempts[3] << ", " << g_ab11_attempts[4] << ", " << g_ab11_attempts[5]
+		 << ", " << g_ab11_accepted[0] << ", " << g_ab11_accepted[1] << ", " << g_ab11_accepted[2]
+		 << ", " << g_ab11_accepted[3] << ", " << g_ab11_accepted[4] << ", " << g_ab11_accepted[5]
 		 << "\n";
 
 	fout.close();

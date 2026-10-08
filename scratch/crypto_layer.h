@@ -395,6 +395,11 @@ bool no_zero_trust_arm = false;
 bool enable_controller_failover    = true;  // AB9: controller trust/revoke/failover
 bool enable_key_rotation           = true;  // AB11: DKG key rotation on RSU revocation
 // AB9/AB10/AB12 compromise-model counters (flags live in attack_variables.h).
+double   g_ab11_t_revoked[total_size]   = {};  // sim time an RSU's key was revoked (0 = never)
+bool     g_ab11_key_retired[total_size] = {};  // true once rotation retired the revoked key
+uint64_t g_ab11_attempts[6]  = {0,0,0,0,0,0};  // replay attempts by whole cycles since revocation (5 = 5+)
+uint64_t g_ab11_accepted[6]  = {0,0,0,0,0,0};
+uint64_t g_m10_raw_ts_exposed    = 0; // AB4: raw (t_recv,t_fwd) pairs revealed to a verifier (ZK proof: 0)
 uint32_t g_ab10_invalid_proofs   = 0; // proofs that fail honest verification (anywhere)
 uint32_t g_ab10_forged_accepted  = 0; // of those, accepted because of controller-issued false keys
 uint32_t g_ufcr_legitimized      = 0; // unauthorized FlowMods retroactively legitimised (AB12)
@@ -1595,7 +1600,13 @@ inline bool mldsa87_verify_copy_content(uint32_t claimed_signer, uint32_t pkt_id
 
 inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t nonce) {
     StarkTimingProof proof;
-    if (!enable_stark_delay) { proof.valid = true; return proof; } // AB4: π_delay removed — vacuously passes
+    if (!enable_stark_delay) { proof.valid = true; return proof; } // legacy AB4 flag: π_delay removed — vacuously passes
+    if (ab4_direct_compare) {                      // AB4 substitute: plain comparison, raw timestamps exposed
+        proof.valid = (t_fwd - t_recv) <= STARK_DELTA_MAX;
+        memset(proof.commitment, 0, sizeof(proof.commitment));
+        ++g_m10_raw_ts_exposed;
+        return proof;
+    }
     // M7 eq:o_crypto / main.tex:5123 "Proof generation overhead is modelled as
     // <=10ms per packet" — measures the real wall-clock cost of this simulated
     // proof-generation step (see g_m7_stark_wall_us_sum comment for scope).
@@ -1623,9 +1634,9 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
 
 inline bool stark_verify_timing(const StarkTimingProof& proof,
                                  double t_recv, double t_fwd, uint32_t verifier = UINT32_MAX) {
-    if (!enable_stark_delay) return true; // AB4: π_delay removed — vacuously passes
+    if (!enable_stark_delay) return true; // legacy AB4 flag: π_delay removed — vacuously passes
     auto _st0 = std::chrono::high_resolution_clock::now();
-    bool ok = proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;
+    bool ok = proof.valid && (t_fwd - t_recv) <= STARK_DELTA_MAX;   // identical decision in direct-compare mode
     if (!ok && verifier != UINT32_MAX) {
         ++g_ab10_invalid_proofs;
         if (ab10_forged_at(verifier)) { ++g_ab10_forged_accepted; ok = true; } // AB10: false keys
@@ -1984,6 +1995,10 @@ inline void trust_update_negative(uint32_t node) {
             << " t=" << ns3::Simulator::Now().GetSeconds());
         // eq:key_rotation_trigger: if revoked node is an RSU, rotate all proving keys
         // AB11-A (enable_key_rotation=false): revoked RSU's key material stays live
+        if (node >= N_Vehicles && node < N_Vehicles + N_RSUs && g_ab11_t_revoked[node] == 0.0) {
+            g_ab11_t_revoked[node] = ns3::Simulator::Now().GetSeconds();
+            g_ab11_key_retired[node] = enable_key_rotation;   // rotation retires the revoked key
+        }
         if (enable_key_rotation && node >= N_Vehicles && node < N_Vehicles + N_RSUs)
             dkg_rotate_keys(node);
     }
@@ -2659,6 +2674,19 @@ inline void flowmod_collect_endorsements(FlowModEndorsement& e, uint32_t fid, ui
         if (rsu_endorses(r, content, policy)) e.endorsing_rsus.push_back(r);
 }
 
+// AB11 probe (ab11_reuse_probe): once per cycle each revoked RSU replays a proof under its
+// pre-revocation key. Accepted iff rotation did not retire the key (AB11 substitute = no rotation).
+inline void ab11_probe_tick() {
+    double now = ns3::Simulator::Now().GetSeconds();
+    for (uint32_t r = (uint32_t)N_Vehicles; r < (uint32_t)(N_Vehicles + N_RSUs); r++) {
+        if (g_ab11_t_revoked[r] == 0.0) continue;
+        uint32_t k = (uint32_t)((now - g_ab11_t_revoked[r]) / 1.0); if (k > 5) k = 5;
+        ++g_ab11_attempts[k];
+        if (!g_ab11_key_retired[r]) ++g_ab11_accepted[k];
+    }
+    if (now + 1.0 < simTime) ns3::Simulator::Schedule(ns3::Seconds(1.0), &ab11_probe_tick);
+}
+
 // ── CLI Parameter Registration ────────────────────────────────────────────────
 
 inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
@@ -2725,6 +2753,9 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("no_zero_trust_arm",             "N3 No-ZeroTrust arm: N_Controllers=1, skip DKG (signing stays on), controller writes unilaterally", no_zero_trust_arm);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
+    cmd.AddValue("ab4_direct_compare",            "AB4 substitute: plain timestamp comparison instead of the STARK timing proof", ab4_direct_compare);
+    cmd.AddValue("ab11_reuse_probe",              "AB11: record revoked-key proof replays by cycles since revocation", ab11_reuse_probe);
+    cmd.AddValue("ab8_single_rsu",                "AB8 substitute: FlowMod commit quorum of 1 RSU instead of f+1", ab8_single_rsu);
     cmd.AddValue("byz_rsu_count",                 "Byzantine RSUs that endorse every FlowMod (default f=floor((N_RSUs-1)/3))", byz_rsu_count);
     cmd.AddValue("ab_compromise_model",           "AB9/10/12: extend controller-compromise ladder to A2/A4 (no attack change)", ab_compromise_model);
     cmd.AddValue("ab9_no_isolation",              "AB9 substitute: compromised controller cannot be revoked/failed over (p>=33)", ab9_no_isolation);

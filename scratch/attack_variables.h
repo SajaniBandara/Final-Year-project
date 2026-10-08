@@ -129,6 +129,15 @@ bool ab_compromise_model = false;
 bool ab9_no_isolation    = false;
 bool ab10_false_keys     = false;
 bool ab12_legitimize     = false;
+// AB8 substitute (plan: "single roadside unit, immediate commitment"): FlowMod commit quorum of 1 instead of f+1.
+bool ab8_single_rsu      = false;
+// AB4 substitute (plan: "direct wall clock comparison"): the timing check is a plain comparison of the
+// raw timestamps against the bound -- same accept/reject decision as the proof, but the prover reveals
+// its raw timestamps to the verifier (privacy cost M10) and no proof/commitment is produced.
+bool ab4_direct_compare  = false;
+// AB11 probe: each cycle every revoked RSU replays a proof under its pre-revocation key; the proof is
+// accepted iff key rotation did not retire that key. Records acceptance by whole cycles since revocation.
+bool ab11_reuse_probe    = false;
 bool controller_compromised[total_size]; // sized to total_size, matches
                                     // rsu_controller_assignment[300]'s sizing
                                     // convention already used in routing.cc

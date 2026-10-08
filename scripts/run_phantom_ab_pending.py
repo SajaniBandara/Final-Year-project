@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 run_phantom_ab_pending.py — PHANTOM ablations AB7, AB9, AB10, AB12 (seed 1 only,
-simTime 300, delay 100 ms, crypto ON because M5/M6 need the real overhead).
+simTime 180, delay 100 ms, crypto ON because M5/M6 need the real overhead).
 Same engine as run_phantom_exp14.py: direct binary, resumable, mem/load throttled.
 
 Arms (all penetration points in {0,20,40,60,80,100}%; p=0 is benign and run once per arm):
@@ -28,7 +28,8 @@ LIB_PATH = str(NS3_DIR / "build/lib")
 RESULTS  = NS3_DIR / "results_routing"
 LOGS_DIR = Path(__file__).resolve().parent.parent / "logs" / "phantom_ab_pending"
 
-SEED, SIM_TIME, DELAY = 1, 300, 100
+SEED, SIM_TIME, DELAY = 1, 180, 100   # supervisor 2026-10-08: 180 s, single seed everywhere
+TAG_SUF = "_t180"                      # distinct from the superseded 300 s runs
 PENS_ALL = [0, 20, 40, 60, 80, 100]
 PENS_CAP = [40, 60, 80, 100]            # capabilities are active only at p >= 33
 MAX_WORKERS, MEM_FLOOR_MB, LOAD_CEILING_FRAC, POLL, NICE = 12, 6000, 0.85, 5, 10
@@ -36,8 +37,9 @@ MAX_WORKERS, MEM_FLOOR_MB, LOAD_CEILING_FRAC, POLL, NICE = 12, 6000, 0.85, 5, 10
 
 def make_jobs(only):
     jobs = []
-    def add(ab, tag, attack, pct, extra):
-        jobs.append(dict(ab=ab, tag=f"{tag}_p{pct}", attack=attack, pct=pct, extra=extra))
+    def add(ab, tag, attack, pct, extra, speed=150, delay=DELAY, tagx=""):
+        jobs.append(dict(ab=ab, tag=f"{tag}{tagx}_p{pct}{TAG_SUF}", attack=attack, pct=pct, extra=extra,
+                         speed=speed, delay=delay))
     if "ab7" in only:
         for arm, q in (("ab7full", 1), ("ab7off", 0)):
             ex = [f"--enable_quarantine={q}", "--enable_quarantine_enforcement=1"]
@@ -45,6 +47,36 @@ def make_jobs(only):
             for a in (1, 2, 3, 4):
                 for p in PENS_ALL[1:]:
                     add("ab7", arm, a, p, ex)
+    # Full arms of AB1 (OBU pre-filter on) and AB4 (ZK proof) are the SAME configuration as ab7full
+    # (quarantine + enforcement, everything default), so only the substitutes are run here.
+    if "ab1" in only:
+        ex = ["--enable_quarantine_enforcement=1", "--enable_lrad_obu=0"]      # AB1: no on-board-unit pre-filter
+        add("ab1", "ab1sub", 0, 0, ex)
+        for a in (1, 2, 3, 4):
+            for p in PENS_ALL[1:]: add("ab1", "ab1sub", a, p, ex)
+    if "ab4" in only:                        # pi_delay is verified by S2 only -> A2
+        for p in PENS_ALL[1:]:
+            add("ab4", "ab4sub", 2, p, ["--ab4_direct_compare=1", "--enable_quarantine_enforcement=1"])
+    if "ab11" in only:
+        for arm, rot in (("ab11rot", 1), ("ab11norot", 0)):
+            for a in (1, 2, 3, 4):
+                for p in (40, 100):
+                    add("ab11", arm, a, p, ["--ab11_reuse_probe=1", f"--enable_key_rotation={rot}",
+                                            "--enable_quarantine_enforcement=1"])
+    if "ab13" in only:                       # static S1 threshold calibrated once at 60 km/h (ab13_static_threshold.txt)
+        thr = float(open(Path(__file__).resolve().parent.parent / "docs/phantom_exp23/ab13_static_threshold.txt").read().split()[0])
+        for sp in (10, 60, 100, 140):
+            for dl in (55, 100, 200):         # 55 ms = 1.1 x Delta_max, the lowest intensity
+                for arm, ex in (("ab13full", []), ("ab13sub", [f"--s1_static_threshold={thr}"])):
+                    add("ab13", arm, 1, 40, ex, speed=sp, delay=dl, tagx=f"_v{sp}_d{dl}")
+                # enforcement ON: mitigation then follows the detector, so M2 (TVR) can differ between thresholds
+                for arm, ex in (("ab13fullE", []), ("ab13subE", [f"--s1_static_threshold={thr}"])):
+                    add("ab13", arm, 1, 40, ex + ["--enable_quarantine_enforcement=1"], speed=sp, delay=dl, tagx=f"_v{sp}_d{dl}")
+    if "ab8" in only:                       # independent-RSU endorsement (2026-10-08): quorum f+1 vs quorum 1
+        for arm, extra in (("ab8full", []), ("ab8sub", ["--ab8_single_rsu=1"])):
+            for a in (1, 3):               # M11 (UFCR) exists for the control-plane variants only
+                for p in PENS_ALL[1:]:
+                    add("ab8", arm, a, p, extra + ["--enable_quarantine_enforcement=1"])
     if "ab9" in only:
         for a in (1, 3):
             for p in PENS_CAP:
@@ -62,7 +94,7 @@ def make_jobs(only):
 
 def out_csv(j):
     a = j["attack"]
-    d = f"_d{DELAY}ms" if a in (1, 2) else ""
+    d = f"_d{j.get('delay', DELAY)}ms" if a in (1, 2) else ""
     return RESULTS / f"MOBIGUARD_Attack{a}_{j['pct']}{d}_seed{SEED}_{j['tag']}.csv"
 
 def done(j):
@@ -74,9 +106,9 @@ def done(j):
 def build_cmd(j):
     cmd = ["nice", f"-n{NICE}", str(BINARY),
            "--N_Vehicles=200", "--N_RSUs=64", "--N_Controllers=4",
-           "--mobility_scenario=0", "--maxspeed=150", "--use_sumo_mobility=1",
+           f"--mobility_scenario=0", f"--maxspeed={j.get('speed', 150)}", "--use_sumo_mobility=1",
            "--architecture=3", f"--simTime={SIM_TIME}", f"--attack_percentage={j['pct']}",
-           f"--attack_delay_ms={DELAY}", f"--sim_seed={SEED}", f"--run_tag={j['tag']}",
+           f"--attack_delay_ms={j.get('delay', DELAY)}", f"--sim_seed={SEED}", f"--run_tag={j['tag']}",
            "--enable_detector_windows=1"]
     if j["attack"] != 0:                      # p=0 is benign: omit --attack_number
         cmd.append(f"--attack_number={j['attack']}")
@@ -104,8 +136,8 @@ def load1():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", nargs="+", default=["ab7", "ab9", "ab10", "ab12"],
-                    choices=["ab7", "ab9", "ab10", "ab12"])
+    ap.add_argument("--only", nargs="+", default=["ab1", "ab4", "ab7", "ab8", "ab9", "ab10", "ab11", "ab12"],
+                    choices=["ab1", "ab4", "ab7", "ab8", "ab9", "ab10", "ab11", "ab12", "ab13"])
     ap.add_argument("--workers", type=int, default=MAX_WORKERS)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")

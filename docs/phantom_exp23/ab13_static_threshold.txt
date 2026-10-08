@@ -1,0 +1,1 @@
+0.0229083  # median S1 threshold (s) of a benign 60 km/h 180 s seed-1 run, n=128738

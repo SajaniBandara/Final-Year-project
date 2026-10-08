@@ -127,6 +127,8 @@ inline bool bc_commit_flowmod(FlowModEndorsement& e) {
     // AB8-A (enable_endorsement_requirement=false): controller commits unilaterally —
     // quorum check skipped, every FlowMod commits, so bc_query_flowmod() always finds
     // a committed entry and f_unauth (S3/S5 blockchain conjunct) can never fire.
+    // AB8 (ab8_single_rsu): quorum of ONE RSU -- the first endorsement commits immediately.
+    if (ab8_single_rsu) f_plus_1 = 1;
     if (enable_endorsement_requirement &&
         (uint32_t)e.endorsing_rsus.size() < f_plus_1) {
         std::cerr << "[BC-REJECT] FlowMod rejected: endorsers="
