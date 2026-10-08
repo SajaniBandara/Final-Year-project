@@ -137,6 +137,10 @@ const int flows = 4;
 
 
 int routing_algorithm = 4; //0-ECMP, 1-RR, 2-QR-SDN, 3-RLMR, 4-proposed, 5-DCMR
+// Solver bookkeeping (see run_solver_script): declared early because the results CSV writer uses it.
+bool allow_solver_fallback = false;
+std::string g_solver_label = "none";
+uint32_t g_solver_calls_ok = 0;
 int attack_percentage = 0;
 // Unique tag for all per-run scratch-level CSV files (e.g. "_A1_pct20").
 // Set in main() after cmd.Parse() so parallel runs never collide on
@@ -117781,7 +117785,8 @@ void ufcr_attempt_unauthorized_flowmod()
                           active_attack_variant == 4 || active_attack_variant == 6);
     if (is_cp_variant)
     {
-        FlowModEndorsement fake_e; // deliberately zero endorsers — always < f+1
+        FlowModEndorsement fake_e; // unauthorized content: honest RSUs reject, Byzantine (<= f) endorse
+        flowmod_collect_endorsements(fake_e, 0xFFFFu, 0xAu + (uint32_t)g_ufcr_unauth_total);
         size_t chain_len_before = g_rsu_commit_hashes.size();
         bool committed = bc_commit_flowmod(fake_e);
         // This synthetic attempt must not pollute M7's rsu_chain_len: on a
@@ -118168,7 +118173,8 @@ void write_security_metrics_csv()
 			 << " lmit_scored_n, lmit_blocked_before_acting,"
 			 << " lmit_prevention_rate,"
 			 << " ufcr_legitimized, ab10_invalid_proofs, ab10_forged_accepted,"
-			 << " quarantined_nodes, quarantine_block_events\n";
+			 << " quarantined_nodes, quarantine_block_events,"
+			 << " solver_used, solver_calls\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118298,6 +118304,8 @@ void write_security_metrics_csv()
 		 << ", " << g_ab10_forged_accepted
 		 << ", " << ([]{ uint32_t q = 0; for (int i = 0; i < 268; ++i) if (g_quarantined[i]) ++q; return q; })()
 		 << ", " << g_quarantine_block_events
+		 << ", " << g_solver_label
+		 << ", " << g_solver_calls_ok
 		 << "\n";
 
 	fout.close();
@@ -119063,9 +119071,17 @@ void transmit_delta_values()
 		// the rolling endorsement hash) empty, otherwise the quorum count accumulates across
 		// cycles (64 per cycle) and is trivially satisfied after cycle 1.
 		g_flowmod_endorsements[fid].endorsing_rsus.clear();
+		g_flowmod_endorsements[fid].committed = false;   // fresh round: a rejected round must not keep a stale commit
+		// Independent verification: the controller's FlowMod content is poisoned this cycle only
+		// while Attack 5 (variant 4) is live; every RSU checks that content against the authorised
+		// policy itself (honest RSUs reject a poisoned FlowMod, Byzantine ones endorse everything).
+		const uint32_t flowmod_tag = (present_active_hf_attack && active_attack_variant == 4) ? 1u : 0u;
+		uint8_t fm_content[64], fm_policy[64];
+		flowmod_content_hash(fid, flowmod_tag, fm_content);
+		flowmod_policy_hash(fid, fm_policy);
 		for (uint32_t rsu = N_Vehicles; rsu < (uint32_t)(N_Vehicles + N_RSUs); rsu++) {
-			uint8_t params[4]; memcpy(params, &rsu, 4);
-			flowmod_endorse(rsu, fid, params, 4);
+			if (!rsu_endorses(rsu, fm_content, fm_policy)) continue;   // honest RSU rejects
+			flowmod_endorse(rsu, fid, fm_content, 64);
 		}
 		FlowModEndorsement& e = g_flowmod_endorsements[fid];
 		bc_log_flowmod(e, N_Vehicles);
@@ -119100,11 +119116,9 @@ void transmit_delta_values()
 		// delta_at_controller_inst or read bc_query_flowmod() any more (S6/S7
 		// dropped that conjunct after it was found to cause the same
 		// collision the other direction — see s6_detection.h's revert note).
-		if (present_active_hf_attack && active_attack_variant == 4)
-		{
-			e.committed = false;
-			_committed  = false;
-		}
+		// (2026-10-08) The old ground-truth override that forced this cycle's commit back to
+		// unauthorized while Attack 5 was live is REMOVED: bc_commit_flowmod()'s f+1 quorum, fed by
+		// the RSUs' own policy checks above, is now the only thing that blocks the commit.
 
 		auto _ct1 = std::chrono::high_resolution_clock::now();
 		g_m7_consensus_wall_us_sum +=
@@ -119151,6 +119165,49 @@ void transmit_delta_values()
 }
 	
 	
+// ── Link-lifetime / optimisation solver launcher (2026-10-08) ───────────────
+// The Gurobi solver MUST run in every reported result. Previously the simulator shelled out to a bare
+// "python3" that could not import gurobipy, printed "Solution not found" and silently carried on with
+// no lifetimes. Now: (1) an explicit interpreter is used (SDVN_PYTHON, default the pyenv 3.10.14 that
+// has gurobipy); (2) a non-zero exit from the solver stops the run with an error; (3) every run records
+// which solver ran (solver_used<tag>.txt + two CSV columns). --allow_solver_fallback=1 restores the old
+// tolerant behaviour ONLY for the Gurobi-vs-fallback comparison and labels the run "FALLBACK".
+// SDVN_GUROBI_LICENSE=restricted runs the solver with HOME pointing at a licence-free directory so
+// gurobipy uses its bundled size-limited licence (the WLS licence in ~/gurobi.lic has expired).
+static void run_solver_script(const std::string& script, const std::string& tag)
+{
+	const char* py  = getenv("SDVN_PYTHON");
+	const char* lic = getenv("SDVN_GUROBI_LICENSE");
+	std::string python = py ? py : "/home/sdvn_hidden_attacks/.pyenv/versions/3.10.14/bin/python";
+	// Licence mode is always explicit and recorded: "restricted" (default -- the WLS licence in
+	// ~/gurobi.lic has expired) or "file" (use ~/gurobi.lic, e.g. after it is renewed).
+	const std::string lic_mode = lic ? lic : "restricted";
+	std::string cmd;
+	if (lic_mode == "restricted")
+		cmd += "mkdir -p /tmp/sdvn_nohome && HOME=/tmp/sdvn_nohome ";
+	cmd += "SDVN_GUROBI_LICENSE=" + lic_mode + " " + python + " " + script + " --tag=" + tag;
+	int rc = system(cmd.c_str());
+	if (rc != 0)
+	{
+		if (!allow_solver_fallback)
+		{
+			cerr << "[SOLVER-ERROR] " << script << " failed (rc=" << rc << ") at t=" << Now().GetSeconds()
+			     << "s -- Gurobi must load; stopping (use --allow_solver_fallback=1 only for the comparison run)." << endl;
+			std::exit(2);
+		}
+		g_solver_label = "FALLBACK(no solver)";
+		return;
+	}
+	++g_solver_calls_ok;
+	std::ifstream used("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/solver_used" + tag + ".txt");
+	std::string line; std::getline(used, line);
+	std::string lab = "gurobi"; size_t v = line.find("version=");
+	if (v != std::string::npos) lab += "-" + line.substr(v + 8, line.find(' ', v) - v - 8);
+	size_t l = line.find("license=");
+	if (l != std::string::npos) lab += "/" + line.substr(l + 8, line.find(' ', l) - l - 8);
+	g_solver_label = lab;
+}
+
 void optimize_subsequent()
 {
 	//calculate entropy of the network and compare with threshold.
@@ -119159,10 +119216,7 @@ void optimize_subsequent()
 	// on optimization.py's I/O files (see optimization.py's own comment;
 	// tagged basenames there are "_subseq"-suffixed, distinct from the
 	// live optimize_link_lifetime()/optimization_lifetime.py pipeline).
-    	std::string command = "python3 ";
-    	command += filename;
-    	command += " --tag=" + g_sim_tag;
-    	system(command.c_str());
+    	run_solver_script(filename, g_sim_tag);
 }
 
 void optimize_link_lifetime()
@@ -119178,18 +119232,14 @@ void optimize_link_lifetime()
 		case(5): filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime_RLMR.py";  break;
 		default: filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization_lifetime.py";        break;
 	}
-	std::string command = "python3 " + filename + " --tag=" + g_sim_tag;
-	system(command.c_str());
+	run_solver_script(filename, g_sim_tag);
 }
 
 void optimize_first_time()
 {
 	std::string filename = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/optimization.py";
 	// 2026-07-25: --tag=g_sim_tag -- see optimize_subsequent() above.
-    	std::string command = "python3 ";
-    	command += filename;
-    	command += " --tag=" + g_sim_tag;
-    	system(command.c_str());
+    	run_solver_script(filename, g_sim_tag);
 }
 
 
@@ -119387,7 +119437,15 @@ void read_lifetime_from_csv()
         j++;
     }
     if (j == 0)
+    {
         cout << "Solution not found\n";
+        if (!allow_solver_fallback)
+        {
+            cerr << "[SOLVER-ERROR] link-lifetime solution file empty at t=" << Now().GetSeconds()
+                 << "s; stopping (no silent fallback)." << endl;
+            std::exit(2);
+        }
+    }
     convert_link_lifetimes_dsrc();
 }
 
@@ -142719,6 +142777,7 @@ int main(int argc, char *argv[])
     // eq:quarantine enforcement (2026-08-30). Default 0 reproduces every result
     // produced before this date; 1 makes SC.Quarantine actually deny data-path
     // actions instead of only setting a flag. See crypto_layer.h.
+    cmd.AddValue("allow_solver_fallback", "1 = tolerate a solver failure (legacy behaviour, for the Gurobi-vs-fallback comparison only)", allow_solver_fallback);
     cmd.AddValue("enable_quarantine_enforcement", "SC.Quarantine actually blocks quarantined nodes from scheduling hidden duplicates and installing malicious FlowMods (default 0 = flag-only, pre-2026-08-30 behaviour)", enable_quarantine_enforcement);
     // eq:l_mit correction (2026-08-31). Default 0 reproduces every pre-existing
     // M4 figure; 1 fixes all three defects (per-node onset, plain mean instead

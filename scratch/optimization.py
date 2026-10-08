@@ -1,4 +1,6 @@
 import argparse
+import os
+import sys
 import gurobipy as gp
 from gurobipy import GRB
 import csv
@@ -17,6 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--tag', default='', help='Run tag appended to CSV filenames')
 args = parser.parse_args()
 TAG = args.tag
+RESULTS_DIR = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/"
 
 SCRATCH    = "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/scratch/"
 INPUT_CSV  = SCRATCH + "optimization_link_lifetime_data_subseq" + TAG + ".csv"
@@ -155,9 +158,23 @@ try:
     time2 = time.time() * 1000
     print("link lifetime optimization delay is %d ms" % (time2 - time1))
 
+    # Record which solver produced this run's lifetimes (supervisor request 2026-10-08: no silent
+    # fallback, and every output set must say which solver ran).
+    _used = RESULTS_DIR + "solver_used" + TAG + ".txt"
+    _n = 0
+    try:
+        _n = int(open(_used).read().split("calls=")[1].split()[0])
+    except Exception:
+        _n = 0
+    open(_used, "w").write("solver=gurobi version=%s license=%s python=%s script=%s calls=%d\n" % (
+        ".".join(str(x) for x in gp.gurobi.version()), os.environ.get("SDVN_GUROBI_LICENSE", "file"),
+        sys.executable, os.path.basename(__file__), _n + 1))
+
 except gp.GurobiError as e:
-    print('Gurobi error ' + str(e.errno) + ': ' + str(e))
+    # No silent fallback: a solver failure must stop the run (non-zero exit is checked by routing.cc).
+    print('[SOLVER-ERROR] Gurobi error ' + str(e.errno) + ': ' + str(e), file=sys.stderr)
+    sys.exit(3)
 
 except Exception as e:
-    # Broad catch so NS-3 never hangs waiting for a CSV that was never written
-    print('Unexpected error in link lifetime optimization: ' + str(e))
+    print('[SOLVER-ERROR] Unexpected error in link lifetime optimization: ' + str(e), file=sys.stderr)
+    sys.exit(3)

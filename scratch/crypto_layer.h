@@ -2620,6 +2620,45 @@ inline bool flowmod_endorse(uint32_t rsu_idx, uint32_t flow_id,
     return true;
 }
 
+// ── Independent FlowMod verification (supervisor request 2026-10-08) ─────────────────────────
+// Each RSU endorses a FlowMod only after checking its content against the authorised policy
+// itself; a Byzantine fraction (up to f) endorses everything. The f+1 quorum in
+// bc_commit_flowmod() is then the ONLY thing that blocks an unauthorized commit -- no
+// ground-truth override. Ground truth only determines what the attacker INJECTED (the
+// FlowMod's content), never the verdict.
+// byz_rsu_count: number of Byzantine RSUs (the first byz_rsu_count by local index).
+// Default (UINT32_MAX) = f = floor((N_RSUs-1)/3), the worst case the BFT bound tolerates.
+uint32_t byz_rsu_count = UINT32_MAX;
+inline uint32_t byz_rsu_effective() {
+    uint32_t f = (N_RSUs > 0) ? (uint32_t)((N_RSUs - 1) / 3) : 0u;
+    return (byz_rsu_count == UINT32_MAX) ? f : (byz_rsu_count < (uint32_t)N_RSUs ? byz_rsu_count : (uint32_t)N_RSUs);
+}
+// Authorised-policy hash and the content hash of a FlowMod for flow `fid`. `unauthorized` tags
+// a FlowMod whose content the attacker modified or fabricated (tag != 0 -> differs from policy).
+inline void flowmod_policy_hash(uint32_t fid, uint8_t out[64]) {
+    uint8_t b[10]; memcpy(b, &fid, 4); memcpy(b + 4, "POLICY", 6); sha3_512_hash(b, 10, out);
+}
+inline void flowmod_content_hash(uint32_t fid, uint32_t tag, uint8_t out[64]) {
+    if (tag == 0) { flowmod_policy_hash(fid, out); return; }
+    uint8_t b[14]; memcpy(b, &fid, 4); memcpy(b + 4, "INJECT", 6); memcpy(b + 10, &tag, 4); sha3_512_hash(b, 14, out);
+}
+// RSU `rsu_idx` decides whether to endorse a FlowMod with this content.
+inline bool rsu_endorses(uint32_t rsu_idx, const uint8_t content[64], const uint8_t policy[64]) {
+    uint32_t local = rsu_idx - (uint32_t)N_Vehicles;
+    if (local < byz_rsu_effective()) return true;                 // Byzantine: endorses everything
+    return memcmp(content, policy, 64) == 0;                      // honest: independent policy check
+}
+// Count the endorsements a FlowMod collects (no per-endorsement signing: the quorum only needs
+// the endorser set). Used for the synthetic unauthorized FlowMods of the UFCR metric.
+inline void flowmod_collect_endorsements(FlowModEndorsement& e, uint32_t fid, uint32_t tag) {
+    uint8_t content[64], policy[64];
+    flowmod_content_hash(fid, tag, content); flowmod_policy_hash(fid, policy);
+    memcpy(e.flowmod_hash, content, 64);
+    e.endorsing_rsus.clear();
+    for (uint32_t r = (uint32_t)N_Vehicles; r < (uint32_t)(N_Vehicles + N_RSUs); r++)
+        if (rsu_endorses(r, content, policy)) e.endorsing_rsus.push_back(r);
+}
+
 // ── CLI Parameter Registration ────────────────────────────────────────────────
 
 inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
@@ -2686,6 +2725,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("no_zero_trust_arm",             "N3 No-ZeroTrust arm: N_Controllers=1, skip DKG (signing stays on), controller writes unilaterally", no_zero_trust_arm);
     cmd.AddValue("enable_controller_failover",    "AB9: enable controller trust/revoke/failover",  enable_controller_failover);
     cmd.AddValue("enable_key_rotation",           "AB11: rotate ZKP keys on RSU revocation",       enable_key_rotation);
+    cmd.AddValue("byz_rsu_count",                 "Byzantine RSUs that endorse every FlowMod (default f=floor((N_RSUs-1)/3))", byz_rsu_count);
     cmd.AddValue("ab_compromise_model",           "AB9/10/12: extend controller-compromise ladder to A2/A4 (no attack change)", ab_compromise_model);
     cmd.AddValue("ab9_no_isolation",              "AB9 substitute: compromised controller cannot be revoked/failed over (p>=33)", ab9_no_isolation);
     cmd.AddValue("ab10_false_keys",               "AB10 substitute: compromised controller issues false proving keys (p>=33)",    ab10_false_keys);
