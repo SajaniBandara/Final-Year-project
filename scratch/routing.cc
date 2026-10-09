@@ -142907,6 +142907,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
     cmd.AddValue("run_tag", "suffix appended to every output filename (e.g. Q6); lets ablation configs run concurrently without colliding", g_run_tag);
     cmd.AddValue("mobility_trace_file", "Exp 3: absolute path to an explicit vehicle-mobility .tcl, overriding the maxspeed-selected trace. Drive N_Vehicles=100/200/300/400 from one 400-vehicle base trace.", g_mobility_trace_file);
+    cmd.AddValue("aux_logs", "0 = do not write tcam_snapshots / bc_detection_log / bc_flowmod_log / crypto_timing_log (disk); default 1", g_aux_logs);
     cmd.AddValue("ev_log_util", "1 = log per RSU-cycle S4 occupancy, SFTO predicted occupancy and TAP max deviation into the events file (calibration)", g_ev_log_util);
     cmd.AddValue("tap_margin", "TAP baseline detection threshold |v-PPAT| (s); default 1e-6. Set to a benign timing percentile for the SOTA 'TAP (recalibrated)' line.", TAP_MARGIN);
     cmd.AddValue("sfto_theta", "SFTO-Guard occupancy threshold (fraction of capacity); default 0.90. Set to a benign occupancy percentile for the 'SFTO (recalibrated)' line.", SFTO_THETA);

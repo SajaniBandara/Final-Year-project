@@ -635,7 +635,8 @@ inline void tcam_snapshot_dump()
     std::ios::openmode dump_mode = tcam_dump_first ? std::ios::trunc : std::ios::app;
 
     // Write header only when the file is new/empty (true right after a truncate).
-    std::ofstream snap_f(snap_path, dump_mode);
+    std::ofstream snap_f;
+    if (g_aux_logs) snap_f.open(snap_path, dump_mode);   // --aux_logs=0: per-second TCAM snapshot file not written
     if (snap_f.is_open() && snap_f.tellp() == 0)
         snap_f << "t,rsu_id,flow_id,src_ip,dst_ip,src_port,dst_port,proto,"
                << "install_time,duration,packets,bytes,is_malicious\n";
@@ -751,6 +752,7 @@ inline void export_tcam_snapshot_baseline()
         mode += "_cpint" + std::to_string(static_cast<int>(std::round(cp_attack_intensity)));
     std::string path =
         "/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/tcam_snapshots_" + mode + "_final.csv";
+    if (!g_aux_logs) return;   // --aux_logs=0
     std::ofstream fout(path, std::ios::trunc);
     fout << "flow_id,node_id,src_ip,dst_ip,src_port,dst_port,proto,install_time,packets,bytes\n";
     for (const auto& e : g_tcam_table)

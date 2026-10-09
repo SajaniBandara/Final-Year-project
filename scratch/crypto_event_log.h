@@ -66,6 +66,7 @@ inline void crypto_log_init()
     // g_sim_tag (routing.cc) makes this filename unique per (variant, pct,
     // seed, delay) so concurrent sweep lanes never truncate each other's file
     // -- same convention already used for optimization_link_lifetime_data*.csv.
+    if (!g_aux_logs) return;   // --aux_logs=0: diagnostic wall-clock log not written
     g_crypto_log_file.open(path + "crypto_timing_log" + g_sim_tag + ".csv",
                            std::ios::out | std::ios::trunc);
     if (!g_crypto_log_file.is_open()) {

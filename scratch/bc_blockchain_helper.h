@@ -292,7 +292,7 @@ static void bc_open_files()
     // bc_flowmod_log.csv — one row per TCAM rule install
     // Columns match the chaincode LogFlowMod() signature + context fields.
     g_bc_flowmod_path = dir + "bc_flowmod_log" + bc_run_suffix() + ".csv";
-    g_bc_flowmod_csv.open(g_bc_flowmod_path, std::ios::trunc);
+    if (g_aux_logs) g_bc_flowmod_csv.open(g_bc_flowmod_path, std::ios::trunc);
     if (g_bc_flowmod_csv.is_open())
         bc_write_row(g_bc_flowmod_csv, g_bc_flowmod_path,
                      "rsu_id,flow_mod_hash,recv_timestamp_ms,"
@@ -336,7 +336,7 @@ inline void bc_log_flowmod(uint32_t node_id,
                            std::to_string(is_malicious ? 1 : 0) + "," +
                            bc_ip_str(src_ip) + "," + bc_ip_str(dst_ip) + "," +
                            std::to_string(src_port) + "," + std::to_string(dst_port) + "\n";
-        bc_write_row(g_bc_flowmod_csv, g_bc_flowmod_path, row); // real-time: bridge sees row immediately
+        if (g_aux_logs) bc_write_row(g_bc_flowmod_csv, g_bc_flowmod_path, row); // real-time: bridge sees row immediately
     }
 
     // ── NS-3 stdout confirmation line ────────────────────────────────────────
@@ -457,6 +457,7 @@ inline bool bc_verify_model_hash(uint32_t rsu_idx, const uint8_t* submitted_hash
 static void bc_open_detection_csv() {
     if (g_bc_detection_open) return;
     g_bc_detection_path = BC_RESULTS_DIR + "bc_detection_log" + bc_run_suffix() + ".csv";
+    if (!g_aux_logs) return;   // --aux_logs=0: audit log not written
     g_bc_detection_csv.open(g_bc_detection_path, std::ios::trunc);
     if (g_bc_detection_csv.is_open())
         bc_write_row(g_bc_detection_csv, g_bc_detection_path,
@@ -538,7 +539,7 @@ inline void bc_write_detection_event(uint32_t rsu_idx, uint32_t suspect_node,
 
     bc_open_detection_csv();
     long long ts_ms = (long long)(ts * 1000.0);
-    if (g_bc_detection_csv.is_open()) {
+    if (g_aux_logs && g_bc_detection_csv.is_open()) {
         std::string row = std::to_string(rsu_idx) + "," + std::to_string(suspect_node) + "," +
                            std::to_string(signal_idx) + "," + std::to_string(ts_ms) + "," +
                            sig_hex.str() + "\n";

@@ -41,6 +41,10 @@ static std::ofstream g_ev_out;
 static int g_ev_variant = -1;
 static std::map<uint32_t, std::map<int,uint32_t>> g_ev_dec;   // cycle -> source bit -> decisions taken
 static bool g_ev_enabled = true;
+// --aux_logs=0 suppresses the four large auxiliary logs that dominated disk use (tcam_snapshots 170 GB, bc_detection_log 53 GB,
+// crypto_timing_log 16.5 GB, bc_flowmod_log 5 GB over earlier sweeps; about 0.6 GB per 180 s run) -- only the file writes, never the logic
+// around them. Default 1 keeps every older workflow unchanged; all final runs pass 0.
+static bool g_aux_logs = true;
 static std::string g_ev_cfg;                                          // one "# cfg ..." header line: the run configuration
 static std::map<uint32_t, std::vector<std::array<std::string,3>>> g_ev_misc;   // cycle -> (node, kind, value) rows (QUAX, REV, TD, CTRLC)
 // Calibration series (--ev_log_util=1): per RSU-cycle TCAM occupancy (S4), SFTO predicted occupancy (-1 = table not growing),
