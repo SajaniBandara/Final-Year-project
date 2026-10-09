@@ -56,8 +56,9 @@ def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM):
         if s is None:
             add(m["exp"], f"R1 {m['tag']}: run produced an events file", False, "missing"); continue
         c_ev, c_csv = s["commit"], s["row"].get("build_commit", "")
+        baseline_arm = m["arm"] in ("tap", "efade")      # these runs do not write the MOBIGUARD CSV by design: the events file carries the commit
         add(m["exp"], f"R1 {m['tag']}: build commit == {expected_commit} and clean",
-            c_ev == expected_commit and c_csv == expected_commit and "dirty" not in c_ev, f"events={c_ev} csv={c_csv}")
+            c_ev == expected_commit and (baseline_arm or c_csv == expected_commit) and "dirty" not in c_ev, f"events={c_ev} csv={c_csv or 'n/a'}")
         add(m["exp"], f"R1 {m['tag']}: series file written", s["series"])
         per = s["per"]
         add(m["exp"], f"R2 {m['tag']}: TP+FP+FN+TN = {N_RSUS} scored nodes in every cycle", all(p["TP"] + p["FP"] + p["FN"] + p["TN"] == p["scored"] == N_RSUS for p in per))
