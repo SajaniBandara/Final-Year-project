@@ -426,7 +426,7 @@ inline void s1_update_best_effort_baseline(uint32_t rsu_idx, double delta_best_t
 // dw_end_cycle(), so it can only ever gate a node already declared malicious,
 // and silencing it there would wrongly mark a genuinely attacking node
 // dormant.
-bool s1_suppress_handoff_fp = false;
+bool s1_suppress_handoff_fp = true;    // FROZEN 2026-10-09 (supervisor): ON. Benign S1 false alarms 5.2 % -> 0.0 % per decision for 1.5 points of A1 DR. (was false)
 
 const double S1_HANDOFF_JITTER_MIN_S = 0.050;   // 50 ms, Islam2021SDVN lower bound
 const double S1_HANDOFF_JITTER_MAX_S = 0.300;   // 300 ms, Islam2021SDVN upper bound

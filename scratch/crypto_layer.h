@@ -105,7 +105,7 @@ static inline bool hmac_sha3_512(const uint8_t* key, size_t klen,
 
 double   TRUST_DELTA_R      = 0.04;  // sensitivity-optimum 2026-09-14 (was 0.05)
 double   TRUST_DELTA_P      = 0.30;  // sensitivity-optimum 2026-09-14 (was 0.10; A2 30s avg_MCC 0.756->0.940). Delta_p>Delta_r holds.
-double   TRUST_T_MIN        = 0.70;  // sensitivity-optimum 2026-09-14 (was 0.50; A2 30s avg_MCC 0.756->0.868)
+double   TRUST_T_MIN        = 0.30;  // FROZEN 2026-10-09: best MCC of "node quarantined vs attacker" subject to <= 5 % of honest nodes quarantined (0.3: 2.2 %, MCC 0.779; 0.5: 8.2 %; 0.7: 12.2 %), seeds 2,3, benign+A1+A3. (was 0.70)  // sensitivity-optimum 2026-09-14 (was 0.50; A2 30s avg_MCC 0.756->0.868)
 double   TRUST_T_MIN_CTRL   = 0.50;
 double   TRUST_DELTA_R_CTRL = 0.05;
 double   TRUST_DELTA_P_CTRL = 0.10;
@@ -129,7 +129,8 @@ double   T_SYNC_INTERVAL    = 1.0;
 uint32_t BATCH_SIZE         = 15;
 double   WITNESS_WINDOW     = 11.0;  // sensitivity-optimum 2026-09-14: 60s A7 avg_MCC 0.722->0.765 (was 10.0; 30s gave 9)
 uint32_t WITNESS_F          = 2;    // sensitivity-optimum 2026-09-14: 60s A7 avg_MCC 0.722->0.773, FPR 2.85%->0.73% (was 1)
-double   g_tcam_util_thresh = 0.20;  // sensitivity-optimum 2026-09-14 (was 0.216667; A4 30s avg_MCC best at 0.20) // S4 TCAM occupancy gate U_thresh; CLI --tcam_util_thresh (sensitivity-swept 2026-09-14)
+double   g_tcam_util_thresh = 0.37;   // FROZEN 2026-10-09: paper rule (best MCC at FPR <= 1 %) on validation seeds 2,3, benign + A3 + A4: 0.37 (MCC 0.873, FPR 0.85 %); the old 0.20 gave FPR 3.3 %
+// (previous value 0.20:  // sensitivity-optimum 2026-09-14 (was 0.216667; A4 30s avg_MCC best at 0.20) // S4 TCAM occupancy gate U_thresh; CLI --tcam_util_thresh (sensitivity-swept 2026-09-14)
 double   VOL_RATE_THRESH    = 5.0;
 
 // M5 — Controller failover latency modeling (eq:sc_revoke → eq:ctrl_failover).

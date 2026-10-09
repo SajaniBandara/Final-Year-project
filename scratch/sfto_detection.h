@@ -51,7 +51,7 @@ extern std::string  g_sim_tag;
 bool   enable_sfto = false;
 
 // ── SFTO-Guard parameters (paper mechanism) ─────────────────────────────────
-double SFTO_THETA      = 0.90;  // static occupancy threshold (fraction of capacity).
+double SFTO_THETA      = 0.59;  // FROZEN 2026-10-09 (provisional, as TAP): SFTO false-alarm rate = LRAD benign 0.97 % per node-cycle on seeds 2,3. (was 0.90)  // static occupancy threshold (fraction of capacity).
 // CLI-settable (--sfto_theta) for the SOTA "recalibrated" baseline line: refit to a
 // benign occupancy percentile, same method as U_thresh/S1/ε_vol. Default 0.90 (the
 // paper value, confirmed correct on this network) — "SFTO (default)" line unchanged.

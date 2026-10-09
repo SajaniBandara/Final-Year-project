@@ -115247,7 +115247,7 @@ static const double TAP_SIGNAL_SPEED = 3.0e8;      // Signal propagation speed i
 // for the SOTA "recalibrated" baseline line: refit to a benign |v-PPAT| percentile
 // on this network, same percentile method as U_thresh/S1/ε_vol. Default unchanged,
 // so the "TAP (default)" line is identical to before.
-double TAP_MARGIN = 1e-6; // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
+double TAP_MARGIN = 5.623e-3; // FROZEN 2026-10-09 (provisional, LRAD without the LSTM; re-matched after the LSTM): TAP false-alarm rate = LRAD benign 0.97 % per node-cycle on seeds 2,3. (was 1e-6) // 1 μs — floating-point epsilon only, per TAP paper Algorithm 1
 
 bool tap_defaulter_list[total_size] = {false};     // Controller-Defaulter-List from TAP paper — true means node is blacklisted.
 
