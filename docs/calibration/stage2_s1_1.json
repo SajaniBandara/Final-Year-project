@@ -1,0 +1,25 @@
+{
+ "target_LRAD_FPR_per_nodecycle": 0.009664351851851851,
+ "s1_setting": 1,
+ "U_thresh": 0.37,
+ "LRAD_FPR_at_old_U_thresh_0_20": 0.039699074074074074,
+ "S4_at_uthr_per_nodecycle": 0.009548611111111112,
+ "TAP": {
+  "margin_s": 0.005623413251903491,
+  "FPR": 0.009837962962962963,
+  "default_margin_s": 1e-06,
+  "FPR_at_default": 0.2898148148148148,
+  "max_dev_s": 0.0126975
+ },
+ "SFTO": {
+  "theta": 0.59,
+  "FPR": 0.009722222222222222,
+  "default_theta": 0.9,
+  "FPR_at_default": 0.002488425925925926,
+  "max_achievable_FPR": 0.3922453703703704
+ },
+ "eFADE": {
+  "FPR_benign": 0.0,
+  "tunable": false
+ }
+}
