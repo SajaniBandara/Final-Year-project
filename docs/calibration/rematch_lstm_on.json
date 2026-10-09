@@ -1,0 +1,44 @@
+{
+ "cfg": {
+  "seed": "2",
+  "attack": "0",
+  "p": "0",
+  "n_veh": "200",
+  "n_rsu": "64",
+  "maxspeed": "150",
+  "trace": "default",
+  "crypto": "on",
+  "lstm": "on",
+  "s1_suppress": "1",
+  "u_thresh": "0.37",
+  "t_min": "0.3",
+  "enforcement": "0",
+  "quarantine": "1",
+  "tap_margin": "0.005623",
+  "sfto_theta": "0.59",
+  "tap": "0",
+  "sfto": "1",
+  "simTime": "181",
+  "delay_ms": "100",
+  "lstm_model": "5a538c47"
+ },
+ "LRAD_full_FPR_per_nodecycle": 0.009780092592592592,
+ "by_source": {
+  "S4": 0.009780092592592592
+ },
+ "TAP": {
+  "margin_s": 0.005623413251903491,
+  "FPR": 0.009895833333333333,
+  "FPR_at_current_5_623ms": 0.009895833333333333
+ },
+ "SFTO": {
+  "theta": 0.59,
+  "FPR": 0.009895833333333333,
+  "FPR_at_current_0_59": 0.009895833333333333,
+  "max_achievable": 0.3945601851851852
+ },
+ "quarantines_benign_lrad": [
+  0,
+  2
+ ]
+}

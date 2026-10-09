@@ -92,3 +92,27 @@ Split changed to **train seeds 6, 7, 8 (benign), validate 2 and 3, test 1** (`pr
 
 ## 10. Housekeeping
 The disk filled during the first T_min batch (253 GB in `results_routing`, 170 GB of it `tcam_snapshots`), killing those runs at cycle ~30. I deleted 22 GB of auxiliary logs of my own runs and added `--aux_logs=0` (all final runs; about 0.6 GB per run saved). 149 GB of older auxiliary logs from earlier sweeps remain; deleting them is your decision.
+
+
+## 11. LSTM: split, training noise, in-simulation behaviour, re-match (2026-10-09, after the freeze)
+**Final frozen build: tag `a52e9fa`** (= `6d4ddd4` plus the regenerated `LSTM_HC_THETA`), model artifacts committed in `8fffe6b`. Run headers now carry `lstm_model=5a538c47` (FNV-1a of the weights file). U_thresh 0.37, S1 ON, T_min 0.30, TAP 5.623 ms, SFTO 0.59 are **unchanged** (re-match below).
+- **Data and split:** 78 detection-only runs on the frozen build; train seeds 6, 7, 8 (4,800 benign windows), validation seeds 2 and 3 (80,000), test seed 1 (40,000); cycles 45 to 180; labels are the event / state `ev_label`. All old LSTM data moved aside (`lstm_training_ARCHIVED_20261009_pre_final`).
+- **Training noise (3 trainings, seeds 1 to 3, about 3 min each on the GPU; overall MCC 0.610, range 0.609 to 0.612).** Offline window-level scores on the test seed (the model's own per-RSU threshold, not the in-simulation bar):
+
+| variant | MCC mean (range over 3 trainings) | DR | FPR |
+|---|---|---|---|
+| A1 CP-SelectiveDelay | 0.585 (0.582 to 0.588) | 48.4 % | 2.04 % |
+| A2 DP-SelectiveDelay | 0.694 (0.693 to 0.696) | 71.8 % | 5.66 % |
+| A3 CP-TCAM | 0.798 (0.798 to 0.798) | 80.4 % | 0.18 % |
+| A4 DP-TCAM | 0.704 (0.704 to 0.704) | 64.5 % | 0.37 % |
+| A5 CP-ActiveHF | 0.440 (0.436 to 0.444) | 47.2 % | 7.40 % |
+| A6 DP-ActiveHF | 0.705 (0.703 to 0.707) | 66.3 % | 2.01 % |
+| A7 CP-PassiveHF | 0.433 (0.428 to 0.437) | 44.3 % | 6.73 % |
+| A8 DP-PassiveHF | 0.613 (0.611 to 0.617) | 54.3 % | 2.15 % |
+| Overall (LSTM: attacks 1,2,5-8) | 0.610 (0.609 to 0.612) | 58.4 % | 4.46 % |
+
+  The spread is at most 0.004 MCC on any variant, so differences below that are training noise. Deployed model: the seed-1 training. (The first attempt at seed 3 crashed at start-up with a CUDA segfault on the shared GPU and was rerun unchanged.)
+- **In-simulation threshold:** the simulator raises an LSTM detection only above `LSTM_HC_THETA`, the 99.9th percentile of benign validation reconstruction error (the old 39.82 belonged to the old model): **386.744** (55,866 benign validation windows).
+- **LRAD full benign false-alarm rate with the LSTM on** (seeds 2 and 3, after warm-up): **0.978 % per node-cycle, all of it from S4; the LSTM contributes none.** Benign quarantines: [0, 2]. Matched baselines: TAP margin 5.623 ms gives 0.990 %; SFTO theta 0.59 gives 0.990 % (highest reachable 39.5 %). **Both are the values already frozen, so the second freeze changes nothing.**
+- **What the LSTM does in the simulator (4 attack runs, p=40, seed 2, detection only):** it raises alarms only on **A1** (142 alarm entries: DR 89.2 % to 92.9 %, FPR 3.9 % to 4.3 %, M1 0.689 to 0.694). On A3, A5 and A8 it raises **zero** alarms, so those results are identical to LSTM-off (A3 M1 0.979 unchanged; A5 DR 59.3 %, FPR 8.7 %, M1 0.245; A8 DR 69.4 %, FPR 10.7 %, M1 0.485). The 99.9th-percentile bar is never crossed on the hidden-forwarding variants. For VANGUARD-HF this means the in-simulation detector there is the rule set alone. If you want the LSTM to carry HF, the bar needs a different operating point (for example the per-RSU theta with persistence), which would be a new calibration decision, not applied.
+- **Not done / not used:** the classification head and `hf_theta`/`cls_theta` (old, stale) are off with the default flags (`--enable_lstm_cls`, `--enable_hf_theta` not passed); the scripts that train them still use the old latched labels and were not rerun.
