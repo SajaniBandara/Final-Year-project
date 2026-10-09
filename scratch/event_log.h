@@ -174,6 +174,7 @@ inline void ev_misc(uint32_t node, const char* kind, const std::string& value)
     g_ev_misc[ev_cycle()].push_back({std::to_string(node), kind, value});
 }
 inline void ev_set_cfg(const std::string& cfg) { g_ev_cfg = cfg; }
+inline void ev_append_cfg(const std::string& s) { g_ev_cfg += s; }
 
 inline void ev_util(uint32_t node, double util)
 {

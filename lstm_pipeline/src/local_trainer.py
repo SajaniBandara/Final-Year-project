@@ -153,7 +153,7 @@ def grid_search_hparams(rsu_id: int, X_train: np.ndarray, X_val_benign: np.ndarr
 
 
 def main(args):
-    seed_everything(0)   # reproducible M1/M8 metrics
+    seed_everything(int(os.environ.get("MOBIGUARD_TRAIN_SEED", "0")))   # reproducible; the training-noise study sets MOBIGUARD_TRAIN_SEED=1,2,3
     print(f"Loading preprocessed data from {PRE} …")
     X_tr, y_tr, meta_tr = load_split("train")
     X_va, y_va, meta_va = load_split("val")

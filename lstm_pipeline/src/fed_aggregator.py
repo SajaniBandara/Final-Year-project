@@ -54,7 +54,7 @@ Outputs
   lstm_pipeline/fed_summary.json          round log + per-RSU calibration summary
 """
 
-import json, argparse, hashlib
+import os, json, argparse, hashlib
 import numpy as np
 import torch
 import torch.nn as nn
@@ -646,7 +646,7 @@ def run_aggregation(gamma_factor: float = 2.0,
 # ── Main federated training loop ──────────────────────────────────────────────
 
 def main(args):
-    seed_everything(0)   # reproducible M1/M8 metrics
+    seed_everything(int(os.environ.get("MOBIGUARD_TRAIN_SEED", "0")))   # reproducible; the training-noise study sets MOBIGUARD_TRAIN_SEED=1,2,3
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading preprocessed data from {PRE} …")
