@@ -4,7 +4,7 @@ Counts are derived from the papers' own grids; every assumption is printed. The 
 ablations, the TAP and eFADE runs, and the LSTM retrains for AB2 / AB3 / AB5."""
 import json
 P = [20, 40, 60, 80, 100]          # attacking penetration points; p=0 (benign) is counted separately
-SPEEDS, NS = 6, 7                  # speed axis 10/40/70/100/130/150; N = 100,150,200,220,280,340,400
+SPEEDS, NS = 6, 6                  # speed axis 10/40/70/100/130/150; N = 100, 160, 220, 280, 340, 400 (supervisor 2026-10-09)
 AOEI = 6                           # 0.10, 0.28, 0.46, 0.64, 0.82, 1.0 (PHANTOM Exp 4); VANGUARD Exp 4 has 4 AOEI points
 rows = []
 def add(block, what, do, cl, note=""):
@@ -14,8 +14,8 @@ add("PHANTOM", "Exp1 LRAD: A1,A2 x 5 p x 4 intensities (3 planned + 1 near thres
 add("PHANTOM", "Exp1 TAP: A1,A2 x 5 p x 4 intensities + benign", 41, 0, "TAP has no enforcement; DO only")
 add("PHANTOM", "Exp2 speed LRAD: 6 speeds x A1-A4 + 6 benign", 6 * 4 + 6, 6 * 4 + 6)
 add("PHANTOM", "Exp2 TAP: 6 speeds x A1,A2 + 6 benign", 6 * 2 + 6, 0)
-add("PHANTOM", "Exp3 scale LRAD: 7 N x A1-A4 + 7 benign", NS * 4 + NS, NS * 4 + NS)
-add("PHANTOM", "Exp3 TAP: 7 N x A1,A2 + 7 benign", NS * 2 + NS, 0)
+add("PHANTOM", "Exp3 scale LRAD: 6 N x A1-A4 + 6 benign", NS * 4 + NS, NS * 4 + NS)
+add("PHANTOM", "Exp3 TAP: 6 N x A1,A2 + 6 benign", NS * 2 + NS, 0)
 add("PHANTOM", "Exp4 AOEI LRAD: 6 x A1,A2 + A3,A4 once", AOEI * 2 + 2, AOEI * 2 + 2)
 add("PHANTOM", "Exp4 TAP: 6 x A1,A2", AOEI * 2, 0)
 add("PHANTOM", "Exp5: shares the default-point runs of Exp 1-3", 0, 0)
@@ -31,22 +31,29 @@ add("VANGUARD-HF", "Exp1 LRAD: 4 variants x 5 p x 3 intensities + benign", 60 + 
 add("VANGUARD-HF", "Exp1 eFADE", 60 + 1, 0)
 add("VANGUARD-HF", "Exp2 speed LRAD: 6 speeds x 4 + 6 benign", 30, 30)
 add("VANGUARD-HF", "Exp2 eFADE", 30, 0)
-add("VANGUARD-HF", "Exp3 scale LRAD: 7 N x 4 + 7 benign", 35, 35)
-add("VANGUARD-HF", "Exp3 eFADE", 35, 0)
+add("VANGUARD-HF", "Exp3 scale LRAD: 6 N x 4 + 6 benign", 30, 30)
+add("VANGUARD-HF", "Exp3 eFADE", 30, 0)
 add("VANGUARD-HF", "Exp4 AOEI LRAD: 4 points x 4 variants", 16, 16, "d_div axis not built")
 add("VANGUARD-HF", "Exp4 eFADE", 16, 0)
 add("VANGUARD-HF", "Exp5: shares default-point runs", 0, 0)
-add("VANGUARD-HF", "ASSUMED HF ablations (the paper has no ablation section yet): AB1,AB4,AB7 x A5-A8 x 5 p; AB6 (witness) A7,A8 x 5 p; AB8 A5,A7 x 5 p; AB9,AB12 A5,A7 x 4 p; AB10 A5,A6 x 4 p; AB11 4 x 2",
-    60 + 10 + 10 + 8 + 8 + 8, 20 + 20 + 20 + 10 + 8 + 8 + 8, "list needs the supervisor's confirmation")
+# HF ablations AB1-AB12 on S5-S8, no AB13 (supervisor 2026-10-09): AB3 = pi_hop, AB4 = hop proof, AB6 = witness, AB5 sweeps the poisoned fraction,
+# AB11 the steps after revocation, the rest sweep p. AB2 / AB3 / AB5 are offline (evaluation on the stored per-RSU CSVs), no extra simulations.
+add("VANGUARD-HF", "AB1 OBU pre-filter: 4 variants x 5 p; AB6 witness: 4 x 5 p; AB4 hop proof: 4 x 5 p (CL for M7)", 20 + 20 + 20, 20)
+add("VANGUARD-HF", "full arm closed loop 4 x 5 p (shared by AB4/7/8/9/11/12)", 0, 20)
+add("VANGUARD-HF", "AB7 quarantine: 4 x 5 p", 20, 20)
+add("VANGUARD-HF", "AB8 single-RSU quorum: CP variants S5,S7 x 5 p", 10, 10)
+add("VANGUARD-HF", "AB9 no isolation and AB12 legitimise: CP S5,S7 x p>=40 (4) each", 16, 16)
+add("VANGUARD-HF", "AB10 forged keys: 4 variants x 4 p; AB11 rotation probe: 2 arms x 4 variants x 2 p", 16, 16)
+add("VANGUARD-HF", "AB2 federated vs central, AB3 pi_hop zeroed, AB5 poisoned fraction", 0, 0, "offline: no simulation")
 # ---------------- Hydra: each of 8 variants run separately under 4 configs x 6 p, pooled (breach metrics: closed loop)
 add("Hydra", "8 variants x 4 configs x 6 p (surrogate; dwell window to be implemented)", 0, 8 * 4 * 6)
 # ---------------- NEXUS: 8 variants run separately and pooled; baselines in scope only (TAP A1,A2 / SFTO A3,A4 piggy / eFADE A5-A8)
 add("NEXUS", "N1: 8 variants x 6 p LRAD; TAP 2 x 6; eFADE 4 x 6", 48 + 12 + 24, 48)
-add("NEXUS", "N2: 8 variants x 7 N LRAD; TAP 2 x 7; eFADE 4 x 7", 56 + 14 + 28, 56)
+add("NEXUS", "N2: 8 variants x 6 N LRAD; TAP 2 x 6; eFADE 4 x 6", 48 + 12 + 24, 48)
 add("NEXUS", "N3: 4 layer configs x 8 variants", 32, 32)
 add("NEXUS", "Manhattan trace: 8 variants + in-scope baselines", 8 + 6, 8, "needs the OSM extract")
 # ---------------- LSTM data collection (detection-only, training=1, final build)
-add("LSTM", "collection: benign seeds 1-5; attacks A1-A8 x p in {20,40,60} x validation/test seeds 4,5", 5 + 8 * 3 * 2, 0, "same data feeds AB2/AB3/AB5 and the 3 final trainings")
+add("LSTM", "collection: benign seeds 6,7,8 (train), 2,3 (validation), 1 (test); attacks A1-A8 x p in {20,40,60} on seeds 2,3 (validation) and 1 (test)", 6 + 8 * 3 * 3, 0, "train seeds 6-8, validate 2,3 (supervisor 2026-10-09)")
 tot = {k: sum(r[k] for r in rows) for k in ("DO", "CL")}
 by = {}
 for r in rows: by.setdefault(r["block"], [0, 0]); by[r["block"]][0] += r["DO"]; by[r["block"]][1] += r["CL"]

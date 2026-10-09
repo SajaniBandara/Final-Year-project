@@ -30,15 +30,15 @@
   },
   {
    "block": "PHANTOM",
-   "what": "Exp3 scale LRAD: 7 N x A1-A4 + 7 benign",
-   "DO": 35,
-   "CL": 35,
+   "what": "Exp3 scale LRAD: 6 N x A1-A4 + 6 benign",
+   "DO": 30,
+   "CL": 30,
    "note": ""
   },
   {
    "block": "PHANTOM",
-   "what": "Exp3 TAP: 7 N x A1,A2 + 7 benign",
-   "DO": 21,
+   "what": "Exp3 TAP: 6 N x A1,A2 + 6 benign",
+   "DO": 18,
    "CL": 0,
    "note": ""
   },
@@ -142,15 +142,15 @@
   },
   {
    "block": "VANGUARD-HF",
-   "what": "Exp3 scale LRAD: 7 N x 4 + 7 benign",
-   "DO": 35,
-   "CL": 35,
+   "what": "Exp3 scale LRAD: 6 N x 4 + 6 benign",
+   "DO": 30,
+   "CL": 30,
    "note": ""
   },
   {
    "block": "VANGUARD-HF",
    "what": "Exp3 eFADE",
-   "DO": 35,
+   "DO": 30,
    "CL": 0,
    "note": ""
   },
@@ -177,10 +177,52 @@
   },
   {
    "block": "VANGUARD-HF",
-   "what": "ASSUMED HF ablations (the paper has no ablation section yet): AB1,AB4,AB7 x A5-A8 x 5 p; AB6 (witness) A7,A8 x 5 p; AB8 A5,A7 x 5 p; AB9,AB12 A5,A7 x 4 p; AB10 A5,A6 x 4 p; AB11 4 x 2",
-   "DO": 104,
-   "CL": 94,
-   "note": "list needs the supervisor's confirmation"
+   "what": "AB1 OBU pre-filter: 4 variants x 5 p; AB6 witness: 4 x 5 p; AB4 hop proof: 4 x 5 p (CL for M7)",
+   "DO": 60,
+   "CL": 20,
+   "note": ""
+  },
+  {
+   "block": "VANGUARD-HF",
+   "what": "full arm closed loop 4 x 5 p (shared by AB4/7/8/9/11/12)",
+   "DO": 0,
+   "CL": 20,
+   "note": ""
+  },
+  {
+   "block": "VANGUARD-HF",
+   "what": "AB7 quarantine: 4 x 5 p",
+   "DO": 20,
+   "CL": 20,
+   "note": ""
+  },
+  {
+   "block": "VANGUARD-HF",
+   "what": "AB8 single-RSU quorum: CP variants S5,S7 x 5 p",
+   "DO": 10,
+   "CL": 10,
+   "note": ""
+  },
+  {
+   "block": "VANGUARD-HF",
+   "what": "AB9 no isolation and AB12 legitimise: CP S5,S7 x p>=40 (4) each",
+   "DO": 16,
+   "CL": 16,
+   "note": ""
+  },
+  {
+   "block": "VANGUARD-HF",
+   "what": "AB10 forged keys: 4 variants x 4 p; AB11 rotation probe: 2 arms x 4 variants x 2 p",
+   "DO": 16,
+   "CL": 16,
+   "note": ""
+  },
+  {
+   "block": "VANGUARD-HF",
+   "what": "AB2 federated vs central, AB3 pi_hop zeroed, AB5 poisoned fraction",
+   "DO": 0,
+   "CL": 0,
+   "note": "offline: no simulation"
   },
   {
    "block": "Hydra",
@@ -198,9 +240,9 @@
   },
   {
    "block": "NEXUS",
-   "what": "N2: 8 variants x 7 N LRAD; TAP 2 x 7; eFADE 4 x 7",
-   "DO": 98,
-   "CL": 56,
+   "what": "N2: 8 variants x 6 N LRAD; TAP 2 x 6; eFADE 4 x 6",
+   "DO": 84,
+   "CL": 48,
    "note": ""
   },
   {
@@ -219,37 +261,37 @@
   },
   {
    "block": "LSTM",
-   "what": "collection: benign seeds 1-5; attacks A1-A8 x p in {20,40,60} x validation/test seeds 4,5",
-   "DO": 53,
+   "what": "collection: benign seeds 6,7,8 (train), 2,3 (validation), 1 (test); attacks A1-A8 x p in {20,40,60} on seeds 2,3 (validation) and 1 (test)",
+   "DO": 78,
    "CL": 0,
-   "note": "same data feeds AB2/AB3/AB5 and the 3 final trainings"
+   "note": "train seeds 6-8, validate 2,3 (supervisor 2026-10-09)"
   }
  ],
  "per_block": {
   "PHANTOM": [
-   329,
-   209
+   321,
+   204
   ],
   "VANGUARD-HF": [
-   388,
-   236
+   396,
+   239
   ],
   "Hydra": [
    0,
    192
   ],
   "NEXUS": [
-   228,
-   144
+   214,
+   136
   ],
   "LSTM": [
-   53,
+   78,
    0
   ]
  },
  "total": {
-  "DO": 998,
-  "CL": 781
+  "DO": 1009,
+  "CL": 771
  },
  "trainings": {
   "final_model": 3,

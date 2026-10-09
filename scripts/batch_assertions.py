@@ -42,11 +42,21 @@ def score_run(m, n_veh=N_VEH, cycles=SIM, mask=None):
     if mask is None:
         mask = {"tap": 1 << 14, "sfto": 1 << 15, "efade": 1 << 16}.get(m["arm"])
     per, s = es.score(ev, n_veh, N_RSUS, cycles, es.WARMUP_S, False, mask)
-    s["per"] = per; s["row"] = last_row(m["tag"]) or {}
+    s["per"] = per; s["row"] = last_row(m["tag"]) or {}; s["cfg"] = ev.get("cfg", {})
     s["series"] = bool(glob.glob(str(RES / f"series_Attack*_{m['tag']}.csv")))
     return s
 
-def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM):
+# Thresholds are set ONCE on the default trace and never reset for speed, N or p (supervisor 2026-10-09). Pass the frozen values to check_batch.
+FROZEN_KEYS = ("u_thresh", "t_min", "s1_suppress")
+# cfg keys that may legitimately differ between the arms of one figure (the swept variable and the arm under ablation)
+SWEEP_KEYS = {"p", "attack", "seed", "maxspeed", "trace", "n_veh", "delay_ms", "tap", "sfto", "tap_margin", "sfto_theta", "enforcement", "quarantine", "lstm"}
+
+def series_cycles(tag):
+    fs = glob.glob(str(RES / f"series_Attack*_{tag}.csv"))
+    if not fs: return set()
+    return {int(l.split(",", 1)[0]) for l in open(fs[0]) if l[:1].isdigit()}
+
+def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM, frozen=None, require_135=True):
     out = defaultdict(list); runs = {}
     def add(exp, check, ok, nums=""):
         out[exp].append((check, "PASS" if ok is True else ("FAIL" if ok is False else str(ok)), nums))
@@ -60,12 +70,41 @@ def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM):
         add(m["exp"], f"R1 {m['tag']}: build commit == {expected_commit} and clean",
             c_ev == expected_commit and (baseline_arm or c_csv == expected_commit) and "dirty" not in c_ev, f"events={c_ev} csv={c_csv or 'n/a'}")
         add(m["exp"], f"R1 {m['tag']}: series file written", s["series"])
+        cfg = s["cfg"] if "cfg" in s else {}
+        if require_135:
+            sc = series_cycles(m["tag"])
+            add(m["exp"], f"R6 {m['tag']}: all 135 scored cycles (45..179) were simulated", set(range(45, 180)) <= sc, f"missing {sorted(set(range(45, 180)) - sc)[:5]}")
+            rcf = RES / f"rc_{m['tag']}.txt"
+            if rcf.exists(): add(m["exp"], f"R6 {m['tag']}: clean exit (rc 0)", rcf.read_text().strip() == "0", rcf.read_text().strip())
+        if frozen:
+            for k in FROZEN_KEYS:
+                add(m["exp"], f"R7 {m['tag']}: {k} == frozen {frozen[k]}", str(cfg.get(k)) == str(frozen[k]), f"{cfg.get(k)}")
+        # no honest controller is ever revoked
+        ev_all = es.parse(glob.glob(str(RES / f"events_Attack*_{m['tag']}.csv"))[0])
+        bad = [c for c in ev_all["rev"] if ev_all["ctrlc"].get(c, 0) == 0]
+        add(m["exp"], f"R8 {m['tag']}: no honest controller revoked", not bad, f"honest revoked {bad}, compromised {[c for c,v in ev_all['ctrlc'].items() if v]}, revoked {sorted(ev_all['rev'])}")
         per = s["per"]
         add(m["exp"], f"R2 {m['tag']}: TP+FP+FN+TN = {N_RSUS} scored nodes in every cycle", all(p["TP"] + p["FP"] + p["FN"] + p["TN"] == p["scored"] == N_RSUS for p in per))
         add(m["exp"], f"R2 {m['tag']}: per-cycle sums = pooled counts (post warm-up)",
             all(sum(p[k] for p in per if p["c"] >= es.WARMUP_S) == s[k] for k in ("TP", "FP", "FN", "TN")))
     groups = defaultdict(list)
     for m in manifest: groups[(m["exp"], m["cfg"], m["mode"])].append(m)
+    figs = defaultdict(list)                                   # arms of one FIGURE: all runs of an experiment
+    for m in manifest:
+        if runs.get(m["tag"]) is not None: figs[m["exp"]].append(m)
+    for exp, ms in figs.items():
+        ref = None
+        for m in ms:
+            cf = runs[m["tag"]]["cfg"]
+            if m.get("ablates_crypto"):                          # AB4 and N3 'No Crypto' are the only arms allowed to turn crypto off
+                add(exp, f"R5 {m['tag']}: crypto is OFF only because this arm ablates it", cf.get("crypto") == "off", f"crypto={cf.get('crypto')}")
+                continue
+            add(exp, f"R5 {m['tag']}: crypto is ON", cf.get("crypto") == "on", f"crypto={cf.get('crypto')}")
+            core = {k: v for k, v in cf.items() if k not in SWEEP_KEYS and k != "simTime"}
+            if ref is None: ref = (m["tag"], core)
+            else:
+                diff = {k: (ref[1].get(k), core.get(k)) for k in set(ref[1]) | set(core) if ref[1].get(k) != core.get(k)}
+                add(exp, f"R5 {m['tag']}: configuration equals {ref[0]} apart from the swept variables", not diff, f"differences {diff}")
     for (exp, cfg, mode), ms in groups.items():
         full = next((m for m in ms if m["arm"] == "full"), None)
         sf = runs.get(full["tag"]) if full else None
@@ -87,7 +126,9 @@ def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM):
                 if m["arm"] == "ab9": add(exp, f"R4 {cfg}/ab9 closed loop: M5 undefined (no failover)", L.get("ctrl_failover_events") == "0", f"events {L.get('ctrl_failover_events')} vs full {F.get('ctrl_failover_events')}")
                 if m["arm"] == "ab8": add(exp, f"R4 {cfg}/ab8 closed loop: UFCR 0", float(L.get("UFCR", "nan")) == 0.0, f"UFCR {L.get('UFCR')}")
                 if m["arm"] == "ab12": add(exp, f"R4 {cfg}/ab12 closed loop: UFCR below full", float(L.get("UFCR", "nan")) < float(F.get("UFCR", "0")), f"{L.get('UFCR')} vs {F.get('UFCR')}")
-                if m["arm"] == "ab7": add(exp, f"R4 {cfg}/ab7 closed loop: M4 infinite", L.get("lmit_inf") == "1", f"lmit_inf={L.get('lmit_inf')} uncontained={L.get('lmit_uncontained_n')}")
+                if m["arm"] == "ab7":
+                    add(exp, f"R4 {cfg}/ab7 closed loop: contained by quarantine == 0", L.get("lmit_contained_quarantine_n") == "0", f"{L.get('lmit_contained_quarantine_n')}")
+                    add(exp, f"R4 {cfg}/ab7 closed loop: never contained > 0", int(L.get("lmit_uncontained_n", "0")) > 0, f"uncontained {L.get('lmit_uncontained_n')} (contained by revocation {L.get('lmit_contained_revocation_n')})")
     return out, runs
 
 def write_report(out, outdir=None):

@@ -1,0 +1,967 @@
+{
+ "breakdown": {
+  "tm07_A0_s2": {
+   "tag": "tm07_A0_s2",
+   "cfg": {
+    "seed": "2",
+    "attack": "0",
+    "p": "0",
+    "n_veh": "200",
+    "n_rsu": "64",
+    "maxspeed": "150",
+    "trace": "default",
+    "crypto": "on",
+    "lstm": "off",
+    "s1_suppress": "1",
+    "u_thresh": "0.37",
+    "t_min": "0.7",
+    "enforcement": "0",
+    "quarantine": "1",
+    "tap_margin": "1e-06",
+    "sfto_theta": "0.9",
+    "tap": "0",
+    "sfto": "0",
+    "simTime": "181",
+    "delay_ms": "100"
+   },
+   "quarantined": 14,
+   "by_type": {
+    "vehicle": 14
+   },
+   "decrements_behind_quarantines": {
+    "batch_or_sig": 0,
+    "hop_proof": 0,
+    "delay_proof": 0,
+    "witness_DA": 0,
+    "witness_NFA": 0,
+    "S4_attrib": 29,
+    "S5_attrib": 0,
+    "other": 0
+   },
+   "quarantines_with_cause_present": {
+    "S4_attrib": 14
+   },
+   "quarantines_by_dominant_cause": {
+    "S4_attrib": 14
+   },
+   "whole_run_decrements_all_nodes": {
+    "batch_or_sig": 0,
+    "hop_proof": 0,
+    "delay_proof": 0,
+    "witness_DA": 0,
+    "witness_NFA": 0,
+    "S4_attrib": 74,
+    "S5_attrib": 0,
+    "other": 0
+   },
+   "nodes_with_any_decrement": 52,
+   "quarantine_times_s": [
+    113.0,
+    115.0,
+    117.0,
+    121.0,
+    122.0,
+    125.0,
+    127.0,
+    128.0,
+    130.0,
+    148.0,
+    150.0,
+    164.0,
+    173.0,
+    177.0
+   ],
+   "first_quarantine_s": 113.0,
+   "last_quarantine_s": 177.0,
+   "rows": [
+    {
+     "node": 144,
+     "type": "vehicle",
+     "t": 113.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 62,
+     "type": "vehicle",
+     "t": 115.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 113,
+     "type": "vehicle",
+     "t": 117.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 132,
+     "type": "vehicle",
+     "t": 121.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 107,
+     "type": "vehicle",
+     "t": 122.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 14,
+     "type": "vehicle",
+     "t": 125.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 104,
+     "type": "vehicle",
+     "t": 127.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 162,
+     "type": "vehicle",
+     "t": 128.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 109,
+     "type": "vehicle",
+     "t": 130.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 72,
+     "type": "vehicle",
+     "t": 148.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 146,
+     "type": "vehicle",
+     "t": 150.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 160,
+     "type": "vehicle",
+     "t": 164.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 12,
+     "type": "vehicle",
+     "t": 173.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 24,
+     "type": "vehicle",
+     "t": 177.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    }
+   ]
+  },
+  "repro_old_A0_s2": {
+   "tag": "repro_old_A0_s2",
+   "cfg": {
+    "seed": "2",
+    "attack": "0",
+    "p": "0",
+    "n_veh": "200",
+    "n_rsu": "64",
+    "maxspeed": "150",
+    "trace": "default",
+    "crypto": "on",
+    "lstm": "off",
+    "s1_suppress": "0",
+    "u_thresh": "0.2",
+    "t_min": "0.7",
+    "enforcement": "0",
+    "quarantine": "1",
+    "tap_margin": "1e-06",
+    "sfto_theta": "0.9",
+    "tap": "0",
+    "sfto": "0",
+    "simTime": "181",
+    "delay_ms": "100"
+   },
+   "quarantined": 60,
+   "by_type": {
+    "vehicle": 60
+   },
+   "decrements_behind_quarantines": {
+    "batch_or_sig": 0,
+    "hop_proof": 0,
+    "delay_proof": 0,
+    "witness_DA": 0,
+    "witness_NFA": 0,
+    "S4_attrib": 143,
+    "S5_attrib": 0,
+    "other": 0
+   },
+   "quarantines_with_cause_present": {
+    "S4_attrib": 60
+   },
+   "quarantines_by_dominant_cause": {
+    "S4_attrib": 60
+   },
+   "whole_run_decrements_all_nodes": {
+    "batch_or_sig": 0,
+    "hop_proof": 0,
+    "delay_proof": 0,
+    "witness_DA": 0,
+    "witness_NFA": 0,
+    "S4_attrib": 335,
+    "S5_attrib": 0,
+    "other": 0
+   },
+   "nodes_with_any_decrement": 130,
+   "quarantine_times_s": [
+    49.0,
+    64.0,
+    67.0,
+    69.0,
+    75.0,
+    86.0,
+    86.0,
+    87.0,
+    89.0,
+    90.0,
+    91.0,
+    92.0,
+    97.0,
+    98.0,
+    100.0,
+    107.0,
+    109.0,
+    113.0,
+    115.0,
+    115.0,
+    117.0,
+    117.0,
+    118.0,
+    120.0,
+    121.0,
+    121.0,
+    124.0,
+    125.0,
+    126.0,
+    127.0,
+    128.0,
+    130.0,
+    130.0,
+    131.0,
+    132.0,
+    133.0,
+    136.0,
+    139.0,
+    139.0,
+    142.0,
+    144.0,
+    148.0,
+    151.0,
+    152.0,
+    152.0,
+    155.0,
+    157.0,
+    159.0,
+    159.0,
+    160.0,
+    163.0,
+    163.0,
+    163.0,
+    164.0,
+    165.0,
+    168.0,
+    169.0,
+    169.0,
+    172.0,
+    177.0
+   ],
+   "first_quarantine_s": 49.0,
+   "last_quarantine_s": 177.0,
+   "rows": [
+    {
+     "node": 12,
+     "type": "vehicle",
+     "t": 49.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 89,
+     "type": "vehicle",
+     "t": 64.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 45,
+     "type": "vehicle",
+     "t": 67.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 145,
+     "type": "vehicle",
+     "t": 69.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 63,
+     "type": "vehicle",
+     "t": 75.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 66,
+     "type": "vehicle",
+     "t": 86.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 188,
+     "type": "vehicle",
+     "t": 86.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 25,
+     "type": "vehicle",
+     "t": 87.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 96,
+     "type": "vehicle",
+     "t": 89.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 95,
+     "type": "vehicle",
+     "t": 90.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 86,
+     "type": "vehicle",
+     "t": 91.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 161,
+     "type": "vehicle",
+     "t": 92.0,
+     "trust": 0.6,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 46,
+     "type": "vehicle",
+     "t": 97.0,
+     "trust": 0.48,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 10,
+     "type": "vehicle",
+     "t": 98.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 3,
+     "type": "vehicle",
+     "t": 100.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 52,
+     "type": "vehicle",
+     "t": 107.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 116,
+     "type": "vehicle",
+     "t": 109.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 144,
+     "type": "vehicle",
+     "t": 113.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 62,
+     "type": "vehicle",
+     "t": 115.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 148,
+     "type": "vehicle",
+     "t": 115.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 113,
+     "type": "vehicle",
+     "t": 117.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 14,
+     "type": "vehicle",
+     "t": 117.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 154,
+     "type": "vehicle",
+     "t": 118.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 107,
+     "type": "vehicle",
+     "t": 120.0,
+     "trust": 0.48,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 155,
+     "type": "vehicle",
+     "t": 121.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 132,
+     "type": "vehicle",
+     "t": 121.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 4
+     }
+    },
+    {
+     "node": 104,
+     "type": "vehicle",
+     "t": 124.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 146,
+     "type": "vehicle",
+     "t": 125.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 31,
+     "type": "vehicle",
+     "t": 126.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 168,
+     "type": "vehicle",
+     "t": 127.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 162,
+     "type": "vehicle",
+     "t": 128.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 4
+     }
+    },
+    {
+     "node": 109,
+     "type": "vehicle",
+     "t": 130.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 68,
+     "type": "vehicle",
+     "t": 130.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 141,
+     "type": "vehicle",
+     "t": 131.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 169,
+     "type": "vehicle",
+     "t": 132.0,
+     "trust": 0.68,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 128,
+     "type": "vehicle",
+     "t": 133.0,
+     "trust": 0.6,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 50,
+     "type": "vehicle",
+     "t": 136.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 17,
+     "type": "vehicle",
+     "t": 139.0,
+     "trust": 0.52,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 49,
+     "type": "vehicle",
+     "t": 139.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 137,
+     "type": "vehicle",
+     "t": 142.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 120,
+     "type": "vehicle",
+     "t": 144.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 72,
+     "type": "vehicle",
+     "t": 148.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 177,
+     "type": "vehicle",
+     "t": 151.0,
+     "trust": 0.48,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 11,
+     "type": "vehicle",
+     "t": 152.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 173,
+     "type": "vehicle",
+     "t": 152.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 15,
+     "type": "vehicle",
+     "t": 155.0,
+     "trust": 0.6,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 136,
+     "type": "vehicle",
+     "t": 157.0,
+     "trust": 0.48,
+     "dec": {
+      "S4_attrib": 4
+     }
+    },
+    {
+     "node": 186,
+     "type": "vehicle",
+     "t": 159.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 163,
+     "type": "vehicle",
+     "t": 159.0,
+     "trust": 0.68,
+     "dec": {
+      "S4_attrib": 4
+     }
+    },
+    {
+     "node": 170,
+     "type": "vehicle",
+     "t": 160.0,
+     "trust": 0.6,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 99,
+     "type": "vehicle",
+     "t": 163.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 59,
+     "type": "vehicle",
+     "t": 163.0,
+     "trust": 0.6,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 79,
+     "type": "vehicle",
+     "t": 163.0,
+     "trust": 0.44,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 160,
+     "type": "vehicle",
+     "t": 164.0,
+     "trust": 0.4,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 92,
+     "type": "vehicle",
+     "t": 165.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 90,
+     "type": "vehicle",
+     "t": 168.0,
+     "trust": 0.6,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 54,
+     "type": "vehicle",
+     "t": 169.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 18,
+     "type": "vehicle",
+     "t": 169.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 3
+     }
+    },
+    {
+     "node": 127,
+     "type": "vehicle",
+     "t": 172.0,
+     "trust": 0.56,
+     "dec": {
+      "S4_attrib": 2
+     }
+    },
+    {
+     "node": 24,
+     "type": "vehicle",
+     "t": 177.0,
+     "trust": 0.64,
+     "dec": {
+      "S4_attrib": 4
+     }
+    }
+   ]
+  }
+ },
+ "selection": {
+  "table": {
+   "0.3": {
+    "TP": 106,
+    "FP": 32,
+    "FN": 22,
+    "TN": 1424,
+    "MCC": 0.7790695189408867,
+    "honest_quarantined_pct": 2.197802197802198,
+    "per_scenario": {
+     "A0": {
+      "TP": 0,
+      "FP": 2,
+      "FN": 0,
+      "TN": 526,
+      "honest_quarantined_pct": 0.3787878787878788
+     },
+     "A1": {
+      "TP": 42,
+      "FP": 15,
+      "FN": 22,
+      "TN": 449,
+      "honest_quarantined_pct": 3.2327586206896552
+     },
+     "A3": {
+      "TP": 64,
+      "FP": 15,
+      "FN": 0,
+      "TN": 449,
+      "honest_quarantined_pct": 3.2327586206896552
+     }
+    }
+   },
+   "0.5": {
+    "TP": 108,
+    "FP": 120,
+    "FN": 20,
+    "TN": 1336,
+    "MCC": 0.5911024052276082,
+    "honest_quarantined_pct": 8.241758241758241,
+    "per_scenario": {
+     "A0": {
+      "TP": 0,
+      "FP": 20,
+      "FN": 0,
+      "TN": 508,
+      "honest_quarantined_pct": 3.787878787878788
+     },
+     "A1": {
+      "TP": 44,
+      "FP": 45,
+      "FN": 20,
+      "TN": 419,
+      "honest_quarantined_pct": 9.698275862068966
+     },
+     "A3": {
+      "TP": 64,
+      "FP": 55,
+      "FN": 0,
+      "TN": 409,
+      "honest_quarantined_pct": 11.85344827586207
+     }
+    }
+   },
+   "0.7": {
+    "TP": 108,
+    "FP": 178,
+    "FN": 20,
+    "TN": 1278,
+    "MCC": 0.5112107658541969,
+    "honest_quarantined_pct": 12.225274725274724,
+    "per_scenario": {
+     "A0": {
+      "TP": 0,
+      "FP": 33,
+      "FN": 0,
+      "TN": 495,
+      "honest_quarantined_pct": 6.25
+     },
+     "A1": {
+      "TP": 44,
+      "FP": 60,
+      "FN": 20,
+      "TN": 404,
+      "honest_quarantined_pct": 12.931034482758621
+     },
+     "A3": {
+      "TP": 64,
+      "FP": 85,
+      "FN": 0,
+      "TN": 379,
+      "honest_quarantined_pct": 18.31896551724138
+     }
+    }
+   }
+  },
+  "best_T_min": 0.3,
+  "STOP": false
+ }
+}

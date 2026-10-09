@@ -1,0 +1,218 @@
+[
+ {
+  "tag": "ver_full_A1_enfon",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_full_A1_enfoff",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab7abl_A1_enfon",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab7abl_A1_enfoff",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab9abl_A1_enfon",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab12abl_A1_enfon",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab9abl_A1_enfoff",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab12abl_A1_enfoff",
+  "exp": "verify",
+  "cfg": "A1",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40
+ },
+ {
+  "tag": "ver_full_A3_enfon",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_full_A3_enfoff",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab7abl_A3_enfon",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab7abl_A3_enfoff",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab9abl_A3_enfon",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab12abl_A3_enfon",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab9abl_A3_enfoff",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab12abl_A3_enfoff",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab8abl_A3_enfon",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_ab8abl_A3_enfoff",
+  "exp": "verify",
+  "cfg": "A3",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40
+ },
+ {
+  "tag": "ver_anchor_lrad_enfon",
+  "exp": "verify",
+  "cfg": "benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0
+ },
+ {
+  "tag": "ver_anchor_lrad_enfoff",
+  "exp": "verify",
+  "cfg": "benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0
+ },
+ {
+  "tag": "ver_anchor_tap",
+  "exp": "verify",
+  "cfg": "benign",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0
+ },
+ {
+  "tag": "ver_anchor_sfto",
+  "exp": "verify",
+  "cfg": "benign",
+  "arm": "sfto",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0
+ },
+ {
+  "tag": "ver_benign_cl_s2",
+  "exp": "verify",
+  "cfg": "benign_cl_s2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0
+ },
+ {
+  "tag": "ver_benign_cl_s3",
+  "exp": "verify",
+  "cfg": "benign_cl_s3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0
+ }
+]

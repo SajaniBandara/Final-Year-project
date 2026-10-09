@@ -81,9 +81,11 @@ TRAIN_FRAC = 0.70
 VAL_FRAC   = 0.15    # test = remaining 0.15
 BENIGN_V   = 0       # attack_v == 0 → benign (Attack0)
 # Seeds partitioned by role (spec: "partitioned by seed")
-TRAIN_SEEDS = {1, 2, 3}
-VAL_SEEDS   = {4}
-TEST_SEEDS  = {5}
+# Seed split (supervisor 2026-10-09): the model trains on seeds 6-8 ONLY, validates on seeds 2 and 3 (the calibration seeds, which also
+# set the thresholds), and is tested on seed 1, the reported seed. (Was TRAIN {1,2,3} / VAL {4} / TEST {5}.)
+TRAIN_SEEDS = {6, 7, 8}
+VAL_SEEDS   = {2, 3}
+TEST_SEEDS  = {1}
 # Stabilized cycle range: originally 30-87 (v_bar ramps for the first ~30s
 # while SUMO traffic gets moving; attack runs were 90s, cycles 0-87). A1-A4
 # were re-collected at simTime=40 (cycles 0-~37) to get real seed4/5 data —
@@ -95,8 +97,9 @@ TEST_SEEDS  = {5}
 # 90/40 — 200 would silently truncate the last ~1/3 of every re-collected
 # run. Raised with headroom; any run shorter than this is unaffected since
 # make_windows() only ever sees cycles that actually exist in that run's CSV.
-MIN_CYCLE  = 0
-MAX_CYCLE  = 310
+# One warm-up for all runs (supervisor 2026-10-09): cycles 0..44 are dropped everywhere; runs are 181 s so cycles 45..179 are all real.
+MIN_CYCLE  = 45
+MAX_CYCLE  = 180
 # Cycle-level labeling: a window is attack-positive only if it contains a
 # delta_t spike above the benign p99 (attack actually firing this window),
 # not merely because it came from an attacker RSU's run. See make_windows().
