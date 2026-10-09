@@ -708,6 +708,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
              << " delta_best=" << delta_best * 1000.0 << "ms"
              << " [SAFETY-CRITICAL]" << endl;
 
+    if (!suppress_detection) ev_decision(DSRC_RULE_S1);   // one S1 decision per evaluated packet
     // Condition 1: δ_p > δ̄_r(t) + k·σ_r(t)  (Eq. 3.14)
     // Condition 3: δ_best(r,t) ≤ δ̄_r(t) + k·σ_r(t)  (selectivity, eq:rule_s1)
     if (effective_delay_s > threshold && selective_ok)
@@ -758,6 +759,8 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // latch above — the same asymmetry, for the same reason, as
         // g_disable_s3_s4 in tcam_detection.h.
         const int S1_HOME_VARIANT = 0;   // Attack 1, per main.tex Signature S1
+        if (!g_disable_s1_s2 && !suppress_detection && sender_node_id < (uint32_t)total_size)
+            ev_alarm_attributed(sender_node_id, DSRC_RULE_S1, 1);   // raw decision, before the first-detection latch below
         if (!g_disable_s1_s2 && !suppress_detection &&
             sender_node_id < (uint32_t)total_size &&
             !is_detected_node[S1_HOME_VARIANT][sender_node_id])

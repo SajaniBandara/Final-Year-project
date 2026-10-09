@@ -117,6 +117,7 @@ inline void sfto_run_cycle()
         // while the table is actively growing.
         if (g_ewma > 0.0 && occ_pred >= SFTO_THETA)
         {
+            ev_alarm_attributed(node, EV_SRC_SFTO, 1);   // raw per-cycle decision, not the latch below
             if (!sfto_detected[node])
             {
                 sfto_detected[node] = true;

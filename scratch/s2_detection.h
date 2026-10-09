@@ -187,6 +187,8 @@ inline bool s2_detect_packet(uint32_t sender_sim_index,
         // g_disable_s1_s2 gates the DETECTION RECORD only, never the
         // g_s2_gt_delay_exceeded ground-truth latch above — see s1_detection.h.
         const int S2_HOME_VARIANT = 1;   // Attack 2, per main.tex Signature S2
+        if (!g_disable_s1_s2 && sender_sim_index < (uint32_t)total_size)
+            ev_alarm_attributed(sender_sim_index, DSRC_RULE_S2, 1);   // raw decision, before the first-detection latch below
         if (!g_disable_s1_s2 &&
             sender_sim_index < (uint32_t)total_size &&
             !is_detected_node[S2_HOME_VARIANT][sender_sim_index])

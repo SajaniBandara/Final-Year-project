@@ -92,3 +92,4 @@ lstm_pipeline/*_backup_*.bin
 *.pkl
 # Superseded one-off figure bundle (current deliverable is phantom_results_figures.zip)
 /docs/phantom_exp23.zip
+scratch/build_tag.h

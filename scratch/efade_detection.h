@@ -565,6 +565,7 @@ inline void fade_detect_anomaly()
             if (p_out == 0 && p_in == 0) continue; // no traffic at this node this epoch
 
             bool dup = (p_out > p_in);
+            if (dup) ev_alarm_attributed(node, EV_SRC_FADE, 1);   // raw per-epoch decision
             if ( node_malicious &&  dup) pp_tp_global++;
             if (!node_malicious &&  dup) pp_fp_global++;
             if (!node_malicious && !dup) pp_tn_global++;

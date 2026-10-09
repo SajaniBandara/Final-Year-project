@@ -377,9 +377,14 @@ inline bool tcam_flow_is_legit(uint32_t original_fid) {
 // (routing.cc); here we only need the authorization OUTCOME for the S3 detector, so we
 // replicate the quorum decision without re-running f+1 signatures per install.
 inline bool tcam_flowmod_authorized(uint32_t original_fid) {
+    // Same endorsement result as bc_commit_flowmod (supervisor 2026-10-08, AB8): a legitimate flow is endorsed by every
+    // honest RSU; an attacker's FlowMod only by the Byzantine RSUs (byz_rsu_effective(), default f=21). The quorum is f+1
+    // (=22) normally and 1 under ab8_single_rsu, so the unauthorized FlowMod then COMMITS, f_unauth=0, and S3 (which gates
+    // on f_unauth) cannot fire -- the plan's "f_unauth forced to 0 in the rule engine". Default arm: 21 < 22, unchanged.
     uint32_t f_plus_1  = (N_RSUs > 0) ? ((N_RSUs - 1) / 3) + 1 : 1;
-    uint32_t endorsers = tcam_flow_is_legit(original_fid) ? f_plus_1 : 0u;
-    if (enable_endorsement_requirement && endorsers < f_plus_1)
+    uint32_t quorum    = ab8_single_rsu ? 1u : f_plus_1;
+    uint32_t endorsers = tcam_flow_is_legit(original_fid) ? (uint32_t)N_RSUs : byz_rsu_effective();
+    if (enable_endorsement_requirement && endorsers < quorum)
         return false;   // unauthorized: absent from the endorsed policy set (eq:unauth_flowmod)
     return true;        // committed / authorized
 }
@@ -806,6 +811,7 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     // benign. Keyed by the victim RSU to match A3/A4 ground truth. Runs before
     // any detector sees anything. See g_lstm_tcam_sendgt_count (crypto_layer.h).
     g_lstm_tcam_sendgt_count[target_rsu_node_id]++;
+    ev_act(target_rsu_node_id);
     // eq:l_mit onset -- latched on the ATTACKER (node_id), not the victim RSU:
     // L_mit measures how long the malicious node acted before being stopped.
     lmit_mark_attack(node_id);
@@ -874,6 +880,12 @@ inline void tcam_install_malicious(uint32_t node_id, uint32_t target_rsu_node_id
     // registry -> 0 honest endorsers -> NOT committed under AB8 -> unauthorized.
     // Derived from fid provenance via the same observable predicate as legit installs.
     e.authorized     = tcam_flowmod_authorized(fake_fid);
+    // AB12: the owning compromised controller retroactively legitimises its own FlowMod -> f_unauth = 0 for this entry
+    // (S3 gates on f_unauth), so it also stops counting as unauthorised.
+    if (ab12_legitimize && ab_cap_active()) {
+        uint32_t _rl = target_rsu_node_id - (uint32_t)N_Vehicles;
+        if (_rl < (uint32_t)N_RSUs && controller_compromised[rsu_controller_assignment[_rl]]) e.authorized = true;
+    }
     // Ground-truth wiring for M1-M3 (calculate_security_detection_metrics): mark the
     // VICTIM RSU malicious using the SAME node-index space (RSU node_id) that
     // record_detection_event() uses when flag_s3/flag_s4 fires (tcam_detection.h).

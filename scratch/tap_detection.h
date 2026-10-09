@@ -36,6 +36,7 @@ inline void tap_report_to_controller(uint32_t attacker_current_hop)
 	{
 		tap_detected_node[attacker_current_hop] = true;
 		tap_t_quarantine[attacker_current_hop] = Simulator::Now().GetSeconds();
+		ev_quarantine(attacker_current_hop);   // TAP's own mitigation: Controller Defaulter List
 		cout << "[TAP] Detection event recorded for node " << attacker_current_hop
 			 << " at t=" << Simulator::Now().GetSeconds() << "s" << endl;
 	}
@@ -124,6 +125,7 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 		cout << "[TAP] TIMING VIOLATION: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0
 			 << "ms exceeds TAP_MARGIN=" << TAP_MARGIN*1000.0 << "ms" << endl;
 		cout << "[TAP] v=" << v << "s PPAT=" << PPAT << "s difference=" << (std::abs(v-PPAT)*1000.0) << "ms" << endl;
+		ev_alarm_attributed(sender_current_hop, EV_SRC_TAP, 1);   // raw per-packet decision, not the latch
 		tap_report_to_controller(sender_current_hop);
 	}
 	else
@@ -295,17 +297,14 @@ inline void tap_process_packet(uint32_t receiver_current_hop,
 	// When --tap_perpkt_dump is on we bypass this suppression so detection runs
 	// for EVERY packet (the un-latched signal the fair re-score needs); TAP is a
 	// passive observer in the baseline runs, so not "dropping" here is inert.
-	if (!g_tap_perpkt_dump && tap_check_defaulter_list(sender_current_hop))
-	{
-		// Lines 19-20: discard packet from blacklisted node
-		cout << "[TAP] Retransmission packet dropped for flow id "
-			 << flow_id << " #packet: " << packet_id << endl;
-	}
-	else
-	{
-		// Lines 11-18: run timing-based detection
-		tap_run_detection(receiver_current_hop, sender_current_hop, flow_id, packet_id);
-	}
+	// Supervisor 2026-10-09: the baseline's RAW decision is scored before its own latch/list. Previously a sender
+	// on the Defaulter List was no longer evaluated, so TAP's alarm stream stopped after ~1 s (260 nodes were listed
+	// from t=1.1 s) and its post-warm-up FPR of 0.04 % was an artifact of the suppression. Detection now always runs;
+	// the list is kept as a separate count (and is never enforced: the "drop" below was only a log line).
+	if (tap_check_defaulter_list(sender_current_hop))
+		cout << "[TAP] (sender already on Defaulter List; raw decision still evaluated) flow id "
+		     << flow_id << " #packet: " << packet_id << endl;
+	tap_run_detection(receiver_current_hop, sender_current_hop, flow_id, packet_id);
 }
 
 #endif // TAP_DETECTION_H

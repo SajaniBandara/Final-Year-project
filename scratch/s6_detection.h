@@ -263,6 +263,8 @@ inline bool s6_detect(uint32_t recv_flow_id,
         // gate as an implicit invariant. See s5_detection.h for why S5 (no
         // gate) needed the hardcode to actually change behaviour, unlike S6.
         const int S6_HOME_VARIANT = 5;   // Attack 6, per main.tex Signature S6
+        if (prev_sender < (uint32_t)total_size)
+            ev_alarm_attributed(prev_sender, DSRC_RULE_S6, 1);   // raw decision, before the first-detection latch below
         if (prev_sender < (uint32_t)total_size &&
             !is_detected_node[S6_HOME_VARIANT][prev_sender])
         {

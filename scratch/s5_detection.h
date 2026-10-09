@@ -315,6 +315,8 @@ inline bool s5_detect(uint32_t recv_flow_id,
         // 221 detection events recorded into Attack 6's own bucket during an
         // A6-only run actually came from S5, not S6.
         const int S5_HOME_VARIANT = 4;   // Attack 5, per main.tex Signature S5
+        if (prev_sender < (uint32_t)total_size)
+            ev_alarm_attributed(prev_sender, DSRC_RULE_S5, 1);   // raw decision, before the first-detection latch below
         if (prev_sender < (uint32_t)total_size &&
             !is_detected_node[S5_HOME_VARIANT][prev_sender])
         {

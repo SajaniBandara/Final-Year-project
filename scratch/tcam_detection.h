@@ -340,9 +340,10 @@ inline TcamCycleMetrics ComputeTcamDetection(
         metrics.total_lambda_fm += lambda_fm;
         metrics.total_lambda_pi += lambda_pi;
         metrics.total_malicious += malicious_count;
+        ev_decision(DSRC_RULE_S3); ev_decision(DSRC_RULE_S4);   // one S3 and one S4 decision per RSU per cycle
         if (flag_s3) {
             ++metrics.s3_fired_count;
-            if (!g_disable_s3_s4) record_detection_event(2, node_id, DSRC_RULE_S3);
+            if (!g_disable_s3_s4) { ev_alarm_attributed(node_id, DSRC_RULE_S3, 1); record_detection_event(2, node_id, DSRC_RULE_S3); }
             // S3 (eq:rule_s3): unauthorised-FlowMod rate anomaly — this RSU's
             // FlowMod-install rate λ_FM exceeds the benign threshold with no
             // matching active flow, the control-plane TCAM-exhaustion signature.
@@ -355,7 +356,7 @@ inline TcamCycleMetrics ComputeTcamDetection(
         }
         if (flag_s4) {
             ++metrics.s4_fired_count;
-            if (!g_disable_s3_s4) record_detection_event(3, node_id, DSRC_RULE_S4);
+            if (!g_disable_s3_s4) { ev_alarm_attributed(node_id, DSRC_RULE_S4, 1); record_detection_event(3, node_id, DSRC_RULE_S4); }
 
             // eq:quarantine enforcement for A4 (2026-08-31).
             //

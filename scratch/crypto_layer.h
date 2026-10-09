@@ -1935,6 +1935,8 @@ inline void trust_update_negative(uint32_t node) {
     if (g_trust_score[node] < TRUST_T_MIN && !g_quarantined[node]) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
+        t_quarantine_evt[node] = ns3::Simulator::Now().GetSeconds();
+        if (g_ev_trust_qua) ev_quarantine(node);
 
         // Item 4 (2026-09-05): release the HF activity latch here, per
         // eq:local_quarantine -- but only for variants whose enforcement is
@@ -2013,6 +2015,7 @@ inline void ctrl_trust_update_positive(uint32_t ctrl) {
 
 inline void ctrl_trust_update_negative(uint32_t ctrl) {
     if (!enable_controller_failover || ab9_isolation_blocked()) return; // AB9-A: no trust scoring, no revoke/failover
+    if (!enable_quarantine_enforcement) return;   // detection-only run (supervisor 2026-10-09): no revocation, failover or isolation
     if (ctrl >= N_Controllers) return;
     double old_v = g_ctrl_trust_score[ctrl];
     double v = old_v - TRUST_DELTA_P_CTRL;
@@ -2380,6 +2383,8 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
     // comment for why (flow_id, pkt_id) is a recycling id, not the spec's H(p)).
     alert.event_key = event_key_from_hp(h_p);
     g_witness_alert_pool[target_node].push_back(alert);
+    ev_witness(target_node, alert.alert_type == 0 ? 0 : 1);
+    ev_alarm_attributed(target_node, alert.alert_type == 0 ? DSRC_WITNESS_DA : DSRC_WITNESS_NFA, 1);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
     if (CRYPTO_DEBUG_LOG)
@@ -2491,6 +2496,8 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
     // comment for why (flow_id, pkt_id) is a recycling id, not the spec's H(p)).
     alert.event_key = event_key_from_hp(h_p);
     g_witness_alert_pool[target_node].push_back(alert);
+    ev_witness(target_node, alert.alert_type == 0 ? 0 : 1);
+    ev_alarm_attributed(target_node, alert.alert_type == 0 ? DSRC_WITNESS_DA : DSRC_WITNESS_NFA, 1);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
     if (CRYPTO_DEBUG_LOG)

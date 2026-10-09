@@ -113053,23 +113053,60 @@ void write_csv_status_lifetime()
 	fstream fout;
 	fout.open(ll_data, ios::out|ios::trunc);
 
+	// 2026-10-08 (supervisor step 1): the solver input used to be copied from
+	// routing_data_at_controller_inst, whose velocity/acceleration were never filled in architecture 3
+	// (uninitialised memory, |v|~1e-309), so every pair looked stationary and the optimiser never ran.
+	// Position/velocity now come straight from the mobility model; acceleration is the change in
+	// velocity since the previous solver call. Vehicles not yet reporting (position exactly (0,0)) or
+	// with non-finite state are written with nodeid=-1 so the solver gives them no links. Row index
+	// stays the node index so the n*n solution file keeps its meaning.
+	static std::vector<Vector> prev_vel;
+	static double prev_t = -1.0;
+	if (prev_vel.size() != (size_t)var) prev_vel.assign(var, Vector(0,0,0));
+	const double now_t = Now().GetSeconds();
+	const double dt_acc = (prev_t >= 0.0) ? (now_t - prev_t) : 0.0;
+	uint32_t n_active = 0, n_inactive = 0, n_moving = 0, n_bad = 0;
 	for (uint32_t i=0; i<(uint32_t)var; i++)
-		{
-		//cout<<"writing status "<<i<<endl;
+	{
+		Ptr<Node> node = (i < N_Vehicles) ? Vehicle_Nodes.Get(i) : RSU_Nodes.Get(i - N_Vehicles);
+		Ptr<MobilityModel> mm = node->GetObject<MobilityModel>();
+		Vector pos = mm ? mm->GetPosition() : Vector(0,0,0);
+		Vector vel = mm ? mm->GetVelocity() : Vector(0,0,0);
+		Vector acc(0,0,0);
+		if (dt_acc > 0.0)
+			acc = Vector((vel.x - prev_vel[i].x)/dt_acc, (vel.y - prev_vel[i].y)/dt_acc, 0.0);
+		prev_vel[i] = vel;
+		bool finite = std::isfinite(pos.x) && std::isfinite(pos.y) && std::isfinite(vel.x) &&
+		              std::isfinite(vel.y) && std::isfinite(acc.x) && std::isfinite(acc.y);
+		if (!finite) ++n_bad;
+		// A vehicle is inactive until its first move (supervisor 2026-10-09): until then it sits parked at its trace
+		// start point and would form stationary 100 s links. Latched per vehicle at the first non-zero velocity seen.
+		static std::vector<char> started;
+		if (started.size() != (size_t)var) started.assign(var, 0);
+		if (i < N_Vehicles && (vel.x != 0.0 || vel.y != 0.0)) started[i] = 1;
+		bool inactive = (!mm) || (i < N_Vehicles && (!started[i] || (pos.x == 0.0 && pos.y == 0.0)));
+		if (inactive || !finite) { ++n_inactive; pos = Vector(0,0,0); vel = Vector(0,0,0); acc = Vector(0,0,0); }
+		else { ++n_active; if (vel.x != 0.0 || vel.y != 0.0) ++n_moving; }
 		fout << var << ", "
-		     << (routing_data_at_controller_inst+i)->nodeid << ", "
-		     << (routing_data_at_controller_inst+i)->position.x << ", "
-		     << (routing_data_at_controller_inst+i)->position.y << ", "
-		     << (routing_data_at_controller_inst+i)->velocity.x<< ", "
-		     << (routing_data_at_controller_inst+i)->velocity.y << ", "
-		     << (routing_data_at_controller_inst+i)->acceleration.x << ", "
-		     << (routing_data_at_controller_inst+i)->acceleration.y << ", "
+		     << ((inactive || !finite) ? -1 : (int)i) << ", "
+		     << pos.x << ", " << pos.y << ", "
+		     << vel.x << ", " << vel.y << ", "
+		     << acc.x << ", " << acc.y << ", "
 		     << mobility_scenario << ", "
 		     << N_Vehicles << ", "
 		     << N_RSUs << ", "
 		     << "\n";
 	}
 	fout.close();
+	prev_t = now_t;
+	cout << "[LL-INPUT] t=" << now_t << " active=" << n_active << " inactive=" << n_inactive
+	     << " moving=" << n_moving << " nonfinite=" << n_bad << endl;
+	if (n_bad > 0 && !allow_solver_fallback)
+	{
+		cerr << "[SOLVER-ERROR] " << n_bad << " node(s) with non-finite position/velocity at t=" << now_t
+		     << "s; stopping." << endl;
+		std::exit(2);
+	}
 	cout<<"finished writing link lifetime status at"<<Now().GetSeconds()<<endl;
 
 }
@@ -114781,6 +114818,8 @@ uint32_t g_active_variant_mask = 0;
 // t_quarantine: when quarantine/detection decision fires for that node
 double t_onset[total_size]      = {0.0};
 double t_quarantine[total_size] = {0.0};
+double t_quarantine_evt[total_size] = {0.0};   // set ONLY by the SC.Quarantine event (never by a detection) -- M4 is measured to this
+uint32_t g_lmit_uncontained_n = 0;             // attackers that acted and were never quarantined (their latency is unbounded)
 
 // ── M4 / eq:l_mit CORRECTION (2026-08-31) ────────────────────────────────────
 // Default OFF: every figure produced before this date reproduces exactly.
@@ -114914,6 +114953,7 @@ double   current_UFCR        = 0.0;
 
 // === ATTACK 2: Selective Time Delay — Data Plane ===
 // Pattern follows LDA_2_.cc vanishing_malicious_nodes[] structure
+#include "event_log.h"             // raw per-cycle event log for event-based scoring (scripts/event_scorer.py)
 #include "attack_variables.h"
 
 // Phase 1 / D1: Reproducibility globals for the ns-3 RNG seed infrastructure.
@@ -115540,11 +115580,20 @@ void record_attack_onset(int v, int n)
 // src: which component decided this (supervisor Fix 5). Defaults to
 // DSRC_QUARANTINE so the trust-decay path, which has no single owning
 // signature, still lands in a named bucket rather than an unlabelled one.
+inline void ev_alarm_attributed(uint32_t raw_node, uint32_t src_bit, int window_cycles)
+{
+	uint32_t sn = (raw_node < N_Vehicles) ? hf_gt_attribution_node(raw_node) : raw_node;
+	ev_fire(src_bit);
+	if (sn != UINT32_MAX && sn >= N_Vehicles && sn < N_Vehicles + N_RSUs) ev_alarm(sn, src_bit, window_cycles);
+}
+
 void record_detection_event(int v, int n, uint16_t src)
 {
 	is_detected_node[v][n] = true;
 	detection_source[v][n] |= src;
 	t_quarantine[n] = Simulator::Now().GetSeconds();
+	// Event log: the alarm itself (not the latched flag above). Vehicles map to their covering RSU.
+	// (alarm events are emitted at each detector's RAW decision site, before its latch gate -- not here)
 }
 
 // Random boolean helper — Phase 1 / D1 fix.
@@ -117667,8 +117716,13 @@ void calculate_mitigation_latency_metric()
     uint32_t valid_count = 0;
 
     g_lmit_blocked_before_acting = 0;
+    g_lmit_uncontained_n = 0;
     for (int n = 0; n < total_size; n++)
     {
+        // M4 is measured to the SC.Quarantine EVENT (t_quarantine_evt), not to the detection time that
+        // record_detection_event() also writes into t_quarantine[] (supervisor 2026-10-09: the earlier
+        // 1,375 ms in AB7-ablated was measured from detection). Legacy mode keeps the old timestamp.
+        const double q_ts = enable_corrected_lmit ? t_quarantine_evt[n] : t_quarantine[n];
         // eq:l_mit onset. Corrected mode uses the node's OWN first attack;
         // legacy mode uses attack_start_time via t_onset (see t_first_attack).
         double onset = enable_corrected_lmit ? t_first_attack[n] : t_onset[n];
@@ -117689,16 +117743,18 @@ void calculate_mitigation_latency_metric()
             (active_attack_variant >= 0 && n < total_size
              && is_malicious_node[active_attack_variant][n]);
         if (enable_corrected_lmit && _declared_attacker
-            && onset == 0.0 && t_quarantine[n] > 0.0)
+            && onset == 0.0 && q_ts > 0.0)
         {
             ++g_lmit_blocked_before_acting;
             continue;
         }
 
         // Only count nodes that have both timestamps set
-        if (onset > 0.0 && t_quarantine[n] > onset)
+        if (enable_corrected_lmit && _declared_attacker && onset > 0.0 && q_ts == 0.0)
+            ++g_lmit_uncontained_n;   // acted, never contained: latency unbounded (reported via lmit_inf)
+        if (onset > 0.0 && q_ts > onset)
         {
-            double lmit = t_quarantine[n] - onset;  // seconds
+            double lmit = q_ts - onset;  // seconds
             total_latency += lmit;
             valid_count++;
 
@@ -117797,15 +117853,16 @@ void ufcr_attempt_unauthorized_flowmod()
         // outcome, not a chain entry (see docs/METRICS_DEVIATIONS_FROM_PROPOSAL.md).
         if (committed && g_rsu_commit_hashes.size() > chain_len_before)
             g_rsu_commit_hashes.pop_back();
-        g_ufcr_unauth_total++;
-        if (!committed) g_ufcr_blocked++;
-        // AB12 (ab12_legitimize, p>=33): a compromised controller's read/write access lets it
-        // retroactively legitimise a FlowMod the endorsement quorum rejected. Counted separately
-        // so M11 = (unauth - blocked + legitimised) / unauth; g_ufcr_blocked stays the quorum count.
+        // AB12 (ab12_legitimize, p>=33): a compromised controller's read/write access lets it retroactively
+        // legitimise a FlowMod the quorum rejected. From 2026-10-09 the legitimised FlowMod COUNTS AS COMMITTED
+        // (so UFCR = blocked/unauth collapses), g_ufcr_legitimized counts them, and the controller penalty for
+        // it is not raised (committed is true below).
         if (!committed && ab12_legitimize && ab_cap_active()) {
             for (uint32_t _c = 0; _c < (uint32_t)N_Controllers; _c++)
-                if (controller_compromised[_c]) { g_ufcr_legitimized++; break; }
+                if (controller_compromised[_c]) { committed = true; g_ufcr_legitimized++; break; }
         }
+        g_ufcr_unauth_total++;
+        if (!committed) g_ufcr_blocked++;
         if (CRYPTO_DEBUG_LOG)
             std::cout << "[UFCR] unauthorized FlowMod attempt variant="
                       << active_attack_variant
@@ -118177,7 +118234,7 @@ void write_security_metrics_csv()
 			 << " quarantined_nodes, quarantine_block_events,"
 			 << " solver_used, solver_calls, m10_raw_ts_exposed,"
 			 << " ab11_att0, ab11_att1, ab11_att2, ab11_att3, ab11_att4, ab11_att5plus,"
-			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus\n";
+			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus, build_commit, lmit_uncontained_n, lmit_inf\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118314,6 +118371,9 @@ void write_security_metrics_csv()
 		 << ", " << g_ab11_attempts[3] << ", " << g_ab11_attempts[4] << ", " << g_ab11_attempts[5]
 		 << ", " << g_ab11_accepted[0] << ", " << g_ab11_accepted[1] << ", " << g_ab11_accepted[2]
 		 << ", " << g_ab11_accepted[3] << ", " << g_ab11_accepted[4] << ", " << g_ab11_accepted[5]
+		 << ", " << SDVN_BUILD_TAG
+		 << ", " << g_lmit_uncontained_n
+		 << ", " << ((g_lmit_scored_n == 0 && g_lmit_uncontained_n > 0) ? 1 : 0)
 		 << "\n";
 
 	fout.close();
@@ -118700,6 +118760,13 @@ void calculate_performance_evaluation_metrics()
 		}
 	}
 	// M1 window grid: snapshot this cycle's OBU/RSU decisions + ground truth.
+	// Event log, A3/A4 state label: attacker-injected TCAM entries currently held per RSU.
+	if (active_attack_variant == 2 || active_attack_variant == 3)
+	{
+		std::map<uint32_t,uint32_t> _held;
+		for (const auto& _e : g_tcam_table) if (_e.is_malicious) _held[_e.node_id]++;
+		for (const auto& kv : _held) ev_state(kv.first, kv.second);
+	}
 	dw_end_cycle();
 	std::fill(g_dw_activity_last.begin(), g_dw_activity_last.end(), (uint8_t)0);
 	// [density-logging] flush this cycle's rows so data survives any exit path.
@@ -121767,7 +121834,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						if (total_tx_delay > 0.0) {
 							uint32_t _std_gt_node = hf_gt_attribution_node(current_hop);
 							if (_std_gt_node != UINT32_MAX)
-								g_lstm_std_sendgt_count[_std_gt_node]++;
+								{ g_lstm_std_sendgt_count[_std_gt_node]++; ev_act(_std_gt_node); }
                                     lmit_mark_attack(_std_gt_node);   // eq:l_mit onset
 						}
 
@@ -121853,6 +121920,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							!quarantine_blocks(hf_gt_attribution_node(current_hop)) &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
+							hf_packet_forwarded(flow_id, packet_id) &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
 						    // HF-2: fire only on the first attempt (== 0) so a retransmit does
@@ -121912,7 +121980,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 						    {
 						        uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
 						        if (_hf_gt_node != UINT32_MAX)
-						            g_lstm_hf_sendgt_count[_hf_gt_node]++;
+						            { g_lstm_hf_sendgt_count[_hf_gt_node]++; ev_act(_hf_gt_node); }
                                     lmit_mark_attack(_hf_gt_node);   // eq:l_mit onset
 						    }
 						    // eFADE: count the hidden duplicate as an extra forward event at
@@ -121959,6 +122027,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							!quarantine_blocks(hf_gt_attribution_node(current_hop)) &&
 							hf_delta_entry_active(flow_id, current_hop, hf_resolve_eavesdropper(current_hop)) &&
 							pd_all_inst[flow_id].pd_inst[hop].attempts[arguments.channel][packet_id] == 0 &&
+							hf_packet_forwarded(flow_id, packet_id) &&
 							GetBooleanWithProbability(attack_percentage, current_hop))
 						{
                             cout << attack_tag() << " ③ Malicious RSU (node " << current_hop
@@ -121995,7 +122064,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             {
                                 uint32_t _hf_gt_node = hf_gt_attribution_node(current_hop);
                                 if (_hf_gt_node != UINT32_MAX)
-                                    g_lstm_hf_sendgt_count[_hf_gt_node]++;
+                                    { g_lstm_hf_sendgt_count[_hf_gt_node]++; ev_act(_hf_gt_node); }
                                     lmit_mark_attack(_hf_gt_node);   // eq:l_mit onset
                             }
                             // eFADE: count the hidden duplicate as an extra forward event
@@ -125348,7 +125417,7 @@ void check_and_transmit(uint32_t fid, uint32_t source, uint32_t total_packets, u
 						if (attacked) {
 							uint32_t _std_gt_node = hf_gt_attribution_node(source);
 							if (_std_gt_node != UINT32_MAX)
-								g_lstm_std_sendgt_count[_std_gt_node]++;
+								{ g_lstm_std_sendgt_count[_std_gt_node]++; ev_act(_std_gt_node); }
                                     lmit_mark_attack(_std_gt_node);   // eq:l_mit onset
 						}
 
@@ -142813,6 +142882,10 @@ int main(int argc, char *argv[])
                  "Fraction (0..1) of HIGH-priority packets the selective-delay attack "
                  "targets; 1.0=all (default), <1.0 subsamples deterministically per packet",
                  g_selective_target_ratio);
+    cmd.AddValue("hf_forward_intensity",
+                 "Fraction (0..1) of eligible packets a hidden-forwarding attacker "
+                 "(S5-S8) duplicates; 1.0=all (default). VANGUARD-HF Exp1/Exp4.",
+                 g_hf_forward_intensity);
     cmd.AddValue("attack_delay_pseudo_random",
                  "Draw each packet's attack delay from a +/-10% band around "
                  "attack_delay_ms (default true). Set false for standalone/"
@@ -144784,6 +144857,8 @@ if (architecture == 3 && N_Vehicles > 0)
 				          + g_delay_suffix
 				          + "_seed" + std::to_string(sim_seed)
 				          + (g_run_tag.empty() ? "" : "_" + g_run_tag);
+				g_ev_trust_qua = !(enable_tap || (!enable_lrad_obu && !enable_lrad_rsu));
+				ev_init("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/events" + g_sim_tag + ".csv", active_attack_variant);
 			}
 			
 			if (routing_test) {
@@ -145396,6 +145471,11 @@ sfto_save_metrics();
                    + g_delay_suffix + "_seed" + std::to_string(sim_seed)
                    + (g_run_tag.empty() ? "" : "_" + g_run_tag) + ".csv");
   }
+  // Event log: declared attacker identities (for the false-quarantine count only; never used for scoring).
+  if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
+      for (int _n = 0; _n < total_size; ++_n)
+          if (is_malicious_node[active_attack_variant][_n]) ev_attacker(_n);
+  ev_flush_all();
   Simulator::Destroy();
   
  

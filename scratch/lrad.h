@@ -396,6 +396,9 @@ inline LRADRSUFlags lrad_rsu(
     // keyed by hf_gt_attribution_node(), the malicious forwarder's covering
     // RSU, so it does not inherit the prev_sender misattribution that puts
     // 79.2% of the witness path's duplication alerts on vehicle relays.
+    if (_ranom_live && active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS &&
+        rsu < (uint32_t)total_size)
+        ev_alarm_attributed(rsu, DSRC_RULE_RANOM, 1);   // raw decision, before the first-detection latch below
     if (_ranom_live &&
         active_attack_variant >= 0 &&
         active_attack_variant < NUM_ATTACK_VARIANTS &&
@@ -689,6 +692,9 @@ inline LRADRSUFlags lrad_rsu(
         // flag_LSTM) for the window-level LSTM-only reference metric that
         // evaluator.py computes independently from raw scores -- only the
         // permanent TP/FP confusion-matrix latch is withheld from soft hits.
+        if (flags.flag_LSTM && flags.flag_LSTM_high_conf && active_attack_variant >= 0 &&
+            active_attack_variant < NUM_ATTACK_VARIANTS && prev_sender < (uint32_t)total_size)
+            ev_alarm_attributed(prev_sender, DSRC_LSTM, 10);   // windowed alarm: W = 10 cycles
         if (flags.flag_LSTM && flags.flag_LSTM_high_conf &&
             active_attack_variant >= 0 &&
             active_attack_variant < NUM_ATTACK_VARIANTS &&

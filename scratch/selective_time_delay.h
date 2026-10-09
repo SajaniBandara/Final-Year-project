@@ -31,6 +31,23 @@ inline bool selective_packet_targeted(uint32_t flow_id, uint32_t packet_id)
     return u < g_selective_target_ratio;
 }
 
+// VANGUARD-HF Exp 1 / Exp 4: forwarding intensity = fraction of eligible
+// packets the compromised forwarder actually duplicates (S5-S8). Default 1.0
+// = every eligible packet (original behaviour). Same deterministic per-packet
+// hash as selective_packet_targeted() but with a distinct salt so the two
+// knobs never correlate. CLI: --hf_forward_intensity.
+inline double g_hf_forward_intensity = 1.0;
+
+inline bool hf_packet_forwarded(uint32_t flow_id, uint32_t packet_id)
+{
+    if (g_hf_forward_intensity >= 1.0) return true;
+    if (g_hf_forward_intensity <= 0.0) return false;
+    uint64_t h = (uint64_t)flow_id * 2246822519ull + (uint64_t)packet_id * 3266489917ull + 0x85EBCA6Bull;
+    h ^= h >> 15; h *= 0xC2B2AE3D27D4EB4Full; h ^= h >> 13;
+    double u = (double)(h & 0xFFFFFFull) / (double)0x1000000ull;
+    return u < g_hf_forward_intensity;
+}
+
 // sample_attack_injection_delay() (mobility amplification fix §4.3):
 // Returns the per-packet attack delay in seconds. In the default banded
 // mode (attack_delay_pseudo_random=true, attack_variables.h), draws from a
