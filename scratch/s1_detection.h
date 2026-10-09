@@ -511,6 +511,11 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // per-speed-point knob (see §7 overfitting risk).
     double effective_delay_s = packet_delay_s;
     bool   _handoff_inflated = false;   // item 7 follow-up: see s1_suppress_handoff_fp
+    // Handoff evidence = what an RSU can observe: the originating vehicle's serving RSU changed since the last routing cycle
+    // (handoff_tracker.h, true for ONE 1 s cycle). Read from the tracker itself, NOT from the local variable above, which is set
+    // inside the branch that adds the synthetic jitter. The value is the same; the dependency is not on the injector.
+    const bool _ho_observed = (packet_delay_s > 0.0) && handoff_just_occurred(vehicle_id);
+    const bool _ho_exclude  = s1_suppress_handoff_fp && _ho_observed;   // such a packet is not timing evidence for ANY consumer
     if (packet_delay_s > 0.0 && handoff_just_occurred(vehicle_id))
     {
         double jitter_s = s1_sample_handoff_jitter();
@@ -603,7 +608,9 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
     // (cycle-averaged; see s1_update_baseline()'s call site in routing.cc).
     // UNCONDITIONAL regardless of training mode — same "no only-if-compliant
     // clause" reasoning as below.
-    if (packet_delay_s > 0.0)
+    // Supervisor 2026-10-09: with suppression ON the handoff-explained packet is excluded from the LSTM's timing inputs too
+    // (mean delta_t, max, and the >Delta_max flag), not only from the S1 flag and the trust/controller-evidence path.
+    if (packet_delay_s > 0.0 && !_ho_exclude)
     {
         s1_rsu_obs_sum[rsu_idx]   += effective_delay_s;
         s1_rsu_obs_count[rsu_idx] += 1;
@@ -719,7 +726,7 @@ inline bool s1_detect_packet(uint32_t rsu_idx,
         // attributable evidence of an attack. Measured to be 94.8% of all
         // false positives on the zero-attack baseline. See
         // s1_suppress_handoff_fp's declaration.
-        if (s1_suppress_handoff_fp && _handoff_inflated)
+        if (_ho_exclude)
         {
             if (DETECTION_DEBUG_LOG_S1)
                 cout << "[S1] suppressed: delay " << effective_delay_s * 1000.0

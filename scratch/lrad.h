@@ -257,6 +257,7 @@ inline void btmm(uint32_t node, bool b_batch, bool b_hop, bool timing_ok)
         trust_update_positive(node);
     else {
         g_current_trust_source = DSRC_BTMM_PACKET;
+        g_trust_cause_mask = (b_batch ? 0u : (uint32_t)TC_BATCH) | (b_hop ? 0u : (uint32_t)TC_HOP) | (timing_ok ? 0u : (uint32_t)TC_DELAY);
         trust_update_negative(node);
         g_current_trust_source = DSRC_NONE;
     }
@@ -659,6 +660,7 @@ inline LRADRSUFlags lrad_rsu(
             // signer, not the forwarding node u, so a {prev_sender, pkt_id}
             // record frequently does not exist for the eavesdropper path and
             // that btmm() call would otherwise silently skip this penalty.
+            g_trust_cause_mask = TC_S5;
             trust_update_negative(prev_sender);
         }
         if (flags.flag_S6)  bc_write_detection_event(rsu, prev_sender, 6, t_now);

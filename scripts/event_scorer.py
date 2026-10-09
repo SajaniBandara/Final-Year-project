@@ -37,11 +37,13 @@ def mcc(tp, fp, fn, tn):
 def parse(path):
     ev = dict(act=defaultdict(int), alm=defaultdict(list), qua={}, fire=defaultdict(lambda: defaultdict(int)),
               wit=defaultdict(int), atk=set(), commit="", last_cycle=0, qua_events=defaultdict(list),
-              state=defaultdict(int), dec=defaultdict(lambda: defaultdict(int)), variant=-1, uv={}, m4={})
+              state=defaultdict(int), dec=defaultdict(lambda: defaultdict(int)), variant=-1, uv={}, m4={}, quax={}, td={}, rev={}, ctrlc={}, cfg={})
     for line in open(path):
         line = line.strip()
         if line.startswith("# commit="):
             ev["commit"] = line.split("=", 1)[1]; continue
+        if line.startswith("# cfg "):
+            ev["cfg"] = dict(kv.split("=", 1) for kv in line[6:].split() if "=" in kv); continue
         if line.startswith("# variant="):
             ev["variant"] = int(line.split("=", 1)[1]); continue
         if not line or line.startswith("#") or line.startswith("cycle,"):
@@ -63,6 +65,12 @@ def parse(path):
         elif kind == "STATE": ev["state"][(c, n)] = int(val)
         elif kind == "UTIL":
             u, sf, td = val.split(":"); ev["uv"][(c, n)] = (float(u), float(sf), float(td))
+        elif kind == "QUAX":
+            f = val.split(":"); ev["quax"][n] = dict(cycle=c, type=int(f[0]), t=float(f[1]), trust=float(f[2]), dec=[int(x) for x in f[3:11]])
+        elif kind == "TD":
+            f = val.split(":"); ev["td"][n] = dict(type=int(f[0]), dec=[int(x) for x in f[1:9]])
+        elif kind == "REV": ev["rev"][n] = float(val)
+        elif kind == "CTRLC": ev["ctrlc"][n] = int(val)
         elif kind == "M4":
             a, b, d = val.split(":"); ev["m4"][n] = (float(a), float(b), float(d))
         elif kind == "DEC":

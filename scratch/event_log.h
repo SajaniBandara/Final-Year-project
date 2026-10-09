@@ -22,6 +22,9 @@
 #define EVENT_LOG_H
 
 #include <map>
+#include <vector>
+#include <array>
+#include <sstream>
 #include <fstream>
 #include <string>
 #include <cstdint>
@@ -38,6 +41,8 @@ static std::ofstream g_ev_out;
 static int g_ev_variant = -1;
 static std::map<uint32_t, std::map<int,uint32_t>> g_ev_dec;   // cycle -> source bit -> decisions taken
 static bool g_ev_enabled = true;
+static std::string g_ev_cfg;                                          // one "# cfg ..." header line: the run configuration
+static std::map<uint32_t, std::vector<std::array<std::string,3>>> g_ev_misc;   // cycle -> (node, kind, value) rows (QUAX, REV, TD, CTRLC)
 // Calibration series (--ev_log_util=1): per RSU-cycle TCAM occupancy (S4), SFTO predicted occupancy (-1 = table not growing),
 // and TAP's largest |v - PPAT| (s) seen on packets from that RSU (or a vehicle it covers). They let U_thresh, SFTO's theta and
 // TAP's margin be swept OFFLINE from one benign and one attack run.
@@ -62,6 +67,7 @@ inline void ev_open_if_needed()
     g_ev_out.open(g_ev_path, std::ios::out | std::ios::trunc);   // trunc: a reused tag can never append
     g_ev_out << "# commit=" << SDVN_BUILD_TAG << "\n";
     g_ev_out << "# variant=" << g_ev_variant << "\n";
+    if (!g_ev_cfg.empty()) g_ev_out << "# cfg " << g_ev_cfg << "\n";
     g_ev_out << "cycle,node,kind,value\n";
 }
 
@@ -85,6 +91,11 @@ inline void ev_flush_before(uint32_t cyc)
     {
         for (auto& kv : it->second) g_ev_out << it->first << ",-1,FIRE," << kv.first << ":" << kv.second << "\n";
         it = g_ev_fire.erase(it);
+    }
+    for (auto it = g_ev_misc.begin(); it != g_ev_misc.end() && it->first < cyc; )
+    {
+        for (auto& r : it->second) g_ev_out << it->first << "," << r[0] << "," << r[1] << "," << r[2] << "\n";
+        it = g_ev_misc.erase(it);
     }
     for (auto it = g_ev_uv.begin(); it != g_ev_uv.end() && it->first.first < cyc; )
     {
@@ -151,6 +162,14 @@ inline void ev_state(uint32_t node, uint32_t n_entries)
     if (!g_ev_enabled || n_entries == 0) return;
     ev_tick(); g_ev_cells[{ev_cycle(), (int32_t)node}].state = n_entries;
 }
+
+inline void ev_misc(uint32_t node, const char* kind, const std::string& value)
+{
+    if (!g_ev_enabled) return;
+    ev_tick();
+    g_ev_misc[ev_cycle()].push_back({std::to_string(node), kind, value});
+}
+inline void ev_set_cfg(const std::string& cfg) { g_ev_cfg = cfg; }
 
 inline void ev_util(uint32_t node, double util)
 {

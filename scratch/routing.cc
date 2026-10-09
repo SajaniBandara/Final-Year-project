@@ -114819,6 +114819,11 @@ uint32_t g_active_variant_mask = 0;
 double t_onset[total_size]      = {0.0};
 double t_quarantine[total_size] = {0.0};
 double t_quarantine_evt[total_size] = {0.0};   // set ONLY by the SC.Quarantine event (never by a detection) -- M4 is measured to this
+struct PktVerify { std::map<uint32_t, double> last_t; };   // node -> time of its latest successful verification of this packet slot
+std::map<uint64_t, PktVerify> g_pkt_verify_hops;   // (flow<<32 | packet slot) -> the distinct nodes that verified its LATEST transmission (slots restart every routing cycle)
+std::map<uint64_t, uint32_t> g_slot_hops;       // verifications on the path of the slot's LATEST delivered packet (read at delivery, same lifetime as packet_delay_routing)
+double   current_m6_crypto_s = 0.0;               // M6 second column: mean constant crypto time on the delivered packets' paths [s]
+double   g_lat_sum_cum_s = 0.0, g_m6_crypto_sum_cum_s = 0.0; uint32_t g_lat_deliv_cum = 0;   // cumulative, for per-cycle deltas
 uint32_t g_lmit_uncontained_n = 0;             // attackers that acted and were never contained (their latency is unbounded)
 double   t_contained_rev[total_size] = {0.0};  // time the controller serving this RSU was revoked (containment by revocation)
 uint32_t g_lmit_cq_n = 0, g_lmit_cr_n = 0;     // acting attackers contained first by QUARANTINE / first by REVOCATION
@@ -117340,6 +117345,7 @@ void dijkstra_stable(uint32_t startVertex)
 void calculate_average_latency_routing()
 {
 	double total_latency = 0.0;
+	double m6_crypto_total = 0.0;
 	uint32_t flow_counter = 0;
 	uint32_t delivered_packet_counter = 0;
 	for (uint32_t fid=0;fid<2*flows;fid++)
@@ -117377,6 +117383,11 @@ void calculate_average_latency_routing()
 				{
 					packet_delay_routing[fid][i] = _t_recv_anchored - _t_send_anchored;
 					delivered_packet_counter++;
+					{   // M6 second column: constants for the verifications on THIS packet's path (not wall-clock)
+						auto _sh = g_slot_hops.find(((uint64_t)fid << 32) | (uint64_t)i);
+						if (_sh != g_slot_hops.end() && !g_disable_crypto)
+							m6_crypto_total += (double)_sh->second * (CONST_VERIFY_US + CONST_STARK_US) * 1e-6;
+					}
 					//cout<<"Flow id "<<fid<<" packet "<<i<<"latency is "<<1000.0*packet_delay_routing[fid][i]<<" ms"<<endl;
 				}
 				
@@ -117386,6 +117397,8 @@ void calculate_average_latency_routing()
 		}
 	}
 	//total_latency = total_latency;
+	g_lat_sum_cum_s = total_latency; g_lat_deliv_cum = delivered_packet_counter; g_m6_crypto_sum_cum_s = m6_crypto_total;
+	current_m6_crypto_s = (delivered_packet_counter != 0) ? m6_crypto_total / (double)delivered_packet_counter : 0.0;
 	if((flow_counter !=0)&(delivered_packet_counter != 0))
 	{
 		current_latency_routing = total_latency/(delivered_packet_counter);
@@ -118271,7 +118284,7 @@ void write_security_metrics_csv()
 			 << " quarantined_nodes, quarantine_block_events,"
 			 << " solver_used, solver_calls, m10_raw_ts_exposed,"
 			 << " ab11_att0, ab11_att1, ab11_att2, ab11_att3, ab11_att4, ab11_att5plus,"
-			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus, build_commit, lmit_uncontained_n, lmit_inf, lmit_contained_quarantine_n, lmit_contained_revocation_n, lmit_lat_quarantine_ms, lmit_lat_revocation_ms\n";
+			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus, build_commit, lmit_uncontained_n, lmit_inf, lmit_contained_quarantine_n, lmit_contained_revocation_n, lmit_lat_quarantine_ms, lmit_lat_revocation_ms, m6_crypto_ms, m6_total_ms\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118414,6 +118427,8 @@ void write_security_metrics_csv()
 		 << ", " << g_lmit_cq_n << ", " << g_lmit_cr_n
 		 << ", " << (g_lmit_cq_n ? 1000.0 * g_lmit_cq_lat_s / g_lmit_cq_n : 0.0)
 		 << ", " << (g_lmit_cr_n ? 1000.0 * g_lmit_cr_lat_s / g_lmit_cr_n : 0.0)
+		 << ", " << current_m6_crypto_s * 1000.0
+		 << ", " << (current_latency_routing + current_m6_crypto_s) * 1000.0
 		 << "\n";
 
 	fout.close();
@@ -118805,7 +118820,7 @@ void calculate_performance_evaluation_metrics()
 	{
 		static std::ofstream _ser;
 		static bool _ser_init = false;
-		static double p_sp=0,p_by=0,p_bc=0,p_bp=0,p_bu=0,p_cn=0,p_cu=0,p_sn=0,p_su=0,p_m10=0,p_ua=0,p_ub=0,p_ul=0,p_wt=0,p_wf=0,p_ud=0,p_cp=0,p_ev=0;
+		static double p_sp=0,p_by=0,p_bc=0,p_bp=0,p_bu=0,p_cn=0,p_cu=0,p_sn=0,p_su=0,p_m10=0,p_ua=0,p_ub=0,p_ul=0,p_wt=0,p_wf=0,p_ud=0,p_cp=0,p_ev=0,p_ld=0,p_ls=0,p_lc=0;
 		if (!_ser_init)
 		{
 			_ser_init = true;
@@ -118813,7 +118828,8 @@ void calculate_performance_evaluation_metrics()
 			_ser << "# commit=" << SDVN_BUILD_TAG << "\n"
 			     << "cycle,m7_signed_pkts,m7_crypto_bytes,m7_batch_calls,m7_batch_pkts,m7_batch_us,m7_consensus_n,m7_consensus_us,m7_stark_n,m7_stark_us,"
 			     << "m10_raw_ts,m11_attempts,m11_blocked,m11_legitimised,witness_tp,witness_fp,witness_fn,witness_precision,witness_recall,"
-			     << "ucr_undetected_copies,ucr_duplicates,ucr_all_copies,quarantined_nodes,revoked_controllers\n";
+			     << "ucr_undetected_copies,ucr_duplicates,ucr_all_copies,quarantined_nodes,revoked_controllers,"
+			     << "lat_delivered,lat_sum_ms,m6_crypto_sum_ms\n";
 		}
 		auto d = [](double cur, double& prev) { double x = cur - prev; prev = cur; return x; };
 		uint32_t _qn = 0; for (int _i = 0; _i < total_size; ++_i) if (g_quarantined[_i]) ++_qn;
@@ -118828,7 +118844,8 @@ void calculate_performance_evaluation_metrics()
 		     << d((double)g_witness_TP_W, p_wt) << "," << d((double)g_witness_FP_W, p_wf) << "," << (double)g_witness_FN_W << ","
 		     << current_WAP_precision << "," << current_WAP_recall << ","
 		     << d((double)g_ucr_undetected_counter, p_ud) << "," << d((double)g_total_copies_scheduled, p_cp) << "," << d((double)fade_eavesdrop_counter, p_ev) << ","
-		     << _qn << "," << _rc << "\n";
+		     << _qn << "," << _rc << ","
+		     << d((double)g_lat_deliv_cum, p_ld) << "," << 1000.0 * d(g_lat_sum_cum_s, p_ls) << "," << 1000.0 * d(g_m6_crypto_sum_cum_s, p_lc) << "\n";
 		_ser.flush();
 	}
 	// Event log, A3/A4 state label: attacker-injected TCAM entries currently held per RSU.
@@ -122782,6 +122799,9 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// already returns false for overheard packets (wrong next_hop in digest),
 					// so gate the STARK counters on sig_ok to avoid broadcast noise.
 					if (sig_ok) {
+						{   // M6: one verification per DISTINCT receiving node on this packet's path; a slot restarts each routing cycle
+							g_pkt_verify_hops[((uint64_t)fid << 32) | (uint64_t)packet_ID].last_t[(uint32_t)current_hop] = Now().GetSeconds();
+						}
 						stark_update_meta(prev_sender, packet_ID, fid, timing_ok, hop_ok);
 						// β_w NFA alert: valid sig but delay exceeded S2 threshold
 						if (t_fwd_claimed > 0.0 && !timing_ok) {
@@ -122801,6 +122821,7 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 								trust_update_positive(prev_sender);
 							else {
 								g_current_trust_source = DSRC_BTMM_PACKET;
+								g_trust_cause_mask = (g_batch_passed ? 0u : (uint32_t)TC_BATCH) | (hop_ok ? 0u : (uint32_t)TC_HOP) | (timing_ok ? 0u : (uint32_t)TC_DELAY);
 								trust_update_negative(prev_sender);
 								g_current_trust_source = DSRC_NONE;
 							}
@@ -122937,6 +122958,14 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 					// time in calculate_average_latency_routing() via
 					// node_clock_offset(destination).
 					routing_packet_final_timestamp[fid][packet_ID] = node_local_time(current_hop);
+					{   // M6: how many nodes verified this packet on its way here (including this destination)
+						// only verifications since THIS transmission started (the slot is reused every routing cycle)
+						auto _vh = g_pkt_verify_hops.find(((uint64_t)fid << 32) | (uint64_t)packet_ID);
+						uint32_t _n = 0;
+						if (_vh != g_pkt_verify_hops.end())
+							for (const auto& kv : _vh->second.last_t) if (kv.second >= routing_packet_initial_timestamp[fid][packet_ID]) ++_n;
+						g_slot_hops[((uint64_t)fid << 32) | (uint64_t)packet_ID] = _n;
+					}
 					routing_packet_general_final_timestamp[fid][current_hop][packet_ID] = Now().GetSeconds();
 					
 					if(selective_delay_malicious_nodes[current_hop] == false)
@@ -125277,6 +125306,7 @@ void initialize_flow_counters()
 			routing_packet_final_timestamp[fid][i] = Now().GetSeconds();
 			routing_packet_initial_timestamp[fid][i] = Now().GetSeconds();
 			packet_delay_routing[fid][i] = 0;
+			g_slot_hops[((uint64_t)fid << 32) | (uint64_t)i] = 0;
 		}
 		
 		for(uint32_t i =0;i<total_size;i++)
@@ -144936,6 +144966,19 @@ if (architecture == 3 && N_Vehicles > 0)
 				          + "_seed" + std::to_string(sim_seed)
 				          + (g_run_tag.empty() ? "" : "_" + g_run_tag);
 				g_ev_trust_qua = !(enable_tap || (!enable_lrad_obu && !enable_lrad_rsu));
+				{
+					std::ostringstream _cfg;
+					_cfg << "seed=" << sim_seed << " attack=" << (active_attack_variant + 1) << " p=" << attack_percentage
+					     << " n_veh=" << N_Vehicles << " n_rsu=" << N_RSUs << " maxspeed=" << maxspeed
+					     << " trace=" << (g_mobility_trace_file.empty() ? "default" : g_mobility_trace_file)
+					     << " crypto=" << (g_disable_crypto ? "off" : "on") << " lstm=" << (enable_lstm_inference ? "on" : "off")
+					     << " s1_suppress=" << (s1_suppress_handoff_fp ? 1 : 0) << " u_thresh=" << g_tcam_util_thresh
+					     << " t_min=" << TRUST_T_MIN << " enforcement=" << (enable_quarantine_enforcement ? 1 : 0)
+					     << " quarantine=" << (enable_quarantine ? 1 : 0) << " tap_margin=" << TAP_MARGIN << " sfto_theta=" << SFTO_THETA
+					     << " tap=" << (enable_tap ? 1 : 0) << " sfto=" << (enable_sfto ? 1 : 0) << " simTime=" << simTime
+					     << " delay_ms=" << attack_delay_ms;
+					ev_set_cfg(_cfg.str());
+				}
 				ev_init("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/events" + g_sim_tag + ".csv", active_attack_variant);
 			}
 			
@@ -145557,6 +145600,18 @@ sfto_save_metrics();
   for (int _n = 0; _n < total_size; ++_n)
       if (t_first_attack[_n] > 0.0 || t_quarantine_evt[_n] > 0.0 || t_contained_rev[_n] > 0.0)
           ev_m4(_n, t_first_attack[_n], t_quarantine_evt[_n], t_contained_rev[_n]);
+  // Trust decrements by cause for every node that had any (whole run), and which controllers were compromised: the quarantine
+  // breakdown and the "no honest controller is ever revoked" assertion read these.
+  for (int _n = 0; _n < total_size; ++_n)
+  {
+      uint32_t _tot = 0; for (int b = 0; b < 8; ++b) _tot += g_trust_dec_by_cause[_n][b];
+      if (_tot == 0) continue;
+      std::ostringstream _td; _td << (_n < (int)N_Vehicles ? 0 : (_n < (int)(N_Vehicles + N_RSUs) ? 1 : 2));
+      for (int b = 0; b < 8; ++b) _td << ":" << g_trust_dec_by_cause[_n][b];
+      ev_misc((uint32_t)_n, "TD", _td.str());
+  }
+  for (uint32_t _c = 0; _c < N_Controllers && _c < (uint32_t)total_size; ++_c)
+      ev_misc(_c, "CTRLC", controller_compromised[_c] ? "1" : "0");
   ev_flush_all();
   Simulator::Destroy();
   

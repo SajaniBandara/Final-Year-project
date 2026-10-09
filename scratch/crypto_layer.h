@@ -122,6 +122,9 @@ double   CONST_BATCH_C0_US     = 41.6;     // t_batch(B) = C0 + C1*B   [us]
 double   CONST_BATCH_C1_US     = 48.05;
 double   CONST_CONSENSUS_US    = 6071.0;   // one FlowMod endorsement round [us]
 double   CONST_STARK_US        = 0.06;     // one modelled hop-proof commitment [us]
+double   CONST_VERIFY_US       = 40.65;    // one ML-DSA-87 verification [us]. ALL constants: median over the per-operation wall-clock log
+                                           // of one 40 s crypto-on run on an otherwise idle Intel Core i9-14900K (32 threads), 2026-10-09,
+                                           // and used unchanged on every machine. M6 second column = hops verified x (VERIFY + STARK).
 double   T_SYNC_INTERVAL    = 1.0;
 uint32_t BATCH_SIZE         = 15;
 double   WITNESS_WINDOW     = 11.0;  // sensitivity-optimum 2026-09-14: 60s A7 avg_MCC 0.722->0.765 (was 10.0; 30s gave 9)
@@ -660,6 +663,11 @@ struct WitnessAlert {
 double g_trust_score[total_size]       = {};
 double g_trust_last_update[total_size] = {};
 bool   g_quarantined[total_size]       = {};
+// Trust-decrement attribution (supervisor 2026-10-09): bit mask set by the caller right before trust_update_negative().
+enum TrustCause : uint32_t { TC_BATCH = 1, TC_HOP = 2, TC_DELAY = 4, TC_WIT_DA = 8, TC_WIT_NFA = 16, TC_S4 = 32, TC_S5 = 64, TC_OTHER = 128 };
+static const char* TC_NAMES[8] = {"batch_or_sig", "hop_proof", "delay_proof", "witness_DA", "witness_NFA", "S4_attrib", "S5_attrib", "other"};
+uint32_t g_trust_cause_mask = 0;
+uint32_t g_trust_dec_by_cause[total_size][8] = {};   // decrements by cause, per node, whole run
 
 // True when `node` must be denied a data-path action because it is under
 // SC.Quarantine. Returns false unconditionally while enforcement is disabled,
@@ -1936,6 +1944,9 @@ inline void trust_update_negative(uint32_t node) {
     double old_v = g_trust_score[node];
     double v = old_v - TRUST_DELTA_P;
     g_trust_score[node] = (v > 0.0 ? v : 0.0);
+    { uint32_t m = g_trust_cause_mask ? g_trust_cause_mask : (uint32_t)TC_OTHER;
+      for (int b = 0; b < 8; ++b) if (m >> b & 1u) ++g_trust_dec_by_cause[node][b];
+      g_trust_cause_mask = 0; }
     g_trust_last_update[node] = ns3::Simulator::Now().GetSeconds();
     if (CRYPTO_DEBUG_LOG)
         std::cout << "[TRUST-] node=" << node
@@ -1947,7 +1958,15 @@ inline void trust_update_negative(uint32_t node) {
         g_quarantined[node] = true;
         t_quarantine[node]  = ns3::Simulator::Now().GetSeconds();
         t_quarantine_evt[node] = ns3::Simulator::Now().GetSeconds();
-        if (g_ev_trust_qua) ev_quarantine(node);
+        if (g_ev_trust_qua) {
+            ev_quarantine(node);
+            // QUAX: node, type (0 vehicle, 1 RSU, 2 other), time, trust after, and the decrements behind it by cause
+            std::ostringstream _qx;
+            _qx << (node < (uint32_t)N_Vehicles ? 0 : (node < (uint32_t)(N_Vehicles + N_RSUs) ? 1 : 2)) << ":"
+                << ns3::Simulator::Now().GetSeconds() << ":" << g_trust_score[node];
+            for (int b = 0; b < 8; ++b) _qx << ":" << g_trust_dec_by_cause[node][b];
+            ev_misc((uint32_t)node, "QUAX", _qx.str());
+        }
 
         // Item 4 (2026-09-05): release the HF activity latch here, per
         // eq:local_quarantine -- but only for variants whose enforcement is
@@ -2033,6 +2052,7 @@ inline void ctrl_trust_update_negative(uint32_t ctrl) {
     g_ctrl_trust_score[ctrl] = (v > 0.0 ? v : 0.0);
     if (g_ctrl_trust_score[ctrl] < TRUST_T_MIN_CTRL && !g_ctrl_revoked[ctrl]) {
         g_ctrl_revoked[ctrl] = true;
+        ev_misc(ctrl, "REV", std::to_string(ns3::Simulator::Now().GetSeconds()));
         // M4: revoking a controller contains every RSU it serves (their attack stops at reassignment).
         for (uint32_t _r = 0; _r < N_RSUs && _r < (uint32_t)total_size; ++_r)
             if (rsu_controller_assignment[_r] == ctrl && t_contained_rev[N_Vehicles + _r] == 0.0)
@@ -2417,6 +2437,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
         g_current_trust_source = DSRC_WITNESS_DA;
+        g_trust_cause_mask = TC_WIT_DA;
         trust_update_negative(target_node);
         g_current_trust_source = DSRC_NONE;
         // M12 — WAP-R: count this threshold-crossing event once per node per run.
@@ -2531,6 +2552,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
         g_current_trust_source = DSRC_WITNESS_NFA;
+        g_trust_cause_mask = TC_WIT_NFA;
         trust_update_negative(target_node);
         g_current_trust_source = DSRC_NONE;
         // M12 (WAP-R) intentionally NOT counted here (fixed 2026-07-11).

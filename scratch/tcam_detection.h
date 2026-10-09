@@ -382,7 +382,10 @@ inline TcamCycleMetrics ComputeTcamDetection(
             // at the RSU that observes the saturation. Only the trust/mitigation
             // path learns who caused it.
             if (!g_disable_s3_s4 && v_atk != UINT32_MAX)
+            {
+                g_trust_cause_mask = TC_S4;
                 trust_update_negative(v_atk);
+            }
             // S4 (eq:rule_s4): TCAM saturation — utilisation U_TCAM exceeds the
             // threshold; the attacker is the vehicle with the highest packet-in
             // rate (argmax λ_PI), the data-plane TCAM-exhaustion signature.
