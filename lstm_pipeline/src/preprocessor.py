@@ -67,6 +67,14 @@ FEATURES   = ["delta_t", "lambda_PI", "U_TCAM",
 # Set MOBIGUARD_HF_LATCHED=1 in the environment, or flip the default here.
 HF_LATCHED_LABEL = os.environ.get("MOBIGUARD_HF_LATCHED", "0") == "1"
 
+# ── EVENT / STATE labels (supervisor 2026-10-09) ─────────────────────────────────────────────────────────────
+# ON by default. The window label is built from the simulator's ev_label column, which is defined exactly like
+# scripts/event_scorer.py: A1/A2 an injected delay in the cycle, A5-A8 a hidden duplicate scheduled in the cycle, A3/A4 the RSU
+# holds >= 1 attacker-injected TCAM entry (state; here the gap between the first and the last such cycle is filled).
+# y_binary AND y_indep both come from it, so the model is no longer trained on the latched node-level `label` column
+# nor on the feature-derived is_spike. A file without a real ev_label (older than the 21-column format) is REFUSED.
+EVENT_LABELS = os.environ.get("MOBIGUARD_EVENT_LABELS", "1") == "1"
+
 WINDOW     = 10      # 10-second sliding window (1 Hz cycles)
 STRIDE     = 5       # 5-second stride = 50% overlap (spec §3)
 TRAIN_FRAC = 0.70
@@ -121,6 +129,9 @@ def load_all_csvs(lstm_dir: Path) -> pd.DataFrame:
         attack_v, pct, seed = parse_run_name(p.stem)
         rsu_id = int(p.parent.name[4:])
         df = pd.read_csv(path)
+        if EVENT_LABELS and "ev_label" not in df.columns:
+            raise ValueError(f"{path}: no ev_label column (pre-2026-10-09 file). Re-collect on the frozen build; the event "
+                             f"label cannot be reconstructed from the latched `label` column.")
         if "hf_send_gt" not in df.columns:
             n_missing_gt += 1
             df["hf_send_gt"] = 0
@@ -231,6 +242,11 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
         # counter, the timing equivalent of hf_send_gt.
         stdgt  = grp["std_send_gt"].values.astype(np.float64)
         tcamgt = grp["tcam_send_gt"].values.astype(np.float64)   # A3/A4
+        if EVENT_LABELS:
+            evl = grp["ev_label"].values.astype(np.int8)
+            if int(av) in (3, 4) and evl.any():           # A3/A4 state label: positive from the first to the last held entry
+                idx = np.flatnonzero(evl)
+                evl = evl.copy(); evl[idx[0]:idx[-1] + 1] = 1
         cycles = grp["cycle"].values
         for i in range(0, len(grp) - window + 1, stride):
             # Drop the window starting at cycle 0: SUMO's own startup
@@ -245,6 +261,8 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             # Attack-positive only if from an attack run (av>0) and a spike is
             # present in the window (attack was actually firing here).
             win_pos = 1 if (av > 0 and spikes[i:i+window].max() > 0) else 0
+            if EVENT_LABELS:
+                win_pos = 1 if (av > 0 and evl[i:i+window].max() > 0) else 0
             X_list.append(vals[i:i+window])
             yb_list.append(win_pos)
             # y_indep, leak-free window label. Until Fix 2 this was hf_send_gt
@@ -267,7 +285,7 @@ def make_windows(df: pd.DataFrame, window: int, stride: int):
             _inj = max(_hf,
                        stdgt[i:i+window].max(),
                        tcamgt[i:i+window].max())
-            yi_list.append(1 if (av > 0 and _inj > 0) else 0)
+            yi_list.append(win_pos if EVENT_LABELS else (1 if (av > 0 and _inj > 0) else 0))
             ym_list.append(int(av) if win_pos else 0)
             meta_list.append((rsu, av, pct, seed, int(cycles[i])))
     if not X_list:

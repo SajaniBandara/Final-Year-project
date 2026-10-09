@@ -195,7 +195,7 @@ inline void dw_end_cycle()
         for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
         {
             uint32_t nid = (uint32_t)N_Vehicles + r;
-            if (nid < 300 && (g_tcam_flag_s3_last[nid] || g_tcam_flag_s4_last[nid])
+            if (nid < (uint32_t)total_size && (g_tcam_flag_s3_last[nid] || g_tcam_flag_s4_last[nid])
                 && r < g_dw_rsu_fired.size())
                 g_dw_rsu_fired[r] = 1;
         }
@@ -226,7 +226,7 @@ inline void dw_end_cycle()
         for (uint32_t r = 0; r < (uint32_t)N_RSUs; ++r)
         {
             uint32_t nid = (uint32_t)N_Vehicles + r;
-            if (nid < 300 && (g_tcam_flag_s3_last[nid] || g_tcam_flag_s4_last[nid])
+            if (nid < (uint32_t)total_size && (g_tcam_flag_s3_last[nid] || g_tcam_flag_s4_last[nid])
                 && r < g_dw_rsu_primary.size())
                 g_dw_rsu_primary[r] = 1;
         }

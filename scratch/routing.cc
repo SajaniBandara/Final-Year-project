@@ -114819,7 +114819,10 @@ uint32_t g_active_variant_mask = 0;
 double t_onset[total_size]      = {0.0};
 double t_quarantine[total_size] = {0.0};
 double t_quarantine_evt[total_size] = {0.0};   // set ONLY by the SC.Quarantine event (never by a detection) -- M4 is measured to this
-uint32_t g_lmit_uncontained_n = 0;             // attackers that acted and were never quarantined (their latency is unbounded)
+uint32_t g_lmit_uncontained_n = 0;             // attackers that acted and were never contained (their latency is unbounded)
+double   t_contained_rev[total_size] = {0.0};  // time the controller serving this RSU was revoked (containment by revocation)
+uint32_t g_lmit_cq_n = 0, g_lmit_cr_n = 0;     // acting attackers contained first by QUARANTINE / first by REVOCATION
+double   g_lmit_cq_lat_s = 0.0, g_lmit_cr_lat_s = 0.0;   // sums of their latencies (s)
 
 // ── M4 / eq:l_mit CORRECTION (2026-08-31) ────────────────────────────────────
 // Default OFF: every figure produced before this date reproduces exactly.
@@ -114900,6 +114903,12 @@ double   g_ucr_cumulative  = 0.0;
 // eq:ucr is a per-window ratio, so its numerator is the NEW copies this cycle,
 // not the cumulative total. Holds last cycle's count to take the delta.
 uint32_t g_ucr_prev_eavesdrop = 0;
+// 2d (supervisor 2026-10-09): UCR as the paper defines M3 -- the share of hidden-forwarding DUPLICATES that reach an
+// unauthorised destination UNDETECTED. A copy counts as undetected when no detector had flagged its forwarder at that
+// moment; the denominator is the duplicates scheduled (it used to be eavesdropped / ALL packets seen, which does not depend
+// on any detector). The old ratio is kept as ucr_all_pct (see calculate_ucr_metric).
+uint64_t g_ucr_undetected_counter = 0, g_ucr_prev_undetected = 0, g_ucr_prev_copies = 0;
+inline bool node_flagged_any(uint32_t n);
 
 // M12: Witness Alert Precision and Recall (WAP-R) — Eq. wap, war [Ablation only]
 // Evaluated specifically against passive HF (Variants 7/8), which are
@@ -115585,6 +115594,13 @@ inline void ev_alarm_attributed(uint32_t raw_node, uint32_t src_bit, int window_
 	uint32_t sn = (raw_node < N_Vehicles) ? hf_gt_attribution_node(raw_node) : raw_node;
 	ev_fire(src_bit);
 	if (sn != UINT32_MAX && sn >= N_Vehicles && sn < N_Vehicles + N_RSUs) ev_alarm(sn, src_bit, window_cycles);
+}
+
+inline bool node_flagged_any(uint32_t n)
+{
+	if (n >= (uint32_t)total_size) return false;
+	for (int v = 0; v < NUM_ATTACK_VARIANTS; ++v) if (is_detected_node[v][n]) return true;
+	return false;
 }
 
 void record_detection_event(int v, int n, uint16_t src)
@@ -117717,12 +117733,17 @@ void calculate_mitigation_latency_metric()
 
     g_lmit_blocked_before_acting = 0;
     g_lmit_uncontained_n = 0;
+    g_lmit_cq_n = g_lmit_cr_n = 0; g_lmit_cq_lat_s = g_lmit_cr_lat_s = 0.0;
     for (int n = 0; n < total_size; n++)
     {
         // M4 is measured to the SC.Quarantine EVENT (t_quarantine_evt), not to the detection time that
         // record_detection_event() also writes into t_quarantine[] (supervisor 2026-10-09: the earlier
         // 1,375 ms in AB7-ablated was measured from detection). Legacy mode keeps the old timestamp.
-        const double q_ts = enable_corrected_lmit ? t_quarantine_evt[n] : t_quarantine[n];
+        const double q_only = enable_corrected_lmit ? t_quarantine_evt[n] : t_quarantine[n];
+        const double r_only = enable_corrected_lmit ? t_contained_rev[n] : 0.0;   // revocation of its controller
+        // containment = whichever came first (supervisor 2026-10-09)
+        const double q_ts = (q_only > 0.0 && (r_only <= 0.0 || q_only <= r_only)) ? q_only : (r_only > 0.0 ? r_only : 0.0);
+        const bool   by_rev = (r_only > 0.0 && (q_only <= 0.0 || r_only < q_only));
         // eq:l_mit onset. Corrected mode uses the node's OWN first attack;
         // legacy mode uses attack_start_time via t_onset (see t_first_attack).
         double onset = enable_corrected_lmit ? t_first_attack[n] : t_onset[n];
@@ -117755,6 +117776,7 @@ void calculate_mitigation_latency_metric()
         if (onset > 0.0 && q_ts > onset)
         {
             double lmit = q_ts - onset;  // seconds
+            if (by_rev) { ++g_lmit_cr_n; g_lmit_cr_lat_s += lmit; } else { ++g_lmit_cq_n; g_lmit_cq_lat_s += lmit; }
             total_latency += lmit;
             valid_count++;
 
@@ -117817,7 +117839,7 @@ void calculate_mitigation_latency_metric()
     // containment); block_events = raw guard-site aborts.
     {
         uint32_t _q_nodes = 0;
-        for (int _i = 0; _i < 268; ++_i) if (g_quarantined[_i]) ++_q_nodes;
+        for (int _i = 0; _i < total_size; ++_i) if (g_quarantined[_i]) ++_q_nodes;
         std::cout << "[QUARANTINE-BLOCKED] quarantined=" << _q_nodes
                   << " blocked_nodes=" << quarantine_blocked_node_count()
                   << " block_events=" << g_quarantine_block_events
@@ -118021,9 +118043,14 @@ void calculate_ucr_metric()
     // THIS window (the new copies since last cycle), over the same-window
     // total_pkts denominator. Using the cumulative counter here mismatched the
     // per-cycle denominator, pushing UCR past 100% and never returning to 0.
-    uint64_t ucr_num = (uint64_t)(fade_eavesdrop_counter - g_ucr_prev_eavesdrop);
+    uint64_t ucr_all_num = (uint64_t)(fade_eavesdrop_counter - g_ucr_prev_eavesdrop);   // legacy numerator (detector-independent)
     g_ucr_prev_eavesdrop = fade_eavesdrop_counter;
-    current_UCR = (total_pkts > 0) ? ((double)ucr_num / (double)total_pkts) : 0.0;
+    uint64_t ucr_num = (uint64_t)(g_ucr_undetected_counter - g_ucr_prev_undetected);   // copies that reached an unauthorised destination undetected
+    g_ucr_prev_undetected = g_ucr_undetected_counter;
+    uint32_t copies = (uint32_t)(g_total_copies_scheduled - g_ucr_prev_copies);        // denominator: hidden duplicates scheduled this window
+    g_ucr_prev_copies = g_total_copies_scheduled;
+    (void)ucr_all_num; (void)total_pkts;
+    current_UCR = (copies > 0) ? ((double)ucr_num / (double)copies) : 0.0;
     if (current_UCR > 1.0) current_UCR = 1.0;   // eq:ucr is a subset ratio, bounded to [0,1]
 
     g_ucr_cumulative += current_UCR;
@@ -118032,8 +118059,8 @@ void calculate_ucr_metric()
     average_UCR = g_ucr_cumulative / cycle;
 
     std::cout << "[SECURITY] UCR=" << 100.0 * current_UCR << "%"
-              << "  (eavesdropped=" << ucr_num
-              << " / total_sent=" << total_pkts << ")"
+              << "  (undetected copies=" << ucr_num
+              << " / duplicates scheduled=" << copies << "; legacy all-packets numerator=" << ucr_all_num << ")"
               << "  avg=" << 100.0 * average_UCR << "%" << std::endl;
 }
 
@@ -118234,7 +118261,7 @@ void write_security_metrics_csv()
 			 << " quarantined_nodes, quarantine_block_events,"
 			 << " solver_used, solver_calls, m10_raw_ts_exposed,"
 			 << " ab11_att0, ab11_att1, ab11_att2, ab11_att3, ab11_att4, ab11_att5plus,"
-			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus, build_commit, lmit_uncontained_n, lmit_inf\n";
+			 << " ab11_acc0, ab11_acc1, ab11_acc2, ab11_acc3, ab11_acc4, ab11_acc5plus, build_commit, lmit_uncontained_n, lmit_inf, lmit_contained_quarantine_n, lmit_contained_revocation_n, lmit_lat_quarantine_ms, lmit_lat_revocation_ms\n";
 	}
 
 	TcamCycleMetrics tcam_metrics{};
@@ -118362,7 +118389,7 @@ void write_security_metrics_csv()
 		 << ", " << g_ufcr_legitimized
 		 << ", " << g_ab10_invalid_proofs
 		 << ", " << g_ab10_forged_accepted
-		 << ", " << ([]{ uint32_t q = 0; for (int i = 0; i < 268; ++i) if (g_quarantined[i]) ++q; return q; })()
+		 << ", " << ([]{ uint32_t q = 0; for (int i = 0; i < total_size; ++i) if (g_quarantined[i]) ++q; return q; })()
 		 << ", " << g_quarantine_block_events
 		 << ", " << g_solver_label
 		 << ", " << g_solver_calls_ok
@@ -118374,6 +118401,9 @@ void write_security_metrics_csv()
 		 << ", " << SDVN_BUILD_TAG
 		 << ", " << g_lmit_uncontained_n
 		 << ", " << ((g_lmit_scored_n == 0 && g_lmit_uncontained_n > 0) ? 1 : 0)
+		 << ", " << g_lmit_cq_n << ", " << g_lmit_cr_n
+		 << ", " << (g_lmit_cq_n ? 1000.0 * g_lmit_cq_lat_s / g_lmit_cq_n : 0.0)
+		 << ", " << (g_lmit_cr_n ? 1000.0 * g_lmit_cr_lat_s / g_lmit_cr_n : 0.0)
 		 << "\n";
 
 	fout.close();
@@ -118760,6 +118790,37 @@ void calculate_performance_evaluation_metrics()
 		}
 	}
 	// M1 window grid: snapshot this cycle's OBU/RSU decisions + ground truth.
+	// Event log, per-cycle metric series (2b): DELTAS per cycle of the cumulative M7 / M10 / M11 / witness / UCR counters, so every
+	// plotted metric has a per-cycle value and therefore a CI. File: results_routing/series<tag>.csv.
+	{
+		static std::ofstream _ser;
+		static bool _ser_init = false;
+		static double p_sp=0,p_by=0,p_bc=0,p_bp=0,p_bu=0,p_cn=0,p_cu=0,p_sn=0,p_su=0,p_m10=0,p_ua=0,p_ub=0,p_ul=0,p_wt=0,p_wf=0,p_ud=0,p_cp=0,p_ev=0;
+		if (!_ser_init)
+		{
+			_ser_init = true;
+			_ser.open("/home/sdvn_hidden_attacks/ns3_g13/ns-allinone-3.35/ns-3.35/results_routing/series" + g_sim_tag + ".csv", std::ios::out | std::ios::trunc);
+			_ser << "# commit=" << SDVN_BUILD_TAG << "\n"
+			     << "cycle,m7_signed_pkts,m7_crypto_bytes,m7_batch_calls,m7_batch_pkts,m7_batch_us,m7_consensus_n,m7_consensus_us,m7_stark_n,m7_stark_us,"
+			     << "m10_raw_ts,m11_attempts,m11_blocked,m11_legitimised,witness_tp,witness_fp,witness_fn,witness_precision,witness_recall,"
+			     << "ucr_undetected_copies,ucr_duplicates,ucr_all_copies,quarantined_nodes,revoked_controllers\n";
+		}
+		auto d = [](double cur, double& prev) { double x = cur - prev; prev = cur; return x; };
+		uint32_t _qn = 0; for (int _i = 0; _i < total_size; ++_i) if (g_quarantined[_i]) ++_qn;
+		uint32_t _rc = 0; for (uint32_t _c = 0; _c < N_Controllers && _c < (uint32_t)total_size; ++_c) if (g_ctrl_revoked[_c]) ++_rc;
+		_ser << (uint32_t)Simulator::Now().GetSeconds() << ","
+		     << d((double)g_m7_signed_pkts, p_sp) << "," << d(g_m7_crypto_bytes_sum, p_by) << ","
+		     << d((double)g_m7_batch_calls, p_bc) << "," << d((double)g_m7_batch_pkts, p_bp) << "," << d(g_m7_batch_wall_us_sum, p_bu) << ","
+		     << d((double)g_m7_consensus_count, p_cn) << "," << d(g_m7_consensus_wall_us_sum, p_cu) << ","
+		     << d((double)g_m7_stark_calls, p_sn) << "," << d(g_m7_stark_wall_us_sum, p_su) << ","
+		     << d((double)g_m10_raw_ts_exposed, p_m10) << ","
+		     << d((double)g_ufcr_unauth_total, p_ua) << "," << d((double)g_ufcr_blocked, p_ub) << "," << d((double)g_ufcr_legitimized, p_ul) << ","
+		     << d((double)g_witness_TP_W, p_wt) << "," << d((double)g_witness_FP_W, p_wf) << "," << (double)g_witness_FN_W << ","
+		     << current_WAP_precision << "," << current_WAP_recall << ","
+		     << d((double)g_ucr_undetected_counter, p_ud) << "," << d((double)g_total_copies_scheduled, p_cp) << "," << d((double)fade_eavesdrop_counter, p_ev) << ","
+		     << _qn << "," << _rc << "\n";
+		_ser.flush();
+	}
 	// Event log, A3/A4 state label: attacker-injected TCAM entries currently held per RSU.
 	if (active_attack_variant == 2 || active_attack_variant == 3)
 	{
@@ -119196,8 +119257,8 @@ void transmit_delta_values()
 		// the RSUs' own policy checks above, is now the only thing that blocks the commit.
 
 		auto _ct1 = std::chrono::high_resolution_clock::now();
-		g_m7_consensus_wall_us_sum +=
-			std::chrono::duration<double, std::micro>(_ct1 - _ct0).count();
+		g_m7_consensus_wall_us_sum += g_crypto_const ? CONST_CONSENSUS_US
+			: std::chrono::duration<double, std::micro>(_ct1 - _ct0).count();
 		++g_m7_consensus_count;
 		// per-op row: node_id carries endorser count, pkt_id carries fid;
 		// not a single-flow packet event, so flow_id is UINT32_MAX (n/a).
@@ -121899,7 +121960,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
 							uint32_t _qn = quarantine_blocks(current_hop) ? current_hop
 							             : quarantine_blocks(hf_gt_attribution_node(current_hop))
 							                   ? hf_gt_attribution_node(current_hop) : UINT32_MAX;
-							if (_qn != UINT32_MAX) { ++g_quarantine_block_events; if (_qn < 268u) g_node_action_blocked[_qn] = true; }
+							if (_qn != UINT32_MAX) { ++g_quarantine_block_events; if (_qn < (uint32_t)total_size) g_node_action_blocked[_qn] = true; }
 						}
 						if (present_active_hf_attack &&
 							active_hf_malicious_nodes[current_hop] &&
@@ -122006,7 +122067,7 @@ void check_delivery_and_retransmit(uint32_t flow_id, uint32_t packet_id, uint32_
                             uint32_t _qn = quarantine_blocks(current_hop) ? current_hop
                                          : quarantine_blocks(hf_gt_attribution_node(current_hop))
                                                ? hf_gt_attribution_node(current_hop) : UINT32_MAX;
-                            if (_qn != UINT32_MAX) { ++g_quarantine_block_events; if (_qn < 268u) g_node_action_blocked[_qn] = true; }
+                            if (_qn != UINT32_MAX) { ++g_quarantine_block_events; if (_qn < (uint32_t)total_size) g_node_action_blocked[_qn] = true; }
                         }
                         if (present_passive_hf_attack &&
 							passive_hf_malicious_nodes[current_hop] &&
@@ -122443,7 +122504,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                     // eq:ucr numerator: distinct PACKETS reaching an off-path
                     // receiver, identified by H(p) (main.tex:1306).
                     if (fade_eavesdropped_packets.insert(hp_rx).second)
+                    {
                         fade_eavesdrop_counter++;
+                        if (!node_flagged_any(prev_sender)) g_ucr_undetected_counter++;
+                    }
                     // Fix 2b: a hidden forward IS a hop-proof violation by the
                     // malicious RSU. Populate its LSTM hop-fail counter so the
                     // 1[pi_hop=⊥] feature (eq:lstm_input) fires for that RSU's
@@ -122549,7 +122613,10 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
                         // eq:ucr numerator, H(p) identity — see the passive-HF
                         // receive block above.
                         if (fade_eavesdropped_packets.insert(hp_rx).second)
+                        {
                             fade_eavesdrop_counter++;
+                            if (!node_flagged_any(prev_sender)) g_ucr_undetected_counter++;
+                        }
                         // Fix 2b: active hidden forward = hop-proof violation by
                         // the malicious RSU. Populate its LSTM hop-fail counter so
                         // 1[pi_hop=⊥] (eq:lstm_input) fires — the intended signal
@@ -145475,6 +145542,10 @@ sfto_save_metrics();
   if (active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS)
       for (int _n = 0; _n < total_size; ++_n)
           if (is_malicious_node[active_attack_variant][_n]) ev_attacker(_n);
+  // M4 per-event series: first action / quarantine / revocation time of every attacker that acted or was contained.
+  for (int _n = 0; _n < total_size; ++_n)
+      if (t_first_attack[_n] > 0.0 || t_quarantine_evt[_n] > 0.0 || t_contained_rev[_n] > 0.0)
+          ev_m4(_n, t_first_attack[_n], t_quarantine_evt[_n], t_contained_rev[_n]);
   ev_flush_all();
   Simulator::Destroy();
   

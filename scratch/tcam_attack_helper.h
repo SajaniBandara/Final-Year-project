@@ -709,14 +709,14 @@ inline void tcam_snapshot_dump()
         if (lam_f.is_open()) {
             std::set<uint32_t> nodes;
             for (uint32_t r = 0; r < N_RSUs; ++r) nodes.insert(N_Vehicles + r); // all RSUs incl. zeros
-            for (uint32_t i = 0; i < 300; ++i)                                  // + any active vehicle hop
+            for (uint32_t i = 0; i < (uint32_t)total_size; ++i)                 // + any active vehicle hop
                 if (g_lambda_new[i] || g_lambda_evict[i] || g_lambda_reinstall[i]) nodes.insert(i);
             for (uint32_t nid : nodes)
                 lam_f << t << ',' << nid << ',' << g_lambda_new[nid]
                        << ',' << g_lambda_evict[nid] << ',' << g_lambda_reinstall[nid] << '\n';
         }
         lam_f.close();
-        for (uint32_t i = 0; i < 300; ++i) { g_lambda_new[i]=0; g_lambda_evict[i]=0; g_lambda_reinstall[i]=0; }
+        for (uint32_t i = 0; i < (uint32_t)total_size; ++i) { g_lambda_new[i]=0; g_lambda_evict[i]=0; g_lambda_reinstall[i]=0; }
     }
 
     // MobiGuard: check S4 (TCAM exhaustion) for all RSUs once per second.

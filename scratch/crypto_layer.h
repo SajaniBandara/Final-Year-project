@@ -111,6 +111,17 @@ double   TRUST_DELTA_R_CTRL = 0.05;
 double   TRUST_DELTA_P_CTRL = 0.10;
 double   STARK_DELTA_MAX    = 0.050;
 double   ML_DSA_SIGN_DELAY  = 0.0015;
+// 2e (supervisor 2026-10-09): the M7 timing outputs (t_batch, t_consensus, t_stark) moved with host load because they
+// summed std::chrono wall-clock readings (measured 2026-10-09: the same run gave t_batch 1.07 ms idle vs 1.95 ms under load,
+// while latency, PDR and every detection count were bit-identical). They are now deterministic constants measured ONCE on
+// an idle host (median per-operation wall time from crypto_timing_log of a 40 s crypto-on run; batch = linear fit over the
+// logged batch sizes B). The per-operation wall-clock log (crypto_timing_log*.csv) is kept as a diagnostic only.
+// Simulated end-to-end latency never contained these readings; --crypto_sim_delay is NOT implemented (see GATE3 notes).
+bool     g_crypto_const        = true;     // --crypto_const=0 restores the wall-clock sums
+double   CONST_BATCH_C0_US     = 41.6;     // t_batch(B) = C0 + C1*B   [us]
+double   CONST_BATCH_C1_US     = 48.05;
+double   CONST_CONSENSUS_US    = 6071.0;   // one FlowMod endorsement round [us]
+double   CONST_STARK_US        = 0.06;     // one modelled hop-proof commitment [us]
 double   T_SYNC_INTERVAL    = 1.0;
 uint32_t BATCH_SIZE         = 15;
 double   WITNESS_WINDOW     = 11.0;  // sensitivity-optimum 2026-09-14: 60s A7 avg_MCC 0.722->0.765 (was 10.0; 30s gave 9)
@@ -336,7 +347,7 @@ uint32_t g_fwd_release_timeout     = 0;           // released by T_hold expiry
 // HOLD_FORWARD(v,r) — set fwd_state(v) = Hold for the flagged flow.
 inline void hold_forward(uint32_t v, uint32_t fid) {
     if (!enable_local_quarantine) return;
-    if (v >= 268u) return;
+    if (v >= (uint32_t)total_size) return;
     g_fwd_hold_until[v] = ns3::Simulator::Now().GetSeconds() + T_HOLD;
     g_fwd_hold_flow[v]  = fid;
     ++g_fwd_hold_events;
@@ -345,7 +356,7 @@ inline void hold_forward(uint32_t v, uint32_t fid) {
 // RSU.Confirm(v,r) — the RSU has completed full-mode analysis; release the hold.
 inline void rsu_confirm_release(uint32_t v) {
     if (!enable_local_quarantine) return;
-    if (v >= 268u) return;
+    if (v >= (uint32_t)total_size) return;
     if (g_fwd_hold_until[v] > 0.0) {
         g_fwd_hold_until[v] = 0.0;
         ++g_fwd_release_confirm;
@@ -363,7 +374,7 @@ inline void rsu_confirm_release(uint32_t v) {
 // 0.0. The error is conservative (over-suspension), never under-suspension.
 inline double fwd_hold_remaining(uint32_t v, uint32_t fid) {
     if (!enable_local_quarantine) return 0.0;
-    if (v >= 268u) return 0.0;
+    if (v >= (uint32_t)total_size) return 0.0;
     if (g_fwd_hold_until[v] <= 0.0) return 0.0;
     double now = ns3::Simulator::Now().GetSeconds();
     if (now >= g_fwd_hold_until[v]) {          // t > t_detect + T_hold
@@ -657,7 +668,7 @@ bool   g_quarantined[total_size]       = {};
 // forwarder is a vehicle relay are covered on the relay's own quarantine state.
 inline bool quarantine_blocks(uint32_t node) {
     if (!enable_quarantine_enforcement) return false;
-    if (node >= 268u) return false;
+    if (node >= (uint32_t)total_size) return false;
     return g_quarantined[node];
 }
 
@@ -675,12 +686,12 @@ bool     g_node_action_blocked[total_size] = {};
 inline bool quarantine_blocks_action(uint32_t node) {
     if (!quarantine_blocks(node)) return false;
     ++g_quarantine_block_events;
-    if (node < 268u) g_node_action_blocked[node] = true;
+    if (node < (uint32_t)total_size) g_node_action_blocked[node] = true;
     return true;
 }
 inline uint32_t quarantine_blocked_node_count() {
     uint32_t n = 0;
-    for (int i = 0; i < 268; ++i) if (g_node_action_blocked[i]) ++n;
+    for (int i = 0; i < total_size; ++i) if (g_node_action_blocked[i]) ++n;
     return n;
 }
 double g_ctrl_trust_score[total_size]  = {};
@@ -1616,7 +1627,7 @@ inline StarkTimingProof stark_prove_timing(double t_recv, double t_fwd, uint32_t
     // private witnesses and must not appear in the public commitment (eq:stark_delay ZK)
     sha3_512_hash(reinterpret_cast<const uint8_t*>(&nonce), sizeof(nonce), proof.commitment);
     auto _st1 = std::chrono::high_resolution_clock::now();
-    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    g_m7_stark_wall_us_sum += g_crypto_const ? CONST_STARK_US : std::chrono::duration<double, std::micro>(_st1 - _st0).count();
     ++g_m7_stark_calls;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[PKT-CRYPTO] ── STARK-PROVE ────────────────────────────────────\n"
@@ -1642,7 +1653,7 @@ inline bool stark_verify_timing(const StarkTimingProof& proof,
         if (ab10_forged_at(verifier)) { ++g_ab10_forged_accepted; ok = true; } // AB10: false keys
     }
     auto _st1 = std::chrono::high_resolution_clock::now();
-    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    g_m7_stark_wall_us_sum += g_crypto_const ? CONST_STARK_US : std::chrono::duration<double, std::micro>(_st1 - _st0).count();
     ++g_m7_stark_calls;
     return ok;
 }
@@ -1666,7 +1677,7 @@ inline bool stark_verify_hop(uint32_t current_hop, uint32_t signer, uint32_t pkt
         if (ab10_forged_at(current_hop)) { ++g_ab10_forged_accepted; hop_ok = true; } // AB10: false keys
     }
     auto _st1 = std::chrono::high_resolution_clock::now();
-    g_m7_stark_wall_us_sum += std::chrono::duration<double, std::micro>(_st1 - _st0).count();
+    g_m7_stark_wall_us_sum += g_crypto_const ? CONST_STARK_US : std::chrono::duration<double, std::micro>(_st1 - _st0).count();
     ++g_m7_stark_calls;
     if (CRYPTO_DEBUG_LOG) {
         std::cout << "[PKT-CRYPTO] ── STARK-HOP ─────────────────────────────────────\n"
@@ -2022,6 +2033,10 @@ inline void ctrl_trust_update_negative(uint32_t ctrl) {
     g_ctrl_trust_score[ctrl] = (v > 0.0 ? v : 0.0);
     if (g_ctrl_trust_score[ctrl] < TRUST_T_MIN_CTRL && !g_ctrl_revoked[ctrl]) {
         g_ctrl_revoked[ctrl] = true;
+        // M4: revoking a controller contains every RSU it serves (their attack stops at reassignment).
+        for (uint32_t _r = 0; _r < N_RSUs && _r < (uint32_t)total_size; ++_r)
+            if (rsu_controller_assignment[_r] == ctrl && t_contained_rev[N_Vehicles + _r] == 0.0)
+                t_contained_rev[N_Vehicles + _r] = ns3::Simulator::Now().GetSeconds();
         ctrl_reassign_rsus(ctrl);
         // Unconditional: controller revocation is high-importance
         std::cout << "[CTRL-REVOKED] controller idx=" << ctrl
@@ -2187,7 +2202,8 @@ inline void crypto_batch_verify_tick() {
         auto _bt0 = std::chrono::high_resolution_clock::now();
         auto result = batch_verify_mldsa87(pending);
         auto _bt1 = std::chrono::high_resolution_clock::now();
-        double _b_us = std::chrono::duration<double, std::micro>(_bt1 - _bt0).count();
+        double _b_us = g_crypto_const ? (CONST_BATCH_C0_US + CONST_BATCH_C1_US * (double)pending.size())
+                                      : std::chrono::duration<double, std::micro>(_bt1 - _bt0).count();
         g_m7_batch_wall_us_sum += _b_us;
         ++g_m7_batch_calls;
         g_m7_batch_pkts += pending.size();
@@ -2697,6 +2713,7 @@ inline void ab11_probe_tick() {
 // ── CLI Parameter Registration ────────────────────────────────────────────────
 
 inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
+    cmd.AddValue("crypto_const",       "M7 timings from idle-host constants instead of wall-clock (default 1)", g_crypto_const);
     cmd.AddValue("trust_delta_r",      "Trust reward Δ_r",                   TRUST_DELTA_R);
     cmd.AddValue("trust_delta_p",      "Trust penalty Δ_p (must be > Δ_r)",  TRUST_DELTA_P);
     cmd.AddValue("trust_t_min",        "Quarantine threshold T_min",          TRUST_T_MIN);

@@ -273,7 +273,7 @@ static float               LSTM_HC_THETA_CLS = 0.979359f;  // hc_theta_cls.json,
 static const char* LSTM_CSV_HEADER =
     "cycle,rsu_id,delta_t,lambda_PI,U_TCAM,"
     "zkp_delay_fail,zkp_hop_fail,rho,v_bar,d_div,a_tp,r_anom,escalated,label,"
-    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt,tcam_send_gt";
+    "lstm_anomaly_score,d_lstm,hf_send_gt,delta_t_exceeded,std_send_gt,tcam_send_gt,ev_label";
 // 2026-08-14..2026-08-25 format, 18 columns -- same as current but no
 // std_send_gt (appended at the very end).
 [[maybe_unused]] static const char* LSTM_CSV_HEADER_19COL =
@@ -475,6 +475,13 @@ inline void lstm_migrate_stale_header(const std::string& path)
             ++n_migrated;
         }
         else if (f.size() == 20)
+        {
+            // Pre-ev_label row (2026-08-28..2026-10-09): all 20 fields in current order, missing only the trailing
+            // ev_label. Append 0 = "unknown"; the LSTM preprocessor refuses to train on files without a real ev_label.
+            migrated_rows.push_back(row + ",0");
+            ++n_migrated;
+        }
+        else if (f.size() == 21)
         {
             migrated_rows.push_back(row);   // already current format
             ++n_passthrough;
@@ -1043,6 +1050,20 @@ inline void lstm_log_rsu_cycle(uint32_t r,
         if (r < g_lstm_prev_tcam_sendgt.size()) g_lstm_prev_tcam_sendgt[r] = cur_tg;
     }
 
+    // ── ev_label (label-only, NOT a model feature; supervisor 2026-10-09): the EVENT / STATE label, defined exactly like
+    // scripts/event_scorer.py. A1/A2: an attack-conforming delay was injected at this RSU in this cycle (std_send_gt > 0).
+    // A5-A8: a hidden duplicate was scheduled by/at this RSU in this cycle (hf_send_gt > 0). A3/A4: this RSU holds >= 1
+    // attacker-injected TCAM entry NOW (state; the preprocessor fills the gap between the first and last such cycle).
+    // Replaces the latched lstm_rsu_ground_truth_label ('label' column) as the training label.
+    int EV_LABEL = 0;
+    if (active_attack_variant == 0 || active_attack_variant == 1)        EV_LABEL = (STD_SendGT > 0.0) ? 1 : 0;
+    else if (active_attack_variant >= 4 && active_attack_variant <= 7)  EV_LABEL = (HF_SendGT  > 0.0) ? 1 : 0;
+    else if (active_attack_variant == 2 || active_attack_variant == 3)
+    {
+        for (const auto& _e : g_tcam_table)
+            if (_e.is_malicious && _e.node_id == rsu_sim_idx) { EV_LABEL = 1; break; }
+    }
+
     // ── Features 9 & 10: D_div, A_tp (eq:feat_ddiv, eq:feat_atp; corrected
     // 2026-07-28 per main.tex:5783-5794). Both are computed from dedicated
     // local delivery counters populated at the MacRx receive sites in
@@ -1315,6 +1336,7 @@ inline void lstm_log_rsu_cycle(uint32_t r,
       << "," << (obs_exceeded_dmax ? 1 : 0)
       << "," << STD_SendGT
       << "," << TCAM_SendGT
+      << "," << EV_LABEL
       << "\n";
     f.close();
 }

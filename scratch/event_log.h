@@ -147,6 +147,13 @@ inline void ev_quarantine(uint32_t node)
     ev_tick(); g_ev_cells[{ev_cycle(), (int32_t)node}].qua = 1;
 }
 
+// M4 per attacker (per-event series): first attack action, quarantine event and controller-revocation times [s, 0 = never].
+inline void ev_m4(uint32_t node, double t_first, double t_quar, double t_rev)
+{
+    ev_open_if_needed();
+    g_ev_out << "0," << node << ",M4," << t_first << ":" << t_quar << ":" << t_rev << "\n";
+}
+
 inline void ev_attacker(uint32_t node)
 {
     ev_open_if_needed();

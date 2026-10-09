@@ -148,6 +148,19 @@ If any check fails: bug in substitute or scoring. **Stop, send the table, do not
 - Anchor, no tuning: S1 and S4 false-alarm rate **per decision** and per node-cycle, share in the first 60 s, how many RSUs give 80 % of them (paper says S4 calibrated at 1 % and discloses 19.17 % at the OBU stage: state the FPR correctly).
 - If anything fails: **stop and send the table; do not start the reruns.**
 
+
+## Supervisor reply 2026-10-09 (late): GATE 2 ACCEPTED. This message is the whole plan.
+
+**ORDER OF WORK**
+1. - [ ] **One commit, one new tag, no +dirty**: LSTM label switch; items 2b, 2d, 2e, 2f, 2i; the M4 change below; gate-2 acceptance checks as **automatic assertions at the end of every batch**, with **TP+FN equality for TAP and eFADE on 180 s runs** added. If one fails: stop only that experiment, send its table, carry on with the rest. Then a 15 s smoke.
+2. - [ ] **Calibrate once, on validation seeds that are NOT the reported ones.** U_thresh by the paper's own rule (best MCC at FPR <= 1 %). S1 with handoff-jitter suppression ON and OFF. Send per setting: S1 and S4 false-alarm rate **per decision and per node-cycle**, A1 DR, false quarantines, S1 alarms per 15 s bin after warm-up. **Supervisor chooses the S1 setting the same day.** Then set **TAP, SFTO and eFADE on the same seeds to LRAD's false-alarm rate per node-cycle.** Freeze thresholds in the build and tag it. ("No tuning against the FPR" meant the reported runs, not this.)
+3. - [ ] **LSTM**: collect in detection-only mode on the frozen tag, train 3x offline, report the spread, then LSTM ON in every final run.
+4. - [ ] **Reruns on the frozen tag, seed 1, both families (detection-only and closed-loop), order: PHANTOM, VANGUARD-HF, Hydra, NEXUS.** Send each paper's tables as it finishes. **First send a corrected run count**: the 854 left out the VANGUARD-HF ablations, the TAP and eFADE runs, and the retrains for AB2, AB3, AB5. The rest of section 10 of the gate-2 package comes with its paper.
+
+**M4 (supervisor's mistake)**: for an attacker served by a controller that gets revoked, containment is the revocation if it comes first. Full A3 shows 16 of 32 uncontained and AB8/AB9/AB12 show 0 (reads as the ablations containing more). Expected: the 16 are the revoked controller's RSUs; **tell if not**. **Report "contained by quarantine" and "contained by revocation" as two counts.**
+
+**SPEED TRACES**: ignore the "plot against measured mean" line. Label the axis with the road speed limit 10-150, say so in the paper, give measured means in a table. **Before Exp 2 send the share of vehicles still moving at 50, 100 and 150 s for each trace** (they park after their trips).
+
 ## Log (newest last)
 
 - 2026-10-08 17:10: Wrote this README. Archived and deleted the 210 contaminated MOBIGUARD CSVs (restarted cycle counters, 46 MB) to `~/ns3_g13/archive/contaminated_MOBIGUARD_20261008.tgz`. Archived and deleted stale score CSVs (`phantom_exp23/exp1..4_scores`, `exp3_scale_scores`, `exp5_table`, `exp_ci_180`; `vanguard_exp23/exp2,3_scores`, `exp5_table`) to `~/ns3_g13/archive/stale_score_csvs_20261008.tgz`. Clean 180 s ablation score files kept.
@@ -160,3 +173,4 @@ If any check fails: bug in substitute or scoring. **Stop, send the table, do not
 - 2026-10-09: Gate run (20 runs) and package written: docs/GATE_PACKAGE_2026-10-09.md. GATE NOT PASSED (AB8 A3, AB9 A3, AB12 A3 M1 above full arm with enforcement off; AB12 M11 does not move; AB7 M4 not verifiable). Fixed on the way: alarms were latch-gated (now emitted at raw decision sites); AB8 substitute did not apply f_unauth=0 to S3 (now does, S3 count 0). Stopped; no full rerun. Awaiting supervisor decision on the 5 open points.
 - 2026-10-09 (reply 2): Supervisor answers received. Rule 4 dropped; enforcement-off = detection only; A3/A4 state labels; AB12 must collapse UFCR; speed traces to be rebuilt; LSTM on for final runs (retrain). Working on BUILD a-g, then gate 2.
 - 2026-10-09 (gate 2): BUILD a-g done and committed (91587e1, clean tag). GATE 2 PASSED all checks (22 runs). Package: docs/GATE2_PACKAGE_2026-10-09.md. Also done: speed traces (scripts/make_speed_traces.py, mobility_urban_v10..v150.tcl), 485 S3 FPs explained (revoked controller's RSUs), 178 FlowMods = 1/s synthetic probes. NOT done: LSTM relabel/retrain, 2b, 2d, 2e, 2f, 2i, Hydra dwell window, Manhattan. No rerun started; waiting for supervisor.
+- 2026-10-09 (plan 3): Gate 2 accepted. Plan received (see section above): commit incl. LSTM label switch + 2b/2d/2e/2f/2i + M4 two counts + batch assertions; calibration on validation seeds; LSTM collect/train; corrected run count; reruns PHANTOM -> VANGUARD-HF -> Hydra -> NEXUS.
