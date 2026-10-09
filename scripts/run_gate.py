@@ -2,12 +2,10 @@
 """run_gate.py -- supervisor GATE (2026-10-08): PHANTOM AB7, AB8 (A3), AB9, AB12 at p=40, 180 s, seed 1,
 full and ablated arm, each with enforcement ON and OFF, plus benign anchors at p=0 (LRAD, TAP, SFTO).
 
-Enforcement switch: --enable_quarantine_enforcement. OFF = quarantine_blocks() returns false, so a quarantined node
-is no longer denied its attack action (FlowMod install / delay / duplicate); trust scores, quarantine state and every
-detector keep running unchanged.
+Enforcement switch: --enable_quarantine_enforcement. OFF = DETECTION ONLY (supervisor 2026-10-09): no quarantine action,
+no controller revocation / failover / isolation, no baseline mitigation; every detector keeps running.
 
-AB7 ablated arm = --enable_quarantine=0 (no trust updates, no SC.Quarantine): enforcement is then moot, so that arm is
-run once (tag gate_ab7abl_*) and used for both enforcement columns.
+AB7 ablated arm = --enable_quarantine=0 (no trust updates, no SC.Quarantine), run with enforcement on and off.
 Full arm (ab7full) = defaults, shared by AB7/AB8/AB9/AB12.
 
 Run-tag rule (supervisor 2c): any existing output for a tag is DELETED before launch, never appended to.
@@ -24,11 +22,12 @@ ENF = {"on": "--enable_quarantine_enforcement=1", "off": "--enable_quarantine_en
 def jobs():
     J = []
     def add(tag, attack, pct, extra):
-        J.append(dict(tag="gate_" + tag, attack=attack, pct=pct, extra=extra))
+        J.append(dict(tag="gate2_" + tag, attack=attack, pct=pct, extra=extra))
     for a in (1, 3):
         for e in ("on", "off"):
             add(f"full_A{a}_enf{e}", a, P, [ENF[e]])                              # shared full arm
-        add(f"ab7abl_A{a}", a, P, ["--enable_quarantine=0", ENF["on"]])
+        for e in ("on", "off"):
+            add(f"ab7abl_A{a}_enf{e}", a, P, ["--enable_quarantine=0", ENF[e]])
         for e in ("on", "off"):
             add(f"ab9abl_A{a}_enf{e}", a, P, ["--ab9_no_isolation=1", ENF[e]])
             add(f"ab12abl_A{a}_enf{e}", a, P, ["--ab12_legitimize=1", ENF[e]])

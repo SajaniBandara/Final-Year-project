@@ -133,13 +133,13 @@ If any check fails: bug in substitute or scoring. **Stop, send the table, do not
 **What changes**: with enforcement ON attacks stop inside the warm-up (A3: 0 positives, A1: 8), so M1 cannot be read from closed-loop runs. **M1/DR/FPR for Exp 1-5, the SOTA tables and AB1-AB5 come from detection-only runs; every other metric from closed-loop runs.** Send run count and ETA for both on the six machines.
 
 **BUILD (one commit, no "+dirty" in anything reported)**
-- [ ] a) answers 1-4 + a check that flags any two arms with different TP+FN
-- [ ] b) baselines score the RAW decision before their own latch/list (TAP's 0.04 % was an artifact: 260 nodes on its list from 1.1 s). TP+FN must equal LRAD's
-- [ ] c) vehicles inactive until their first move; ONE warm-up for all runs, after the last start (45 s for N=200)
-- [ ] d) M4 as in the PHANTOM Discussion (prevention rate, and mean latency over attackers that acted before containment), measured to the quarantine event; AB7 ablated = infinite (1,375 ms was measured from detection)
-- [ ] e) invariants + 15 s smoke on A2, A4, A6, A7, A8 and FADE
-- [ ] f) the 10 Gurobi solves that were not OPTIMAL: status, what the code does then, **no silent fallback**
-- [ ] g) before VANGUARD-HF: do witness alerts count as alarms? (AB6 needs it for S7/S8)
+- [x] a) answers 1-4 + a check that flags any two arms with different TP+FN
+- [x] b) baselines score the RAW decision before their own latch/list (TAP's 0.04 % was an artifact: 260 nodes on its list from 1.1 s). TP+FN must equal LRAD's
+- [x] c) vehicles inactive until their first move; ONE warm-up for all runs, after the last start (45 s for N=200)
+- [x] d) M4 as in the PHANTOM Discussion (prevention rate, and mean latency over attackers that acted before containment), measured to the quarantine event; AB7 ablated = infinite (1,375 ms was measured from detection)
+- [x] e) invariants + 15 s smoke on A2, A4, A6, A7, A8 and FADE
+- [x] f) the 10 Gurobi solves that were not OPTIMAL: status, what the code does then, **no silent fallback**
+- [x] g) before VANGUARD-HF: do witness alerts count as alarms? (AB6 needs it for S7/S8)
 
 **GATE 2**: same 20 runs, LSTM off, plus the benign anchor. Accept if:
 - a) AB8 off: same TP+FN as full arm, S3 raw 0, ablated DR and M1 not above full beyond the CI
@@ -159,3 +159,4 @@ If any check fails: bug in substitute or scoring. **Stop, send the table, do not
 - 2026-10-09: Event-based scoring BUILT (build tag in scratch/build_tag.h via scripts/stamp_build.sh). Pieces: scratch/event_log.h (raw per-cycle events: ACT from the existing send-side ground-truth counters, ALM from record_detection_event / TAP / SFTO / FADE raw decisions, QUA, FIRE, WIT), scripts/event_scorer.py (rules 1-6), scripts/test_event_scorer.py (18 checks pass). Positives = attack actions after the quarantine-enforcement check; scored node = RSU (vehicle attackers/alarms attributed to covering RSU). MOBIGUARD CSV gets a trailing build_commit column. Next: gate runs (AB7/8/9/12, p=40, 180 s, enforcement on/off).
 - 2026-10-09: Gate run (20 runs) and package written: docs/GATE_PACKAGE_2026-10-09.md. GATE NOT PASSED (AB8 A3, AB9 A3, AB12 A3 M1 above full arm with enforcement off; AB12 M11 does not move; AB7 M4 not verifiable). Fixed on the way: alarms were latch-gated (now emitted at raw decision sites); AB8 substitute did not apply f_unauth=0 to S3 (now does, S3 count 0). Stopped; no full rerun. Awaiting supervisor decision on the 5 open points.
 - 2026-10-09 (reply 2): Supervisor answers received. Rule 4 dropped; enforcement-off = detection only; A3/A4 state labels; AB12 must collapse UFCR; speed traces to be rebuilt; LSTM on for final runs (retrain). Working on BUILD a-g, then gate 2.
+- 2026-10-09 (gate 2): BUILD a-g done and committed (91587e1, clean tag). GATE 2 PASSED all checks (22 runs). Package: docs/GATE2_PACKAGE_2026-10-09.md. Also done: speed traces (scripts/make_speed_traces.py, mobility_urban_v10..v150.tcl), 485 S3 FPs explained (revoked controller's RSUs), 178 FlowMods = 1/s synthetic probes. NOT done: LSTM relabel/retrain, 2b, 2d, 2e, 2f, 2i, Hydra dwell window, Manhattan. No rerun started; waiting for supervisor.

@@ -1,0 +1,150 @@
+{
+ "anchor_lrad_enfoff": {
+  "res": {
+   "S1": {
+    "alarm_nodecycles_all": 1046,
+    "alarm_nodecycles_post": 724,
+    "rate_per_nodecycle_post": 0.0837962962962963,
+    "share_first60s": 0.4196940726577438,
+    "rsus_with_alarms": 44,
+    "rsus_for_80pct": 21,
+    "raw_firings_all": 4450,
+    "raw_firings_post": 3221,
+    "decisions_all": 86756,
+    "decisions_post": 64427,
+    "rate_per_decision_post": 0.049994567494994334,
+    "rate_per_decision_all": 0.05129328230900457
+   },
+   "S4": {
+    "alarm_nodecycles_all": 359,
+    "alarm_nodecycles_post": 359,
+    "rate_per_nodecycle_post": 0.04155092592592593,
+    "share_first60s": 0.011142061281337047,
+    "rsus_with_alarms": 10,
+    "rsus_for_80pct": 6,
+    "raw_firings_all": 359,
+    "raw_firings_post": 359,
+    "decisions_all": 11392,
+    "decisions_post": 8576,
+    "rate_per_decision_post": 0.04186100746268657,
+    "rate_per_decision_all": 0.03151334269662921
+   }
+  },
+  "FP": 973,
+  "TN": 7667,
+  "FPR": 0.11261574074074074,
+  "quar_false": 60,
+  "list_size": 60
+ },
+ "anchor_lrad_enfon": {
+  "res": {
+   "S1": {
+    "alarm_nodecycles_all": 1042,
+    "alarm_nodecycles_post": 720,
+    "rate_per_nodecycle_post": 0.08333333333333333,
+    "share_first60s": 0.42130518234165065,
+    "rsus_with_alarms": 44,
+    "rsus_for_80pct": 20,
+    "raw_firings_all": 4544,
+    "raw_firings_post": 3315,
+    "decisions_all": 87747,
+    "decisions_post": 65418,
+    "rate_per_decision_post": 0.05067412638723287,
+    "rate_per_decision_all": 0.05178524621924396
+   },
+   "S4": {
+    "alarm_nodecycles_all": 360,
+    "alarm_nodecycles_post": 360,
+    "rate_per_nodecycle_post": 0.041666666666666664,
+    "share_first60s": 0.011111111111111112,
+    "rsus_with_alarms": 10,
+    "rsus_for_80pct": 6,
+    "raw_firings_all": 360,
+    "raw_firings_post": 360,
+    "decisions_all": 11392,
+    "decisions_post": 8576,
+    "rate_per_decision_post": 0.04197761194029851,
+    "rate_per_decision_all": 0.03160112359550562
+   }
+  },
+  "FP": 970,
+  "TN": 7670,
+  "FPR": 0.11226851851851852,
+  "quar_false": 55,
+  "list_size": 55
+ },
+ "anchor_sfto": {
+  "res": {
+   "S1": {
+    "alarm_nodecycles_all": 1046,
+    "alarm_nodecycles_post": 724,
+    "rate_per_nodecycle_post": 0.0837962962962963,
+    "share_first60s": 0.4196940726577438,
+    "rsus_with_alarms": 44,
+    "rsus_for_80pct": 21,
+    "raw_firings_all": 4450,
+    "raw_firings_post": 3221,
+    "decisions_all": 86756,
+    "decisions_post": 64427,
+    "rate_per_decision_post": 0.049994567494994334,
+    "rate_per_decision_all": 0.05129328230900457
+   },
+   "S4": {
+    "alarm_nodecycles_all": 359,
+    "alarm_nodecycles_post": 359,
+    "rate_per_nodecycle_post": 0.04155092592592593,
+    "share_first60s": 0.011142061281337047,
+    "rsus_with_alarms": 10,
+    "rsus_for_80pct": 6,
+    "raw_firings_all": 359,
+    "raw_firings_post": 359,
+    "decisions_all": 11392,
+    "decisions_post": 8576,
+    "rate_per_decision_post": 0.04186100746268657,
+    "rate_per_decision_all": 0.03151334269662921
+   },
+   "SFTO": {
+    "alarm_nodecycles_all": 20,
+    "alarm_nodecycles_post": 20,
+    "rate_per_nodecycle_post": 0.0023148148148148147,
+    "share_first60s": 0.0,
+    "rsus_with_alarms": 5,
+    "rsus_for_80pct": 2,
+    "raw_firings_all": 20,
+    "raw_firings_post": 20,
+    "decisions_all": 0,
+    "decisions_post": 0,
+    "rate_per_decision_post": NaN,
+    "rate_per_decision_all": NaN
+   }
+  },
+  "FP": 20,
+  "TN": 8620,
+  "FPR": 0.0023148148148148147,
+  "quar_false": 60,
+  "list_size": 60
+ },
+ "anchor_tap": {
+  "res": {
+   "TAP": {
+    "alarm_nodecycles_all": 3931,
+    "alarm_nodecycles_post": 2666,
+    "rate_per_nodecycle_post": 0.3085648148148148,
+    "share_first60s": 0.43424065123378275,
+    "rsus_with_alarms": 61,
+    "rsus_for_80pct": 27,
+    "raw_firings_all": 102119,
+    "raw_firings_post": 74801,
+    "decisions_all": 0,
+    "decisions_post": 0,
+    "rate_per_decision_post": NaN,
+    "rate_per_decision_all": NaN
+   }
+  },
+  "FP": 2666,
+  "TN": 5974,
+  "FPR": 0.3085648148148148,
+  "quar_false": 261,
+  "list_size": 261
+ }
+}
