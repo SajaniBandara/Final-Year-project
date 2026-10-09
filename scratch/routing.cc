@@ -115589,6 +115589,16 @@ void record_attack_onset(int v, int n)
 // src: which component decided this (supervisor Fix 5). Defaults to
 // DSRC_QUARANTINE so the trust-decay path, which has no single owning
 // signature, still lands in a named bucket rather than an unlabelled one.
+inline void ev_tap_dev_attributed(uint32_t raw_sender, double dev)
+{
+	if (!g_ev_enabled || !g_ev_log_util) return;
+	uint32_t sn = (raw_sender < N_Vehicles) ? hf_gt_attribution_node(raw_sender) : raw_sender;
+	if (sn == UINT32_MAX || sn < N_Vehicles || sn >= N_Vehicles + N_RSUs) return;
+	ev_tick();
+	EvUV& u = g_ev_uv[{ev_cycle(), (int32_t)sn}];
+	if (dev > u.tapdev) u.tapdev = dev;
+}
+
 inline void ev_alarm_attributed(uint32_t raw_node, uint32_t src_bit, int window_cycles)
 {
 	uint32_t sn = (raw_node < N_Vehicles) ? hf_gt_attribution_node(raw_node) : raw_node;
@@ -142867,6 +142877,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("sim_seed", "ns-3 RNG seed (1-5 per proposal simulation table)", sim_seed);
     cmd.AddValue("run_tag", "suffix appended to every output filename (e.g. Q6); lets ablation configs run concurrently without colliding", g_run_tag);
     cmd.AddValue("mobility_trace_file", "Exp 3: absolute path to an explicit vehicle-mobility .tcl, overriding the maxspeed-selected trace. Drive N_Vehicles=100/200/300/400 from one 400-vehicle base trace.", g_mobility_trace_file);
+    cmd.AddValue("ev_log_util", "1 = log per RSU-cycle S4 occupancy, SFTO predicted occupancy and TAP max deviation into the events file (calibration)", g_ev_log_util);
     cmd.AddValue("tap_margin", "TAP baseline detection threshold |v-PPAT| (s); default 1e-6. Set to a benign timing percentile for the SOTA 'TAP (recalibrated)' line.", TAP_MARGIN);
     cmd.AddValue("sfto_theta", "SFTO-Guard occupancy threshold (fraction of capacity); default 0.90. Set to a benign occupancy percentile for the 'SFTO (recalibrated)' line.", SFTO_THETA);
     cmd.AddValue("fade_force", "1 = run eFADE cross-attack on A1-A4 for the SOTA 'eFADE (cross-attack)' line (scored externally vs is_malicious_node; per-packet HF baseline untouched).", g_fade_force);

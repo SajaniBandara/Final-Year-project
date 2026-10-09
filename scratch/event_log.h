@@ -38,6 +38,12 @@ static std::ofstream g_ev_out;
 static int g_ev_variant = -1;
 static std::map<uint32_t, std::map<int,uint32_t>> g_ev_dec;   // cycle -> source bit -> decisions taken
 static bool g_ev_enabled = true;
+// Calibration series (--ev_log_util=1): per RSU-cycle TCAM occupancy (S4), SFTO predicted occupancy (-1 = table not growing),
+// and TAP's largest |v - PPAT| (s) seen on packets from that RSU (or a vehicle it covers). They let U_thresh, SFTO's theta and
+// TAP's margin be swept OFFLINE from one benign and one attack run.
+static bool g_ev_log_util = false;
+struct EvUV { double util = -1.0, sfto = -2.0, tapdev = -1.0; };
+static std::map<std::pair<uint32_t,int32_t>, EvUV> g_ev_uv;
 static bool g_ev_trust_qua = true;   // false in TAP / FADE-only runs: MOBIGUARD trust machinery is not the baseline's mitigation
 static uint32_t g_ev_flushed_upto = 0;     // cycles < this are on disk
 
@@ -79,6 +85,11 @@ inline void ev_flush_before(uint32_t cyc)
     {
         for (auto& kv : it->second) g_ev_out << it->first << ",-1,FIRE," << kv.first << ":" << kv.second << "\n";
         it = g_ev_fire.erase(it);
+    }
+    for (auto it = g_ev_uv.begin(); it != g_ev_uv.end() && it->first.first < cyc; )
+    {
+        g_ev_out << it->first.first << "," << it->first.second << ",UTIL," << it->second.util << ":" << it->second.sfto << ":" << it->second.tapdev << "\n";
+        it = g_ev_uv.erase(it);
     }
     for (auto it = g_ev_dec.begin(); it != g_ev_dec.end() && it->first < cyc; )
     {
@@ -140,6 +151,19 @@ inline void ev_state(uint32_t node, uint32_t n_entries)
     if (!g_ev_enabled || n_entries == 0) return;
     ev_tick(); g_ev_cells[{ev_cycle(), (int32_t)node}].state = n_entries;
 }
+
+inline void ev_util(uint32_t node, double util)
+{
+    if (!g_ev_enabled || !g_ev_log_util) return;
+    ev_tick(); g_ev_uv[{ev_cycle(), (int32_t)node}].util = util;
+}
+inline void ev_sfto_pred(uint32_t node, double pred)
+{
+    if (!g_ev_enabled || !g_ev_log_util) return;
+    ev_tick(); g_ev_uv[{ev_cycle(), (int32_t)node}].sfto = pred;
+}
+// Defined in routing.cc (needs the covering-RSU attribution): keeps the maximum deviation per scored RSU and cycle.
+inline void ev_tap_dev_attributed(uint32_t raw_sender, double dev);
 
 inline void ev_quarantine(uint32_t node)
 {

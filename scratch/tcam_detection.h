@@ -341,6 +341,7 @@ inline TcamCycleMetrics ComputeTcamDetection(
         metrics.total_lambda_pi += lambda_pi;
         metrics.total_malicious += malicious_count;
         ev_decision(DSRC_RULE_S3); ev_decision(DSRC_RULE_S4);   // one S3 and one S4 decision per RSU per cycle
+        ev_util(node_id, tcam_util);                              // calibration series (--ev_log_util)
         if (flag_s3) {
             ++metrics.s3_fired_count;
             if (!g_disable_s3_s4) { ev_alarm_attributed(node_id, DSRC_RULE_S3, 1); record_detection_event(2, node_id, DSRC_RULE_S3); }

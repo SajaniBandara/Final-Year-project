@@ -120,6 +120,7 @@ inline void tap_run_detection(uint32_t receiver_current_hop,
 		       << ((std::abs(v - PPAT) > TAP_MARGIN) ? 1 : 0) << "\n";
 	}
 
+	ev_tap_dev_attributed(sender_current_hop, std::abs(v - PPAT));   // calibration series (--ev_log_util)
 	if (std::abs(v - PPAT) > TAP_MARGIN)
 	{
 		cout << "[TAP] TIMING VIOLATION: abs(v-PPAT)=" << std::abs(v-PPAT)*1000.0

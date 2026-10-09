@@ -112,6 +112,7 @@ inline void sfto_run_cycle()
         // Rule-count prediction: occupancy SFTO_HORIZON cycles ahead.
         const double occ      = (double)cur / (double)TCAM_CAPACITY;
         const double occ_pred = occ + (double)SFTO_HORIZON * g_ewma / (double)TCAM_CAPACITY;
+        ev_sfto_pred(node, g_ewma > 0.0 ? occ_pred : -1.0);   // calibration series (--ev_log_util)
 
         // Static-threshold alarm (latched): predicted occupancy crosses SFTO_THETA
         // while the table is actively growing.

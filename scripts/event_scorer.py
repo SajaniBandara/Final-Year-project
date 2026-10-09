@@ -37,7 +37,7 @@ def mcc(tp, fp, fn, tn):
 def parse(path):
     ev = dict(act=defaultdict(int), alm=defaultdict(list), qua={}, fire=defaultdict(lambda: defaultdict(int)),
               wit=defaultdict(int), atk=set(), commit="", last_cycle=0, qua_events=defaultdict(list),
-              state=defaultdict(int), dec=defaultdict(lambda: defaultdict(int)), variant=-1)
+              state=defaultdict(int), dec=defaultdict(lambda: defaultdict(int)), variant=-1, uv={}, m4={})
     for line in open(path):
         line = line.strip()
         if line.startswith("# commit="):
@@ -61,6 +61,10 @@ def parse(path):
             t, k = val.split(":"); ev["wit"][(c, int(t))] += int(k)
         elif kind == "ATK": ev["atk"].add(n)
         elif kind == "STATE": ev["state"][(c, n)] = int(val)
+        elif kind == "UTIL":
+            u, sf, td = val.split(":"); ev["uv"][(c, n)] = (float(u), float(sf), float(td))
+        elif kind == "M4":
+            a, b, d = val.split(":"); ev["m4"][n] = (float(a), float(b), float(d))
         elif kind == "DEC":
             b, k = val.split(":"); ev["dec"][c][int(b)] += int(k)
     return ev
