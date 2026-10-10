@@ -230,3 +230,9 @@ At the end of EACH paper print: (i) failed assertions; (ii) ablation points wher
 - `enable_lstm_cls` now defaults to true; `rerun_lib.LSTM_FLAGS` passes it; weights exported (`lstm_weights_cpp.bin`, recon-only copy kept).
 - Solver call retries once in C++ before stopping the run. Witness alarm moved to the quorum crossing. Commit 29b8e87, binary verified to carry the tag.
 - Running now: TAP/SFTO re-match to the head's benign alarm rate (seeds 2,3). Next: apply re-match, retag, smokes, PHANTOM reruns.
+
+### 2026-10-10 (evening): re-match done, tag 24dff13, PHANTOM smoke passed
+- **Bug found and fixed (6b3d481):** LSTM and R_anom alarms were logged only while an attack variant was active, so benign runs never recorded their false alarms. The first re-match (LRAD 0.978%, S4 only) was therefore too low. After the fix, on seeds 2,3: LRAD benign false-alarm rate 1.0995% per RSU node-cycle (S4 0.978%, LSTM head 0.122%); 0 benign quarantines.
+- Re-match: TAP margin stays 5.623 ms (0.990%); **SFTO theta 0.59 -> 0.56** (1.0995%). Commit 24dff13; binary verified to carry the tag.
+- PHANTOM smoke (A1 p40 seed 1, detection only, 181 s, tag 24dff13): rc 0, 181 series rows, event log complete to cycle 181, no solver errors. M1 0.730, DR 0.982, FPR 0.049 (FPs: S1 301, LSTM 123 cycles). Note: 52 honest nodes appear in `quarantined_false` even with enforcement 0; to be explained on the audit page (item d) together with TAP's 92.
+- VANGUARD-HF, Hydra, NEXUS have no runner yet (`rerun_vanguard/hydra/nexus.py`), so their smokes are not done; Hydra and NEXUS also wait for the Manhattan extract. Rerun launch is therefore not started.
