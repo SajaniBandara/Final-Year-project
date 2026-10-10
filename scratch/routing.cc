@@ -122822,11 +122822,11 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 						// Q1-Q6 config, including the ones claiming to isolate
 						// something else).
 						if (!g_disable_btmm_trust) {
-							if (hop_ok && timing_ok && g_batch_passed)
+							if (hop_ok && timing_ok && batch_ok_for_sender(prev_sender))
 								trust_update_positive(prev_sender);
 							else {
 								g_current_trust_source = DSRC_BTMM_PACKET;
-								g_trust_cause_mask = (g_batch_passed ? 0u : (uint32_t)TC_BATCH) | (hop_ok ? 0u : (uint32_t)TC_HOP) | (timing_ok ? 0u : (uint32_t)TC_DELAY);
+								g_trust_cause_mask = (batch_ok_for_sender(prev_sender) ? 0u : (uint32_t)TC_BATCH) | (hop_ok ? 0u : (uint32_t)TC_HOP) | (timing_ok ? 0u : (uint32_t)TC_DELAY);
 								trust_update_negative(prev_sender);
 								g_current_trust_source = DSRC_NONE;
 							}

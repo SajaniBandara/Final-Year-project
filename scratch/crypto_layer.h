@@ -636,6 +636,14 @@ static uint32_t g_verify_attempts = 0;
 static uint32_t g_verify_passed   = 0;
 // Batch challenge result — updated each 50ms tick; feeds LRAD b_batch (eq:batch_challenge)
 static bool g_batch_passed = true;
+// Eq. batch_fallback (paper): on a failed batch the verifier falls back to individual verification and so identifies the specific forger.
+// The trust update therefore penalises only senders whose OWN signature failed in the latest tick; --batch_fallback=0 restores the old
+// behaviour (every sender verified while the global flag is false is penalised).
+static bool g_batch_fallback = true;
+static std::set<uint32_t> g_batch_failed_senders;
+inline bool batch_ok_for_sender(uint32_t sender) {
+    return g_batch_fallback ? (g_batch_failed_senders.count(sender) == 0) : g_batch_passed;
+}
 
 struct WitnessLogEntry {
     uint8_t  pkt_hash[64] = {};
@@ -1825,6 +1833,7 @@ inline BatchVerifyResult batch_verify_mldsa87(
     double budget_s = 0.050)
 {
     BatchVerifyResult res{true, 0, 0.0};
+    g_batch_failed_senders.clear();
 
     std::vector<uint8_t> combined;
     combined.reserve(node_pkt_pairs.size() *
@@ -1860,8 +1869,9 @@ inline BatchVerifyResult batch_verify_mldsa87(
         // so its internal re-composition reproduces this exact `pkt` value
         // instead of re-encoding an already-composite number.
         if (!mldsa87_verify(node, crypto_msg_key_pkt(pkt), nh,
-                             crypto_msg_key_flow(pkt), /*is_batch_call=*/true))
-            res.passed = false;
+                             crypto_msg_key_flow(pkt), /*is_batch_call=*/true)) {
+            res.passed = false; g_batch_failed_senders.insert(node);
+        }
         ++res.n_verified;
         res.elapsed_s += 0.001;
     }
@@ -2788,6 +2798,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_lrad_obu",               "AB1: enable OBU rule engine (lrad_obu)",        enable_lrad_obu);
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
     cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
+    cmd.AddValue("batch_fallback",                "paper eq:batch_fallback: penalise only senders whose own signature failed a batch (0 = every sender in the window)", g_batch_fallback);
     cmd.AddValue("enable_stark_hop",              "AB4: enable STARK hop-legitimacy proof π_hop",  enable_stark_hop);
     cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
     cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);

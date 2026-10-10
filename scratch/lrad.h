@@ -639,7 +639,7 @@ inline LRADRSUFlags lrad_rsu(
             !flags.flag_S2f && !flags.flag_S5 && !flags.flag_S6 &&
             !flags.flag_S7 && !flags.flag_S8;
         if (have_crypto && !g_disable_btmm_trust && !lstm_only_soft)
-            btmm(prev_sender, it->second.sig_valid && g_batch_passed,
+            btmm(prev_sender, it->second.sig_valid && batch_ok_for_sender(prev_sender),
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
         if (flags.flag_S5) {
