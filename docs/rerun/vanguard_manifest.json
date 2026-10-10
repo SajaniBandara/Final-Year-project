@@ -1,0 +1,9925 @@
+[
+ {
+  "tag": "vg_e1_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p20_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p20_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p20_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p20_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p20_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p20_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p20_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p20_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p40_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p40_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p40_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p40_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p40_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p40_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p40_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p40_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p60_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p60_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p60_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p60_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p60_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p60_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p60_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p60_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p80_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p80_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p80_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p80_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p80_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p80_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p80_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p80_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A5_p100_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A5_p100_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A6_p100_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A6_p100_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A7_p100_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A7_p100_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i25_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i25_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i25_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i25",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i50_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i50",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i50_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i50",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i50_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i50",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=0.5"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i100_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i100_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e1_A8_p100_i100_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e1",
+  "cfg": "A8_p100_i100",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e2_v10_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v10_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v10_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v40_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v40_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v70_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v70_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v100_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v100_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v130_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v130_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e2_v150_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e2",
+  "cfg": "v150_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N100_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N100_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N160_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N160_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N220_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N220_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N280_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N280_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N340_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N340_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_benign_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_benign_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_benign_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_benign",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e3_N400_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e3",
+  "cfg": "N400_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "vg_e4_t10_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t10_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t10_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.1"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t25_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t25_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.25"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t75_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t75_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=0.75"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e4_t100_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e4",
+  "cfg": "t100_A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e5_A5_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A5",
+  "arm": "full",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A5_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A5",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A5_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A5",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e5_A6_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A6",
+  "arm": "full",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A6_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A6",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A6_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A6",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e5_A7_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A7",
+  "arm": "full",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A7_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A7",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A7_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A7",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_e5_A8_full_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A8",
+  "arm": "full",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A8_full_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A8",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ]
+ },
+ {
+  "tag": "vg_e5_A8_efade_do",
+  "paper": "VANGUARD-HF",
+  "exp": "e5",
+  "cfg": "A8",
+  "arm": "efade",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--hf_forward_intensity=1.0"
+  ]
+ },
+ {
+  "tag": "vg_ab1_A5_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A6_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p20_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A6_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A6_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A6_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A6_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A7_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A8_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p20_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A8_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A8_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A8_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab1_A8_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p20_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p20_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A6_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p20_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p20_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab4_A8_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--enable_stark_hop=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A5_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A6_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p20_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A6_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A6_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A6_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A6_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A7_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A8_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p20_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A8_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A8_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A8_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab6_A8_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab6",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--enable_witness_mechanism=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p20_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p20_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A6_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p20_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p20_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab7_A8_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p20_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p20_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p20_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p20_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab8_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab9_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p60_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p80_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab12_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A5_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A5_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p60_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 5,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A5_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p80_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 5,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A5_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A6_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A6_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p60_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 6,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A6_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p80_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 6,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A6_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A7_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A7_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p60_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 7,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A7_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p80_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 7,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A7_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A8_p40_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A8_p60_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p60_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 8,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A8_p80_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p80_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 8,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab10_A8_p100_do",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A6_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A6_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A8_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot1_A8_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A5_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p40_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A5_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A5_p100_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 5,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A6_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p40_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A6_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A6_p100_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 6,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A7_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p40_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A7_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A7_p100_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 7,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A8_p40_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p40_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "vg_ab11rot0_A8_p100_cl",
+  "paper": "VANGUARD-HF",
+  "exp": "ab",
+  "cfg": "A8_p100_i100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 8,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0",
+   "--hf_forward_intensity=1.0",
+   "--witness_f=1",
+   "--witness_window=10"
+  ],
+  "grp": "e1"
+ }
+]
