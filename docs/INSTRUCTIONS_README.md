@@ -236,3 +236,12 @@ At the end of EACH paper print: (i) failed assertions; (ii) ablation points wher
 - Re-match: TAP margin stays 5.623 ms (0.990%); **SFTO theta 0.59 -> 0.56** (1.0995%). Commit 24dff13; binary verified to carry the tag.
 - PHANTOM smoke (A1 p40 seed 1, detection only, 181 s, tag 24dff13): rc 0, 181 series rows, event log complete to cycle 181, no solver errors. M1 0.730, DR 0.982, FPR 0.049 (FPs: S1 301, LSTM 123 cycles). Note: 52 honest nodes appear in `quarantined_false` even with enforcement 0; to be explained on the audit page (item d) together with TAP's 92.
 - VANGUARD-HF, Hydra, NEXUS have no runner yet (`rerun_vanguard/hydra/nexus.py`), so their smokes are not done; Hydra and NEXUS also wait for the Manhattan extract. Rerun launch is therefore not started.
+
+### 2026-10-10 (night): honest-quarantine audit finding; PHANTOM rerun launched on 9953b68
+- **Why 52 honest nodes appear quarantined in a detection-only run:** the trust state still moves with enforcement 0 (no action, but SC.Quarantine is set). Decrements by cause on the honest ones: batch check and hop proof, not S4.
+  1. **Batch (paper deviation, fixed):** one failed signature failed the whole 50 ms batch for every sender in it. Paper `eq:batch_fallback` falls back to individual verification and names the forger. Now `--batch_fallback=1` (default): only senders whose own signature failed are charged. A1 s2 batch-caused decrements 43 -> 2; M1/DR/FPR identical.
+  2. **Hop proof (code quirk, NOT changed):** the BTMM site inside D_RSU (`lrad.h`) reads the record's `stark_hop_ok`, default false, and charges the sender whenever any detector raises D_RSU. This inflates honest quarantines in detection-only runs (A1 36, A2 59, A5 93, A6 85) but is also what contains A4 attackers. `--btmm_intended_only=1` removes it: honest quarantines ~0, but closed-loop A4 containment falls 26/44, 24/45 -> 0, and A2 92 -> 77 (s2), 91 -> 81 (s3). Supervisor rule (attackers must stay contained) -> kept OFF. A proper explicit D_RSU->penalty mechanism is a decision for the supervisor.
+  - Closed loop, tag 9953b68, seeds 2,3: honest quarantined 0.0-0.6% on A1-A4.
+  - Reporting rule: quote honest-quarantine counts from closed-loop runs only; detection-only quarantine state is not an action.
+- Scripts: `run_bf_test.py`, `run_bio_test.py`, `run_bio_cl.py`, `bf_analysis.py`, `cl_analysis.py` (results in the analysis outputs above, 32 DO + 16 CL sims).
+- PHANTOM rerun launched: 486 jobs, 12 workers, tag 9953b68, log `logs/rerun_phantom.log`.
