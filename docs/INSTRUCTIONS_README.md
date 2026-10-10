@@ -179,6 +179,30 @@ If any check fails: bug in substitute or scoring. **Stop, send the table, do not
 
 **N SWEEP**: N = **100, 160, 220, 280, 340, 400** (not 300). **Nested subsets of one 400-vehicle trace (fixed random order), all departing within 0 to 44 s**, so the 45 s warm-up holds for every N.
 
+
+## Supervisor reply 2026-10-10: package accepted; TWO FIXES (3, 4) FIRST, THEN START THE RERUNS WITHOUT WAITING
+
+**ANSWERS**
+1. Speed assertion = **window average**.
+2. AB7: assert **contained by quarantine = 0**; report contained-by-revocation with its latency; **drop "never contained > 0" for closed loop**.
+3. **S4 cascade**: blame the vehicle with the highest packet-in rate **only if that rate is above the benign p99 (seeds 2 and 3), and never a vehicle already blocked.** Then closed-loop **A3 and A4 on seeds 2 and 3 must show <= 5 % honest nodes quarantined, attackers still contained.** Keep T_min 0.30 if that holds.
+4. **LSTM: use the paper's rule = the classification head with a per-RSU benign quantile threshold (alpha 0.01, floor 0.05).** The current bar is only its high-confidence tier. The head needs attack windows: **run A1-A8 at p 20, 40, 60 on seeds 6-8, detection only, and retrain on the new labels. Keep head or bar, whichever gives the better pooled MCC on seeds 2 and 3. Re-match TAP and SFTO, retag.**
+5. S1 baseline: **leave it.**
+6. **N = 200: no**; Exp 5 gets its own default runs.
+7. **Start: yes.**
+
+**START**: 5 s smokes are too short (scoring starts at 45 s). **Smoke = one full 181 s run per paper.** Go when fixes 3, 4 and the smokes pass, without waiting. **Order: PHANTOM, VANGUARD-HF, Hydra, NEXUS.**
+At the end of EACH paper print: (i) failed assertions; (ii) ablation points where the ablated arm beats the full arm on its own metric by more than the CI; (iii) series flatter than their CI. Explain each in one line or fix it. **Flat by design: AB7, AB9, AB12 M1 in detection-only; AB8 composite M1 on A3.** Stop only the paper that fails.
+
+**AUDIT, in parallel with the runs**: one person per paper, 3 h box. Compare LaTeX and code equation by equation and parameter by parameter. **One page per paper: paper says / code does / same or different.** Where different, build the paper's version behind a flag, run seeds 2 and 3, keep the better, ties to the paper. **Seed 1 never decides.** A kept change means retag and rerun the papers it touches. Send each paper's tables with its audit page. Check first:
+- a. S5-S8 scored against the **accused node, not the RSU that saw it** (paper: suspect, not observer). A5 and A8 false alarms of 8.7 % and 10.7 % vs 0.9 % benign look like the wrong node.
+- b. Witness: **2f+1 distinct verified alerts (f = 1, window 10 s)** issue the penalty and count in the S7 and S8 score. AB6 switches both off. If AB6 leaves S7/S8 M1 unchanged, it is not wired.
+- c. Eleven LSTM features with the corrected destination diversity; rule conjuncts and windows as written (S6 30 s, S7 10 s); contained nodes no longer accused; NEXUS N3 substitutes as in the plan; Hydra with no defence.
+- d. **TAP quarantines 92 honest nodes (34.85 %) in a benign run: say why in one line.**
+- Do not tune a baseline to win a row. If one beats us, send the row.
+
+**Delete the 149 GB of old logs. Tell me when the Manhattan extract is ready; Hydra and NEXUS wait for it.**
+
 ## Log (newest last)
 
 - 2026-10-08 17:10: Wrote this README. Archived and deleted the 210 contaminated MOBIGUARD CSVs (restarted cycle counters, 46 MB) to `~/ns3_g13/archive/contaminated_MOBIGUARD_20261008.tgz`. Archived and deleted stale score CSVs (`phantom_exp23/exp1..4_scores`, `exp3_scale_scores`, `exp5_table`, `exp_ci_180`; `vanguard_exp23/exp2,3_scores`, `exp5_table`) to `~/ns3_g13/archive/stale_score_csvs_20261008.tgz`. Clean 180 s ablation score files kept.
@@ -196,3 +220,4 @@ If any check fails: bug in substitute or scoring. **Stop, send the table, do not
 - 2026-10-09 (reply 3): S1 ON chosen; M7 constants accepted (no injection); HF ablations AB1-AB12 on S5-S8; problem: ~60 benign quarantines unexplained -> breakdown + T_min sweep before freezing; then freeze/verify on seed 2; LSTM seeds 6-8 train / 2,3 val; N sweep 100,160,220,280,340,400 from nested subsets.
 - 2026-10-09 (night 2 progress): tag 8ec2e6d (S1 suppression reads the tracker + LSTM input, trust-decrement attribution, M6 two columns, cfg header); 83fa3c7 (--aux_logs=0; the disk filled and killed the first T_min batch); FROZEN 6d4ddd4 (U_thresh 0.37, S1 ON, T_min 0.30, TAP 5.623 ms, SFTO 0.59 provisional). Quarantine breakdown: 100 % of benign quarantines (vehicles) come from the S4 attribution path. T_min: 0.3 is the only value <= 5 % honest quarantined (2.2 %). The 128 missing node-cycles = A3 cycle 179 (loop stops at simTime-1); runs now use simTime 181. Verification 311/313 pass; the 2 fails = AB7 'never contained > 0' (revocation contains all). FINDING: closed-loop A3 quarantines 28.9 % (full) / 46 % (AB8/9/12) of honest nodes (S4 attribution cascade). Speed-trace assertion fails per time point (31/7.5/7.0 points), passes on window mean (4.2). N sweep trace built. LSTM split 6-8 / 2,3 / 1; collection of 78 runs running. Package: docs/FREEZE_PACKAGE_2026-10-09.md.
 - 2026-10-09 (LSTM): collection of 78 runs done; preprocess (train 4,800 / val 80,000 / test 40,000 windows); 3 trainings overall MCC 0.610 +/- 0.001; LSTM_HC_THETA 386.744; LRAD full benign rate with LSTM 0.978 % per node-cycle (all S4, LSTM adds none); TAP 5.623 ms / SFTO 0.59 re-matched = unchanged. FINAL FROZEN TAG a52e9fa (+ model artifacts 8fffe6b). In-sim the LSTM fires only on A1 (DR 89.2->92.9 %); zero alarms on A3, A5, A8. Next (waiting on the supervisor): approval to start the reruns, decisions on AB7 assertion, speed assertion, S4-attribution cascade, LSTM operating point for HF.
+- 2026-10-10: Package accepted. Start reruns after: fix 3 (S4 attribution only above benign p99 and never an already-blocked vehicle; closed-loop A3/A4 seeds 2,3 <= 5 % honest quarantined), fix 4 (classification head, per-RSU benign quantile alpha 0.01 floor 0.05; attacks A1-A8 p20/40/60 seeds 6-8; head vs bar by pooled MCC on seeds 2,3; re-match TAP/SFTO; retag), smoke = one full 181 s run per paper. Delete 149 GB old logs. Audit pages a-d per paper. Manhattan extract: tell when ready.

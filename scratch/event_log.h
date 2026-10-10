@@ -51,7 +51,7 @@ static std::map<uint32_t, std::vector<std::array<std::string,3>>> g_ev_misc;   /
 // and TAP's largest |v - PPAT| (s) seen on packets from that RSU (or a vehicle it covers). They let U_thresh, SFTO's theta and
 // TAP's margin be swept OFFLINE from one benign and one attack run.
 static bool g_ev_log_util = false;
-struct EvUV { double util = -1.0, sfto = -2.0, tapdev = -1.0; };
+struct EvUV { double util = -1.0, sfto = -2.0, tapdev = -1.0, top = -1.0; };
 static std::map<std::pair<uint32_t,int32_t>, EvUV> g_ev_uv;
 static bool g_ev_trust_qua = true;   // false in TAP / FADE-only runs: MOBIGUARD trust machinery is not the baseline's mitigation
 static uint32_t g_ev_flushed_upto = 0;     // cycles < this are on disk
@@ -103,7 +103,7 @@ inline void ev_flush_before(uint32_t cyc)
     }
     for (auto it = g_ev_uv.begin(); it != g_ev_uv.end() && it->first.first < cyc; )
     {
-        g_ev_out << it->first.first << "," << it->first.second << ",UTIL," << it->second.util << ":" << it->second.sfto << ":" << it->second.tapdev << "\n";
+        g_ev_out << it->first.first << "," << it->first.second << ",UTIL," << it->second.util << ":" << it->second.sfto << ":" << it->second.tapdev << ":" << it->second.top << "\n";
         it = g_ev_uv.erase(it);
     }
     for (auto it = g_ev_dec.begin(); it != g_ev_dec.end() && it->first < cyc; )
@@ -180,6 +180,11 @@ inline void ev_util(uint32_t node, double util)
 {
     if (!g_ev_enabled || !g_ev_log_util) return;
     ev_tick(); g_ev_uv[{ev_cycle(), (int32_t)node}].util = util;
+}
+inline void ev_s4top(uint32_t node, double top)      // highest per-vehicle packet-in count at this RSU this cycle (S4 blame calibration)
+{
+    if (!g_ev_enabled || !g_ev_log_util) return;
+    ev_tick(); g_ev_uv[{ev_cycle(), (int32_t)node}].top = top;
 }
 inline void ev_sfto_pred(uint32_t node, double pred)
 {

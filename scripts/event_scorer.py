@@ -64,7 +64,7 @@ def parse(path):
         elif kind == "ATK": ev["atk"].add(n)
         elif kind == "STATE": ev["state"][(c, n)] = int(val)
         elif kind == "UTIL":
-            u, sf, td = val.split(":"); ev["uv"][(c, n)] = (float(u), float(sf), float(td))
+            f = val.split(":"); ev["uv"][(c, n)] = (float(f[0]), float(f[1]), float(f[2])) + ((float(f[3]),) if len(f) > 3 else ())
         elif kind == "QUAX":
             f = val.split(":"); ev["quax"][n] = dict(cycle=c, type=int(f[0]), t=float(f[1]), trust=float(f[2]), dec=[int(x) for x in f[3:11]])
         elif kind == "TD":

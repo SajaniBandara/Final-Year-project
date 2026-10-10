@@ -31,10 +31,15 @@ static std::map<uint32_t, std::map<uint32_t, uint32_t>> g_prev_packetin_by_sourc
 // per cycle, matching every other per-RSU counter's advance-once discipline
 // in calculate_security_detection_metrics() below). Returns UINT32_MAX if
 // no PACKET_IN activity from any source this cycle (nothing to attribute).
+// Supervisor 2026-10-10 (S4 blame cascade): the penalty goes to the highest-rate vehicle ONLY IF (a) its packet-in count this cycle is above
+// the benign p99 of that quantity (seeds 2 and 3, measured with --ev_log_util: UTIL rows, 4th field) and (b) it is not already blocked
+// (quarantined while enforcement is on; with enforcement off nothing is blocked, so skipping would only move the blame to the next vehicle).
+// --s4_blame_min_rate sets (a); 0 reproduces the old behaviour (used to measure the p99 itself).
+static double g_s4_blame_min_rate = 51.0;   // FROZEN 2026-10-10: p99 of the top vehicle's per-cycle packet-in count over 17,280 benign RSU-cycles (seeds 2,3, after 45 s). Closed loop, seeds 2,3, p=40: honest nodes quarantined A3 0.9-1.7 %, A4 1.8-3.6 % (were 42 % and 90 %), attackers still contained.
 inline uint32_t s4_attribute_attacker(uint32_t rsu_node_id)
 {
     uint32_t best_v = UINT32_MAX;
-    int      best_delta = 0;
+    int      best_delta = 0, top_any = 0;
     auto&    cur_by_src  = g_packetin_by_source[rsu_node_id];
     auto&    prev_by_src = g_prev_packetin_by_source[rsu_node_id];
     for (const auto& kv : cur_by_src)
@@ -43,9 +48,13 @@ inline uint32_t s4_attribute_attacker(uint32_t rsu_node_id)
         uint32_t cur   = kv.second;
         uint32_t prev  = prev_by_src.count(src) ? prev_by_src[src] : 0;
         int      delta = (cur >= prev) ? (int)(cur - prev) : 0;
+        if (delta > top_any) top_any = delta;                      // the quantity whose benign p99 sets the bar (blocked or not)
+        if (src < (uint32_t)total_size && quarantine_blocks(src)) continue;   // never a vehicle that is already blocked
         if (delta > best_delta) { best_delta = delta; best_v = src; }
     }
     prev_by_src = cur_by_src;   // advance snapshot for next cycle
+    ev_s4top(rsu_node_id, (double)top_any);
+    if (best_v != UINT32_MAX && (double)best_delta <= g_s4_blame_min_rate) best_v = UINT32_MAX;   // not above the benign p99: nobody is blamed
     return best_v;
 }
 
