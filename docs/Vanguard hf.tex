@@ -80,7 +80,9 @@
 % NEXUS). Single author set below, matching the pattern of the uploaded
 % template with its own co-author block commented out.
 \author[1]{Patikiri Arachchige Don Shehan Nilmantha Wijesekara\orcidlink{0000-0002-3045-1596}\corref{cor1}\\}
-\author[1]{Siyagunakosgodage Apsari Udithara Fernando\orcidlink{0009-0008-1328-8855}}
+\author[2]{Siyagunakosgodage Apsari Udithara Fernando\orcidlink{0009-0008-1328-8855}\\}
+\author[3]{Pathiraja Mudiyanselage Sajani Chamindi Bandara Gunarathna\orcidlink{0009-0000-8230-9631}\\}
+\author[4]{Lankahaluge Nipuni Kaushalya Fernando\orcidlink{0009-0003-3888-0015}\\}
 \ead{nilmantha@eie.ruh.ac.lk}
 \cortext[cor1]{Corresponding author: \texttt{nilmantha@eie.ruh.ac.lk}}
 
@@ -1423,6 +1425,254 @@ latency, M6, are defined identically to the companion papers.
 % destination diversity feature correction described in
 % Section~\ref{sec:fed_lstm}; this is a standing, unresolved blocker, not a
 % formatting note.
+
+\subsection{Ablation Study}
+\label{sec:ablation}
+
+Every ablation follows one rule: the disabled mechanism is replaced by a
+passive substitute that produces output in the same format the full
+mechanism would have produced, so the downstream pipeline stays intact and
+only the quality of that output changes; where the substitute yields a
+constant or degraded signal, that degradation is the ablation's measured
+contribution. An ablation that breaks the pipeline outright produces no
+informative result and is not run.
+
+\begin{itemize}
+	\item \textbf{AB1,} on board unit pre filter (LRAD OBU): substitute is roadside unit only processing, no pre filter.
+	\item \textbf{AB2,} federated training (BRFA v2): substitute is centralised LSTM on pooled raw features.
+	\item \textbf{AB3,} hop legitimacy failure feature in the LSTM input: substitute is a constant zero column.
+	\item \textbf{AB4,} STARK hop legitimacy proof $\pi_{hop}$: substitute is a direct routing policy table lookup.
+	\item \textbf{AB5,} BRFA v2 aggregation: substitute is naive, unfiltered FedAvg.
+	\item \textbf{AB6,} witness based passive detection (Equations~\eqref{eq:dup_alert_cond}, \eqref{eq:bft_penalty}, and \eqref{eq:da_sign}): substitute is witness logging with the Byzantine fault tolerant penalty suppressed.
+	\item \textbf{AB7,} automated quarantine: substitute is detection only, quarantine suppressed.
+	\item \textbf{AB8,} $f{+}1$ roadside unit endorsement quorum: substitute is single roadside unit, immediate commitment.
+	\item \textbf{AB9,} multi controller zero trust and \textsc{SC.Revoke} failover: substitute is a single fixed controller.
+	\item \textbf{AB10,} distributed key generation: substitute is controller issued proving and verification keys.
+	\item \textbf{AB11,} key rotation on roadside unit revocation: substitute is revocation without rotation.
+	\item \textbf{AB12,} roadside unit only blockchain writes: substitute is controller read and write access.
+\end{itemize}
+
+Each ablation is reported in its own figure against full VANGUARD HF,
+rather than several ablations sharing one set of axes, since each
+isolates a different mechanism on a different metric and overlaying them
+obscures more than it shows.
+
+Figure~\ref{fig:ab1} sweeps attack penetration $p \in \{0,20,40,60,80,100\}\%$,
+reporting end to end latency and macro MCC for full VANGUARD HF against
+AB1, which removes on board unit pre filtering. Latency is expected to
+rise without the pre filter, since every packet now reaches the full
+roadside unit pipeline directly; at $p{=}\TBD\%$, the latency gap is
+$\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: end to end latency and macro MCC versus attack
+			penetration, full VANGUARD HF against AB1.
+	\end{minipage}}
+	\caption{Ablation AB1: On Board Unit Pre Filter}
+	\label{fig:ab1}
+\end{figure}
+
+Figure~\ref{fig:ab2} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+macro MCC and privacy cost for federated training against AB2's
+centralised alternative. Centralised training is expected to match or
+exceed federated macro MCC, at the cost of every roadside unit exposing
+its raw per packet features to a central server; the privacy cost gap is
+$\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: macro MCC and privacy cost versus attack
+			penetration, federated against AB2's centralised LSTM.
+	\end{minipage}}
+	\caption{Ablation AB2: Federated vs Centralised LSTM}
+	\label{fig:ab2}
+\end{figure}
+
+Figure~\ref{fig:ab3} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+Signature S5 and S6 macro MCC with the hop legitimacy failure feature
+against AB3's constant zero substitute. Removing the feature is expected
+to lower the LSTM's contribution on S5 and S6 specifically, since the
+rule based signatures already cover the deterministic case and the
+feature's value lies in the cases they miss; the gap is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: Signature S5 and S6 macro MCC versus attack
+			penetration, full VANGUARD HF against AB3.
+	\end{minipage}}
+	\caption{Ablation AB3: Hop Legitimacy Failure Feature}
+	\label{fig:ab3}
+\end{figure}
+
+Figure~\ref{fig:ab4} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+macro MCC, verification overhead, and privacy cost for the STARK hop
+proof against AB4's direct routing policy lookup. Detection quality is
+expected to hold close to full VANGUARD HF, since both signals feed the
+same rule, while privacy cost is expected to rise sharply, since the
+policy lookup exposes the next hop identity a proof would have hidden;
+the overhead difference is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: macro MCC, verification overhead, and privacy
+			cost versus attack penetration, full VANGUARD HF against AB4.
+	\end{minipage}}
+	\caption{Ablation AB4: STARK Hop Legitimacy Proof}
+	\label{fig:ab4}
+\end{figure}
+
+Figure~\ref{fig:ab5} sweeps the poisoned roadside unit fraction
+$\rho_{mal} \in \{0, 0.05, 0.10, 0.15, 0.20, 0.25\}$, reporting aggregate
+model quality for BRFA v2 against AB5's naive FedAvg substitute. BRFA v2
+is expected to hold roughly flat across this range, while FedAvg is
+expected to degrade steadily as the poisoned fraction grows, since
+nothing in FedAvg filters an adversarial update before it is averaged in;
+at $\rho_{mal}{=}0.25$, the quality gap is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: aggregate model quality versus poisoned
+			roadside unit fraction, BRFA v2 against AB5.
+	\end{minipage}}
+	\caption{Ablation AB5: Byzantine Robust Aggregation}
+	\label{fig:ab5}
+\end{figure}
+
+Figure~\ref{fig:ab6} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+Signature S7 and S8 macro MCC, unauthorized copy rate, and witness alert
+precision for witness monitoring with its Byzantine fault tolerant
+penalty against AB6's logging only substitute. Passive detection is
+expected to fall back onto the LSTM's anomaly feature alone once the
+penalty is suppressed, so the gap between the two is expected to be
+largest precisely on S7 and S8, the variants with no other deterministic
+observable; the gap is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: Signature S7 and S8 macro MCC versus attack
+			penetration, full VANGUARD HF against AB6.
+	\end{minipage}}
+	\caption{Ablation AB6: Witness Based Passive Detection}
+	\label{fig:ab6}
+\end{figure}
+
+Figure~\ref{fig:ab7} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+mitigation latency and end to end latency for automated quarantine
+against AB7's detection only substitute. Detection quality itself is
+expected to be unaffected, since only mitigation is removed, while
+mitigation latency is expected to go unbounded and end to end latency to
+climb, since a detected attacker is never isolated; the end to end
+latency gap at $p{=}\TBD\%$ is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: mitigation latency and end to end latency
+			versus attack penetration, full VANGUARD HF against AB7.
+	\end{minipage}}
+	\caption{Ablation AB7: Automated Quarantine}
+	\label{fig:ab7}
+\end{figure}
+
+Figure~\ref{fig:ab8} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+macro MCC and unauthorized flow modification commit rate for the
+endorsement quorum against AB8's single roadside unit substitute. Without
+the quorum, Signature S5 is expected to lose its detection signal
+entirely, since every flow modification is now committed on arrival; the
+commit rate gap is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: macro MCC and unauthorized flow modification
+			commit rate versus attack penetration, full VANGUARD HF against
+			AB8.
+	\end{minipage}}
+	\caption{Ablation AB8: Multi RSU Endorsement}
+	\label{fig:ab8}
+\end{figure}
+
+Figure~\ref{fig:ab9} sweeps $p \in \{0,20,40,60,80,100\}\%$, reporting
+macro MCC and controller failover latency for the multi controller
+architecture against AB9's single fixed controller substitute. Past
+$p{=}33\%$, once the controller is compromised, detection quality under
+the substitute is expected to collapse, since nothing in that
+configuration can revoke or fail over away from it; the macro MCC gap
+past that point is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: macro MCC and controller failover latency
+			versus attack penetration, full VANGUARD HF against AB9.
+	\end{minipage}}
+	\caption{Ablation AB9: Multi Controller Zero Trust}
+	\label{fig:ab9}
+\end{figure}
+
+Figure~\ref{fig:ab10} sweeps $p \in \{0,20,40,60,80,100\}\%$,
+reporting Signature S5 and S6 macro MCC for distributed key generation
+against AB10's controller issued keys substitute. Past $p{=}33\%$, a
+compromised controller under the substitute is expected to issue false
+proving keys that force the hop proof to pass regardless of actual
+routing compliance, collapsing detection; the macro MCC gap past that
+point is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: Signature S5 and S6 macro MCC versus attack
+			penetration, full VANGUARD HF against AB10.
+	\end{minipage}}
+	\caption{Ablation AB10: Distributed Key Generation}
+	\label{fig:ab10}
+\end{figure}
+
+Figure~\ref{fig:ab11} sweeps time since revocation $t \in
+\{0,1,2,3,4,5\}$ cycles at $p{=}40\%$, reporting Signature S5 and S6
+detection quality with key rotation against AB11's no rotation
+substitute. A revoked roadside unit retaining its key material is
+expected to keep forging valid hop proofs after revocation, so detection
+quality without rotation is expected to fall toward the undetected
+baseline as $t$ grows, while rotation is expected to hold quality flat
+from $t{=}0$ onward; the point at which the two curves diverge is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: Signature S5 and S6 detection quality versus
+			time since revocation, full VANGUARD HF against AB11.
+	\end{minipage}}
+	\caption{Ablation AB11: ZKP Key Rotation}
+	\label{fig:ab11}
+\end{figure}
+
+Figure~\ref{fig:ab12} sweeps $p \in \{0,20,40,60,80,100\}\%$,
+reporting unauthorized flow modification commit rate and mitigation
+latency for roadside unit only writes against AB12's controller read and
+write substitute. Past $p{=}33\%$, a compromised controller under the
+substitute is expected to retroactively legitimise rejected flow
+modifications and cancel trust penalties, so both metrics are expected to
+degrade sharply once the controller is compromised; the commit rate gap
+past that point is $\TBD$.
+\begin{figure}[!t]
+	\centering
+	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+			\centering
+			Figure placeholder: unauthorized flow modification commit rate and
+			mitigation latency versus attack penetration, full VANGUARD HF
+			against AB12.
+	\end{minipage}}
+	\caption{Ablation AB12: Blockchain Write Restriction}
+	\label{fig:ab12}
+\end{figure}
 
 \subsection{Experiment 1: Detection Under Varying Attack Penetration and Forwarding Intensity}
 
