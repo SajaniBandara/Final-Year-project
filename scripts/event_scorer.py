@@ -78,10 +78,15 @@ def parse(path):
     return ev
 
 
-def score(ev, n_veh, n_rsu, total_cycles=None, warmup=WARMUP_S, stop_after_quarantine=False, alarm_mask=None, hf_label="action"):
+def score(ev, n_veh, n_rsu, total_cycles=None, warmup=WARMUP_S, stop_after_quarantine=False, alarm_mask=None, hf_label="auto"):
     T = total_cycles if total_cycles is not None else ev["last_cycle"] + 1
     if alarm_mask is None:
         alarm_mask = ~WITNESS_BITS & 0xFFFFFFFF   # witness alerts are not alarms unless asked for
+    if hf_label == "auto":
+        # VANGUARD-HF paper convention (audit a, 2026-10-10): hidden-forwarding truth is latched from the node's first attack action. In a
+        # detection-only run the quarantine is only a trust state and the node keeps attacking, so it stays latched to the end of the run;
+        # in a closed-loop run quarantine ends the attack, so it is latched until quarantine. Seeds 2,3 A5-A8: pooled M1 0.51 vs 0.42 per-action.
+        hf_label = "latched_to_end" if str(ev.get("cfg", {}).get("enforcement", "0")) == "0" else "latched"
     nodes = range(n_veh, n_veh + n_rsu)
     rows = []
     per = [dict(c=c, scored=0, TP=0, FP=0, FN=0, TN=0) for c in range(T)]
