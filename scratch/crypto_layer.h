@@ -640,6 +640,7 @@ static bool g_batch_passed = true;
 // The trust update therefore penalises only senders whose OWN signature failed in the latest tick; --batch_fallback=0 restores the old
 // behaviour (every sender verified while the global flag is false is penalised).
 static bool g_batch_fallback = true;
+static bool g_btmm_intended_only = false;   // see lrad.h (BTMM site inside D_RSU)
 static std::set<uint32_t> g_batch_failed_senders;
 inline bool batch_ok_for_sender(uint32_t sender) {
     return g_batch_fallback ? (g_batch_failed_senders.count(sender) == 0) : g_batch_passed;
@@ -2799,6 +2800,7 @@ inline void crypto_register_cli_params(ns3::CommandLine& cmd) {
     cmd.AddValue("enable_lrad_rsu",               "AB1: enable RSU full-mode engine (lrad_rsu)",   enable_lrad_rsu);
     cmd.AddValue("enable_stark_delay",            "AB4: enable STARK timing proof π_delay",        enable_stark_delay);
     cmd.AddValue("batch_fallback",                "paper eq:batch_fallback: penalise only senders whose own signature failed a batch (0 = every sender in the window)", g_batch_fallback);
+    cmd.AddValue("btmm_intended_only",            "BTMM hop proof evaluated only at the intended next hop (lrad.h site)", g_btmm_intended_only);
     cmd.AddValue("enable_stark_hop",              "AB4: enable STARK hop-legitimacy proof π_hop",  enable_stark_hop);
     cmd.AddValue("enable_witness_mechanism",      "AB6: enable witness alert/BFT mechanism",       enable_witness_mechanism);
     cmd.AddValue("enable_quarantine",             "AB7: enable trust updates + SC.Quarantine",     enable_quarantine);

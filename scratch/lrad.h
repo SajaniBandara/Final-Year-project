@@ -638,7 +638,12 @@ inline LRADRSUFlags lrad_rsu(
         bool lstm_only_soft = flags.flag_LSTM && !flags.flag_LSTM_high_conf &&
             !flags.flag_S2f && !flags.flag_S5 && !flags.flag_S6 &&
             !flags.flag_S7 && !flags.flag_S8;
-        if (have_crypto && !g_disable_btmm_trust && !lstm_only_soft)
+        // --btmm_intended_only: b_pi is the verifier's own hop proof, so only the intended next hop evaluates it (routing.cc's BTMM site already
+        // does, through its sig_ok gate). Without this, a packet this RSU merely overheard -- or one whose intended hop has not yet verified it
+        // -- carries the record's default stark_hop_ok=false and the honest sender is charged a hop failure whenever any detector raised D_RSU.
+        const bool _btmm_is_verifier = !g_btmm_intended_only || !have_crypto ||
+            it->second.signed_next_hop == (uint32_t)-1 || it->second.signed_next_hop == rsu;
+        if (have_crypto && !g_disable_btmm_trust && !lstm_only_soft && _btmm_is_verifier)
             btmm(prev_sender, it->second.sig_valid && batch_ok_for_sender(prev_sender),
                  it->second.stark_hop_ok, !flags.flag_S2f);
         if (flags.flag_S2f) bc_write_detection_event(rsu, prev_sender, 2, t_now);
