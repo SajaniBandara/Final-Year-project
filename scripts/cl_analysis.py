@@ -3,8 +3,8 @@ from pathlib import Path
 R = Path.home()/"ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
 for a in range(1,5):
   for s in (2,3):
-    for b in (0,1):
-        tag=f"cl{b}_A{a}_s{s}"; f=glob.glob(str(R/f"events_Attack*_{tag}.csv"))
+    for b in (0,2):
+        tag=(f"cl{b}_A{a}_s{s}" if b<2 else f"clw_A{a}_s{s}"); f=glob.glob(str(R/f"events_Attack*_{tag}.csv"))
         if not f: print(tag,"missing"); continue
         atk=set(); m4={}; q=set()
         for l in open(f[0]):

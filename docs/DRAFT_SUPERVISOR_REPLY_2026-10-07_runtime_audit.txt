@@ -1,0 +1,31 @@
+Subject: Runtime audit, remaining-experiment ETA, and one request for sign-off
+
+Dear Professor,
+
+I profiled the simulator to see where wall time goes, and estimated the time left for the remaining SOTA and ablation runs. Numbers below are measured unless marked "estimate".
+
+1. Where the time goes (measured)
+- A 300 s run takes 80-120 min for A1-A4 (median ~90 min, 12-14 parallel workers) and ~42 min for A5-A8.
+- MOBIGUARD and the FADE/TAP baselines cost the same (wall-time ratio 1.004). Crypto adds ~2% (A1, 60 s: 219 s crypto-on vs 215 s crypto-off). So the cost is the shared routing base, not the method under test.
+- 66-73% of all CPU is one function, updateTxop, which rebuilds an ns-3 Time value inside a per-neighbour loop on every packet event; a further ~11-17% is run_proposed_RL. Logging is under 1% of time (it costs disk: ~27 GB of logs).
+- No memory growth (812 MB at 60 s, 844 MB at 150 s) and no hung or looping runs.
+
+2. Change made (committed)
+I hoisted two loop-invariant Time constants in updateTxop, cached neighbour lists, and bounded the RL load sum to real node ids. The simulation logic is unchanged. On identical configs and seeds, A1 (60 s) went from 219 s to 54 s (4.0x) and A5 (150 s) from 878 s to 184 s (4.8x). All metric-bearing outputs (detector windows, TCAM, trust, flowmod logs) are byte-identical to the previous binary's; only wall-clock timing columns and random ML-DSA key bytes differ.
+
+3. Blockchain / smart-contract audit
+- Fabric is modelled in-process (no network), so there is no commit latency to remove. Merkle re-hashing and ML-DSA signing together are ~2% of runtime.
+- Two points for the paper's accuracy: (a) the FlowMod endorsement list was never reset per cycle and had no duplicate-endorser check, so "f+1 distinct endorsers" was not literally enforced (now fixed and committed; results unchanged); (b) every RSU endorses fid=0 unconditionally each cycle, and Attack 5's rejection is applied from ground truth. Neither changes current results (AB8's 298/298 blocking comes from the separate unauthorised-FlowMod path), but the paper should describe the quorum accordingly.
+- No LLM is called inside the simulator; the LLM detector is a separate persistent server, so it adds nothing to simulation time.
+
+4. Remaining runs and ETA (estimate; A1-A4, 300 s, seed 1, 12 workers)
+- Exp 3 scalability at the standard 300 s (it exists only at 60 s): 18 jobs
+- n=5 seed repeats at 300 s (they exist only at 60 s): 28 jobs
+- AB7 quarantine: 42 jobs (needs the latency-metric code first)
+- AB9 / AB10 / AB12 compromise-model ablations: 84 jobs (blocked on your sign-off)
+Total 172 jobs = 272 job-hours = 0.95 days of compute now (about 1.2 days with a 25% buffer), or about 5-6 hours (0.2-0.25 days) with the speedup, estimated from the measured 4-4.8x. Compute is not the bottleneck: the critical path is sign-off plus implementation of AB9/10/12, so I expect all simulation results about 5-7 days after sign-off, and figures and text a day or two later. The density sweep is not yet scoped, so it is not included.
+
+5. Request
+Please sign off on the narrow compromise-model assumptions (AB9: no isolation / no failover; AB10: false proving keys force both STARK proofs to pass; AB12: retroactive legitimisation of rejected FlowMods and cancelled trust penalties; compromise from p >= 33%). I will not wire them in until you approve. Also, are the 60 s Exp 3 and seed runs acceptable, or should they be repeated at 300 s as above?
+
+Kind regards,

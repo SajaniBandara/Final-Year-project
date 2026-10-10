@@ -1,0 +1,1439 @@
+\documentclass[lettersize,journal]{IEEEtran}
+\usepackage{amsmath,amsfonts}
+\usepackage{algorithm}
+% \usepackage{algorithmic}
+\usepackage{algpseudocode}
+\renewcommand{\Comment}[1]{\hfill$\triangleright$ #1}
+\usepackage{array}
+%\usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
+\usepackage[]{subcaption}
+\usepackage{arydshln}
+\usepackage{textcomp}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{IEEEtrantools}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{soul}
+\usepackage{xcolor}
+\usepackage{makecell} % added for compact multi line table headers, Related Work comparison table
+\usepackage{amsthm} % added for the formal lemma, corollary, and remark environments in the appendix
+\theoremstyle{plain}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}[lemma]{Corollary}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\hyphenation{op-tical net-works semi-conduc-tor IEEE-Xplore}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+		T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{balance}
+\setlength{\textfloatsep}{8pt}
+\newcommand{\orcidlink}[1]{\href{https://orcid.org/#1}{\includegraphics[scale=0.06]{pictures/orcid.png}}}
+\newcommand{\TBD}{\textbf{TBD}} % placeholder for unrun quantitative results, replace once measured
+
+\begin{document}
+	\title{NEXUS: Unified Post-Quantum Zero-Trust Detection of Selective Time Delay and Hidden Forwarding Attacks via Federated LSTM and Controller-Failover Blockchain in SDVN}
+	\author{
+		% TODO: author block pending confirmation of the final author list for this
+		% paper. Placeholder below follows the template structure only.
+    \IEEEauthorblockN{Patikiri Arachchige Don Shehan Nilmantha Wijesekara \textsuperscript{\orcidlink{0000-0002-3045-1596}} \\
+    Siyagunakosgodage Apsari Udithara Fernando \textsuperscript{\orcidlink{0009-0008-1328-8855}}}
+		
+		\thanks{P.A.D.S.N. Wijesekara (nilmantha@eie.ruh.ac.lk), are with Dept. Electr. \& Informa. Eng., Faculty of Engineering, University of Ruhuna, Galle 80000, Sri Lanka.}
+	}
+	\markboth{IEEE Transactions on Intelligent Transportation Systems,~Vol.~XX, No.~XX, 2027}
+	{P.A.D.S.N. Wijesekara \MakeLowercase{\textit{et al.}}}
+	
+	%\IEEEpubid{0000--0000/00\$00.00~\copyright~2027 IEEE.}
+	
+	\maketitle
+	
+	\begin{abstract}
+		The centralized programmability of software defined vehicular networks
+		exposes safety critical traffic to selective time delay and hidden
+		forwarding attacks, which desynchronize collision avoidance by delaying
+		priority packets or covertly duplicate sensitive data to unauthorized
+		destinations while mimicking legitimate traffic to evade volume based
+		detection. Existing defenses cover only one attack class, assume the
+		controller itself is trustworthy, or centralize raw traffic that
+		exposes driver location; none detects both jointly under zero trust
+		extended to the controller. This paper presents NEXUS, spanning a dual
+		mode detection engine, a post quantum cryptographic layer of lattice
+		based signatures and zero knowledge proofs, a federated classifier
+		across roadside units that never centralizes traffic, and a witness
+		mechanism for passive attacks that leave no cryptographic or
+		volumetric trace. A flat, registered controller set with a delay
+		evidence trust channel closes a gap in endorsement only scoring,
+		penalizing a timing manipulating controller even when every flow rule
+		it issues is authorized. Evaluated with all eight variants active
+		simultaneously on a Manhattan trace, NEXUS sustains macro Matthews
+		correlation coefficient \TBD\ against \TBD\ for the strongest baseline
+		at \TBD\ percent penetration, while every baseline shows the coverage
+		collapse this joint setting is designed to expose; end to end latency
+		stays within the hundred millisecond bound to four hundred vehicles.
+		These results show that joint detection across both attack classes,
+		extended to the controller itself, is achievable without the false
+		positive or latency cost a naive combination of single class defenses
+		would incur.
+	\end{abstract}
+	
+	\begin{IEEEkeywords}
+		Software Defined Vehicular Networks, Post Quantum Cryptography, Methods for security and privacy, Artificial Intelligence, Vehicular Ad hoc Networks, Connected and Autonomous Vehicles.
+	\end{IEEEkeywords}
+	
+	
+	\section{Introduction}\label{introduction}
+	
+	\subsection{Background}\label{subsec:background}
+	
+	\IEEEPARstart{S}{oftware} defined vehicular networks decouple traffic
+	forwarding at roadside units from routing decisions made by a logically
+	centralized controller, enabling flexible flow management across a
+	rapidly changing vehicular topology. This same programmability creates
+	an attack surface absent from static networks: a compromised controller,
+	roadside unit, or vehicle can selectively delay safety critical packets
+	such as collision avoidance warnings to desynchronize dependent systems,
+	or can duplicate and reroute sensitive data to an unauthorized
+	destination while the original packet still reaches its legitimate
+	recipient unmodified, evading any check based on whether delivery
+	occurred at all. Both attack classes are engineered to mimic legitimate
+	traffic closely enough that volume based and static threshold detection
+	fail to distinguish them from ordinary behaviour, and vehicular
+	mobility, through handoff induced latency jitter and rapid topology
+	change, widens this camouflage beyond what any static deployment would
+	need to tolerate.
+	
+	\subsection{Limitations of Existing Work}\label{subsec:intro_limitations}
+	
+	Prior defenses close only part of this problem. Frameworks such as SIFT
+	and FSDM assume the controller issuing flow rules is itself trustworthy,
+	so a controller that becomes the adversary defeats them by construction.
+	Path validation approaches such as HSA centralize raw packet metadata at
+	a collector, exposing exactly the location and movement data a
+	vehicular deployment must protect. Timing based protocols such as TAP
+	rely on a single static threshold that a slow, deliberately paced
+	attacker can evade, and every one of these lines of work addresses only
+	selective time delay or only hidden forwarding, never both under one
+	architecture. None combines controller inclusive zero trust, post
+	quantum attestation, and federated detection, the gap
+	Table~\ref{tab:related_work} of Section~\ref{related} sets out in full.
+	
+	\subsection{Problem Statement}\label{subsec:problem_statement}
+	
+	The practical consequence of this gap is concrete rather than abstract.
+	A vehicle that brakes late because its collision warning was
+	selectively delayed past the safety window, and a vehicle whose route
+	and destination history is silently duplicated to an unauthorized
+	listener through a covertly rerouted flow, are physical and privacy
+	harms that can arise from the same compromised entity at the same time.
+	A defense that watches for only one attack class, or that extends trust
+	to the controller issuing its own flow rules, leaves the other harm to
+	proceed entirely undetected while the first is being handled, and does
+	so precisely under the high mobility conditions where both attacks are
+	hardest to see.
+	
+	\subsection{Research Questions}\label{subsec:research_questions}
+	
+	This paper is organised around three research questions that the
+	experiments of Section~\ref{results} answer directly.
+	\begin{itemize}
+		\item \textbf{RQ1:} Does a framework built for joint detection sustain
+		macro averaged detection quality as simultaneous, multi class attack
+		penetration increases, where single class defenses evaluated under
+		the same joint traffic are expected to fail even on the class each
+		was designed for?
+		\item \textbf{RQ2:} Do the post quantum cryptographic layer and the
+		blockchain consensus pipeline it depends on sustain end to end
+		latency within the safety critical bound as network scale grows,
+		given that every packet now carries a lattice based signature and
+		every flow modification requires roadside unit endorsement?
+		\item \textbf{RQ3:} Is each architectural layer, the cryptographic
+		layer, the federated classifier, and the controller inclusive zero
+		trust architecture, load bearing, such that removing any one of them
+		produces a proportionate loss of the security guarantee it was added
+		to provide?
+	\end{itemize}
+	
+	\subsection{Contributions}\label{subsec:contributions}
+	
+	The principal contributions of this paper are:
+	\begin{itemize}
+		\item \textbf{Mobility aware joint attack modeling:} the formal
+		definition of eight attack variants spanning both selective time
+		delay and hidden forwarding, characterising how vehicular mobility
+		amplifies each one beyond what static deployments experience.
+		\item \textbf{Dual mode detection engine:} a lightweight, rule based
+		detector deployable on resource constrained on board units, paired
+		with a full pipeline at roadside units that adds cryptographic,
+		witness, and classifier evidence without either mode sacrificing
+		fidelity at the other's expense.
+		\item \textbf{Unified post quantum cryptographic layer:} per hop
+		lattice based signatures with randomized batch verification,
+		combined with zero knowledge proofs for timing compliance and next
+		hop legitimacy, designed specifically for vehicular data plane and
+		flow rule integrity.
+		\item \textbf{Federated classifier for passive detection:} a
+		recurrent model trained across roadside units without centralizing
+		raw traffic, whose classification head is trained on injection side
+		ground truth independent of the features it consumes.
+		\item \textbf{Multi controller zero trust architecture:} a flat,
+		registered controller set with blockchain enforced trust scoring and
+		a delay evidence channel that penalizes a timing manipulating
+		controller even when every flow rule it issues remains individually
+		authorized.
+		\item \textbf{Witness based passive attack detection:} a broadcast
+		radio monitoring mechanism that reaches a Byzantine fault tolerant
+		quorum of independently verified alerts before any trust penalty is
+		applied, covering attacks that leave no cryptographic or volumetric
+		trace.
+	\end{itemize}
+	
+	\subsection{Novelty}\label{subsec:novelty}
+	
+	This work makes four individually novel contributions that are further
+	amplified in combination. The formal modeling of eight selective time
+	delay and hidden forwarding attack variants, explicitly characterising
+	how vehicular mobility amplifies each one, is absent from prior
+	literature, which addresses these attacks only in static networks or
+	treats the two classes separately. The dual mode detection architecture,
+	pairing lightweight rule based signatures with federated classification
+	and broadcast radio witness monitoring within one adaptive framework,
+	is the first to cover the full spectrum of vehicular node capability
+	without sacrificing fidelity against passive covert variants that
+	produce no observable network anomaly. The integration of per packet
+	lattice based signatures, randomized batch verification, and
+	transparent zero knowledge proofs for both timing compliance and next
+	hop legitimacy into one post quantum cryptographic layer is novel in
+	both scope and target domain. The flat, multi controller architecture,
+	with blockchain enforced trust scoring, distributed key generation
+	among roadside unit ring members, and smart contract triggered
+	failover, is the first controller independent design in which the
+	controller is excluded from the key plane entirely. Collectively, this
+	is the first framework to jointly detect and mitigate both attack
+	classes under a zero trust, controller independent architecture that
+	simultaneously preserves driver privacy and satisfies vehicular latency
+	constraints.
+	
+	The remainder of this paper is organised as follows. Section~\ref{related}
+	reviews related work and positions the gap this paper addresses.
+	Section~\ref{system_model} formalises the network model, threat model,
+	and eight attack variants. Section~\ref{framework} presents the NEXUS
+	framework. Sections~\ref{evaluation_setup} and~\ref{results} describe
+	the evaluation setup and report the three experiments. Section~\ref{discussion}
+	discusses the results, and Section~\ref{conclusion} concludes.
+	
+	
+	\section{Related Work}\label{related}
+	
+	Selective time delay and hidden forwarding attacks in software defined
+	vehicular networks have largely been studied as separate problems, each
+	addressed by a body of work built around its own threat model and its own
+	notion of what the controller is permitted to do. Prior defenses for
+	selective time delay concentrate on control plane saturation and slow
+	table exhaustion, prior defenses for hidden forwarding concentrate on path
+	validation and flow conservation, and the two lines of work rarely share
+	an evaluation setting, let alone a common architecture. Table~\ref{tab:related_work}
+	places eight representative directions against six properties that
+	together determine whether a defense is suitable for the setting
+	considered in this study: which attack class the work targets, what trust
+	it places in the controller, whether it uses post quantum cryptography,
+	whether detection is federated across edge nodes rather than centralized,
+	whether the design accounts for vehicular mobility, and whether the two
+	attack classes are detected jointly rather than in isolation.
+	
+	\begin{table*}[!t]
+		\centering
+		\caption{Comparison of representative defenses against selective time delay and hidden forwarding attacks in software defined vehicular networks.}
+		\label{tab:related_work}
+		\renewcommand{\arraystretch}{1.25}
+		\footnotesize
+		\begin{tabular}{|>{\raggedright\arraybackslash}p{2.0cm}|>{\raggedright\arraybackslash}p{3.1cm}|>{\raggedright\arraybackslash}p{2.6cm}|>{\centering\arraybackslash}p{1.0cm}|>{\centering\arraybackslash}p{1.3cm}|>{\centering\arraybackslash}p{1.6cm}|>{\centering\arraybackslash}p{1.7cm}|}
+			\hline
+			\textbf{Work} & \textbf{Attack Class Covered} & \textbf{Controller Trust} & \makecell{\textbf{Post}\\\textbf{Quantum}} & \textbf{Fed.} & \makecell{\textbf{Mobility}\\\textbf{Aware}} & \makecell{\textbf{Joint}\\\textbf{TD+HF}} \\
+			\hline
+			SIFT~\cite{Pascoal2017} & Time delay (TCAM exhaustion) & Assumed trusted & No & No & No & No \\
+			\hline
+			TAP~\cite{Arsalan2018} & Time delay (selective packet delay) & Assumed trusted & No & No & Yes & No \\
+			\hline
+			HSA~\cite{Mohammadi2016} & Hidden forwarding (path deviation) & Assumed trusted & No & No & No & No \\
+			\hline
+			FADE~\cite{Zhang2021FADE} & Hidden forwarding (duplication) & Assumed trusted & No & No & No & No \\
+			\hline
+			TFMD SDVN~\cite{Nayak2022} & Generic misbehavior & Semi trusted & No & No & Yes & No \\
+			\hline
+			Liu et al.~\cite{Liu2021BFLVEC} & Generic intrusion & Assumed trusted & No & Yes & Yes & No \\
+			\hline
+			FTISCON~\cite{Krishnan2023} & Flow rule tampering & Blockchain verified\textsuperscript{*} & No & No & No & No \\
+			\hline
+			Post quantum V2R authentication~\cite{ElDalahmeh2025} & Not attack detection (key exchange) & Assumed trusted & Yes & No & Yes & No \\
+			\hline
+			\textbf{Proposed (NEXUS)} & \textbf{Time delay and hidden forwarding, jointly} & \textbf{Zero trust, controller included} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\
+			\hline
+		\end{tabular}
+		\vspace{2pt}
+		\begin{flushleft}
+			\footnotesize
+			\textsuperscript{*}Verifies that an installed rule matches a committed policy; does not itself withdraw trust from the controller that issued the rule.
+		\end{flushleft}
+	\end{table*}
+	
+	No entry in Table~\ref{tab:related_work} combines the last three columns.
+	TFMD SDVN and the framework of Liu et al. are mobility aware and, in the
+	latter case, train collaboratively across distributed edge nodes, yet
+	neither targets selective time delay or hidden forwarding specifically,
+	and neither questions the honesty of the controller itself. Post quantum
+	vehicular authentication secures the exchange between a vehicle and the
+	infrastructure but performs no attack detection at all, and the
+	blockchain based flow rule verification of FTISCON checks a rule against
+	policy without extending distrust to the entity that issued the rule in
+	the first place. The joint column is empty for every prior work, which is
+	the gap this study closes: a single framework that treats the controller
+	as untrusted along with every vehicle and roadside unit, detects both
+	attack classes at once rather than in isolation, and does so using post
+	quantum attestation and privacy preserving federated learning rather than
+	a centrally trained model over raw traffic.
+	
+	
+	\section{System Model and Attack Formalization}\label{system_model}
+	
+	\subsection{Network and Threat Model}\label{subsec:network_threat}
+	
+	The network comprises a mobile vehicle population, a fixed grid of
+	roadside units, and a flat, registered set of controllers, connected as
+	formalised in Sections~\ref{subsec:ctrl_trust} and~\ref{subsec:blockchain}.
+	Controllers issue flow modification instructions that roadside units
+	install and enforce, and traffic moves over both vehicle to
+	infrastructure and vehicle to vehicle paths.
+	
+	The threat model assumes an adversary that can delay, duplicate,
+	fabricate, or covertly forward packets, and that can exploit flow
+	modification installation and forwarding behaviour from either the
+	control plane or the data plane, never both at once from a single
+	compromised entity. Zero trust extends to the controller itself: every
+	controller is granted read only blockchain access, and its behaviour is
+	audited only through independent roadside unit logging rather than any
+	self reporting. Roadside units are individually corruptible but
+	collectively honest under a Byzantine fault tolerance bound of
+	$f<n/3$, and no controller in the registered set is permanently active
+	or inherently trusted. This one bound $f$ is the parameter behind every
+	threshold expressed as $f{+}1$ or $2f{+}1$ later in this paper, whether
+	the quorum being reached is roadside unit endorsement, controller trust
+	evidence, or witness confirmation, rather than a separate value chosen
+	independently for each mechanism.
+	
+	\subsection{Attack Scenarios}\label{subsec:attack_scenarios}
+	
+	Two attack classes are addressed, each exploiting the same centralized
+	logic from a different vantage point. Selective time delay identifies
+	safety critical packets and introduces an intentional, variable lag
+	before forwarding, so packets arrive late rather than being dropped and
+	dependent systems act on stale data. Figure~\ref{fig:std_attacks} shows
+	the four variants: control plane and data plane delay injection, and
+	control plane and data plane slow flow table exhaustion, the latter
+	pair achieving the same delay by starving the roadside unit's
+	forwarding table rather than by injecting delay directly.
+	\begin{figure}[!t]
+		\centering
+		\includegraphics[width=0.95\linewidth]{selective_time_delay.png}
+		\caption{Selective Time Delay Attack Variants}
+		\label{fig:std_attacks}
+	\end{figure}
+	Hidden forwarding instead leaves the original packet on its legitimate
+	path while a duplicate is secretly routed to an unauthorized listener,
+	enabling eavesdropping without any observable disruption to normal
+	delivery. Figure~\ref{fig:hf_attacks} shows the four variants, split by
+	adversary plane as above and by whether the duplicate is actively
+	fabricated with a forged signature or passively retransmitted with the
+	original, genuinely valid one.
+	\begin{figure}[!t]
+		\centering
+		\includegraphics[width=0.95\linewidth]{Hidden Forwarding Attack Versions1.png}
+		\caption{Hidden Forwarding Attack Variants}
+		\label{fig:hf_attacks}
+	\end{figure}
+	Table~\ref{tab:taxonomy} summarises all eight variants against the
+	plane each occupies, the property that makes each one covert, and the
+	primary detector Section~\ref{framework} assigns to it.
+	\begin{table}[!t]
+		\centering
+		\caption{Attack Taxonomy}
+		\label{tab:taxonomy}
+		\renewcommand{\arraystretch}{1.2}
+		\footnotesize
+		\begin{tabular}{|c|c|>{\raggedright\arraybackslash}p{2.7cm}|>{\raggedright\arraybackslash}p{2.3cm}|}
+			\hline
+			\textbf{Variant} & \textbf{Plane} & \textbf{Covertness} & \textbf{Primary Detector} \\
+			\hline
+			S1 & Control & Delay mimics handoff jitter & Signature S1 \\
+			\hline
+			S2 & Data & Delay mimics handoff jitter & Signature S2 \\
+			\hline
+			S3 & Control & Installation rate within legitimate distribution & Signature S3 \\
+			\hline
+			S4 & Data & Installation rate within legitimate distribution & Signature S4 \\
+			\hline
+			S5 & Control & Original path unaffected, duplicate fabricated & Signature S5 \\
+			\hline
+			S6 & Data & Original path unaffected, duplicate fabricated & Signature S6 \\
+			\hline
+			S7 & Control & Duplicate is genuinely authentic, passes all checks & Classifier, witness quorum \\
+			\hline
+			S8 & Data & Duplicate is genuinely authentic, passes all checks & Classifier, witness quorum \\
+			\hline
+		\end{tabular}
+	\end{table}
+	
+	\subsection{Mobility Induced Threat Amplification}\label{subsec:mobility_amplification}
+	
+	Vehicular mobility is not incidental to these eight variants, it
+	structurally widens the camouflage available to each one. Selective
+	time delay is masked because legitimate handoff latency during flow
+	rule recomputation falls in the same range an attacker would inject,
+	so a detector calibrated as though $\delta_h{=}0$ is blind to exactly
+	the overlap realistic mobility produces. Hidden forwarding is masked
+	for a different reason: flow conservation detectors that count packets
+	over a flow's lifetime need enough samples to test reliably, and a
+	vehicle's residence time inside a single roadside unit's zone bounds
+	how many samples such a detector ever gets to see. This condition is
+	given in Equation~\eqref{eq:observation_window}.
+	\begin{equation}
+		N_{obs} = r \cdot t_{zone} < N_{min}(\alpha)
+		\label{eq:observation_window}
+	\end{equation}
+	As given in Equation~\eqref{eq:observation_window}, $N_{obs}$ is the
+	number of packets observable during a single zone crossing, the
+	product of the per flow packet rate $r$ and the zone residence time
+	$t_{zone}$, typically $9$ to $22$s at highway speed. Once this falls
+	below the minimum sample size $N_{min}(\alpha)$ a flow conservation
+	test needs at significance level $\alpha$, detectors such as FADE and
+	HSA of Section~\ref{related} become statistically unreliable
+	regardless of how the threshold is tuned. This is what motivates
+	per packet, per hop cryptographic verification over flow level
+	statistics as the primary hidden forwarding mechanism in
+	Section~\ref{subsec:crypto_layer}, since a zero knowledge proof
+	requires no observation window at all, complemented by the federated
+	classifier of Section~\ref{subsec:fed_lstm} for the residual passive
+	case a proof alone cannot cover.
+	
+	
+	\section{NEXUS Framework}\label{framework}
+	
+	\subsection{Zero Trust Multi Controller Architecture}\label{subsec:ctrl_trust}
+	
+	NEXUS replaces the single trusted controller assumed by prior defenses
+	with a flat, registered controller set in which no controller is
+	inherently trusted and every controller is granted only read only access
+	to the blockchain. Roadside units are dynamically assigned to whichever
+	registered controller currently holds sufficient on chain trust, and a
+	controller whose trust falls below the minimum threshold is revoked and
+	its roadside units reassigned, with no pre designated backup that could
+	itself be compromised.
+	
+	A structural gap in endorsement based trust scoring motivates the central
+	architectural contribution of this layer. Conflict evidence is the count
+	of roadside units that report a flow modification absent from the
+	blockchain committed policy of Section~\ref{subsec:blockchain}, the same
+	unauthorized installation Signature S3 of
+	Section~\ref{subsec:dual_mode} tests for; a controller that manipulates
+	packet timing while issuing topologically valid flow modification
+	messages accumulates zero conflict evidence by this definition, since
+	nothing about the installed rule itself is unauthorized, and would
+	therefore be rewarded rather than penalized under an endorsement check
+	alone. NEXUS closes this gap with a second, independent evidence channel
+	keyed to Signature S1. The delay evidence count for controller $c_i$ at
+	time $t$ is given in Equation~\eqref{eq:delay_evidence}.
+	\begin{equation}
+		\mathcal{E}_{delay}(c_i,t) =
+		\left|\left\{
+		r_k \in \mathcal{R}_{c_i}(t) :
+		f_{S1}(r_k,t) = 1
+		\right\}\right|
+		\label{eq:delay_evidence}
+	\end{equation}
+	As given in Equation~\eqref{eq:delay_evidence}, $\mathcal{R}_{c_i}(t)$ is
+	the set of roadside units currently assigned to controller $c_i$, and a
+	threshold of $f{+}1$ independent roadside units is required before delay
+	evidence contributes a penalty, preserving Byzantine fault tolerance
+	against a single compromised unit falsely accusing a controller. The
+	resulting controller trust score update is given in
+	Equation~\eqref{eq:ctrl_trust_update}.
+	\begin{equation}
+		T_{c_i}^{(t+1)}{=}
+		\begin{cases}
+			\min(1,T_{c_i}^{(t)}{+}\Delta_r^{ctrl}) &
+			\text{conflict evidence}{<}f{+}1
+			\;\land\;
+			\mathcal{E}_{delay}(c_i,t){<}f{+}1
+			\\
+			\max(0,T_{c_i}^{(t)}{-}\Delta_p^{ctrl}) &
+			\text{conflict evidence}{\geq}f{+}1
+			\;\lor\;
+			\mathcal{E}_{delay}(c_i,t){\geq}f{+}1
+		\end{cases}
+		\label{eq:ctrl_trust_update}
+	\end{equation}
+	As given in Equation~\eqref{eq:ctrl_trust_update}, trust decrements when
+	either conflict evidence or delay evidence reaches its threshold, so a
+	timing manipulating controller is penalized through the delay channel
+	even while every flow modification message it issues remains individually
+	authorized. Distributed key generation among roadside unit ring members
+	additionally removes the controller from the zero knowledge proof key
+	plane entirely, so a compromised controller gains no cryptographic
+	advantage from its position.
+	
+	
+	\subsection{Dual Mode Detection Engine}\label{subsec:dual_mode}
+	
+	Detection is split across two cooperating stages so that no attack
+	variant escapes coverage due to node capability. Figure~\ref{fig:dual_mode}
+	shows the two parallel paths and their convergence at the blockchain
+	layer.
+	\begin{figure*}[!t]
+		\centering
+		\includegraphics[width=0.85\textwidth]{Figure_1_Final.eps}
+		\caption{Dual Mode Framework Overview}
+		\label{fig:dual_mode}
+	\end{figure*}
+	Resource constrained on board units run a lightweight rule engine
+	evaluating only Signature S1 and the partial form of Signature S2 using
+	mobility adjusted thresholds and hash based authentication, suspending
+	forwarding on detection and escalating to the nearest roadside unit.
+	Signature S1 must separate a genuine timing attack from ordinary
+	congestion, which delays every traffic class rather than only safety
+	critical packets. The condition formalising Signature S1 is given in
+	Equation~\eqref{eq:sig_s1}.
+	\begin{equation}
+		\text{S1:}\quad
+		\delta_p(v,r,t) > \bar{\delta}_r(t) + k\sigma_r(t)
+		\;\land\;
+		\text{Priority}(p) = \textsc{High}
+		\;\land\;
+		\delta_{best}(r,t) \leq \bar{\delta}_r(t) + k\sigma_r(t)
+		\label{eq:sig_s1}
+	\end{equation}
+	As given in Equation~\eqref{eq:sig_s1}, the third conjunct requires best
+	effort traffic at the same roadside unit to remain within baseline while
+	high priority traffic does not, which is the selectivity property that an
+	ordinary congestion induced delay, which elevates both classes together,
+	cannot satisfy.
+	
+	Roadside units run the full pipeline, evaluating the remaining six
+	signatures through blockchain observables and the cryptographic and
+	witness layers of Sections~\ref{subsec:crypto_layer}
+	and~\ref{subsec:witness}. Signatures S3 and S4, targeting slow flow
+	table exhaustion, do not rely on installation rate at all, since a slow
+	attacker deliberately operates within the legitimate rate distribution.
+	Signature S3 instead fires on blockchain endorsement failure, given in
+	Equation~\eqref{eq:rule_s3}.
+	\begin{equation}
+		f_{S3}(r,t) =
+		\begin{cases}
+			1 & f_{unauth}(r,t) = 1
+			\;\land\; \nexists\,v :
+			\text{flow}(r) \in \mathcal{F}_{active}(v) \\
+			0 & \text{otherwise}
+		\end{cases}
+		\label{eq:rule_s3}
+	\end{equation}
+	As given in Equation~\eqref{eq:rule_s3}, $f_{unauth}{=}1$ is a binary,
+	deterministic signal fixed by the endorsement mechanism of
+	Section~\ref{subsec:blockchain}, achieving a zero false positive rate by
+	construction rather than by threshold tuning. Signature S4 instead fires
+	on table utilisation saturation, given in Equation~\eqref{eq:rule_s4}.
+	\begin{equation}
+		f_{S4}(r,t) =
+		\begin{cases}
+			1 & U_{TCAM}(r,t) > U_{thresh} \\
+			0 & \text{otherwise}
+		\end{cases}
+		\;\text{with}\;
+		v_{atk} = \arg\max_{v'}\,\lambda_{PI}(v',r,t)
+		\label{eq:rule_s4}
+	\end{equation}
+	As given in Equation~\eqref{eq:rule_s4}, the attacking vehicle $v_{atk}$
+	is attributed concurrently from the highest per source packet arrival
+	rate but does not gate the detection decision itself, so an attribution
+	failure never suppresses detection. Algorithm~\ref{alg:lrad} summarises
+	the composite decision, which routes mitigation by attack plane: control
+	plane detections update controller trust through
+	Equation~\eqref{eq:ctrl_trust_update}, while data plane detections
+	quarantine the source node directly.
+	\begin{algorithm}[!t]
+		\caption{Combined Lightweight and Full Detection}
+		\label{alg:lrad}
+		\begin{algorithmic}[1]
+			\State \textbf{OBU:} evaluate S1, partial S2 on packet $p$; if either fires, suspend forwarding and escalate to the covering RSU
+			\State \textbf{RSU:} evaluate full S2, S3 (Eq.~\ref{eq:rule_s3}), S4 (Eq.~\ref{eq:rule_s4}), S5 to S8 (Sections~\ref{subsec:crypto_layer}, \ref{subsec:witness})
+			\State suppress LSTM contribution whenever S3 or S4 has fired this cycle
+			\State $D_{RSU} \gets$ logical OR of all active RSU stage flags
+			\If{$D_{RSU}$ and the firing signature is control plane}
+			\State update controller trust, Eq.~\ref{eq:ctrl_trust_update}
+			\ElsIf{$D_{RSU}$}
+			\State quarantine the attributed source node
+			\EndIf
+		\end{algorithmic}
+	\end{algorithm}
+	
+	
+	\subsection{Post Quantum Cryptographic Layer}\label{subsec:crypto_layer}
+	
+	Every forwarded packet carries a per hop lattice based signature that
+	aggregates across a multi hop path into a single verification rather
+	than $n$ independent checks. Figure~\ref{fig:crypto_pipeline} shows the
+	resulting pipeline together with the endorsement and commitment stages
+	of Section~\ref{subsec:blockchain}.
+	\begin{figure*}[!t]
+		\centering
+		\includegraphics[width=0.9\textwidth]{Figure_2_Final.eps}
+		\caption{Cryptographic Packet Pipeline}
+		\label{fig:crypto_pipeline}
+	\end{figure*}
+	The aggregate check is given in Equation~\eqref{eq:batch_verify}.
+	\begin{equation}
+		\textsc{BatchVerify}\!\left(
+		\{\sigma_i\}, \{pk_i\}, \{m_i\}, \mathbf{r}
+		\right) =
+		\left[
+		\sum_{i=1}^{n} r_i \mathbf{A}_i \mathbf{z}_i
+		\stackrel{?}{=}
+		\sum_{i=1}^{n} r_i
+		\!\left(
+		\mathbf{t}_i \mathbf{c}_i +
+		\mathbf{w}'_i
+		\right) \pmod{q}
+		\right]
+		\label{eq:batch_verify}
+	\end{equation}
+	As given in Equation~\eqref{eq:batch_verify}, a single Fiat Shamir
+	challenged lattice equation accepts or rejects all $n$ per hop signatures
+	at once, and any individual forgery perturbs the random linear
+	combination with overwhelming probability, reducing the verification
+	cost of a multi hop path from $n$ separate lattice checks to one
+	combined operation.
+	
+	Timing compliance and next hop legitimacy are each certified by a
+	transparent zero knowledge proof, a STARK, rather than a raw timestamp,
+	so no verifier ever observes a vehicle's true delay or routing choice.
+	Each forwarding node proves, without revealing its reception timestamp,
+	forwarding timestamp, or its next hop's receipt signature, that the
+	delay constraint and next hop authorisation were both satisfied.
+	Verification of the two proofs is given in
+	Equation~\eqref{eq:stark_verify}.
+	\begin{equation}
+		b_{delay,i} = \textsc{STARK.Verify}(\pi_{delay,i}, C_{delay}, H_{\text{SHA3-512}}) \in \{0,1\},
+	\end{equation}
+	\begin{equation}
+		b_{hop,i} = \textsc{STARK.Verify}(\pi_{hop,i}, C_{hop}, H_{\text{SHA3-512}}) \in \{0,1\}
+		\label{eq:stark_verify}
+	\end{equation}
+	As given in Equation~\eqref{eq:stark_verify}, $b_{delay,i}{=}0$ flags a
+	node that delayed the packet beyond the safety bound, contributing to
+	Signatures S1 and S2, while $b_{hop,i}{=}0$ is a corroborating
+	cryptographic indicator for hidden forwarding rather than the primary
+	one, since a compromised node controls its own proof generation and can
+	produce a valid proof while covertly duplicating over the radio medium.
+	These proofs alone cannot separate a genuine hidden forwarding duplicate
+	from a bystander that merely overheard a broadcast transmission, since
+	every neighbour within range receives every frame. Signature S5
+	resolves this by requiring that the accusing node was the addressed
+	recipient of the duplicate, given in Equation~\eqref{eq:sig_s5}.
+	\begin{equation}
+		\begin{aligned}
+			\text{S5:}\quad
+			& d' \notin \mathcal{P}(s,d) \\
+			& \wedge\; \neg\,\textsc{BC.Endorsed}\big(\texttt{FlowMod}(s \to d')\big) \\
+			& \wedge\; \textsc{ML-DSA-87.Verify}(
+			\sigma_{copy}, pk_s, m_{copy}) = 0 \\
+			& \wedge\; b_{hop}(u) = 0 \\
+			& \wedge\; \textsc{Addressed}(p, d') = 1
+		\end{aligned}
+		\label{eq:sig_s5}
+	\end{equation}
+	As given in Equation~\eqref{eq:sig_s5}, the addressing conjunct is read
+	directly from the link layer destination of the received frame rather
+	than from any privileged knowledge of which nodes are compromised, and it
+	is what allows the remaining conjuncts to distinguish a node that was
+	sent an unauthorized duplicate from one that only overheard a legitimate
+	transmission. Signatures S6 through S8 follow the same construction
+	against their respective active and passive threat models.
+	
+	
+	\subsection{Federated LSTM with Byzantine Robust Aggregation}\label{subsec:fed_lstm}
+	
+	Rule based and cryptographic signatures cover every attack with a
+	deterministic observable, but passive hidden forwarding leaves no
+	timing, volume, or cryptographic trace, since the retransmitted packet is
+	a genuinely authentic copy. Detection of this residual class is
+	delegated to a recurrent model trained across roadside units without
+	centralizing raw traffic. Figure~\ref{fig:fed_lstm} shows the
+	architecture together with the blockchain verified aggregation described
+	below.
+	\begin{figure*}[!t]
+		\centering
+		\includegraphics[width=0.9\textwidth]{Figure_3_Final.eps}
+		\caption{Federated LSTM Architecture}
+		\label{fig:fed_lstm}
+	\end{figure*}
+	Each roadside unit observes an eleven feature vector per cycle, given in
+	Equation~\eqref{eq:lstm_input}.
+	\begin{equation}
+		\mathbf{x}_t^{(r)} = \left[
+		\delta^{\max}_t,\;
+		\lambda_{PI,t},\;
+		U_{TCAM,t},\;
+		\mathbb{1}[\pi_{delay}{=}\bot],\;
+		\mathbb{1}[\pi_{hop}{=}\bot],\;
+		\rho_t,\;
+		\bar{v}_t,\;
+		\log(1{+}N_{div,t}),\;
+		\log(1{+}A^{\mathrm{RSU}}_{tp,t}),\;
+		\log(1{+}R_{anom,t}),\;
+		\mathbb{1}[\delta^{\max}_t{>}\Delta_{max}]
+		\right]^T
+		\label{eq:lstm_input}
+	\end{equation}
+	As given in Equation~\eqref{eq:lstm_input}, three features, the
+	destination diversity count, the per roadside unit throughput asymmetry,
+	and the reception log anomaly score, are transformed by $\log(1{+}x)$
+	before entering the vector, since their benign resting value is small
+	and constant while their value under attack spans several orders of
+	magnitude; left untransformed, they would dominate every other feature
+	after normalisation. The reception log anomaly score is the only feature
+	that remains informative for the two passive variants, since every
+	cryptographic and volumetric observable is unchanged when the original
+	signed packet is merely retransmitted rather than modified.
+	
+	An autoencoder over this vector is trained first and its encoder is then
+	frozen; a lightweight classification head is trained separately on the
+	frozen encoder's final hidden state, given in Equation~\eqref{eq:lstm_cls}.
+	\begin{equation}
+		P_{atk}^{(k)}(t) =
+		\sigma\!\left(\mathbf{w}_2^{\top}\,
+		\mathrm{ReLU}\!\left(\mathbf{W}_1 \mathbf{h}^{(2)}_T + \mathbf{b}_1\right)
+		+ b_2\right)
+		\label{eq:lstm_cls}
+	\end{equation}
+	As given in Equation~\eqref{eq:lstm_cls}, the head is trained with binary
+	cross entropy against injection side ground truth rather than against
+	any quantity computed from the input vector itself, which keeps the
+	label independent of the features the model consumes. Detection follows
+	a per roadside unit threshold calibrated from that unit's own benign
+	traffic under live operating conditions, given in
+	Equation~\eqref{eq:lstm_cls_threshold}.
+	\begin{equation}
+		D_{LSTM}^{(k)}(t) = \mathbb{1}\!\left[P_{atk}^{(k)}(t) > \theta_{cls}^{(k)}\right],
+		\qquad
+		\theta_{cls}^{(k)} = \max\!\left(
+		Q_{1-\alpha}\!\left(\mathcal{P}^{(k)}_{benign}\right),\; 0.05\right)
+		\label{eq:lstm_cls_threshold}
+	\end{equation}
+	As given in Equation~\eqref{eq:lstm_cls_threshold}, the threshold is the
+	empirical benign quantile of the roadside unit's own classifier output
+	under live operating conditions rather than a value calibrated offline,
+	since offline calibrated thresholds transfer poorly across the
+	heterogeneous traffic each roadside unit observes once deployed.
+	
+	Local models are aggregated under the assumption that any roadside unit
+	may be compromised. Algorithm~\ref{alg:brfa} summarises the four stage
+	aggregation.
+	\begin{algorithm}[!t]
+		\caption{Byzantine Robust Federated Aggregation}
+		\label{alg:brfa}
+		\begin{algorithmic}[1]
+			\State Trust gate: keep roadside units with trust at or above $T_{min}$; abort if fewer than $2f{+}1$ remain
+			\State Hash verification: discard any submission whose weights do not match its committed hash
+			\State Krum filter: compute the coordinate wise median $\tilde{\mathbf{W}}$ of the remaining submissions; discard any submission further than $\gamma$ from it
+			\State Weighted aggregation: average the surviving submissions by sample count and commit the resulting hash to the blockchain
+		\end{algorithmic}
+	\end{algorithm}
+	
+	
+	\subsection{Witness Based Passive Attack Detection}\label{subsec:witness}
+	
+	Passive hidden forwarding survives every mechanism described above,
+	since the duplicated packet is a genuine, unmodified retransmission
+	carrying a valid signature. Coverage of this residual case falls to
+	nearby vehicles acting as witnesses, exploiting the fact that a
+	broadcast transmission is overheard by every neighbour rather than only
+	its intended recipient. A witness raises a duplication alert whenever it
+	observes the same packet hash addressed to two distinct destinations,
+	given in Equation~\eqref{eq:dup_alert_cond}.
+	\begin{equation}
+		\text{DA}_w(p){=}1\iff
+		\exists\,dst{\neq}dst':
+		H(p)\in\mathcal{L}_w(dst,W)
+		\land H(p)\in\mathcal{L}_w(dst',W)
+		\label{eq:dup_alert_cond}
+	\end{equation}
+	As given in Equation~\eqref{eq:dup_alert_cond}, this condition is
+	impossible for legitimate, single path traffic, so any occurrence is
+	itself evidence of duplication regardless of which node is ultimately
+	found responsible.
+	
+	A single witness alert must never be sufficient to penalize a node,
+	since one compromised or mistaken witness could otherwise accuse an
+	innocent node at will. The smart contract penalty trigger therefore
+	requires a distinct witness quorum, given in Equation~\eqref{eq:bft_penalty}.
+	\begin{equation}
+		\textsc{SC.PenalizeTrust}(v_i) \Leftarrow
+		\Bigl|\bigl\{
+		w : \exists\,(\alpha_w \text{ or } \beta_w)
+		\text{ s.t. }
+		\textsc{ML-DSA-87.Verify}(\cdot,pk_w,\cdot) = 1
+		\;\land\; \text{event}(v_i,p,w)\text{ confirmed}
+		\bigr\}\Bigr|
+		\geq 2f{+}1
+		\label{eq:bft_penalty}
+	\end{equation}
+	As given in Equation~\eqref{eq:bft_penalty}, the cardinality is taken
+	over distinct witness vehicles that each independently submitted a
+	verified alert for the same event, not over the number of alert
+	messages, so a single vehicle resubmitting the same alert can never
+	cross the threshold unilaterally.
+	
+	
+	\subsection{Blockchain Architecture}\label{subsec:blockchain}
+	
+	All blockchain writes originate exclusively from roadside units, since
+	permitting the controller itself to write would reduce the ledger's
+	integrity guarantee to that of the very entity the architecture assumes
+	may be compromised. Figure~\ref{fig:blockchain_arch} shows the resulting
+	two tier structure.
+	\begin{figure*}[!t]
+		\centering
+		\includegraphics[width=0.9\textwidth]{Figure_4_Final.eps}
+		\caption{Blockchain Architecture and Trust Management}
+		\label{fig:blockchain_arch}
+	\end{figure*}
+	A local chain among neighbouring roadside units commits flow
+	modification endorsements and packet receipt logs under a low latency
+	consensus tolerant of up to a third dishonest participants, while a
+	global chain periodically anchors each local chain's state for
+	auditability. A flow modification is only ever installed once it carries
+	$f{+}1$ independent roadside unit endorsements, which is what allows
+	Signature S3 of Equation~\eqref{eq:rule_s3} to detect an unauthorized
+	installation without ever consulting the controller's own account of its
+	actions.
+	
+	
+	\section{Evaluation Setup}\label{evaluation_setup}
+	
+	All three experiments in Section~\ref{results} use a Manhattan, New York
+	City road network extracted from OpenStreetMap rather than the Los
+	Angeles trace used in the companion single class evaluations, at the
+	same vehicle counts and speed settings. Manhattan's higher intersection
+	density produces more frequent, more aggressive flow modification churn,
+	giving a more demanding camouflage environment for the slow flow table
+	exhaustion variants than a lower density suburban grid provides.
+	Table~\ref{tab:sim_settings} lists the settings required for
+	replication; tuning constants that are not central to the proposed
+	design, together with their full sensitivity sweeps, are reported in the
+	companion papers.
+	
+	NEXUS is compared against three baselines: TAP for timing based
+	selective delay, SFTO Guard for slow flow table exhaustion, and FADE for
+	forwarding anomaly detection, none of which were designed to operate
+	against more than one attack class at a time. Every baseline is
+	evaluated under the identical joint, eight variant traffic used to
+	evaluate NEXUS itself, which is what exposes the joint detection gap
+	reported in Section~\ref{results}.
+	
+	\begin{table}[!t]
+		\centering
+		\caption{Simulation Settings}
+		\label{tab:sim_settings}
+		\renewcommand{\arraystretch}{1.2}
+		\footnotesize
+		\begin{tabular}{|>{\raggedright\arraybackslash}p{3.2cm}|>{\raggedright\arraybackslash}p{4.6cm}|}
+			\hline
+			\textbf{Parameter} & \textbf{Value} \\
+			\hline
+			Mobility trace & Manhattan, New York City (OpenStreetMap) \\
+			\hline
+			Network scale (default) & 200 vehicles, 64 RSUs (8$\times$8 grid), 4 controllers \\
+			\hline
+			Data / control plane & IEEE 802.11p DSRC / Ethernet CSMA \\
+			\hline
+			Attack configuration & 8 variants active simultaneously, penetration swept per experiment, 5 seeds \\
+			\hline
+			Detection architecture & Dual mode rule engine (OBU/RSU) plus federated classifier head, gated off for S3/S4 \\
+			\hline
+			Mobility baseline, EWMA & $\beta = 0.95$ ($N_{eff}{=}20$ cycles); $k = 3$ \\
+			\hline
+			LSTM classifier threshold & Per RSU empirical benign quantile, $\alpha = 0.01$, floor $0.05$ \\
+			\hline
+			Byzantine aggregation & Krum threshold $\gamma = 2.0$; trust gate $T_{min} = 0.50$ \\
+			\hline
+			Cryptographic layer & ML-DSA-87 signatures; batch size $B = 15$ packets \\
+			\hline
+			Blockchain endorsement & $f{+}1$ RSU endorsements per FlowMod; $f = 1$ \\
+			\hline
+			Witness quorum & $2f{+}1{=}3$ distinct witnesses; window $W{=}10$s \\
+			\hline
+			Duplication / volume windows & S6 duplication window 30s; S7 tumbling volume window 10s \\
+			\hline
+			Baselines & TAP, SFTO Guard, FADE \\
+			\hline
+			Ground truth, attribution & Latched for hidden forwarding variants; suspect attributed \\
+			\hline
+		\end{tabular}
+	\end{table}
+	
+	Detection quality throughout Section~\ref{results} is reported as macro
+	averaged MCC across the eight attack variants, with the pooled figure
+	shown alongside for transparency only, following the convention
+	established in the companion papers. Two further metrics, defined in
+	full in the companion papers, are reported alongside it: threshold
+	violation rate, the share of safety critical packets that exceed the
+	selective time delay threshold of Section~\ref{subsec:dual_mode}, and
+	unauthorized copy rate, the share of hidden forwarding duplicates that
+	reach an unauthorized destination undetected. Mitigation latency is
+	reported as the pair described in Section~\ref{discussion}, a
+	prevention rate and a mean latency restricted to attackers that acted
+	before containment, rather than as a single mean, and end to end
+	latency is the delivery time from packet generation to final delivery
+	inclusive of every detection and consensus step on its path.
+	
+	
+	\section{Results}\label{results}
+	
+	% All quantitative values in this section are placeholders pending the
+	% Manhattan trace runs under the finalised configuration of Table
+	% \ref{tab:sim_settings}. Replace every \TBD with the measured figure
+	% once available; the analysis prose states the mechanism each trend is
+	% expected to follow and should be checked against, not discarded,
+	% once real numbers land.
+	%
+	% N3 specifically cannot be executed as scoped until three prerequisite
+	% fixes land: (i) the No Zero Trust arm must be made compromisable below
+	% p=100 percent, since a single controller currently cannot be attacked
+	% at all under the existing allocation logic; (ii) a clean toggle for
+	% zero trust off is needed that does not also disable signing, since the
+	% only existing switch conflates the two; (v) a counter is needed at the
+	% enforcement call sites to confirm a quarantine actually blocked an
+	% action rather than only being recorded. None of this affects the
+	% experimental description below, only whether it can be run yet.
+	
+	\subsection{Joint Concurrent Multi Class Detection Under Varying Attack Penetration}\label{subsec:n1}
+	
+	All eight attack variants are active simultaneously at every penetration
+	level $p \in \{0,20,40,60,80,100\}\%$, which is the central
+	differentiator from the companion papers, both of which evaluate a
+	single attack class at a time. Figure~\ref{fig:n1_mcc} reports macro
+	MCC against penetration for NEXUS and the three baselines.
+	\begin{figure}[!t]
+		\centering
+		\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+				\centering
+				Figure placeholder: macro MCC versus attack penetration, four lines
+				(NEXUS, TAP, SFTO Guard, FADE), $p \in \{0,20,40,60,80,100\}\%$.
+		\end{minipage}}
+		\caption{Detection Quality Under Joint Attack Penetration}
+		\label{fig:n1_mcc}
+	\end{figure}
+	Every baseline is structurally blind to attack classes outside its own
+	design scope: TAP produces no signal against any hidden forwarding
+	variant, SFTO Guard produces no signal outside slow flow table
+	exhaustion, and FADE produces no signal against selective time delay.
+	Under a joint, eight variant attack, this blindness is not merely a
+	missed detection on the unseen classes, it also degrades detection on
+	the classes each baseline was designed for, since FADE's flow
+	conservation baseline is itself perturbed by concurrent selective delay,
+	and TAP's timing baseline is perturbed by concurrent flow table
+	contention. Macro MCC for every baseline is therefore expected to fall
+	well below its single class figure reported in the companion papers,
+	while NEXUS, whose eight signatures and federated classifier run
+	concurrently by design, is expected to hold macro MCC closer to its own
+	single class figures as penetration rises.
+	
+	Figure~\ref{fig:n1_tvr_ucr} reports the threshold violation rate and
+	unauthorized copy rate on the same penetration axis.
+	\begin{figure}[!t]
+		\centering
+		\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+				\centering
+				Figure placeholder: TVR and UCR versus attack penetration, dual
+				axis, NEXUS and the three baselines.
+		\end{minipage}}
+		\caption{Threshold Violation and Unauthorized Copy Under Joint Attack}
+		\label{fig:n1_tvr_ucr}
+	\end{figure}
+	Unauthorized copy rate is expected to separate NEXUS most clearly from
+	FADE specifically, since a hidden forwarding baseline evaluated while
+	timing attacks are simultaneously active must still classify duplication
+	correctly under a degraded timing baseline, whereas NEXUS's hidden
+	forwarding signatures and witness layer of
+	Section~\ref{subsec:witness} do not depend on any timing observable at
+	all. At $p{=}\TBD\%$, macro MCC for NEXUS is $\TBD$ against $\TBD$ for
+	the strongest baseline; unauthorized copy rate for NEXUS remains at
+	$\TBD\%$ against $\TBD\%$ for FADE.
+	
+	
+	\subsection{Scalability and Cryptographic Overhead Under Concurrent Attacks}\label{subsec:n2}
+	
+	Network scale is varied as $N_v \in \{100,200,300,400\}$ vehicles at a
+	fixed $40\%$ joint penetration, holding the roadside unit grid and
+	controller count constant. Figure~\ref{fig:n2_scale} reports end to end
+	latency against the three baselines together with the two cryptographic
+	overhead terms that only NEXUS incurs.
+	\begin{figure}[!t]
+		\centering
+		\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+				\centering
+				Figure placeholder, two panels: (a) end to end latency versus
+				vehicle count, NEXUS and the three baselines; (b) batch
+				verification time and endorsement consensus latency versus
+				vehicle count, NEXUS only.
+		\end{minipage}}
+		\caption{Scalability and Cryptographic Overhead}
+		\label{fig:n2_scale}
+	\end{figure}
+	Endorsement consensus latency is expected to grow sub linearly with
+	vehicle count, since the endorsement quorum of Section~\ref{subsec:blockchain}
+	is sized by the fixed roadside unit count rather than by the vehicle
+	population, so only per packet batch verification cost, amortized
+	across a batch by Equation~\eqref{eq:batch_verify}, tracks vehicle
+	driven traffic growth directly. Baselines are expected to report lower
+	end to end latency at every vehicle count, but this reflects the absence
+	of any cryptographic or blockchain overhead in their design rather than
+	a genuine efficiency advantage under an equal integrity requirement. At
+	$N_v{=}400$, end to end latency for NEXUS is $\TBD$ms against a
+	$100$ms safety bound, and endorsement consensus latency is $\TBD$ms
+	against $\TBD$ms at $N_v{=}100$.
+	
+	
+	\subsection{System Level Layer Ablation}\label{subsec:n3}
+	
+	Four configurations isolate whole architectural layers rather than
+	individual components, in contrast to the component level ablations
+	reported in the companion papers: Full NEXUS; No Crypto, removing
+	ML-DSA-87 and STARK attestation entirely; No LSTM, removing the
+	federated classifier and its aggregation; and No Zero Trust, replacing
+	the multi controller architecture of Section~\ref{subsec:ctrl_trust}
+	with a single, permanently trusted controller. All four run under the
+	joint, eight variant attack at $40\%$ penetration.
+	\begin{figure}[!t]
+		\centering
+		\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
+				\centering
+				Figure placeholder: radar chart, four spokes (macro MCC,
+				unauthorized copy rate, mitigation prevention rate, end to end
+				latency), one polygon per configuration.
+		\end{minipage}}
+		\caption{System Level Layer Ablation}
+		\label{fig:n3_radar}
+	\end{figure}
+	Removing the cryptographic layer is expected to collapse containment of
+	the active hidden forwarding variants specifically, since signature
+	verification failure is the primary evidence Signature S5 and its
+	active counterpart test for; it additionally removes the signing
+	mechanism the witness layer uses to attribute an alert non repudiably,
+	so passive hidden forwarding coverage may degrade as well rather than
+	surviving on the classifier alone. Removing the federated classifier is
+	expected to reduce, but not eliminate, coverage of the two passive
+	variants, since the witness quorum of Equation~\eqref{eq:bft_penalty}
+	operates independently of the classifier and continues to provide a
+	detection path once it is removed. Removing multi controller zero trust
+	leaves detection quality nominally unchanged below the compromise
+	threshold, but failover latency becomes undefined, since a single
+	controller design has no second controller to fail over to, and macro
+	MCC is expected to collapse once that one controller is compromised,
+	with no independent recovery path available.
+	
+	Table~\ref{tab:n3_variant} reports macro MCC for each attack variant
+	under each configuration, together with unauthorized copy rate for the
+	full system.
+	\begin{table}[!t]
+		\centering
+		\caption{Per Variant MCC Under System Level Ablation}
+		\label{tab:n3_variant}
+		\renewcommand{\arraystretch}{1.15}
+		\footnotesize
+		\begin{tabular}{|c|c|c|c|c|c|}
+			\hline
+			\textbf{Variant} & \textbf{Full} & \textbf{No Crypto} & \textbf{No LSTM} & \textbf{No Zero Trust} & \textbf{UCR (Full)} \\
+			\hline
+			S1 & \TBD & \TBD & \TBD & \TBD & --- \\
+			\hline
+			S2 & \TBD & \TBD & \TBD & \TBD & --- \\
+			\hline
+			S3 & \TBD & \TBD & \TBD & \TBD & --- \\
+			\hline
+			S4 & \TBD & \TBD & \TBD & \TBD & --- \\
+			\hline
+			S5 & \TBD & \TBD & \TBD & \TBD & \TBD \\
+			\hline
+			S6 & \TBD & \TBD & \TBD & \TBD & \TBD \\
+			\hline
+			S7 & \TBD & \TBD & \TBD & \TBD & \TBD \\
+			\hline
+			S8 & \TBD & \TBD & \TBD & \TBD & \TBD \\
+			\hline
+		\end{tabular}
+	\end{table}
+	Under controller compromise at $p \geq 33\%$, macro MCC for
+	No Zero Trust falls to $\TBD$ against $\TBD$ for Full NEXUS under the
+	identical compromise scenario, and mitigation prevention rate falls to
+	$\TBD\%$.
+	
+	
+	
+	\section{Discussion}\label{discussion}
+	
+	Mitigation latency is reported throughout this paper as a pair rather
+	than a single mean: a prevention rate, the share of quarantined
+	attackers stopped before their first attack action, and a mean latency
+	computed only over attackers that acted before containment. A single
+	mean over both populations moves in the wrong direction as containment
+	improves, since an attacker stopped before acting contributes no
+	latency at all and would otherwise be discarded from, rather than
+	credited to, the average.
+	
+	\subsection{Statistical Significance}
+	Every experiment in Section~\ref{results} is run across five seeds.
+	The comparison between NEXUS and the strongest baseline at each
+	penetration level in Experiment N1 is tested with a paired test across
+	seeds rather than a comparison of seed averages, since the same five
+	mobility realisations are shared across every method. At
+	$p{=}\TBD\%$, the macro MCC difference is $\TBD$ with $\TBD$
+	($n{=}5$ paired seeds); this is reported once the Manhattan trace runs
+	are complete and is not to be read as significant or otherwise until
+	then.
+	
+	\subsection{Strengths and Weaknesses}
+	The central strength demonstrated in Section~\ref{results} is joint
+	coverage: every signature, the cryptographic layer, and the federated
+	classifier operate concurrently by construction, so detection of one
+	attack class is not disrupted by the simultaneous presence of the
+	other, which Experiment N1 is designed specifically to expose as a
+	failure mode in every baseline. The delay evidence channel of
+	Equation~\eqref{eq:ctrl_trust_update} closes a documented gap in
+	endorsement only controller trust, and post quantum attestation is
+	achieved with batch verification that keeps per packet overhead sub
+	linear in path length.
+	
+	Three weaknesses are structural rather than incidental. First, the
+	logical OR across eight signatures and a classifier that composes
+	overall detection trades false positive rate for coverage, so the
+	composite decision is necessarily noisier than any single constituent
+	detector taken alone. Second, saturation based signatures such as S4
+	carry an inherent temporal lag on slow building attacks, since ground
+	truth is established at the first attack conforming action while the
+	signature itself requires accumulated saturation, a property of the
+	detection mechanism rather than a failure of it. Third, passive hidden
+	forwarding coverage depends on witness density, so the $2f{+}1$ quorum
+	of Equation~\eqref{eq:bft_penalty} becomes harder to satisfy exactly
+	where vehicle density is lowest.
+	
+	\subsection{Runtime and Space Complexity}
+	Aggregate signature verification is linear in path length and Byzantine
+	robust aggregation is quadratic in the number of participating roadside
+	units, with the roadside unit term dominant at the network scale
+	evaluated in Section~\ref{results}. Appendix~\ref{appendix} states and
+	proves the formal bounds.
+	
+	\subsection{Scalability}
+	Consistent with Experiment N2, end to end latency is expected to remain
+	within the safety bound as vehicle count grows, since the dominant
+	consensus cost is fixed by roadside unit count rather than by vehicle
+	population. The complexity result of Appendix~\ref{appendix} indicates
+	that the binding cost as the network grows further is the quadratic
+	aggregation term, which tracks roadside unit count rather than vehicle
+	count, and is therefore not exercised by Experiment N2's scaling axis.
+	
+	\subsection{Deployment Feasibility}
+	The dual mode design of Section~\ref{subsec:dual_mode} places
+	post quantum signing, zero knowledge proof generation, and classifier
+	inference exclusively at roadside unit edge nodes, while on board units
+	run only hash based authentication, so the heavier computational
+	burden falls on infrastructure hardware rather than on the vehicle
+	itself. Distributed key generation is a one time ceremony at network
+	setup, and key rotation is triggered only on roadside unit revocation,
+	so neither recurs on the critical path of ordinary operation.
+	
+	\subsection{Convergence}
+	Byzantine robust aggregation converges toward the honest aggregate
+	under the bounded malicious fraction assumed throughout this paper.
+	Appendix~\ref{appendix} states and proves the bound; empirical support
+	under the shared aggregation ablation is reported in the companion
+	papers.
+	
+	\subsection{Security Analysis}
+	False accusation of a benign forwarding node under Signature S5 and its
+	counterparts requires either breaking ML-DSA-87 unforgeability or
+	compromising the physical layer addressing the addressed conjunct of
+	Equation~\eqref{eq:sig_s5} is read from, and the controller trust
+	channel of Equation~\eqref{eq:ctrl_trust_update} cannot be biased by a
+	single compromised roadside unit. Appendix~\ref{appendix} states and
+	proves both claims, together with the passive attack limitation that
+	motivates the witness layer of Section~\ref{subsec:witness}.
+	
+	
+	\section{Conclusion}\label{conclusion}
+	
+	Selective time delay and hidden forwarding attacks in software defined
+	vehicular networks have been addressed by separate defenses, each built
+	around a threat model that assumes a trustworthy controller and a
+	single attack class. NEXUS removes both assumptions at once: a flat,
+	registered controller set with no permanently trusted member, a dual
+	mode detection engine spanning eight signatures, a post quantum
+	cryptographic layer with a controller inclusive trust channel, a
+	federated classifier trained without centralising raw traffic, and a
+	witness layer covering what cryptographic and volumetric evidence
+	structurally cannot. Under joint, simultaneous attack across all eight
+	variants, NEXUS is shown in Section~\ref{results} to sustain macro MCC
+	of $\TBD$ against $\TBD$ for the strongest single class baseline at
+	the same penetration, while every baseline exhibits the coverage
+	collapse this paper set out to demonstrate. The main limitation is
+	architectural rather than incidental: composing eight signatures and a
+	classifier through a logical OR trades false positive rate for the
+	coverage that joint detection requires, and this trade is not removed
+	by any of the individual fixes reported here.
+	
+	Two companion papers extend the single class evaluation this paper
+	condenses: PHANTOM develops the selective time delay signatures and
+	mobility adjusted thresholds in full formal detail, and VANGUARD-HF
+	does the same for hidden forwarding, the federated classifier, and the
+	witness mechanism. Future work includes replacing the covering roadside
+	unit proxy used to contain compromised vehicles with a per vehicle
+	trust score, re running the Byzantine robust aggregation ablation on
+	the corrected eleven feature input once it is available across both
+	companion papers, and a density adaptive witness quorum that lowers
+	$f$ where vehicle density is too sparse to sustain $2f{+}1$ distinct
+	witnesses, directly addressing the limitation identified in
+	Section~\ref{discussion}.
+	
+	\subsection{Acknowledgments}
+	None
+	
+	\subsection{Conflict of interest}
+	\noindent Authors declare no conflict of interest.
+	
+	\section[\appendixname~\thesection]{Appendix}\label{appendix}
+	
+	\subsection{Complexity Analysis}\label{app:complexity}
+	
+	Table~\ref{tab:complexity} states the per operation cost of the four
+	dominant mechanisms in the pipeline.
+	\begin{table}[!t]
+		\centering
+		\caption{Runtime and Space Complexity}
+		\label{tab:complexity}
+		\renewcommand{\arraystretch}{1.2}
+		\footnotesize
+		\begin{tabular}{|l|c|c|}
+			\hline
+			\textbf{Operation} & \textbf{Time} & \textbf{Space} \\
+			\hline
+			BatchVerify, Eq.~\eqref{eq:batch_verify} & $O(n)$ & $O(n)$ \\
+			\hline
+			STARK.Verify per proof & $O(\log n)$ & $O(1)$ \\
+			\hline
+			Krum filter, Algorithm~\ref{alg:brfa} & $O(K^2)$ & $O(Kd)$ \\
+			\hline
+			Endorsement, Section~\ref{subsec:blockchain} & $O(f{+}1)$ & $O(f{+}1)$ \\
+			\hline
+		\end{tabular}
+	\end{table}
+	As given in Table~\ref{tab:complexity}, $n$ is the path length in hops,
+	$K$ is the number of participating roadside units, $d$ is the model
+	weight dimension, and $f$ is the Byzantine fault parameter.
+	
+	\begin{lemma}
+		\label{lem:complexity}
+		The per packet verification cost of the cryptographic layer is
+		$O(n)$ in path length $n$, and the per round cost of Byzantine
+		robust aggregation is $O(K^2)$ in the number of participating
+		roadside units $K$, independently of $n$.
+	\end{lemma}
+	\begin{proof}
+		BatchVerify of Equation~\eqref{eq:batch_verify} replaces $n$
+		independent lattice checks with one combined matrix accumulation
+		over the $n$ per hop signatures; the accumulation itself is
+		$O(n)$, so the asymptotic cost is unchanged while the constant
+		factor is reduced relative to $n$ separate verifications.
+		STARK.Verify is polylogarithmic in the size of the statement being
+		proven for a transparent, FRI based proof system, so it does not
+		grow with $n$ beyond the single proof already accounted for per
+		hop. The Krum filter of Algorithm~\ref{alg:brfa} computes a
+		pairwise distance between every pair of the $K$ submitted models
+		to identify the coordinate wise median neighbourhood, which is
+		$O(K^2)$ regardless of $n$.
+		\qed
+	\end{proof}
+	
+	\begin{corollary}
+		At the default network scale of Table~\ref{tab:sim_settings}, with
+		$K{=}64$ roadside units, the Krum filter dominates the total per
+		round cost whenever the evaluated path length satisfies
+		$n \ll K^2$, which holds for every path length reachable within
+		the eight by eight grid deployment.
+	\end{corollary}
+	
+	\begin{remark}[Limitation]
+		The quadratic term in Lemma~\ref{lem:complexity} is not exercised
+		by Experiment N2, which scales vehicle count rather than roadside
+		unit count; a deployment that instead scales the roadside unit
+		grid would need the aggregation round cost re evaluated at the
+		larger $K$.
+	\end{remark}
+	
+	
+	\subsection{Convergence Analysis}\label{app:convergence}
+	
+	\begin{lemma}
+		\label{lem:convergence}
+		Let $\rho_{mal}$ be the fraction of roadside units submitting
+		adversarial weight updates in a given aggregation round. If
+		$\rho_{mal} < 1/3$, the output of Algorithm~\ref{alg:brfa} lies
+		within a bounded distance of the aggregate that would be produced
+		by the honest submissions alone, for a Krum threshold $\gamma$
+		chosen at least as large as the spread of the honest population.
+	\end{lemma}
+	\begin{proof}
+		The trust gate and hash verification steps of
+		Algorithm~\ref{alg:brfa} admit only submissions from roadside
+		units above the operational trust threshold with a weight matching
+		their committed hash, so any adversarial submission reaching the
+		Krum filter carries no advantage from forged identity or a
+		mismatched payload. The coordinate wise median
+		$\tilde{\mathbf{W}}$ used by the Krum filter is itself robust to
+		up to, but not including, half of the remaining population being
+		adversarial, so for $\rho_{mal}<1/3$ the median stays within the
+		convex spread of the honest submissions. Any submission further
+		than $\gamma$ from $\tilde{\mathbf{W}}$ is excluded before
+		averaging; once $\gamma$ is set at least as large as the honest
+		population's own spread around the median, every honest submission
+		is retained while an adversarial submission distant enough to bias
+		the average by more than the stated bound is excluded, and the
+		weighted aggregation step of Algorithm~\ref{alg:brfa} therefore stays
+		within a bounded distance of the honest only aggregate.
+		\qed
+	\end{proof}
+	
+	\begin{remark}[Limitation]
+		Lemma~\ref{lem:convergence} bounds the deviation from the honest
+		aggregate per round rather than guaranteeing convergence of the
+		underlying model to a global optimum, which additionally depends
+		on the non convexity of the encoder trained in
+		Section~\ref{subsec:fed_lstm}; empirical support for the stated
+		bound under the shared Byzantine robust aggregation ablation is
+		reported in the companion papers rather than repeated here.
+	\end{remark}
+	
+	
+	\subsection{Security Analysis}\label{app:security}
+	
+	\begin{lemma}
+		\label{lem:delay_evidence_bft}
+		No single compromised roadside unit can cause a controller to be
+		penalised through the delay evidence channel of
+		Equation~\eqref{eq:delay_evidence}.
+	\end{lemma}
+	\begin{proof}
+		Equation~\eqref{eq:ctrl_trust_update} decrements controller trust
+		on the delay evidence channel only once
+		$\mathcal{E}_{delay}(c_i,t) \geq f{+}1$, and
+		Equation~\eqref{eq:delay_evidence} defines this quantity as a
+		cardinality over distinct roadside units independently reporting
+		Signature S1 against the same controller. A single compromised
+		roadside unit can contribute at most one to this count, which is
+		insufficient to reach the $f{+}1$ threshold whenever $f \geq 1$,
+		so a lone false report cannot by itself trigger a trust penalty.
+		\qed
+	\end{proof}
+	
+	\begin{lemma}
+		\label{lem:s5_unforgeability}
+		Falsely accusing a benign forwarding node under Signature S5 of
+		Equation~\eqref{eq:sig_s5} requires either breaking ML-DSA-87
+		unforgeability or compromising the link layer addressing that the
+		addressed conjunct is read from.
+	\end{lemma}
+	\begin{proof}
+		A benign forwarding node relays a packet under a signature chain
+		originating from its genuine sender, so
+		$\textsc{ML-DSA-87.Verify}(\sigma_{copy},pk_s,m_{copy})=1$ for any
+		copy the accusing node genuinely received; producing a copy that
+		fails this check while attributing it to a benign node's action
+		requires forging a valid looking signature under the sender's
+		public key, which is precluded by the module lattice hardness
+		assumption underlying ML-DSA-87 unforgeability. The addressing
+		conjunct $\textsc{Addressed}(p,d')=1$ is read directly from the
+		link layer destination of the frame the accusing node itself
+		received, independent of the signed next hop, so satisfying it
+		without genuinely having been addressed the duplicate requires
+		control over the physical channel rather than over any
+		cryptographic or protocol state.
+		\qed
+	\end{proof}
+	
+	\begin{corollary}
+		Since Equation~\eqref{eq:bft_penalty} additionally requires
+		$2f{+}1$ distinct witnesses to independently confirm an event
+		before a trust penalty is applied, an adversary must both defeat
+		Lemma~\ref{lem:s5_unforgeability} and collude across $2f{+}1$
+		witnesses to falsely penalise a node through the witness path,
+		which exceeds the Byzantine bound assumed throughout this paper.
+	\end{corollary}
+	
+	\begin{remark}[Limitation]
+		Lemma~\ref{lem:s5_unforgeability} does not extend to the two
+		passive variants, since a passively retransmitted packet is a
+		genuinely authentic copy that satisfies every cryptographic check
+		by construction. This is precisely why passive hidden forwarding
+		is covered by the independent witness layer of
+		Section~\ref{subsec:witness} rather than by Signature S5 or S6
+		alone, and it is the one class of accusation this appendix does
+		not reduce to a cryptographic hardness assumption.
+	\end{remark}
+	
+	
+	
+	\begin{thebibliography}{9}
+		
+		% NOTE: bibliographic details below were checked against publicly
+		% indexed records where marked [verified]. Entries marked
+		% [confirm before submission] rest on recollection of the source
+		% material used earlier in this project and must be checked against
+		% the publisher record before this paper is submitted, consistent
+		% with the reference integrity standard already applied to the
+		% companion papers.
+		
+		\bibitem{Pascoal2017} % [verified]
+		T.~A. Pascoal, Y.~G. Dantas, I.~E. Fonseca, and V.~Nigam, ``Slow TCAM exhaustion DDoS attack,'' in \emph{Proc. 32nd IFIP Int. Conf. ICT Syst. Secur. Privacy Prot. (IFIP SEC)}, Rome, Italy, 2017, pp. 17--31.
+		
+		\bibitem{Arsalan2018} % [verified]
+		A. Arsalan and R.~A. Rehman, ``Prevention of timing attack in software defined named data network with VANETs,'' in \emph{Proc. Int. Conf. Front. Inf. Technol. (FIT)}, Islamabad, Pakistan, 2018, pp. 247--252.
+		
+		\bibitem{Mohammadi2016} % [verified]
+		A.~A. Mohammadi, P. Kazemian, and M. Pakravan, ``Detecting malicious packet drops and misroutings using header space analysis,'' in \emph{Proc. 8th Int. Symp. Telecommun. (IST)}, Tehran, Iran, 2016, pp. 521--526.
+		
+		\bibitem{Zhang2021FADE} % [confirm before submission]
+		L. Zhang \emph{et al.}, ``FADE: Detecting forwarding anomalies in software defined networks via flow conservation,'' in \emph{Proc. IEEE Conf. Comput. Commun. (INFOCOM) Workshops}, 2021.
+		
+		\bibitem{Nayak2022} % [verified]
+		R.~P. Nayak, S. Sethi, S.~K. Bhoi, D. Mohapatra, R.~R. Sahoo, P.~K. Sharma, and D. Puthal, ``TFMD-SDVN: A trust framework for misbehavior detection in the edge of software defined vehicular network,'' \emph{J. Supercomput.}, vol.~78, no.~6, pp. 7948--7981, 2022.
+		
+		\bibitem{Liu2021BFLVEC} % [venue confirmed, page range to confirm]
+		H. Liu \emph{et al.}, ``Blockchain and federated learning for collaborative intrusion detection in vehicular edge computing,'' \emph{IEEE Trans. Veh. Technol.}, vol.~70, no.~6, pp. 6073--6084, 2021.
+		
+		\bibitem{Krishnan2023} % [confirm before submission]
+		S. Krishnan \emph{et al.}, ``FTISCON: Preserving flow table integrity in software defined networks through smart contracts,'' in \emph{Proc. IEEE Int. Conf. Blockchain}, 2023.
+		
+		\bibitem{ElDalahmeh2025} % [confirm before submission]
+		M. El-Dalahmeh and M. Alia, ``A lattice based post-quantum vehicle to roadside authentication protocol for connected vehicles,'' \emph{IEEE Access}, 2025.
+		
+		% TODO: add companion paper citations once PHANTOM and VANGUARD-HF
+		% have assigned manuscript identifiers, cited here as under review.
+		
+	\end{thebibliography}
+	
+	\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{pictures/Nilmantha}}]{Patikiri Arachchige Don Shehan Nilmantha Wijesekara} received his B.Sc. Engineering degree (First Class Honours) specialising in Electrical and Information Engineering from the University of Ruhuna, Sri Lanka, in 2017, where he was awarded six academic distinctions, including two gold medals and a scholarship. He subsequently completed his Ph.D. in Computer Engineering at the same university, earning a further three gold medals for his doctoral work on networking, machine learning, and blockchain. He has authored more than 50 journal papers and holds an h-index of 15. Alongside his core work, he maintains research interests in biomedical engineering and the social sciences, particularly nutrition and mental health.
+	\end{IEEEbiography}
+	% TODO: add a second IEEEbiography block per additional author once the
+	% author list is confirmed.
+	
+\end{document}

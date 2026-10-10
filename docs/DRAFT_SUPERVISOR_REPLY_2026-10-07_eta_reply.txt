@@ -1,0 +1,26 @@
+Subject: Re: ablation metrics, AB5, compromise model - ETA, optimization, open problems
+
+Dear Professor,
+
+Thank you. I will implement all three points (per-ablation property metrics with MCC as a reference line, AB5 with the 50x attack plus the sign-flip disclosure sentence, and the compromise model limited to the three approved capabilities at p >= 33%). I will state those assumptions in the threat model section and send you anything beyond them first.
+
+1. Optimization (done and committed)
+Profiling showed 66-73% of simulation CPU was one function (updateTxop), rebuilding a time value inside a per-neighbour loop on every packet event. After hoisting loop-invariants, caching neighbour lists, and bounding one RL loop to real node ids, identical runs are 4.0x (A1) to 4.8x (A5) faster. Detector windows, TCAM, trust and FlowMod outputs are byte-identical to the old binary; only wall-clock timing columns differ. A 300 s A1-A4 run drops from about 90 min to about 20 min (estimate; I measured 60-150 s runs with three jobs in parallel, not yet a full 300 s sweep).
+During the audit I also found that the FlowMod endorsement list was never reset per cycle and did not reject a repeat endorser, so the f+1 quorum was cumulative. It is fixed. Results are unchanged, because every cycle's 64 endorsers exceed f+1 = 22.
+
+2. ETA (estimates, counting from today)
+- PHANTOM: about 5 days. Compute is about 5 h for the remaining 172 runs (AB7, AB9/10/12, plus 300 s versions of Exp 3 and the 5-seed repeats). The rest is coding the compromise model and the AB7 latency metric, then replotting the ablation figures with the new metrics.
+- VANGUARD-HF: about 4-5 days. About 200 runs (about 3.5 h), after I add the forwarding-intensity and AOEI settings.
+- Hydra letter: about 8-9 days. It needs the joint 8-variant mode, the compromise model and a breach-rate metric.
+- NEXUS: about 10-12 days. It needs a joint 8-variant mode (not implemented), a Manhattan trace (none exists yet), LSTM retraining on that trace, and the N3 prerequisites you listed.
+Total compute for everything is about 20-23 h at 12 workers; the schedule is set by development, not simulation time.
+
+3. Open problems
+a) The link-lifetime solver (Gurobi) fails to import in the production runs, so it silently falls back. I need to confirm whether the reported results should include it, and fix the launcher environment if so.
+b) Exp 3 and the n=5 seed runs exist only at 60 s, not the standard 300 s. Should they be rerun at 300 s? (About 46 runs.)
+c) The endorsement step is attack-agnostic (every RSU endorses every cycle), and Attack 5's rejection comes from ground truth. The paper should say so; I will word it in the threat model.
+d) AB4 and AB11 are honest negative or near-neutral results; I will keep them reported that way.
+e) NEXUS: do you want the Manhattan trace and 5 seeds as written, or may I use the existing LA trace? The Manhattan trace alone adds about 2 days plus retraining.
+f) Hydra letter: how many seeds should the four configurations use?
+
+Kind regards,

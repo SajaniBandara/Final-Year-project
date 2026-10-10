@@ -81,7 +81,9 @@ def parse(path):
 def score(ev, n_veh, n_rsu, total_cycles=None, warmup=WARMUP_S, stop_after_quarantine=False, alarm_mask=None, hf_label="auto"):
     T = total_cycles if total_cycles is not None else ev["last_cycle"] + 1
     if alarm_mask is None:
-        alarm_mask = ~WITNESS_BITS & 0xFFFFFFFF   # witness alerts are not alarms unless asked for
+        # Witness quorum alarms (2f+1 distinct verified alerts) count in the S7/S8 score (supervisor 2026-10-10, audit b): A7/A8 only.
+        # Elsewhere a witness-only alarm is not an alarm unless asked for.
+        alarm_mask = 0xFFFFFFFF if ev.get("variant", -1) in (6, 7) else (~WITNESS_BITS & 0xFFFFFFFF)
     if hf_label == "auto":
         # VANGUARD-HF paper convention (audit a, 2026-10-10): hidden-forwarding truth is latched from the node's first attack action. In a
         # detection-only run the quarantine is only a trust state and the node keeps attacking, so it stays latched to the end of the run;

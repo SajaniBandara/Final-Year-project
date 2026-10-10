@@ -1,0 +1,6382 @@
+[
+ {
+  "tag": "ph_e1_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A1_p20_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p20_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p20_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p20_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p20_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p20_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p20_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p20_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p20_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p20_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p20_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p20_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p20_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p20_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p20_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p20_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p20_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p20_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p20_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p20_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p20_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p20_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p20_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p20_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p20_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p20_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A3_p20_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p20",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 20,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A3_p20_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p20",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 20,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A4_p20_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p20",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 20,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A4_p20_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p20",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 20,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A1_p40_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p40_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p40_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p40_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p40_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p40_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p40_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p40_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p40_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p40_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p40_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p40_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p40_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p40_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p40_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p40_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p40_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p40_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p40_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p40_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p40_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p40_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p40_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p40_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p40_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p40_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A3_p40_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p40",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A3_p40_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p40",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A4_p40_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p40",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A4_p40_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p40",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A1_p60_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p60_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p60_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p60_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p60_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p60_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p60_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p60_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p60_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p60_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p60_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p60_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p60_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p60_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p60_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p60_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p60_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p60_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p60_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p60_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p60_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p60_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p60_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p60_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p60_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p60_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A3_p60_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p60",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A3_p60_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p60",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 60,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A4_p60_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p60",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 60,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A4_p60_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p60",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 60,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A1_p80_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p80_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p80_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p80_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p80_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p80_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p80_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p80_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p80_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p80_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p80_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p80_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p80_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p80_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p80_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p80_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p80_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p80_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p80_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p80_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p80_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p80_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p80_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p80_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p80_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p80_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A3_p80_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p80",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A3_p80_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p80",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 80,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A4_p80_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p80",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 80,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A4_p80_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p80",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 80,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A1_p100_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p100_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p100_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A1_p100_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p100_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p100_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A1_p100_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p100_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p100_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A1_p100_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p100_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A1_p100_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A1_p100_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p100_d25_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d25",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p100_d25_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d25",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p100_d25_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d25",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 25
+ },
+ {
+  "tag": "ph_e1_A2_p100_d55_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d55",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p100_d55_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d55",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p100_d55_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d55",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 55
+ },
+ {
+  "tag": "ph_e1_A2_p100_d100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p100_d100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p100_d100_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d100",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 100
+ },
+ {
+  "tag": "ph_e1_A2_p100_d200_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d200",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p100_d200_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d200",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A2_p100_d200_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A2_p100_d200",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [],
+  "delay": 200
+ },
+ {
+  "tag": "ph_e1_A3_p100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A3_p100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A3_p100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": []
+ },
+ {
+  "tag": "ph_e1_A4_p100_full_do",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p100",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 100,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e1_A4_p100_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e1",
+  "cfg": "A4_p100",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 100,
+  "extra": []
+ },
+ {
+  "tag": "ph_e2_v10_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v10_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v10_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "speed": 10,
+  "trace": "mobility_urban_v10.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v40_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v40_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "speed": 40,
+  "trace": "mobility_urban_v40.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v70_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v70_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "speed": 70,
+  "trace": "mobility_urban_v70.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v100_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v100_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "speed": 100,
+  "trace": "mobility_urban_v100.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v130_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v130_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "speed": 130,
+  "trace": "mobility_urban_v130.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e2_v150_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e2",
+  "cfg": "v150_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "speed": 150,
+  "trace": "mobility_urban_v150.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N100_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N100_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "N": 100,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N160_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N160_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "N": 160,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N220_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N220_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "N": 220,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N280_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N280_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "N": 280,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N340_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N340_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "N": 340,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_benign_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_benign",
+  "arm": "full",
+  "mode": "do",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_benign_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_benign",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 0,
+  "pct": 0,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e3_N400_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e3",
+  "cfg": "N400_A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [],
+  "N": 400,
+  "trace": "mobility_urban_N400_perm.tcl"
+ },
+ {
+  "tag": "ph_e4_r0p1_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.1_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.1"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p1_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.1_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.1"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p1_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.1_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.1"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p1_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.1_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.1"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p1_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.1_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.1"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p1_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.1_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.1"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p28_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.28_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.28"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p28_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.28_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.28"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p28_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.28_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.28"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p28_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.28_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.28"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p28_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.28_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.28"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p28_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.28_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.28"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p46_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.46_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.46"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p46_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.46_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.46"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p46_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.46_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.46"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p46_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.46_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.46"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p46_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.46_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.46"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p46_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.46_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.46"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p64_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.64_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.64"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p64_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.64_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.64"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p64_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.64_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.64"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p64_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.64_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.64"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p64_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.64_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.64"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p64_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.64_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.64"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p82_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.82_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.82"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p82_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.82_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.82"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p82_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.82_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.82"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p82_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.82_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.82"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p82_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.82_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.82"
+  ]
+ },
+ {
+  "tag": "ph_e4_r0p82_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r0.82_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=0.82"
+  ]
+ },
+ {
+  "tag": "ph_e4_r1p0_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r1.0_A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=1.0"
+  ]
+ },
+ {
+  "tag": "ph_e4_r1p0_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r1.0_A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=1.0"
+  ]
+ },
+ {
+  "tag": "ph_e4_r1p0_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r1.0_A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=1.0"
+  ]
+ },
+ {
+  "tag": "ph_e4_r1p0_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r1.0_A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=1.0"
+  ]
+ },
+ {
+  "tag": "ph_e4_r1p0_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r1.0_A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=1.0"
+  ]
+ },
+ {
+  "tag": "ph_e4_r1p0_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "r1.0_A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--selective_target_ratio=1.0"
+  ]
+ },
+ {
+  "tag": "ph_e4_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e4_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e4_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e4_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e4",
+  "cfg": "A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A1_full_do",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A1",
+  "arm": "full",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A1_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A1",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A1_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A1",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A2_full_do",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A2",
+  "arm": "full",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A2_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A2",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A2_tap_do",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A2",
+  "arm": "tap",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A3_full_do",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A3",
+  "arm": "full",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e5_A3_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A3",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_e5_A4_full_do",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A4",
+  "arm": "full",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_sfto=1"
+  ]
+ },
+ {
+  "tag": "ph_e5_A4_full_cl",
+  "paper": "PHANTOM",
+  "exp": "e5",
+  "cfg": "A4",
+  "arm": "full",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": []
+ },
+ {
+  "tag": "ph_ab1_A1_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p20_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A1_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A1_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A1_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A1_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A2_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p20_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A2_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A2_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p60_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A2_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p80_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A2_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A3_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p20",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 3,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A3_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A3_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A3_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A3_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A4_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p20",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 4,
+  "pct": 20,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A4_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p40",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A4_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p60",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 4,
+  "pct": 60,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A4_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p80",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 4,
+  "pct": 80,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab1_A4_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p100",
+  "arm": "ab1",
+  "mode": "do",
+  "attack": 4,
+  "pct": 100,
+  "extra": [
+   "--enable_lrad_obu=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p20_d100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p20_d100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 20,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p60_d100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p60_d100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 60,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p80_d100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p80_d100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 80,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab4",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab4_A2_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab4",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--ab4_direct_compare=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p20_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p20_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A1_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p20_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 2,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p20_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p60_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p60_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p80_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p80_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A2_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p20",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 3,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p20",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A3_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p20",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 4,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p20",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 20,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p40",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p40",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p60",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 4,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p60",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 60,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p80",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 4,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p80",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 80,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p100",
+  "arm": "ab7",
+  "mode": "do",
+  "attack": 4,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab7_A4_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p100",
+  "arm": "ab7",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 100,
+  "extra": [
+   "--enable_quarantine=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p20_d100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 1,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p20_d100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A1_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p20_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p20",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 3,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p20_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p20",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 20,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab8",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab8_A3_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab8",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab8_single_rsu=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A1_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab9",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab9_A3_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab9",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab9_no_isolation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A1_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p60_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p80_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab12",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab12_A3_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab12",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab12_legitimize=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A1_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A1_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p60_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 1,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A1_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p80_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 1,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A1_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A2_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A2_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p60_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 2,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A2_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p80_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 2,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A2_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A3_p40_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A3_p60_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p60",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 3,
+  "pct": 60,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A3_p80_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p80",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 3,
+  "pct": 80,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab10_A3_p100_do",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab10",
+  "mode": "do",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab10_false_keys=1",
+   "--ab_compromise_model=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A1_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A1_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A2_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A2_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A3_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A3_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A4_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p40",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot1_A4_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p100",
+  "arm": "ab11rot1",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=1"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A1_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p40_d100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A1_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A1_p100_d100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 1,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A2_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p40_d100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A2_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A2_p100_d100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 2,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A3_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p40",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A3_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A3_p100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 3,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A4_p40_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p40",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 40,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ },
+ {
+  "tag": "ph_ab11rot0_A4_p100_cl",
+  "paper": "PHANTOM",
+  "exp": "ab",
+  "cfg": "A4_p100",
+  "arm": "ab11rot0",
+  "mode": "cl",
+  "attack": 4,
+  "pct": 100,
+  "extra": [
+   "--ab11_reuse_probe=1",
+   "--enable_key_rotation=0"
+  ],
+  "grp": "e1"
+ }
+]
