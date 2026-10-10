@@ -9,7 +9,7 @@ LOGS = Path(__file__).resolve().parent.parent / "logs" / "rematch"
 def jobs():
     J = []
     for s in (2, 3):
-        J.append(dict(tag=f"rm_lrad_s{s}", seed=s, extra=["--enable_lstm_inference=1", "--enable_sfto=1", "--ev_log_util=1"]))
+        J.append(dict(tag=f"rm_lrad_s{s}", seed=s, extra=["--enable_lstm_inference=1", "--enable_lstm_cls=1", "--enable_sfto=1", "--ev_log_util=1"]))
         J.append(dict(tag=f"rm_tap_s{s}", seed=s, extra=["--enable_tap=1", "--enable_lrad_obu=0", "--enable_lrad_rsu=0", "--ev_log_util=1"]))
     return J
 def cmd(j):

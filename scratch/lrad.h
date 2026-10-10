@@ -397,8 +397,7 @@ inline LRADRSUFlags lrad_rsu(
     // keyed by hf_gt_attribution_node(), the malicious forwarder's covering
     // RSU, so it does not inherit the prev_sender misattribution that puts
     // 79.2% of the witness path's duplication alerts on vehicle relays.
-    if (_ranom_live && active_attack_variant >= 0 && active_attack_variant < NUM_ATTACK_VARIANTS &&
-        rsu < (uint32_t)total_size)
+    if (_ranom_live && rsu < (uint32_t)total_size)   // no attack-variant gate: a benign run must log its false alarms too
         ev_alarm_attributed(rsu, DSRC_RULE_RANOM, 1);   // raw decision, before the first-detection latch below
     if (_ranom_live &&
         active_attack_variant >= 0 &&
@@ -697,8 +696,7 @@ inline LRADRSUFlags lrad_rsu(
         // The LSTM raises a detection through its high-confidence tier (reconstruction bar) -- or, with the classification head
         // (--enable_lstm_cls, the paper's rule: P(attack) against a PER-RSU benign quantile threshold), through the head's own decision.
         const bool lstm_detects = enable_lstm_cls ? flags.flag_LSTM : (flags.flag_LSTM && flags.flag_LSTM_high_conf);
-        if (lstm_detects && active_attack_variant >= 0 &&
-            active_attack_variant < NUM_ATTACK_VARIANTS && prev_sender < (uint32_t)total_size)
+        if (lstm_detects && prev_sender < (uint32_t)total_size)   // no attack-variant gate (benign runs log false alarms)
             ev_alarm_attributed(prev_sender, DSRC_LSTM, 10);   // windowed alarm: W = 10 cycles
         if (lstm_detects &&
             active_attack_variant >= 0 &&

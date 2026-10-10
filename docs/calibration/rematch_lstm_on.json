@@ -20,7 +20,7 @@
   "sfto": "1",
   "simTime": "181",
   "delay_ms": "100",
-  "lstm_model": "5a538c47"
+  "lstm_model": "fd86de58"
  },
  "LRAD_full_FPR_per_nodecycle": 0.009780092592592592,
  "by_source": {
@@ -39,6 +39,6 @@
  },
  "quarantines_benign_lrad": [
   0,
-  2
+  0
  ]
 }

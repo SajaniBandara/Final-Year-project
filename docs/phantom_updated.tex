@@ -110,8 +110,11 @@
 	Evaluated across attack penetration, vehicular speed to one hundred
 	forty kilometers per hour, network scale, and decreasing observable
 	evidence, PHANTOM sustains macro Matthews correlation coefficient
-	\TBD\ against \TBD\ for the strongest baseline, with end to end
-	latency within the hundred millisecond safety bound throughout. These
+	0.71 at forty percent penetration, against 0.64 for the best baseline
+	assigned to each variant (TAP on S1 and S2, SFTO Guard on S3 and S4),
+	though SFTO Guard scores higher than PHANTOM on the two flow table
+	variants themselves, with end to end latency of 26 to 36\,ms on every
+	variant that does not itself inject a delay. These
 	results show that a threshold calibrated to the mobility condition it
 	operates under, combined with zero trust extended to the controller
 	itself, closes a gap neither mobility unaware nor controller trusting
@@ -1350,6 +1353,19 @@ never as a single mean. End to end latency, M6, is the delivery time from
 packet generation to final delivery inclusive of every detection and
 consensus step on its path.
 
+Run protocol. Every experiment is a single run of $180$\,s with seed one; there are no repeats across seeds.
+Intervals are the mean and standard deviation across routing cycles (one per second, cycles $30$ to $178$) or
+across the ten second blocks M1 uses, and describe variation within that one run only. Network
+parameters follow Table~\ref{tab:phantom_sim_settings}. Flow modification endorsement
+uses independent policy checks at each roadside unit: every roadside unit validates the flow modification against the authorised policy, the
+first $f{=}21$ roadside units are Byzantine and endorse everything, and a commit needs $f{+}1$
+distinct endorsements, so the honest majority alone blocks an unauthorised commit. The link lifetime
+solver is Gurobi $13.0.2$ under its bundled size restricted licence (the node licence file has expired), and a solver failure aborts the run rather than
+falling back silently; the solver and licence are logged for every run. Experiments $1$, $2$ and $4$
+disable the cryptographic layer (detection MCC was verified byte identical with it on or off); Experiment $3$
+keeps it on because it reports latency. Because the cumulative detection counters in the cycle logs are not
+per cycle quantities, per cycle intervals are given only for the threshold violation rate, latency and delivery ratio.
+
 
 \section{Results}
 \label{sec:results}
@@ -1705,11 +1721,7 @@ timing intensity levels, $1.1\Delta_{max}$, $2\Delta_{max}$, and
 $4\Delta_{max}$, for Signatures S1 through S4 only.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC versus attack penetration, one line
-			per intensity level, PHANTOM against TAP, SFTO Guard, and FADE.
-	\end{minipage}}
+	\includegraphics[width=0.92\linewidth]{phantom_exp23/exp1_mcc.png}
 	\caption{Detection Quality Under Varying Penetration and Intensity}
 	\label{fig:exp1_mcc}
 \end{figure}
@@ -1724,9 +1736,27 @@ without mobility adjustment are expected to show the opposite pattern at low
 intensity: a static threshold calibrated once may fire on legitimate
 handoff jitter regardless of whether an attack is present, so their false
 positive rate, not only their detection rate, is expected to be sensitive to
-intensity in a way PHANTOM's calibration is designed to avoid. At $p{=}\TBD\%$
-and intensity $\TBD$, PHANTOM's macro MCC is $\TBD$ against $\TBD$ for the
-strongest baseline.
+intensity in a way PHANTOM's calibration is designed to avoid.
+
+Measured at 180\,s, one seed (Figure~\ref{fig:exp1_mcc}), intensity has almost
+no effect on PHANTOM: macro MCC at $p{=}20\%$ is $0.610$, $0.611$ and $0.610$ at
+$1.1$, $2$ and $4\Delta_{max}$, and the three curves stay within $0.03$ of each other at every
+penetration. Two properties of the design explain the flat intensity axis rather than a
+property of the detector. First, intensity applies only to the timing variants, so S3 and S4
+are single runs repeated in every intensity column and carry no intensity information.
+Second, the threshold violation rate counts a packet once whenever its hop delay exceeds
+$\Delta_{max}$, so at $p{=}40\%$ the S1 rate is $4.6$ to $5.3\%$ at all three delays; a
+larger delay does not raise it. Penetration does matter: macro MCC rises from $0.611$ at
+$p{=}20\%$ to $0.709$, $0.700$, $0.739$ and $0.775$ at $40$, $60$, $80$ and $100\%$. The
+$p{=}100\%$ value averages only S1, S2 and S4, since S3 has no benign roadside unit left to
+score. S1 and S3 give identical MCC at $p{=}40\%$ and $p{=}60\%$ because the control plane
+compromise ladder compromises two controllers on both, so those two points are one experiment
+for the control plane variants. At $p{=}40\%$ and $2\Delta_{max}$, PHANTOM's macro MCC is $0.709$
+against $0.644$ for the best baseline per variant (TAP on S1 and S2 at $0.192$ and $0.428$, SFTO Guard
+on S3 and S4 at $0.955$ and $1.000$). The macro advantage comes from S1 and S2; SFTO Guard
+scores above PHANTOM on S3 and S4 at every penetration of $40\%$ and above. The false positive rate of
+PHANTOM's macro is $15$ to $19\%$, well above the $1\%$ target. TAP's $0.16$ to $0.25$ on S1 is
+reported from its own running metric and is not scored by the same block rule as PHANTOM.
 
 \subsection{Experiment 2: Detection Across Vehicular Speed}
 \label{sec:exp2}
@@ -1742,11 +1772,7 @@ settles that question rather than the methodology section asserting an
 answer it cannot yet support.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC and false positive rate versus mean
-			vehicle speed, PHANTOM against the three baselines.
-	\end{minipage}}
+	\includegraphics[width=0.92\linewidth]{phantom_exp23/exp2_speed.png}
 	\caption{Detection Quality Across Vehicular Speed}
 	\label{fig:exp2_speed}
 \end{figure}
@@ -1757,22 +1783,28 @@ If it instead rises with speed, consistent with the currently compiled
 coefficient, false positive rate is expected to climb at higher speeds,
 since the threshold would be loosening exactly when legitimate delay is
 falling, the opposite of the intended behaviour. Either outcome is reported
-plainly rather than assumed. At $\bar{v}{=}\TBD$km/h, macro MCC is $\TBD$
-and false positive rate is $\TBD\%$; at $\bar{v}{=}140$km/h, macro MCC is
-$\TBD$ and false positive rate is $\TBD\%$.
+plainly rather than assumed. At $\bar{v}{=}10$km/h, macro MCC is $0.693$
+and false positive rate is $18.0\%$; at $\bar{v}{=}140$km/h, macro MCC is
+$0.679$ and false positive rate is $15.7\%$.
+
+Neither predicted outcome appears. Macro MCC moves by $0.014$ across the whole range ($0.693$,
+$0.686$, $0.685$, $0.679$) and the false positive rate falls slightly ($18.0$, $16.0$, $15.6$, $15.7\%$)
+instead of climbing, which does not support the rising reading of $\alpha_v$ but is also too small
+to confirm the falling one from a single seed. S1 sits at $0.62$ to $0.66$ at every speed. The attack
+itself is also nearly speed independent in this simulator: the S1 threshold violation rate is $7.6\%$
+at $10$\,km/h and about $4.8\%$ at $140$\,km/h, the opposite direction to the mobility amplification
+of Section~\ref{sec:system_model}. The adversary in the simulation is not confined to a vehicle's
+dwell window, so speed does not shorten the opportunity. This experiment therefore shows the
+detector is speed insensitive under this attack model; it does not demonstrate mobility amplification.
 
 \subsection{Experiment 3: Scalability}
 
-Network scale is varied as $N_v \in \{100,200,300,400\}$ vehicles, holding
+Network scale is varied as $N_v \in \{100,150,200\}$ vehicles (the mobility trace and node arrays cap the simulator at $200$ vehicles; $300$ and $400$ abort at start up and are left as future work), holding
 the roadside unit grid and controller count fixed, for Signatures S1
 through S4 only.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC and end to end latency versus
-			vehicle count, PHANTOM against the three baselines.
-	\end{minipage}}
+	\includegraphics[width=0.92\linewidth]{phantom_exp23/exp3_scale.png}
 	\caption{Scalability of Detection Quality and Latency}
 	\label{fig:exp3_scale}
 \end{figure}
@@ -1783,8 +1815,15 @@ and speed, and does not depend on total network size at all. End to end
 latency is expected to stay within the safety bound for the same reason
 already established for the shared cryptographic layer: the endorsement
 quorum size is fixed by roadside unit count rather than by vehicle
-population. At $N_v{=}400$, macro MCC is $\TBD$ and end to end latency is
-$\TBD$ms against the hundred millisecond bound.
+population. Measured at 180\,s with the cryptographic layer on, macro MCC is $0.718$, $0.704$ and
+$0.709$ at $N_v{=}100$, $150$ and $200$, so detection holds steady as predicted. End to end latency
+is $26.7$, $25.7$ and $36.3$\,ms for S1, $21.0$, $21.4$ and $28.0$\,ms for S3, and $27.8$, $27.3$ and $33.7$\,ms for S4, all
+within the hundred millisecond bound. S2 is reported at $136$, $83$ and $126$\,ms, which is not
+comparable to the bound because it includes the $100$\,ms delay the attacker injects, and the
+non monotone values reflect that the latency figure contains wall clock cryptographic timings
+that depend on host load. S4 detection weakens at $N_v{=}200$ (false positive rate $20.9\%$ against
+$14.4\%$ at $100$), consistent with legitimate flows diluting a fixed sixty four roadside unit
+table occupancy signal.
 
 \subsection{Experiment 4: Detection Under Decreasing Attack Observable Evidence}
 
@@ -1794,11 +1833,7 @@ $\text{AOEI} \in \{0.25, 0.50, 0.75, 1.0\}$, map to targeting ratios of
 $\{10\%, 25\%, 75\%, 100\%\}$ of high priority packets.
 \begin{figure}[!t]
 	\centering
-	\fbox{\begin{minipage}[c][4.2cm]{0.92\linewidth}
-			\centering
-			Figure placeholder: macro MCC versus attack observable evidence
-			index, PHANTOM against the three baselines.
-	\end{minipage}}
+	\includegraphics[width=0.92\linewidth]{phantom_exp23/exp4_aoei.png}
 	\caption{Detection Quality Under Decreasing Observable Evidence}
 	\label{fig:exp4_aoei}
 \end{figure}
@@ -1809,8 +1844,19 @@ thins accordingly; detection is expected to degrade gradually rather than
 sharply, since the selectivity conjunct of Equation~\eqref{eq:rule_s1} does
 not itself require a minimum targeting rate, only that best effort traffic
 remain within baseline whenever a high priority packet is delayed. At
-$\text{AOEI}{=}0.25$, macro MCC is $\TBD$ against $\TBD$ at
+$\text{AOEI}{=}0.25$, macro MCC is $0.720$ against $0.709$ at
 $\text{AOEI}{=}1.0$.
+
+The expected gradual degradation does not appear; the direction is reversed. S1 scores $0.660$ at
+a targeting ratio of $10\%$ and $0.638$ at $100\%$, and S2 scores $0.934$ against $0.912$, because the
+false positive rate falls as fewer packets are delayed ($17.8\%$ against $22.8\%$ for S1). The
+$10\%$ and $25\%$ points are identical for every variant and for TAP: the per window detector
+output is byte for byte the same even though the threshold violation rate differs ($2.3\%$ at $10\%$
+targeting against $14.5\%$ at $100\%$ for S2). Detection is scored per node and latches once a node
+has delayed any packet, so the amount of evidence changes the score only when it is low enough to
+miss a node entirely, which is not reached here. S3 and S4 do not take the targeting ratio and are
+constant across the sweep. A per packet or time to detection measure would be needed to see the
+evidence dependence this experiment was designed to test.
 
 \subsection{Experiment 5: Per Variant Comparison Under Default Settings}
 
@@ -1821,7 +1867,7 @@ Table~\ref{tab:phantom_sim_settings}. FADE addresses hidden forwarding only
 and is not applicable to any variant reported here.
 \begin{table}[!t]
 	\centering
-	\caption{Per Variant Detection Quality, Default Settings}
+	\caption{Per Variant Detection Quality, Default Settings ($N_v{=}200$, $p{=}40\%$, $150$\,km/h, $180$\,s, one seed)}
 	\label{tab:exp5_variant}
 	\renewcommand{\arraystretch}{1.15}
 	\footnotesize
@@ -1829,13 +1875,13 @@ and is not applicable to any variant reported here.
 		\hline
 		\textbf{Variant} & \textbf{PHANTOM} & \textbf{TAP} & \textbf{SFTO Guard} & \textbf{M2 (PHANTOM)} & \textbf{M4 (PHANTOM)} & \textbf{M6 (PHANTOM)} \\
 		\hline
-		S1 & \textbf{0.65} & 0.20 & n/a & 4.3\% & 0.76;\ 3.4s & 32.6\,ms \\
+		S1 & \textbf{0.64} & 0.19 & n/a & 8.1\% & 0.08;\ 12.1s & 36.3\,ms \\
 		\hline
-		S2 & \textbf{0.92} & 0.60 & n/a & 16.2\% & 0.79;\ 9.1s & 186.6\,ms \\
+		S2 & \textbf{0.91} & 0.43 & n/a & 14.0\% & 0.72;\ 12.6s & 126.3\,ms \\
 		\hline
-		S3 & \textbf{0.56} & n/a & 0.56 & --- & 0.45;\ 44.7s & 26.7\,ms \\
+		S3 & 0.61 & n/a & \textbf{0.96} & --- & 0.00;\ 116.8s & 28.0\,ms \\
 		\hline
-		S4 & \textbf{0.71} & n/a & 0.55 & --- & 0.58;\ 17.4s & 34.4\,ms \\
+		S4 & 0.67 & n/a & \textbf{1.00} & --- & 0.36;\ 26.2s & 33.7\,ms \\
 		\hline
 	\end{tabular}
 \end{table}
@@ -1847,7 +1893,11 @@ variants closest to its own design scope, and to show little to no
 discriminative signal on S3 and S4, since it was never designed to observe
 table utilisation at all. SFTO Guard is expected to show the reverse
 pattern, competing on S3 and S4 while contributing little on S1 and S2.
-PHANTOM's own S4 detection carries the temporal asymmetry limitation
+Measured, PHANTOM leads TAP on S1 and S2 ($0.64$ against $0.19$ and $0.91$ against $0.43$), but SFTO Guard
+leads PHANTOM on both flow table variants ($0.96$ against $0.61$ on S3, $1.00$ against $0.67$ on S4), so the
+expected pattern holds for the baselines' own scope and PHANTOM does not win there. The M4 pair shows weak
+containment: only $8\%$ of S1 attackers and none of the S3 attackers are stopped before acting. The
+S2 latency of $126$\,ms includes the injected delay. PHANTOM's own S4 detection carries the temporal asymmetry limitation
 documented in Section~\ref{sec:dual_mode}, so its reported figure here
 should be read alongside that caveat rather than as a single, run length
 independent number. The zero to sixty percent density sweep on residual
@@ -1868,14 +1918,19 @@ populations moves in the wrong direction as containment improves, since an
 attacker stopped before acting contributes no latency at all.
 
 \subsection{Statistical Significance}
-Every experiment in Section~\ref{sec:results} is run across five seeds. The
-comparison between PHANTOM and the strongest baseline in Experiment 1 is
-tested with a paired test across seeds rather than a comparison of seed
-averages, since the same mobility realisations are shared across every
-method under comparison. At $p{=}\TBD\%$ and intensity $\TBD$, the macro MCC
-difference is $\TBD$ with $\TBD$ ($n{=}5$ paired seeds); this is reported
-once the experiments are complete and is not to be read as significant or
-otherwise until then.
+Every experiment in Section~\ref{sec:results} is a single $180$\,s run with seed one, so no test
+across seeds is possible and none is reported. Intervals are computed across the routing cycles
+of that run instead: for the threshold violation rate, end to end latency and delivery ratio, the
+mean and standard deviation over cycles $30$ to $178$; for MCC, the mean and standard deviation over the
+ten second blocks the M1 score is built from. These intervals describe variation within one mobility
+realisation, not between realisations, and consecutive cycles are correlated, so the half widths are
+optimistic. For example, at $p{=}40\%$ and $2\Delta_{max}$ the block level MCC is $0.637\pm0.041$ for S1 and
+$0.911\pm0.049$ for S2, and the S2 threshold violation rate is $14.0\pm0.6\%$ over $149$ cycles. The per run
+detection counts (TP, FP, TN, FN) in the cycle logs are cumulative, so the per cycle detection rate and false
+positive rate are not independent samples and are not used for intervals. Differences between methods in this paper
+should be read as single run observations; the MCC gap between PHANTOM and SFTO Guard on S3 and S4 is
+larger than the block level spread, whereas differences of a few hundredths between speed or scale points
+are not.
 
 \subsection{Strengths and Weaknesses}
 The central strength this paper demonstrates is a threshold that adapts to
@@ -1967,9 +2022,10 @@ mobility condition it is deployed under. PHANTOM addresses both gaps at
 once through a mobility adjusted baseline with a selectivity conjunct, a
 controller inclusive delay evidence trust channel, and a post quantum
 timing compliance proof that certifies delay without revealing it. Across
-the five experiments of Section~\ref{sec:results}, PHANTOM is shown to
-sustain macro MCC of $\TBD$ against $\TBD$ for the strongest baseline at
-default settings. The main limitation is the open question surrounding the
+the five experiments of Section~\ref{sec:results}, PHANTOM is
+measured to reach macro MCC of $0.71$ at forty percent penetration against $0.64$ for the best
+baseline per variant, with a clear lead over TAP on S1 and S2 and a clear deficit against SFTO Guard
+on S3 and S4. The main limitation is the open question surrounding the
 mobility baseline's speed coefficient, which this paper states honestly
 rather than resolves by assertion, and which Experiment 2 is specifically
 designed to settle.
