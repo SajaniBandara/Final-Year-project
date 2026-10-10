@@ -116,9 +116,9 @@ def write_and_print(rows, path, point_key):
 
 
 def main():
-    e2 = score(2, SPEEDS, "speed", lambda s: f"exp2_s{s}")
+    e2 = score(2, SPEEDS, "speed", lambda s: f"e180_exp2_s{s}")
     write_and_print(e2, OUT / "exp2_scores.csv", "speed")
-    e3 = score(3, SCALES, "nveh", lambda n: f"exp3_nv{n}")
+    e3 = score(3, SCALES, "nveh", lambda n: f"e180_exp3_nv{n}")
     write_and_print(e3, OUT / "exp3_scores.csv", "nveh")
     print("\nDone.")
 

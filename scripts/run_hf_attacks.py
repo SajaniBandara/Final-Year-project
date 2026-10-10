@@ -99,6 +99,11 @@ FIXED_PARAMS = {
     # on the SAME per-window M1 convention as A1-A4 (the old sweep used per-cycle
     # avg_MCC, which is not comparable). See detector_windows.h / m1_local.py.
     "enable_detector_windows": 1,
+    # 2026-10-03: tag outputs so the clean VANGUARD penetration sweep is isolated
+    # from the contaminated untagged Q-run history AND the pre-existing vg_exp2/
+    # vg_exp3 files (a bare "vg" collides with those as a substring). Per-window M1
+    # needs the full 300s run (40s leaves ~0 windows after the 30s warmup).
+    "run_tag": "vgpen300",
 }
 
 # FADE baseline isolation overrides — disables MOBIGUARD's entire S1-S8

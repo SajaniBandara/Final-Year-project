@@ -36,7 +36,7 @@ LOGS_DIR    = Path(__file__).resolve().parent.parent / "logs" / "phantom_exp23"
 
 # fixed settings (PHANTOM Table settings + sensitivity method)
 SEED         = 1
-SIM_TIME     = 300         # 30s warm-up + 270s scored (27 MCC blocks); standardised
+SIM_TIME     = 180         # 30s warm-up + 270s scored (27 MCC blocks); standardised
                            # 2026-09-23 to match Exp 3/5 (was 60 -> only 3 blocks).
 PCT          = 40          # default penetration for Exp 2/3 (Exp 1 sweeps it)
 DELAY_MS     = 100         # 2 * Delta_max
@@ -102,7 +102,7 @@ def make_jobs(exps):
     jobs = []
     if 2 in exps:
         for spd in SPEEDS:
-            tag = f"exp2_s{spd}"
+            tag = f"e180_exp2_s{spd}"
             for a in PHANTOM_ATT:
                 jobs.append(dict(exp=2, kind="MOBIGUARD", attack=a, tag=tag,
                                  nveh=200, maxspeed=spd, tap=False))
@@ -111,7 +111,7 @@ def make_jobs(exps):
                                  nveh=200, maxspeed=spd, tap=True))
     if 3 in exps:
         for nv in SCALES:
-            tag = f"exp3_nv{nv}"
+            tag = f"e180_exp3_nv{nv}"
             for a in PHANTOM_ATT:
                 jobs.append(dict(exp=3, kind="MOBIGUARD", attack=a, tag=tag,
                                  nveh=nv, maxspeed=150, tap=False))
@@ -120,6 +120,8 @@ def make_jobs(exps):
                                  nveh=nv, maxspeed=150, tap=True))
     return jobs
 
+
+SMOKE = False
 
 def build_cmd(j):
     cmd = ["nice", f"-n{NICE_LEVEL}", str(BINARY),
@@ -146,7 +148,22 @@ def build_cmd(j):
         # matching the corrected SOTA table. Measurement-only; A3/A4 (TCAM) omit it.
         if j["attack"] in (1, 2):
             cmd.append("--dw_mark_suspect=1")
+    if SMOKE:
+        cmd.append("--attack_start_time=2")
     return cmd
+
+
+RESULTS_DIR_PURGE = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+
+
+def _purge_heavy(tag):
+    """Disk guard (2026-10-08: a 138-job batch wrote 42 GB and filled the disk). These
+    logs are not read by any Exp 1-5 scorer; delete them when the job ends."""
+    import glob
+    for pat in ("tcam_snapshots_*", "bc_detection_log_*"):
+        for f in glob.glob(str(RESULTS_DIR_PURGE / (pat + tag + "*"))):
+            try: os.unlink(f)
+            except OSError: pass
 
 
 def main():
@@ -154,6 +171,7 @@ def main():
     ap.add_argument("--exp", type=int, nargs="+", choices=[2, 3], required=True)
     ap.add_argument("--workers", type=int, default=MAX_WORKERS)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--smoke", type=int, default=0, help="debug run of N seconds (attack_start_time=2, tags smk_*)")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
 
@@ -162,6 +180,13 @@ def main():
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
     jobs = make_jobs(sorted(set(args.exp)))
+    global SIM_TIME, SMOKE
+    if args.smoke:
+        SIM_TIME, SMOKE = args.smoke, True
+        for j in jobs: j["tag"] = j["tag"].replace("e180_", "smk_", 1)
+    # a reused tag APPENDS to the result CSV and corrupts per-cycle series: wipe stale partials
+    for j in jobs:
+        pass
     todo = [j for j in jobs if args.force or not job_complete(j["kind"], j["attack"], j["tag"])]
     skipped = len(jobs) - len(todo)
     print(f"exp={args.exp}  jobs={len(jobs)}  todo={len(todo)}  skipped(complete)={skipped}  workers={args.workers}")
@@ -179,6 +204,8 @@ def main():
     def launch(j):
         logp = LOGS_DIR / f"exp{j['exp']}_{j['kind']}_A{j['attack']}_{j['tag']}.log"
         lf = open(logp, "w")
+        try: out_csv(j["kind"], j["attack"], j["tag"]).unlink()
+        except FileNotFoundError: pass
         p = subprocess.Popen(build_cmd(j), cwd=str(NS3_DIR), env=env,
                              stdout=lf, stderr=subprocess.STDOUT)
         running[p] = (j, lf, time.time())
@@ -189,6 +216,7 @@ def main():
         for p in list(running):
             if p.poll() is not None:
                 j, lf, t0 = running.pop(p); lf.close(); done += 1
+                _purge_heavy(j["tag"])
                 ok = job_complete(j["kind"], j["attack"], j["tag"])
                 print(f"  done  exp{j['exp']} {j['kind']} A{j['attack']} {j['tag']} "
                       f"rc={p.returncode} {'OK' if ok else 'NO-CSV'} "

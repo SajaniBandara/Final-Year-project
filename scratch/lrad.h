@@ -694,10 +694,13 @@ inline LRADRSUFlags lrad_rsu(
         // flag_LSTM) for the window-level LSTM-only reference metric that
         // evaluator.py computes independently from raw scores -- only the
         // permanent TP/FP confusion-matrix latch is withheld from soft hits.
-        if (flags.flag_LSTM && flags.flag_LSTM_high_conf && active_attack_variant >= 0 &&
+        // The LSTM raises a detection through its high-confidence tier (reconstruction bar) -- or, with the classification head
+        // (--enable_lstm_cls, the paper's rule: P(attack) against a PER-RSU benign quantile threshold), through the head's own decision.
+        const bool lstm_detects = enable_lstm_cls ? flags.flag_LSTM : (flags.flag_LSTM && flags.flag_LSTM_high_conf);
+        if (lstm_detects && active_attack_variant >= 0 &&
             active_attack_variant < NUM_ATTACK_VARIANTS && prev_sender < (uint32_t)total_size)
             ev_alarm_attributed(prev_sender, DSRC_LSTM, 10);   // windowed alarm: W = 10 cycles
-        if (flags.flag_LSTM && flags.flag_LSTM_high_conf &&
+        if (lstm_detects &&
             active_attack_variant >= 0 &&
             active_attack_variant < NUM_ATTACK_VARIANTS &&
             prev_sender < (uint32_t)total_size &&

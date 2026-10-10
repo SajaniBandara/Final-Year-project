@@ -65,7 +65,7 @@ def plot_exp1():
                    color=colors[I], lw=1.8, label=labels[I])
     ax[1].set_xlabel("attack penetration (%)"); ax[1].set_ylabel("macro FPR (%)")
     ax[1].set_title("(b) FPR vs penetration"); ax[1].grid(alpha=.3); ax[1].legend(fontsize=8)
-    fig.suptitle("PHANTOM Exp 1 — Penetration x Intensity  [N=200, seed 1, 60s]", y=1.02)
+    fig.suptitle("PHANTOM Exp 1 — Penetration x Intensity  [N=200, seed 1, 180 s]", y=1.02)
     fig.tight_layout()
     for e in ("png", "pdf"): fig.savefig(D / f"exp1_mcc.{e}", dpi=150, bbox_inches="tight")
     plt.close(fig); print("wrote exp1_mcc.png/pdf")
@@ -94,7 +94,7 @@ def plot_exp4():
         lvl = sy[-1]  # default N=200 S3/S4 mean
         ax.axhline(lvl, color="#d35400", ls="--", lw=1.2, label="SFTO-Guard (S3/S4, invariant)")
     ax.set_xlabel("attack observable evidence index (AOEI)"); ax.set_ylabel("MCC (M1)")
-    ax.set_title("PHANTOM Exp 4 — Detection vs observable evidence\n[N=200, 40%, seed 1, 60s]")
+    ax.set_title("PHANTOM Exp 4 — Detection vs observable evidence\n[N=200, 40%, seed 1, 180 s]")
     ax.grid(alpha=.3); ax.legend(fontsize=8)
     fig.tight_layout()
     for e in ("png", "pdf"): fig.savefig(D / f"exp4_aoei.{e}", dpi=150, bbox_inches="tight")

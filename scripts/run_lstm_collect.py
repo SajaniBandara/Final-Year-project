@@ -13,7 +13,9 @@ BIN, LIB, RES = NS3 / "build/scratch/routing/routing", str(NS3 / "build/lib"), N
 LOGS = Path(__file__).resolve().parent.parent / "logs" / "lstm_collect"
 SIM, DELAY = 181, 100
 
-def jobs():
+def jobs(which="all"):
+    if which == "attacks68":   # attack windows for the classification head: A1-A8 x p in {20,40,60} on the TRAINING seeds 6,7,8 (adds to the existing data)
+        return [dict(attack=a, pct=p, seed=s) for s in (6, 7, 8) for a in range(1, 9) for p in (20, 40, 60)]
     J = []
     for s in (6, 7, 8, 2, 3, 1): J.append(dict(attack=0, pct=0, seed=s))
     for s in (2, 3, 1):
@@ -29,10 +31,10 @@ def cmd(j):
     return c
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__); ap.add_argument("--dry-run", action="store_true"); a = ap.parse_args(); J = jobs()
+    ap = argparse.ArgumentParser(description=__doc__); ap.add_argument("--dry-run", action="store_true"); ap.add_argument("--set", default="all", choices=["all", "attacks68"]); a = ap.parse_args(); J = jobs(a.set)
     if a.dry_run: print(len(J), "jobs"); [print(" ".join(cmd(j)[3:])) for j in J[:2]]; return
     old = RES / "lstm_training"
-    if old.exists():
+    if old.exists() and a.set == "all":
         dest = RES / "lstm_training_ARCHIVED_20261009_pre_final"; assert not dest.exists(); old.rename(dest); print("moved", old, "->", dest)
     LOGS.mkdir(parents=True, exist_ok=True); env = os.environ.copy(); env["LD_LIBRARY_PATH"] = LIB + ":" + env.get("LD_LIBRARY_PATH", "")
     running, queue = [], list(J); print(len(J), "jobs", flush=True)

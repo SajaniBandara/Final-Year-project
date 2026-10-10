@@ -119350,6 +119350,11 @@ static void run_solver_script(const std::string& script, const std::string& tag)
 		cmd += "mkdir -p /tmp/sdvn_nohome && HOME=/tmp/sdvn_nohome ";
 	cmd += "SDVN_GUROBI_LICENSE=" + lic_mode + " " + python + " " + script + " --tag=" + tag;
 	int rc = system(cmd.c_str());
+	if (rc != 0)   // one retry: the interpreter has failed once in ~7000 calls with a transient error; a second failure still stops the run
+	{
+		cerr << "[SOLVER-RETRY] " << script << " rc=" << rc << " at t=" << Now().GetSeconds() << "s, retrying once" << endl;
+		rc = system(cmd.c_str());
+	}
 	if (rc != 0)
 	{
 		if (!allow_solver_fallback)

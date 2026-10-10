@@ -78,7 +78,7 @@ def parse(path):
     return ev
 
 
-def score(ev, n_veh, n_rsu, total_cycles=None, warmup=WARMUP_S, stop_after_quarantine=False, alarm_mask=None):
+def score(ev, n_veh, n_rsu, total_cycles=None, warmup=WARMUP_S, stop_after_quarantine=False, alarm_mask=None, hf_label="action"):
     T = total_cycles if total_cycles is not None else ev["last_cycle"] + 1
     if alarm_mask is None:
         alarm_mask = ~WITNESS_BITS & 0xFFFFFFFF   # witness alerts are not alarms unless asked for
@@ -92,6 +92,13 @@ def score(ev, n_veh, n_rsu, total_cycles=None, warmup=WARMUP_S, stop_after_quara
             acts = set(range(min(sc), max(sc) + 1)) if sc else set()
         else:                                    # A1, A2, A5-A8 and benign: ACTION label
             acts = {c for (c, nn) in ev["act"] if nn == n}
+            if hf_label in ("latched", "latched_to_end") and ev.get("variant", -1) in (4, 5, 6, 7) and acts:
+                # VANGUARD-HF paper: "hidden forwarding ground truth latched from a node's first attack action until quarantine rather than for the
+                # run's duration, since the persistent, ongoing nature of a compromised routing rule is what S5 through S8 actually test for"
+                # "latched": ends at the node's quarantine (right in closed loop, where quarantine ends the attack). "latched_to_end": detection-only runs,
+                # where the quarantine is only a trust STATE and the node keeps attacking, so the label stays on to the end of the run.
+                q_end = ev["qua"].get(n, T - 1) if hf_label == "latched" else T - 1
+                acts = set(range(min(acts), max(min(acts), q_end) + 1))
         covered, fp_cycles = set(), {}
         for (c, w, mask) in ev["alm"].get(n, []):
             if alarm_mask is not None and not (mask & alarm_mask):

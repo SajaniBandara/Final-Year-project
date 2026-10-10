@@ -456,7 +456,7 @@ bool enable_hf_theta                = false;
 // fc_cls; falls back to the reconstruction path with a warning otherwise.
 // Threshold comes from cls_theta.json (per-RSU, swept on the validation
 // split for FPR<=1% at highest DR), defaulting to P>0.5 where absent.
-bool enable_lstm_cls                = false;
+bool enable_lstm_cls                = true;   // 2026-10-10: the classification head (per-RSU benign-quantile threshold) beat the bar on pooled MCC, seeds 2,3 (0.429 vs 0.272)
 
 // FPR fix 1 (2026-08-31) — CLI: --require_lstm_high_conf (default false).
 //
@@ -2421,7 +2421,6 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
     alert.event_key = event_key_from_hp(h_p);
     g_witness_alert_pool[target_node].push_back(alert);
     ev_witness(target_node, alert.alert_type == 0 ? 0 : 1);
-    ev_alarm_attributed(target_node, alert.alert_type == 0 ? DSRC_WITNESS_DA : DSRC_WITNESS_NFA, 1);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
     if (CRYPTO_DEBUG_LOG)
@@ -2437,6 +2436,7 @@ inline void witness_submit_duplication_alert(uint32_t witness, uint32_t target_n
         std::cout << "[WITNESS-DA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-DA] BFT threshold reached for node " << target_node);
+        ev_alarm_attributed(target_node, DSRC_WITNESS_DA, 1);   // the witness ALARM = the 2f+1 quorum crossing (not each single alert)
         g_current_trust_source = DSRC_WITNESS_DA;
         g_trust_cause_mask = TC_WIT_DA;
         trust_update_negative(target_node);
@@ -2535,7 +2535,6 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
     alert.event_key = event_key_from_hp(h_p);
     g_witness_alert_pool[target_node].push_back(alert);
     ev_witness(target_node, alert.alert_type == 0 ? 0 : 1);
-    ev_alarm_attributed(target_node, alert.alert_type == 0 ? DSRC_WITNESS_DA : DSRC_WITNESS_NFA, 1);
     uint32_t threshold = 2 * WITNESS_F + 1;
 
     if (CRYPTO_DEBUG_LOG)
@@ -2552,6 +2551,7 @@ inline void witness_submit_nfa_alert(uint32_t witness, uint32_t target_node,
         std::cout << "[WITNESS-NFA-BFT] " << threshold << " distinct verified witnesses >= 2f+1="
                   << threshold << " → trust_update_negative(target=" << target_node << ")\n";
         NS_LOG_WARN("[WITNESS-NFA] BFT threshold reached for node " << target_node);
+        ev_alarm_attributed(target_node, DSRC_WITNESS_NFA, 1);  // the witness ALARM = the 2f+1 quorum crossing
         g_current_trust_source = DSRC_WITNESS_NFA;
         g_trust_cause_mask = TC_WIT_NFA;
         trust_update_negative(target_node);

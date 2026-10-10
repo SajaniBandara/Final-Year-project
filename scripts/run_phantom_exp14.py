@@ -34,7 +34,7 @@ LOGS_DIR = Path(__file__).resolve().parent.parent / "logs" / "phantom_exp14"
 # standardised 2026-09-23 to match Exp 3/5 and the finalised config. The old 60 s
 # (3 scored blocks) was not comparable to the 300 s headline results and violated
 # the paper's own "state run length; detection quality is not stable across it" rule.
-SEED, SIM_TIME, N_RSUS, N_CTRL = 1, 300, 64, 4
+SEED, SIM_TIME, N_RSUS, N_CTRL = 1, 180, 64, 4   # supervisor directive 2026-10-08: 180 s, single seed
 PENS       = [0, 20, 40, 60, 80, 100]      # Exp 1 penetration
 INTENSITIES = [55, 100, 200]               # Exp 1 delay (ms) = 1.1/2/4 x Delta_max
 RATIOS     = [0.10, 0.25, 0.75, 1.00]      # Exp 4 target ratio
@@ -73,23 +73,33 @@ def make_jobs(exps):
     jobs = []
     if 1 in exps:
         for p in PENS:
+            if p == 0:
+                # Benign anchor: independent of attack and delay. It used to be launched 12x
+                # under one filename (Attack0_0_seed1_<tag>), which APPENDED 12 runs
+                # into one CSV (2616 rows, 892 cycle-counter restarts) and never matched
+                # the Attack{a} lookup, hence the blank p=0 row. Run it ONCE.
+                jobs.append(dict(exp=1, kind="MOBIGUARD", attack=0, pct=0, delay=DEF_DELAY,
+                                 ratio=1.0, tap=False, tag="e180_exp1_p0"))
+                jobs.append(dict(exp=1, kind="TAP", attack=0, pct=0, delay=DEF_DELAY,
+                                 ratio=1.0, tap=True, tag="e180_exp1_p0tap"))
+                continue
             # timing variants: full intensity sweep
             for delay in INTENSITIES:
-                tag = f"exp1_p{p}_d{delay}"
+                tag = f"e180_exp1_p{p}_d{delay}"
                 for a in (1, 2):
                     jobs.append(dict(exp=1, kind="MOBIGUARD", attack=a, pct=p, delay=delay,
                                      ratio=1.0, tap=False, tag=tag))
                     jobs.append(dict(exp=1, kind="TAP", attack=a, pct=p, delay=delay,
                                      ratio=1.0, tap=True, tag=tag + "tap"))
             # flow-table variants: intensity-independent, run once per penetration
-            tagf = f"exp1_p{p}"
+            tagf = f"e180_exp1_p{p}"
             for a in (3, 4):
                 jobs.append(dict(exp=1, kind="MOBIGUARD", attack=a, pct=p, delay=DEF_DELAY,
                                  ratio=1.0, tap=False, tag=tagf))
     if 4 in exps:
         for r in RATIOS:
             rt = str(r).replace(".", "p")
-            tag = f"exp4_r{rt}"
+            tag = f"e180_exp4_r{rt}"
             for a in (1, 2, 3, 4):
                 jobs.append(dict(exp=4, kind="MOBIGUARD", attack=a, pct=DEF_PCT, delay=DEF_DELAY,
                                  ratio=(r if a in (1, 2) else 1.0), tap=False, tag=tag))
@@ -98,6 +108,9 @@ def make_jobs(exps):
                                  ratio=r, tap=True, tag=tag + "tap"))
     return jobs
 
+
+SMOKE = False
+KEEP_HEAVY = False
 
 def build_cmd(j):
     cmd = ["nice", f"-n{NICE}", str(BINARY),
@@ -124,7 +137,23 @@ def build_cmd(j):
         # the timing variants; A3/A4 (TCAM) are unaffected and omit the flag.
         if j["attack"] in (1, 2):
             cmd.append("--dw_mark_suspect=1")
+    if SMOKE:
+        cmd.append("--attack_start_time=2")
     return cmd
+
+
+RESULTS_DIR_PURGE = Path.home() / "ns3_g13/ns-allinone-3.35/ns-3.35/results_routing"
+
+
+def _purge_heavy(tag):
+    if KEEP_HEAVY: return
+    """Disk guard (2026-10-08: a 138-job batch wrote 42 GB and filled the disk). These
+    logs are not read by any Exp 1-5 scorer; delete them when the job ends."""
+    import glob
+    for pat in ("tcam_snapshots_*", "bc_detection_log_*"):
+        for f in glob.glob(str(RESULTS_DIR_PURGE / (pat + tag + "*"))):
+            try: os.unlink(f)
+            except OSError: pass
 
 
 def main():
@@ -132,12 +161,25 @@ def main():
     ap.add_argument("--exp", type=int, nargs="+", choices=[1, 4], required=True)
     ap.add_argument("--workers", type=int, default=MAX_WORKERS)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--smoke", type=int, default=0, help="debug run of N seconds (attack_start_time=2, tags smk_*)")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--attacks", type=int, nargs="+", help="only MOBIGUARD jobs for these attack numbers (0=benign)")
+    ap.add_argument("--keep-heavy", action="store_true", help="do not purge tcam_snapshots/bc_detection_log (needed for SFTO scoring)")
     a = ap.parse_args()
     if not BINARY.is_file(): sys.exit(f"ABORT: binary missing {BINARY}")
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
     jobs = make_jobs(sorted(set(a.exp)))
+    global SIM_TIME, SMOKE, KEEP_HEAVY
+    KEEP_HEAVY = a.keep_heavy
+    if a.smoke:
+        SIM_TIME, SMOKE = a.smoke, True
+        for j in jobs: j["tag"] = j["tag"].replace("e180_", "smk_", 1)
+    # a reused tag APPENDS to the result CSV and corrupts per-cycle series: wipe stale partials
+    for j in jobs:
+        pass
+    if a.attacks:
+        jobs = [j for j in jobs if j["kind"] == "MOBIGUARD" and j["attack"] in a.attacks]
     todo = [j for j in jobs if a.force or not done(j["kind"], j["attack"], j["pct"], j["delay"], j["tag"])]
     print(f"exp={a.exp} jobs={len(jobs)} todo={len(todo)} skipped={len(jobs)-len(todo)} workers={a.workers}")
     if a.dry_run:
@@ -148,6 +190,8 @@ def main():
     def launch(j):
         lp = LOGS_DIR / f"exp{j['exp']}_{j['kind']}_A{j['attack']}_{j['tag']}.log"
         lf = open(lp, "w")
+        try: out_csv(j["kind"], j["attack"], j["pct"], j["delay"], j["tag"]).unlink()
+        except FileNotFoundError: pass
         p = subprocess.Popen(build_cmd(j), cwd=str(NS3_DIR), env=env, stdout=lf, stderr=subprocess.STDOUT)
         running[p] = (j, lf, time.time())
         print(f"  launch e{j['exp']} {j['kind']} A{j['attack']} {j['tag']} (pid {p.pid})", flush=True)
@@ -155,6 +199,7 @@ def main():
         for p in list(running):
             if p.poll() is not None:
                 j, lf, t0 = running.pop(p); lf.close(); n += 1
+                _purge_heavy(j["tag"])
                 ok = done(j["kind"], j["attack"], j["pct"], j["delay"], j["tag"])
                 print(f"  done  e{j['exp']} {j['kind']} A{j['attack']} {j['tag']} rc={p.returncode} "
                       f"{'OK' if ok else 'NO-CSV'} ({time.time()-t0:.0f}s) [{n}/{tot}]", flush=True)

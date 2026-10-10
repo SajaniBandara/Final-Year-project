@@ -73,7 +73,7 @@ def plot_exp2():
     ax[1].axhline(1.0, color="grey", ls=":", lw=1, label="1% target")
     ax[1].set_xlabel("mean vehicle speed cap (km/h)"); ax[1].set_ylabel("FPR (%)")
     ax[1].set_title("(b) False-positive rate vs speed  (α_v test)"); ax[1].grid(alpha=.3); ax[1].legend(fontsize=8)
-    fig.suptitle("PHANTOM Exp 2 — Detection across vehicular speed  [N=200, seed 1, 60s, 40%]", y=1.02)
+    fig.suptitle("PHANTOM Exp 2 — Detection across vehicular speed  [N=200, seed 1, 180 s, 40%]", y=1.02)
     fig.tight_layout()
     for ext in ("png", "pdf"):
         fig.savefig(D / f"exp2_speed.{ext}", dpi=150, bbox_inches="tight")
@@ -99,7 +99,7 @@ def plot_exp3():
     ax[1].axhline(100.0, color="red", ls=":", lw=1.2, label="100 ms bound")
     ax[1].set_xlabel("vehicles (N)"); ax[1].set_ylabel("end-to-end latency (ms)")
     ax[1].set_title("(b) Latency vs scale"); ax[1].grid(alpha=.3); ax[1].legend(fontsize=8)
-    fig.suptitle("PHANTOM Exp 3 — Scalability  [maxspeed 150, seed 1, 60s, 40%]", y=1.02)
+    fig.suptitle("PHANTOM Exp 3 — Scalability  [maxspeed 150, seed 1, 180 s, 40%]", y=1.02)
     fig.tight_layout()
     for ext in ("png", "pdf"):
         fig.savefig(D / f"exp3_scale.{ext}", dpi=150, bbox_inches="tight")

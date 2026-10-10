@@ -21,7 +21,7 @@ PIPE = REPO / "sfto_pipeline/src/run_pipeline.py"
 OUTD = REPO / "docs/phantom_exp23"
 SFTO_RUNS = REPO / "sfto_pipeline/results"
 
-BENIGN_200 = RES / "tcam_snapshots_Attack0_0_seed1_exp5_benign.csv"
+BENIGN_200 = RES / "tcam_snapshots_Attack0_0_seed1_e180_exp1_p0.csv"   # 180 s rerun 2026-10-08
 
 
 def find_attack(atk, tag):
@@ -85,18 +85,18 @@ def main():
     # Exp 1 — penetration, N=200, shared benign
     for p in [20, 40, 60, 80, 100]:
         for atk, var in ((3, "S3"), (4, "S4")):
-            atkf = find_attack(atk, f"exp1_p{p}")
-            mcc = run_sfto(BENIGN_200, atkf, f"exp1_p{p}_A{atk}")
+            atkf = find_attack(atk, f"e180_exp1_p{p}")
+            mcc = run_sfto(BENIGN_200, atkf, f"e180_exp1_p{p}_A{atk}")
             rows.append(dict(exp=1, point=p, variant=var, SFTO_MCC=mcc))
             print(f"  Exp1 p={p} {var}: MCC={mcc}", flush=True)
     # Exp 3 — scale, benign per N
-    benign = {100: RES / "tcam_snapshots_Attack0_0_seed1_sfto_benign_nv100.csv",
-              150: RES / "tcam_snapshots_Attack0_0_seed1_sfto_benign_nv150.csv",
+    benign = {100: RES / "tcam_snapshots_Attack0_0_seed1_e180_sfto_nv100.csv",
+              150: RES / "tcam_snapshots_Attack0_0_seed1_e180_sfto_nv150.csv",
               200: BENIGN_200}
     for nv in [100, 150, 200]:
         for atk, var in ((3, "S3"), (4, "S4")):
-            atkf = find_attack(atk, f"exp3_nv{nv}")
-            mcc = run_sfto(benign[nv], atkf, f"exp3_nv{nv}_A{atk}")
+            atkf = find_attack(atk, f"e180_exp1_p40" if nv == 200 else f"e180_sfto_nv{nv}")
+            mcc = run_sfto(benign[nv], atkf, f"e180_exp3_nv{nv}_A{atk}")
             rows.append(dict(exp=3, point=nv, variant=var, SFTO_MCC=mcc))
             print(f"  Exp3 nv={nv} {var}: MCC={mcc}", flush=True)
 

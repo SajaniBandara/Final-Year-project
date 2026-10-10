@@ -5,9 +5,9 @@ Exp 4 (selectivity / AOEI). PHANTOM MCC/FPR via m1_local per tag; TAP via its
 avg_MCC column. Writes docs/phantom_exp23/exp1_scores.csv, exp4_scores.csv and
 prints tables.
 
-Exp 1 tag scheme: S1/S2 under exp1_p{p}_d{delay}; S3/S4 (intensity-independent)
-under exp1_p{p}. Since "exp1_p{p}" is a substring of "exp1_p{p}_d{delay}",
-S3/S4 are scored from the exp1_p{p} tag but ONLY variants A3/A4 are taken.
+Exp 1 tag scheme: S1/S2 under e180_exp1_p{p}_d{delay}; S3/S4 (intensity-independent)
+under e180_exp1_p{p}. Since "e180_exp1_p{p}" is a substring of "e180_exp1_p{p}_d{delay}",
+S3/S4 are scored from the e180_exp1_p{p} tag but ONLY variants A3/A4 are taken.
 """
 import csv, re, subprocess, sys
 from pathlib import Path
@@ -61,9 +61,9 @@ def macro(mccs):
 def score_exp1():
     rows = []
     for p in PENS:
-        s34 = m1_variants(f"exp1_p{p}")     # take A3,A4 only
+        s34 = m1_variants(f"e180_exp1_p{p}")     # take A3,A4 only
         for delay in INTENSITIES:
-            s12 = m1_variants(f"exp1_p{p}_d{delay}")   # A1,A2
+            s12 = m1_variants(f"e180_exp1_p{p}" if p == 0 else f"e180_exp1_p{p}_d{delay}")   # A1,A2 (p=0: single benign run)
             per = {}
             for a, src in ((1, s12), (2, s12), (3, s34), (4, s34)):
                 per[a] = src.get(f"A{a}", (None, None, None))
@@ -76,7 +76,8 @@ def score_exp1():
                              FPR=macro([per[a][2] for a in (1, 2, 3, 4)])))
             for a in (1, 2):
                 d = f"_d{delay}ms"
-                tf = RES / f"TAP_Attack{a}_{p}{d}_seed{SEED}_exp1_p{p}_d{delay}tap.csv"
+                tf = (RES / f"TAP_Attack0_0_seed{SEED}_e180_exp1_p0tap.csv" if p == 0
+                      else RES / f"TAP_Attack{a}_{p}{d}_seed{SEED}_e180_exp1_p{p}_d{delay}tap.csv")
                 rows.append(dict(exp=1, pen=p, intensity=delay, arm="TAP", attack=a,
                                  MCC=csv_last(tf, "avg_MCC"), FPR=csv_last(tf, "avg_FPR")))
     return rows
@@ -86,7 +87,7 @@ def score_exp4():
     rows = []
     for r in RATIOS:
         rt = str(r).replace(".", "p")
-        v = m1_variants(f"exp4_r{rt}")
+        v = m1_variants(f"e180_exp4_r{rt}")
         per = {a: v.get(f"A{a}", (None, None, None)) for a in (1, 2, 3, 4)}
         for a in (1, 2, 3, 4):
             rows.append(dict(exp=4, ratio=r, arm="PHANTOM", attack=a,
@@ -95,7 +96,7 @@ def score_exp4():
                          MCC=macro([per[a][0] for a in (1, 2, 3, 4)]),
                          FPR=macro([per[a][2] for a in (1, 2, 3, 4)])))
         for a in (1, 2):
-            tf = RES / f"TAP_Attack{a}_40_d100ms_seed{SEED}_exp4_r{rt}tap.csv"
+            tf = RES / f"TAP_Attack{a}_40_d100ms_seed{SEED}_e180_exp4_r{rt}tap.csv"
             rows.append(dict(exp=4, ratio=r, arm="TAP", attack=a,
                              MCC=csv_last(tf, "avg_MCC"), FPR=csv_last(tf, "avg_FPR")))
     return rows

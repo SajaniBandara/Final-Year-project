@@ -88,7 +88,7 @@ def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM, frozen=None,
         add(m["exp"], f"R2 {m['tag']}: per-cycle sums = pooled counts (post warm-up)",
             all(sum(p[k] for p in per if p["c"] >= es.WARMUP_S) == s[k] for k in ("TP", "FP", "FN", "TN")))
     groups = defaultdict(list)
-    for m in manifest: groups[(m["exp"], m["cfg"], m["mode"])].append(m)
+    for m in manifest: groups[(m.get("grp", m["exp"]), m["cfg"], m["mode"])].append(m)
     figs = defaultdict(list)                                   # arms of one FIGURE: all runs of an experiment
     for m in manifest:
         if runs.get(m["tag"]) is not None: figs[m["exp"]].append(m)
@@ -105,12 +105,12 @@ def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM, frozen=None,
             else:
                 diff = {k: (ref[1].get(k), core.get(k)) for k in set(ref[1]) | set(core) if ref[1].get(k) != core.get(k)}
                 add(exp, f"R5 {m['tag']}: configuration equals {ref[0]} apart from the swept variables", not diff, f"differences {diff}")
-    for (exp, cfg, mode), ms in groups.items():
+    for (grp, cfg, mode), ms in groups.items():
         full = next((m for m in ms if m["arm"] == "full"), None)
         sf = runs.get(full["tag"]) if full else None
         if sf is None: continue
         for m in ms:
-            s = runs.get(m["tag"])
+            s = runs.get(m["tag"]); exp = m["exp"]
             if m is full or s is None: continue
             if mode == "do" and m.get("same_positives", True):
                 add(exp, f"R3 {cfg}/{m['arm']} vs full: same TP+FN", s["TPFN"] == sf["TPFN"], f"{s['TPFN']} vs {sf['TPFN']}")
@@ -127,8 +127,9 @@ def check_batch(manifest, expected_commit, n_veh=N_VEH, cycles=SIM, frozen=None,
                 if m["arm"] == "ab8": add(exp, f"R4 {cfg}/ab8 closed loop: UFCR 0", float(L.get("UFCR", "nan")) == 0.0, f"UFCR {L.get('UFCR')}")
                 if m["arm"] == "ab12": add(exp, f"R4 {cfg}/ab12 closed loop: UFCR below full", float(L.get("UFCR", "nan")) < float(F.get("UFCR", "0")), f"{L.get('UFCR')} vs {F.get('UFCR')}")
                 if m["arm"] == "ab7":
-                    add(exp, f"R4 {cfg}/ab7 closed loop: contained by quarantine == 0", L.get("lmit_contained_quarantine_n") == "0", f"{L.get('lmit_contained_quarantine_n')}")
-                    add(exp, f"R4 {cfg}/ab7 closed loop: never contained > 0", int(L.get("lmit_uncontained_n", "0")) > 0, f"uncontained {L.get('lmit_uncontained_n')} (contained by revocation {L.get('lmit_contained_revocation_n')})")
+                    # supervisor 2026-10-10: assert contained-by-quarantine == 0; contained-by-revocation is REPORTED with its latency (no "never contained" rule)
+                    add(exp, f"R4 {cfg}/ab7 closed loop: contained by quarantine == 0", L.get("lmit_contained_quarantine_n") == "0",
+                        f"{L.get('lmit_contained_quarantine_n')}; by revocation {L.get('lmit_contained_revocation_n')} at {L.get('lmit_lat_revocation_ms')} ms, never contained {L.get('lmit_uncontained_n')}")
     return out, runs
 
 def write_report(out, outdir=None):

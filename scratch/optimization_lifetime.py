@@ -144,27 +144,8 @@ try:
                 # No silent fallback: any other status stops the run.
                 print('[SOLVER-ERROR] unexpected Gurobi status %d for pair (%d,%d)' % (m.Status, i, j), file=sys.stderr)
                 sys.exit(3)
+            m.dispose()   # ~5,000 models per call: free the native memory now (a rare interpreter corruption was seen in-simulation)
 
-    _stats = RESULTS_DIR + "solver_pairs" + TAG + ".csv"
-    _new = not os.path.exists(_stats)
-    with open(_stats, "a") as sf:
-        if _new:
-            sf.write("t_wall_ms,n_nodes,n_active,inactive_pairs,out_of_range,stationary,optimised,st_optimal,st_suboptimal,st_other,mean_lt_inrange,median_lt_inrange,mean_lt_optimised,median_lt_optimised\n")
-        import statistics as _st
-        _inr = [x for x in lifetime if x > 0.0]
-        _opt = [x for x in lifetime if 0.0 < x != STATIONARY_LIFETIME]
-        _f = lambda v, fn: (fn(v) if v else 0.0)
-        sf.write("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.3f\n" % (int(time.time()*1000 - time1), n, sum(active),
-                 n_inactive_pairs, n_out_of_range, n_stationary, n_optimised,
-                 status_count.get(GRB.OPTIMAL, 0), status_count.get(GRB.SUBOPTIMAL, 0),
-                 n_optimised - status_count.get(GRB.OPTIMAL, 0) - status_count.get(GRB.SUBOPTIMAL, 0),
-                 _f(_inr, _st.mean), _f(_inr, _st.median), _f(_opt, _st.mean), _f(_opt, _st.median)))
-    if nonopt_rows:
-        _no = RESULTS_DIR + "solver_nonoptimal" + TAG + ".csv"
-        _newf = not os.path.exists(_no)
-        with open(_no, "a") as nf:
-            if _newf: nf.write("status,i,j,gurobi_l,closed_form,rel_err\n")
-            for r_ in nonopt_rows: nf.write("%d,%d,%d,%.9g,%.9g,%.3g\n" % r_)
     if n_optimised == 0:
         print('[SOLVER-ERROR] no node pair reached the optimiser (inactive=%d out_of_range=%d stationary=%d)'
               % (n_inactive_pairs, n_out_of_range, n_stationary), file=sys.stderr)
@@ -176,6 +157,30 @@ try:
         for i in range(n**2):
             s3 = "begin, " + str(float(lifetime[i])) + ", end"
             writer.writerow([s3])
+
+    try:   # diagnostics only: a failure here must never cost the solution that was just written
+        _stats = RESULTS_DIR + "solver_pairs" + TAG + ".csv"
+        _new = not os.path.exists(_stats)
+        with open(_stats, "a") as sf:
+            if _new:
+                sf.write("t_wall_ms,n_nodes,n_active,inactive_pairs,out_of_range,stationary,optimised,st_optimal,st_suboptimal,st_other,mean_lt_inrange,median_lt_inrange,mean_lt_optimised,median_lt_optimised\n")
+            import statistics as _st
+            _inr = [x for x in lifetime if x > 0.0]
+            _opt = [x for x in lifetime if 0.0 < x != STATIONARY_LIFETIME]
+            _f = lambda v, fn: (fn(v) if v else 0.0)
+            sf.write("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.3f,%.3f,%.3f,%.3f\n" % (int(time.time()*1000 - time1), n, sum(active),
+                     n_inactive_pairs, n_out_of_range, n_stationary, n_optimised,
+                     status_count.get(GRB.OPTIMAL, 0), status_count.get(GRB.SUBOPTIMAL, 0),
+                     n_optimised - status_count.get(GRB.OPTIMAL, 0) - status_count.get(GRB.SUBOPTIMAL, 0),
+                     _f(_inr, _st.mean), _f(_inr, _st.median), _f(_opt, _st.mean), _f(_opt, _st.median)))
+        if nonopt_rows:
+            _no = RESULTS_DIR + "solver_nonoptimal" + TAG + ".csv"
+            _newf = not os.path.exists(_no)
+            with open(_no, "a") as nf:
+                if _newf: nf.write("status,i,j,gurobi_l,closed_form,rel_err\n")
+                for r_ in nonopt_rows: nf.write("%d,%d,%d,%.9g,%.9g,%.3g\n" % r_)
+    except Exception:
+        import traceback; traceback.print_exc()
 
     time2 = time.time() * 1000
     print("link lifetime optimization delay is %d ms" % (time2 - time1))
@@ -198,5 +203,7 @@ except gp.GurobiError as e:
     sys.exit(3)
 
 except Exception as e:
+    import traceback
     print('[SOLVER-ERROR] Unexpected error in link lifetime optimization: ' + str(e), file=sys.stderr)
+    traceback.print_exc()          # always show WHERE (a rare, non-reproducible failure killed one run at t=157 s)
     sys.exit(3)
