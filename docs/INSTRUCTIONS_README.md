@@ -245,3 +245,15 @@ At the end of EACH paper print: (i) failed assertions; (ii) ablation points wher
   - Reporting rule: quote honest-quarantine counts from closed-loop runs only; detection-only quarantine state is not an action.
 - Scripts: `run_bf_test.py`, `run_bio_test.py`, `run_bio_cl.py`, `bf_analysis.py`, `cl_analysis.py` (results in the analysis outputs above, 32 DO + 16 CL sims).
 - PHANTOM rerun launched: 486 jobs, 12 workers, tag 9953b68, log `logs/rerun_phantom.log`.
+
+### 2026-10-10 (audit, in parallel with the PHANTOM rerun)
+- **(d) TAP's 92 honest nodes (34.85 %) in a benign run, one line:** TAP puts a node on the Controller Defaulter List on the FIRST packet whose |v - PPAT| exceeds the margin (`tap_report_to_controller`, no evidence accumulation), so even a ~1 % per-packet exceedance rate over 180 s of traffic through each node blacklists about a third of them; MOBIGUARD needs repeated trust decrements to cross T_min 0.30. This is TAP as specified; margin matched to LRAD's benign rate, not tuned to win.
+- **(a) S5-S8 scored against the accused node, not the observer: CONFIRMED CORRECT.** Every S5-S8 raw decision is emitted with `prev_sender` (the suspect), mapped to its covering RSU; R_anom with the RSU whose counter fired (paper eq:feat_ranom is per RSU r).
+  The 9-17 % A5-A8 false alarms are NOT a wrong-node error: 97-100 % of the R_anom false-alarm node-cycles sit on nodes that attack in that run (574-1115 of ~720-1217 within 10 cycles of an action; 0-25 on never-attacking nodes). Cause: the scorer's per-cycle ACTION label vs a windowed alarm.
+  **Paper vs code difference found:** VANGUARD-HF paper says hidden-forwarding truth is "latched from a node's first attack action until quarantine"; the scorer used per-cycle action. Paper version built (`hf_label`), run on seeds 2,3, A5-A8 p40 detection-only (witness excluded):
+  | | A5 | A6 | A7 | A8 | pooled mean M1 |
+  | per-action (old) s2/s3 | .254/.284 | .626/.585 | .236/.271 | .585/.551 | 0.424 |
+  | latched to end of run (paper) s2/s3 | .460/.520 | .547/.586 | .445/.549 | .459/.501 | 0.508 |
+  FPR falls to 0.0-1.3 % (A6 0.000/0.004, A8 0.007/0.001). Paper version is the better pooled and ties go to the paper -> KEPT: `event_scorer.py` default `hf_label=auto` = latched to end in detection-only (quarantine is only a trust state there and the node keeps attacking), latched until quarantine in closed loop. Scoring-only change, no simulator retag; must be applied to every HF number reported and the already-collected HF runs re-scored.
+  Note "latched until quarantine" is not usable in detection-only runs: the trust state quarantines the attacker at its first action, so the label collapses to 1-3 cycles (M1 about 0).
+- **(b) witness:** code default f=2, W=11 s vs paper f=1, W=10 s vs AB6 off: runs in progress (A7/A8, seeds 2,3, 12 sims).
