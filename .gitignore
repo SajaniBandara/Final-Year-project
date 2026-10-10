@@ -93,3 +93,8 @@ lstm_pipeline/*_backup_*.bin
 # Superseded one-off figure bundle (current deliverable is phantom_results_figures.zip)
 /docs/phantom_exp23.zip
 scratch/build_tag.h
+
+# Per-seed offline training runs (146 MB, regenerable by train_lstm_x3.sh; the final seed-1 model is tracked under lstm_pipeline/models)
+lstm_pipeline/runs/
+# Pre-freeze (2026-10-08) PHANTOM SFTO sweep outputs, superseded by the 9953b68 rerun; kept on disk, not tracked
+sfto_pipeline/results/phantom_e180_*/
